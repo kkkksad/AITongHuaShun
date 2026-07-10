@@ -109,6 +109,22 @@ describe("JsonFileTradingStore", () => {
     expect(rejected!.rejectionReason).toBe("风控拒绝");
   });
 
+  it("卖出限价单不冻结现金", () => {
+    const cashBefore = store.getAvailableCash();
+    store.createOrder(
+      {
+        symbol: "600519",
+        side: "sell",
+        type: "limit",
+        quantity: 100,
+        limitPrice: 2_000,
+      },
+      1_492.6,
+    );
+
+    expect(store.getAvailableCash()).toBe(cashBefore);
+  });
+
   it("暂停状态持久化", () => {
     store.setPaused(true);
     expect(store.isPaused()).toBe(true);

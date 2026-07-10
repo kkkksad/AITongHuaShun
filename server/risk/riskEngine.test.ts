@@ -124,4 +124,40 @@ describe("RiskEngine", () => {
 
     expect(result.code).toBe("INVALID_LOT_SIZE");
   });
+
+  it("uses the limit price when checking order notional", () => {
+    const result = risk.evaluate({
+      request: {
+        symbol: quote.symbol,
+        side: "buy",
+        type: "limit",
+        quantity: 100,
+        limitPrice: 1_200,
+      },
+      quote,
+      account,
+      mode: "mock",
+    });
+
+    expect(result.code).toBe("ORDER_NOTIONAL_LIMIT");
+  });
+
+  it("subtracts pending sell orders from available position", () => {
+    const result = risk.evaluate({
+      request: {
+        symbol: quote.symbol,
+        side: "sell",
+        type: "limit",
+        quantity: 100,
+        limitPrice: 300,
+      },
+      quote,
+      account,
+      position,
+      reservedSellQuantity: 100,
+      mode: "mock",
+    });
+
+    expect(result.code).toBe("INSUFFICIENT_POSITION");
+  });
 });

@@ -20,9 +20,17 @@ export class RiskEngine {
     quote?: MarketQuote;
     account: AccountSnapshot;
     position?: PositionSnapshot;
+    reservedSellQuantity?: number;
     mode: TradingMode;
   }): RiskDecision {
-    const { request, quote, account, position, mode } = input;
+    const {
+      request,
+      quote,
+      account,
+      position,
+      reservedSellQuantity = 0,
+      mode,
+    } = input;
 
     if (mode === "live" && !this.limits.realTradingEnabled) {
       return this.reject("LIVE_TRADING_DISABLED", "真实交易开关未启用");
@@ -51,7 +59,9 @@ export class RiskEngine {
       );
     }
 
-    const notional = quote.price * request.quantity;
+    const orderPrice =
+      request.type === "limit" ? (request.limitPrice ?? quote.price) : quote.price;
+    const notional = orderPrice * request.quantity;
     if (notional > this.limits.maxOrderNotional) {
       return this.reject("ORDER_NOTIONAL_LIMIT", "订单金额超过单笔限额");
     }
@@ -74,8 +84,14 @@ export class RiskEngine {
       }
     }
 
-    if (request.side === "sell" && request.quantity > (position?.quantity ?? 0)) {
-      return this.reject("INSUFFICIENT_POSITION", "可卖持仓不足");
+    if (request.side === "sell") {
+      const availableQuantity = Math.max(
+        0,
+        (position?.quantity ?? 0) - reservedSellQuantity,
+      );
+      if (request.quantity > availableQuantity) {
+        return this.reject("INSUFFICIENT_POSITION", "可卖持仓不足");
+      }
     }
 
     return {

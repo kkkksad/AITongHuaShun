@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+﻿import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { MockMarket } from "../market/mockMarket";
 import { InMemoryTradingStore } from "../store/inMemoryTradingStore";
 import { PaperBroker } from "../broker/paperBroker";
@@ -325,7 +325,7 @@ describe("PaperBroker \u4e0e\u5951\u7ea6\u7ec4\u5408", () => {
       side: "buy",
       type: "limit",
       quantity: 100,
-      limitPrice: 900,
+      limitPrice: 40,
     });
 
     expect(order.status).toBe("pending");

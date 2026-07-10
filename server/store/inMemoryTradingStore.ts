@@ -54,24 +54,32 @@ export class InMemoryTradingStore implements TradingStore {
   private orderSequence = 0;
   private auditSequence = 0;
 
-  constructor(startingCash: number) {
-    const seededCost = seededPositions.reduce(
-      (total, position) => total + position.quantity * position.averagePrice,
-      0,
-    );
+  /**
+   * @param startingCash 初始总资金
+   * @param seed 是否使用预设种子持仓（默认 true，向后兼容；false 用于回测从纯现金开始）
+   */
+  constructor(startingCash: number, seed = true) {
+    let seededCost = 0;
 
-    if (seededCost >= startingCash) {
-      throw new Error("TRADING_STARTING_CASH must exceed the seeded portfolio cost.");
+    if (seed) {
+      seededCost = seededPositions.reduce(
+        (total, position) => total + position.quantity * position.averagePrice,
+        0,
+      );
+
+      if (seededCost >= startingCash) {
+        throw new Error("TRADING_STARTING_CASH must exceed the seeded portfolio cost.");
+      }
+
+      for (const position of seededPositions) {
+        this.positions.set(position.symbol, { ...position });
+      }
     }
 
     this.startingEquity = startingCash;
     this.cash = startingCash - seededCost;
 
-    for (const position of seededPositions) {
-      this.positions.set(position.symbol, { ...position });
-    }
-
-    this.appendAudit("system", "account.created", "模拟账户已创建", {
+    this.appendAudit("system", "account.created", seed ? "模拟账户已创建" : "回测账户已创建（纯现金）", {
       startingCash,
       seededCost,
     });

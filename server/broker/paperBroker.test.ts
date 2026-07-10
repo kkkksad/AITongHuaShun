@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import { createTradingSystem } from "../system";
 import { createTestConfig } from "../test/testConfig";
 
@@ -102,7 +102,7 @@ describe("PaperBroker", () => {
     ).toBe(true);
   });
 
-  it("fills a limit order when market price crosses the limit", () => {
+  it("fills a marketable limit order immediately", () => {
     const system = createTradingSystem(createTestConfig());
     const quote = system.market.getQuote("601318");
     const currentPrice = quote!.price; // ~52
@@ -117,14 +117,30 @@ describe("PaperBroker", () => {
       clientOrderId: "limit-fill-1",
     });
 
-    expect(order.status).toBe("pending");
+    expect(order.status).toBe("filled");
+    expect(order.filledPrice).toBeLessThanOrEqual(currentPrice + 10);
+  });
 
-    // Simulate market tick - current price should be below limit, triggering fill
-    const snapshot = system.market.tick();
-    system.broker.markToMarket(snapshot);
+  it("prevents pending sell orders from reserving the same position twice", () => {
+    const system = createTradingSystem(createTestConfig({ MAX_ORDER_NOTIONAL: 300_000 }));
+    const first = system.broker.submitOrder({
+      symbol: "600519",
+      side: "sell",
+      type: "limit",
+      quantity: 100,
+      limitPrice: 2_000,
+      clientOrderId: "sell-reservation-1",
+    const second = system.broker.submitOrder({
+      symbol: "600519",
+      side: "sell",
+      type: "limit",
+      quantity: 100,
+      limitPrice: 2_000,
+      clientOrderId: "sell-reservation-2",
 
-    const updated = system.store.findOrderById(order.id);
-    expect(updated!.status).toBe("filled");
+    expect(first.status).toBe("pending");
+    expect(second.status).toBe("rejected");
+    expect(second.rejectionReason).toBe("可卖持仓不足");
   });
 
   it("throws when cancelling a non-existent order", () => {

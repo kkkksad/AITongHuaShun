@@ -35,31 +35,46 @@ interface PersistedState {
 }
 
 const SEEDED_POSITIONS: MutablePosition[] = [
-  { symbol: "600519", name: "贵州茅台", quantity: 100, averagePrice: 1468.2, realizedPnl: 0 },
-  { symbol: "300750", name: "宁德时代", quantity: 400, averagePrice: 247.8, realizedPnl: 0 },
-  { symbol: "688981", name: "中芯国际", quantity: 1200, averagePrice: 88.5, realizedPnl: 0 },
+  {
+    symbol: "600519",
+    name: "贵州茅台",
+    quantity: 100,
+    averagePrice: 1468.2,
+    realizedPnl: 0,
+  },
+  {
+    symbol: "300750",
+    name: "宁德时代",
+    quantity: 400,
+    averagePrice: 247.8,
+    realizedPnl: 0,
+  },
+  {
+    symbol: "688981",
+    name: "中芯国际",
+    quantity: 1200,
+    averagePrice: 88.5,
+    realizedPnl: 0,
+  },
 ];
 
 function computeSeededCost(): number {
   return SEEDED_POSITIONS.reduce(
-    (total, p) => total + p.quantity * p.averagePrice,
+    (total, position) => total + position.quantity * position.averagePrice,
     0,
   );
 }
 
 /**
- * JSON 文件持久化交易数据仓库。
+ * JSON 文件持久化交易仓储。
  *
- * - 实现 TradingStore 契约，可替换 InMemoryTradingStore
- * - 每次写操作后自动 flush 到磁盘
- * - 服务重启后从文件恢复完整状态
- * - 首次启动时使用预设种子数据
+ * 当前实现面向本地单进程模拟交易，不提供多进程锁、事务或合规级审计。
  */
 export class JsonFileTradingStore implements TradingStore {
   private readonly filePath: string;
   private readonly accountId = "PAPER-CN-01";
   private startingEquity: number;
-  private cash: number = 0;
+  private cash = 0;
   private blockedCash = 0;
   private paused = false;
   private readonly positions = new Map<string, MutablePosition>();
@@ -69,10 +84,7 @@ export class JsonFileTradingStore implements TradingStore {
   private auditSequence = 0;
 
   constructor(dataDir: string, startingCash: number) {
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-
+    fs.mkdirSync(dataDir, { recursive: true });
     this.filePath = path.join(dataDir, "paper-trading-state.json");
     this.startingEquity = startingCash;
 
@@ -82,75 +94,6 @@ export class JsonFileTradingStore implements TradingStore {
       this.initializeFresh(startingCash);
     }
   }
-
-  // ── Persistence ──
-
-  private flush(): void {
-    const state: PersistedState = {
-      version: 1,
-      accountId: this.accountId,
-      startingEquity: this.startingEquity,
-      cash: this.cash,
-      blockedCash: this.blockedCash,
-      paused: this.paused,
-      positions: [...this.positions.values()],
-      orders: this.orders,
-      auditEvents: this.auditEvents,
-      orderSequence: this.orderSequence,
-      auditSequence: this.auditSequence,
-    };
-
-    // Atomic write: write to temp file, then rename
-    const tmpPath = this.filePath + ".tmp";
-    fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), "utf-8");
-    fs.renameSync(tmpPath, this.filePath);
-  }
-
-  private load(): void {
-    const raw = fs.readFileSync(this.filePath, "utf-8");
-    const state = JSON.parse(raw) as PersistedState;
-
-    if (state.version !== 1) {
-      throw new Error(`Unsupported persisted state version: ${state.version}`);
-    }
-
-    this.startingEquity = state.startingEquity;
-    this.cash = state.cash;
-    this.blockedCash = state.blockedCash;
-    this.paused = state.paused;
-    this.orderSequence = state.orderSequence;
-    this.auditSequence = state.auditSequence;
-    this.orders = state.orders;
-    this.auditEvents = state.auditEvents;
-
-    this.positions.clear();
-    for (const pos of state.positions) {
-      this.positions.set(pos.symbol, { ...pos });
-    }
-  }
-
-  private initializeFresh(startingCash: number): void {
-    const seededCost = computeSeededCost();
-
-    if (seededCost >= startingCash) {
-      throw new Error("TRADING_STARTING_CASH must exceed the seeded portfolio cost.");
-    }
-
-    this.cash = startingCash - seededCost;
-
-    for (const pos of SEEDED_POSITIONS) {
-      this.positions.set(pos.symbol, { ...pos });
-    }
-
-    this.appendAudit("system", "account.created", "模拟账户已创建（JSON 持久化）", {
-      startingCash,
-      seededCost,
-    });
-
-    this.flush();
-  }
-
-  // ── Account ──
 
   isPaused(): boolean {
     return this.paused;
@@ -174,38 +117,44 @@ export class JsonFileTradingStore implements TradingStore {
     return this.cash - this.blockedCash;
   }
 
-  // ── Positions ──
-
   getPositionQuantity(symbol: string): number {
     return this.positions.get(symbol)?.quantity ?? 0;
   }
 
+  getPendingOrders(): OrderRecord[] {
+    return this.orders
+      .filter((order) => order.status === "pending")
+      .map((order) => ({ ...order }));
+  }
+
   getPositions(snapshot: MarketSnapshot): PositionSnapshot[] {
-    const quoteMap = new Map(snapshot.quotes.map((q) => [q.symbol, q]));
-    const raw = [...this.positions.values()].map((pos) => {
-      const quote = quoteMap.get(pos.symbol);
-      const currentPrice = quote?.price ?? pos.averagePrice;
-      const marketValue = currentPrice * pos.quantity;
+    const quoteMap = new Map(snapshot.quotes.map((quote) => [quote.symbol, quote]));
+    const raw = [...this.positions.values()].map((position) => {
+      const quote = quoteMap.get(position.symbol);
+      const currentPrice = quote?.price ?? position.averagePrice;
+      const marketValue = currentPrice * position.quantity;
 
       return {
-        symbol: pos.symbol,
-        name: pos.name,
-        quantity: pos.quantity,
-        averagePrice: pos.averagePrice,
+        symbol: position.symbol,
+        name: position.name,
+        quantity: position.quantity,
+        averagePrice: position.averagePrice,
         currentPrice,
         marketValue,
-        unrealizedPnl: (currentPrice - pos.averagePrice) * pos.quantity,
-        realizedPnl: pos.realizedPnl,
+        unrealizedPnl: (currentPrice - position.averagePrice) * position.quantity,
+        realizedPnl: position.realizedPnl,
         weight: 0,
       };
     });
+    const marketValue = raw.reduce(
+      (total, position) => total + position.marketValue,
+      0,
+    );
+    const equity = this.cash + marketValue;
 
-    const totalMv = raw.reduce((t, p) => t + p.marketValue, 0);
-    const equity = this.cash + totalMv;
-
-    return raw.map((p) => ({
-      ...p,
-      weight: equity === 0 ? 0 : p.marketValue / equity,
+    return raw.map((position) => ({
+      ...position,
+      weight: equity === 0 ? 0 : position.marketValue / equity,
     }));
   }
 
@@ -215,21 +164,31 @@ export class JsonFileTradingStore implements TradingStore {
     limits: RiskLimits,
   ): AccountSnapshot {
     const positions = this.getPositions(snapshot);
-    const marketValue = positions.reduce((t, p) => t + p.marketValue, 0);
-    const unrealizedPnl = positions.reduce((t, p) => t + p.unrealizedPnl, 0);
-    const realizedPnl = positions.reduce((t, p) => t + p.realizedPnl, 0);
-    const availableCash = this.cash - this.blockedCash;
+    const marketValue = positions.reduce(
+      (total, position) => total + position.marketValue,
+      0,
+    );
+    const unrealizedPnl = positions.reduce(
+      (total, position) => total + position.unrealizedPnl,
+      0,
+    );
+    const realizedPnl = positions.reduce(
+      (total, position) => total + position.realizedPnl,
+      0,
+    );
     const equity = this.cash + marketValue;
     const dailyPnl = equity - this.startingEquity;
     const baseline = Math.max(1, equity - dailyPnl);
     const exposureRatio = equity === 0 ? 0 : marketValue / equity;
     const lossRatio =
-      dailyPnl >= 0 ? 0 : Math.abs(dailyPnl / baseline) / limits.maxDailyLoss;
+      dailyPnl >= 0
+        ? 0
+        : Math.abs(dailyPnl / baseline) / limits.maxDailyLoss;
 
     return {
       accountId: this.accountId,
       mode,
-      cash: availableCash,
+      cash: this.getAvailableCash(),
       equity,
       marketValue,
       unrealizedPnl,
@@ -242,26 +201,24 @@ export class JsonFileTradingStore implements TradingStore {
     };
   }
 
-  // ── Orders ──
-
   findByClientOrderId(clientOrderId?: string): OrderRecord | undefined {
-    if (!clientOrderId) return undefined;
-    return this.orders.find((o) => o.clientOrderId === clientOrderId);
+    if (!clientOrderId) {
+      return undefined;
+    }
+    const order = this.orders.find(
+      (candidate) => candidate.clientOrderId === clientOrderId,
+    );
+    return order ? { ...order } : undefined;
   }
 
   findOrderById(id: string): OrderRecord | undefined {
-    return this.orders.find((o) => o.id === id);
-  }
-
-  getPendingOrders(): OrderRecord[] {
-    return this.orders.filter((o) => o.status === "pending");
+    return this.orders.find((order) => order.id === id);
   }
 
   createOrder(request: OrderRequest, requestedPrice: number): OrderRecord {
     this.orderSequence += 1;
     const now = new Date().toISOString();
     const isLimitOrder = request.type === "limit";
-
     const order: OrderRecord = {
       ...request,
       id: `PO-${Date.now()}-${String(this.orderSequence).padStart(4, "0")}`,
@@ -275,8 +232,11 @@ export class JsonFileTradingStore implements TradingStore {
     };
 
     this.orders.unshift(order);
-
-    if (isLimitOrder && request.limitPrice !== undefined) {
+    if (
+      isLimitOrder &&
+      request.side === "buy" &&
+      request.limitPrice !== undefined
+    ) {
       this.blockedCash += request.limitPrice * request.quantity;
     }
 
@@ -284,53 +244,61 @@ export class JsonFileTradingStore implements TradingStore {
       "order",
       "order.accepted",
       isLimitOrder ? "限价单已挂单" : "模拟订单已接收",
-      { orderId: order.id, symbol: order.symbol, side: order.side, type: order.type },
+      {
+        orderId: order.id,
+        symbol: order.symbol,
+        side: order.side,
+        type: order.type,
+        quantity: order.quantity,
+        limitPrice: order.limitPrice,
+      },
     );
     this.flush();
-    return order;
+    return { ...order };
   }
 
   rejectOrder(order: OrderRecord, reason: string, code: string): OrderRecord {
-    order.status = "rejected";
-    order.rejectionReason = reason;
-    order.updatedAt = new Date().toISOString();
-
-    if (order.type === "limit" && order.limitPrice !== undefined) {
-      this.blockedCash -= order.limitPrice * order.quantity;
-    }
-
-    this.appendAudit("risk", code, reason, { orderId: order.id });
+    const stored = this.requireStoredOrder(order.id);
+    stored.status = "rejected";
+    stored.rejectionReason = reason;
+    stored.updatedAt = new Date().toISOString();
+    this.releaseBuyLimitCash(stored);
+    this.appendAudit("risk", code, reason, { orderId: stored.id });
     this.flush();
-    return { ...order };
+    return { ...stored };
   }
 
   cancelOrder(order: OrderRecord): OrderRecord {
-    if (order.status !== "pending") {
-      throw new Error(`只能撤销挂单状态的订单，当前状态: ${order.status}`);
+    const stored = this.requireStoredOrder(order.id);
+    if (stored.status !== "pending") {
+      throw new Error(`只能撤销挂单状态的订单，当前状态：${stored.status}`);
     }
 
-    order.status = "cancelled";
-    order.updatedAt = new Date().toISOString();
-
-    if (order.limitPrice !== undefined) {
-      this.blockedCash -= order.limitPrice * order.quantity;
-    }
-
-    this.appendAudit("order", "order.cancelled", "限价单已撤销", { orderId: order.id });
+    stored.status = "cancelled";
+    stored.updatedAt = new Date().toISOString();
+    this.releaseBuyLimitCash(stored);
+    this.appendAudit("order", "order.cancelled", "限价单已撤销", {
+      orderId: stored.id,
+    });
     this.flush();
-    return { ...order };
+    return { ...stored };
   }
 
   checkLimitOrderFill(
     order: OrderRecord,
     quote: { symbol: string; name: string; price: number },
   ): boolean {
-    if (order.status !== "pending" || order.type !== "limit") return false;
+    if (
+      order.status !== "pending" ||
+      order.type !== "limit" ||
+      order.limitPrice === undefined
+    ) {
+      return false;
+    }
 
-    const limitPrice = order.limitPrice!;
     return order.side === "buy"
-      ? quote.price <= limitPrice
-      : quote.price >= limitPrice;
+      ? quote.price <= order.limitPrice
+      : quote.price >= order.limitPrice;
   }
 
   fillOrder(
@@ -339,69 +307,67 @@ export class JsonFileTradingStore implements TradingStore {
     fillPrice: number,
     commission: number,
   ): OrderRecord {
-    const wasPending = order.status === "pending";
-    const notional = fillPrice * order.quantity;
-    const current = this.positions.get(order.symbol);
+    const stored = this.requireStoredOrder(order.id);
+    const wasPending = stored.status === "pending";
+    const notional = fillPrice * stored.quantity;
+    const current = this.positions.get(stored.symbol);
 
-    if (wasPending && order.limitPrice !== undefined) {
-      this.blockedCash -= order.limitPrice * order.quantity;
+    if (wasPending) {
+      this.releaseBuyLimitCash(stored);
     }
 
-    if (order.side === "buy") {
-      const prevQty = current?.quantity ?? 0;
-      const prevCost = prevQty * (current?.averagePrice ?? 0);
-      const nextQty = prevQty + order.quantity;
+    if (stored.side === "buy") {
+      const previousQuantity = current?.quantity ?? 0;
+      const previousCost = previousQuantity * (current?.averagePrice ?? 0);
+      const nextQuantity = previousQuantity + stored.quantity;
 
-      this.positions.set(order.symbol, {
-        symbol: order.symbol,
+      this.positions.set(stored.symbol, {
+        symbol: stored.symbol,
         name,
-        quantity: nextQty,
-        averagePrice: (prevCost + notional) / nextQty,
+        quantity: nextQuantity,
+        averagePrice: (previousCost + notional) / nextQuantity,
         realizedPnl: current?.realizedPnl ?? 0,
       });
       this.cash -= notional + commission;
     } else if (current) {
       const realizedPnl =
-        (fillPrice - current.averagePrice) * order.quantity - commission;
-      const nextQty = current.quantity - order.quantity;
+        (fillPrice - current.averagePrice) * stored.quantity - commission;
+      const nextQuantity = current.quantity - stored.quantity;
       this.cash += notional - commission;
 
-      if (nextQty === 0) {
-        this.positions.delete(order.symbol);
+      if (nextQuantity === 0) {
+        this.positions.delete(stored.symbol);
       } else {
-        this.positions.set(order.symbol, {
+        this.positions.set(stored.symbol, {
           ...current,
-          quantity: nextQty,
+          quantity: nextQuantity,
           realizedPnl: current.realizedPnl + realizedPnl,
         });
       }
     }
 
-    order.status = "filled";
-    order.filledPrice = fillPrice;
-    order.filledQuantity = order.quantity;
-    order.notional = notional;
-    order.commission = commission;
-    order.updatedAt = new Date().toISOString();
-
+    stored.status = "filled";
+    stored.filledPrice = fillPrice;
+    stored.filledQuantity = stored.quantity;
+    stored.notional = notional;
+    stored.commission = commission;
+    stored.updatedAt = new Date().toISOString();
     this.appendAudit(
       "order",
       "order.filled",
       wasPending ? "限价单已成交" : "模拟订单已成交",
-      { orderId: order.id, fillPrice, commission, notional },
+      { orderId: stored.id, fillPrice, commission, notional },
     );
     this.flush();
-    return { ...order };
+    return { ...stored };
   }
 
   listOrders(limit = 100): OrderRecord[] {
-    return this.orders.slice(0, limit).map((o) => ({ ...o }));
+    return this.orders.slice(0, limit).map((order) => ({ ...order }));
   }
 
-  // ── Audit ──
-
   listAudit(limit = 200): AuditEvent[] {
-    return this.auditEvents.slice(0, limit).map((e) => ({ ...e }));
+    return this.auditEvents.slice(0, limit).map((event) => ({ ...event }));
   }
 
   appendAudit(
@@ -419,5 +385,98 @@ export class JsonFileTradingStore implements TradingStore {
       timestamp: new Date().toISOString(),
       data,
     });
+  }
+
+  private initializeFresh(startingCash: number): void {
+    const seededCost = computeSeededCost();
+    if (seededCost >= startingCash) {
+      throw new Error("TRADING_STARTING_CASH must exceed the seeded portfolio cost.");
+    }
+
+    this.cash = startingCash - seededCost;
+    for (const position of SEEDED_POSITIONS) {
+      this.positions.set(position.symbol, { ...position });
+    }
+    this.appendAudit(
+      "system",
+      "account.created",
+      "模拟账户已创建（JSON 持久化）",
+      { startingCash, seededCost },
+    );
+    this.flush();
+  }
+
+  private load(): void {
+    const state = JSON.parse(
+      fs.readFileSync(this.filePath, "utf-8"),
+    ) as PersistedState;
+    if (state.version !== 1) {
+      throw new Error(`Unsupported persisted state version: ${state.version}`);
+    }
+
+    this.startingEquity = state.startingEquity;
+    this.cash = state.cash;
+    this.paused = state.paused;
+    this.orderSequence = state.orderSequence;
+    this.auditSequence = state.auditSequence;
+    this.orders = state.orders.map((order) => ({ ...order }));
+    this.auditEvents = state.auditEvents.map((event) => ({ ...event }));
+    this.blockedCash = this.orders
+      .filter(
+        (order) =>
+          order.status === "pending" &&
+          order.type === "limit" &&
+          order.side === "buy" &&
+          order.limitPrice !== undefined,
+      )
+      .reduce(
+        (total, order) => total + (order.limitPrice ?? 0) * order.quantity,
+        0,
+      );
+
+    this.positions.clear();
+    for (const position of state.positions) {
+      this.positions.set(position.symbol, { ...position });
+    }
+  }
+
+  private flush(): void {
+    const state: PersistedState = {
+      version: 1,
+      accountId: this.accountId,
+      startingEquity: this.startingEquity,
+      cash: this.cash,
+      blockedCash: this.blockedCash,
+      paused: this.paused,
+      positions: [...this.positions.values()],
+      orders: this.orders,
+      auditEvents: this.auditEvents,
+      orderSequence: this.orderSequence,
+      auditSequence: this.auditSequence,
+    };
+    const temporaryPath = `${this.filePath}.tmp`;
+    fs.writeFileSync(temporaryPath, JSON.stringify(state, null, 2), "utf-8");
+    fs.renameSync(temporaryPath, this.filePath);
+  }
+
+  private requireStoredOrder(id: string): OrderRecord {
+    const order = this.orders.find((candidate) => candidate.id === id);
+    if (!order) {
+      throw new Error(`订单不存在：${id}`);
+    }
+    return order;
+  }
+
+  private releaseBuyLimitCash(order: OrderRecord): void {
+    if (
+      order.type === "limit" &&
+      order.side === "buy" &&
+      order.limitPrice !== undefined
+    ) {
+      this.blockedCash = Math.max(
+        0,
+        this.blockedCash - order.limitPrice * order.quantity,
+      );
+    }
   }
 }

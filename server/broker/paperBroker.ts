@@ -44,11 +44,16 @@ export class PaperBroker extends EventEmitter {
     const position = this.getPositions(snapshot).find(
       (candidate) => candidate.symbol === request.symbol,
     );
+    const reservedSellQuantity = this.store
+      .getPendingOrders()
+      .filter((order) => order.symbol === request.symbol && order.side === "sell")
+      .reduce((total, order) => total + order.quantity, 0);
     const decision = this.risk.evaluate({
       request,
       quote,
       account,
       position,
+      reservedSellQuantity,
       mode: this.options.mode,
     });
 
@@ -63,29 +68,21 @@ export class PaperBroker extends EventEmitter {
     // Now create the order (cash will be blocked for limit orders)
     const order = this.store.createOrder(request, quote.price);
 
-    // Limit orders: accept and pend; fill on next tick
+    // Marketable limit orders fill immediately; otherwise they remain pending.
     if (request.type === "limit") {
+      if (this.store.checkLimitOrderFill(order, quote)) {
+        const filled = this.fillOrder(order, quote.name, quote.price);
+        this.emit("order.updated", filled);
+        this.emit("account.updated", this.getAccount());
+        return filled;
+      }
+
       this.emit("order.updated", { ...order });
       this.emit("account.updated", this.getAccount());
       return { ...order };
     }
 
-    // Market orders: fill immediately
-    const slippage = this.options.slippageBps / 10_000;
-    const fillPrice =
-      request.side === "buy" ? quote.price * (1 + slippage) : quote.price * (1 - slippage);
-    const roundedFillPrice = Number(fillPrice.toFixed(2));
-    const notional = roundedFillPrice * request.quantity;
-    const commission = Math.max(
-      this.options.minimumCommission,
-      notional * this.options.commissionRate,
-    );
-    const filled = this.store.fillOrder(
-      order,
-      quote.name,
-      roundedFillPrice,
-      Number(commission.toFixed(2)),
-    );
+    const filled = this.fillOrder(order, quote.name, quote.price);
 
     this.emit("order.updated", filled);
     this.emit("account.updated", this.getAccount());
@@ -130,23 +127,7 @@ export class PaperBroker extends EventEmitter {
       if (!quote) continue;
 
       if (this.store.checkLimitOrderFill(order, quote)) {
-        const slippage = this.options.slippageBps / 10_000;
-        const fillPrice =
-          order.side === "buy"
-            ? quote.price * (1 + slippage)
-            : quote.price * (1 - slippage);
-        const roundedPrice = Number(fillPrice.toFixed(2));
-        const notional = roundedPrice * order.quantity;
-        const commission = Math.max(
-          this.options.minimumCommission,
-          notional * this.options.commissionRate,
-        );
-        const filled = this.store.fillOrder(
-          order,
-          quote.name,
-          roundedPrice,
-          Number(commission.toFixed(2)),
-        );
+        const filled = this.fillOrder(order, quote.name, quote.price);
         this.emit("order.updated", filled);
       }
     }
@@ -171,5 +152,38 @@ export class PaperBroker extends EventEmitter {
 
   getOrders(limit?: number): OrderRecord[] {
     return this.store.listOrders(limit);
+  }
+
+  private fillOrder(
+    order: OrderRecord,
+    name: string,
+    marketPrice: number,
+  ): OrderRecord {
+    const slippage = this.options.slippageBps / 10_000;
+    let fillPrice =
+      order.side === "buy"
+        ? marketPrice * (1 + slippage)
+        : marketPrice * (1 - slippage);
+
+    if (order.type === "limit" && order.limitPrice !== undefined) {
+      fillPrice =
+        order.side === "buy"
+          ? Math.min(fillPrice, order.limitPrice)
+          : Math.max(fillPrice, order.limitPrice);
+    }
+
+    const roundedFillPrice = Number(fillPrice.toFixed(2));
+    const notional = roundedFillPrice * order.quantity;
+    const commission = Math.max(
+      this.options.minimumCommission,
+      notional * this.options.commissionRate,
+    );
+
+    return this.store.fillOrder(
+      order,
+      name,
+      roundedFillPrice,
+      Number(commission.toFixed(2)),
+    );
   }
 }
