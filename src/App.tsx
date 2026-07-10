@@ -2,9 +2,9 @@ import { useMemo, useState, type ReactNode, lazy, Suspense } from "react";
 import { Activity, CircleAlert, Database, Gauge, TrendingUp } from "lucide-react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppShell, type ViewId } from "./components/AppShell";
-import { AuthGuard } from "./components/AuthGuard";
-import { LoginPage } from "./components/LoginPage";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PwaInstallPrompt, OfflineBanner } from "./components/PwaInstallPrompt";
+import { LazyFallback } from "./components/Skeleton";
 import { TradingStrategies } from "./components/TradingStrategies";
 import { SystemMonitor } from "./components/SystemMonitor";
 import { strategies } from "./data/mockData";
@@ -34,14 +34,6 @@ const RiskPanel = lazyNamed(() => import("./components/RiskPanel"), "RiskPanel")
 const Settings = lazyNamed(() => import("./components/Settings"), "Settings");
 const StrategyCompare = lazyNamed(() => import("./components/StrategyCompare"), "StrategyCompare");
 const StrategyLab = lazyNamed(() => import("./components/StrategyLab"), "StrategyLab");
-
-function PanelFallback() {
-  return (
-    <div className="page-loader" style={{ minHeight: 200 }}>
-      <div className="page-loader-spinner" />
-    </div>
-  );
-}
 
 type AccountTab = "portfolio" | "trading" | "orders" | "risk" | "strategies" | "monitor" | "logs";
 
@@ -197,7 +189,7 @@ function App() {
         </article>
       </section>
 
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <MarketOverview
           connectionState={trading.connectionState}
           market={trading.market}
@@ -205,16 +197,16 @@ function App() {
       </Suspense>
 
       <div className="two-column wide-left">
-        <Suspense fallback={<PanelFallback />}>
+        <Suspense fallback={<LazyFallback />}>
           <BacktestResults compact result={result} />
         </Suspense>
-        <Suspense fallback={<PanelFallback />}>
+        <Suspense fallback={<LazyFallback />}>
           <FlowPanel />
         </Suspense>
       </div>
 
       <div className="two-column">
-        <Suspense fallback={<PanelFallback />}>
+        <Suspense fallback={<LazyFallback />}>
           <NewsPanel />
         </Suspense>
         <section className="panel watch-panel">
@@ -258,7 +250,7 @@ function App() {
 
   const strategy = (
     <div className="page-stack">
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <StrategyLab
           isRunning={isRunning}
           onParameterChange={(key: string, value: number) =>
@@ -271,10 +263,10 @@ function App() {
           selectedStrategy={selectedStrategy}
         />
       </Suspense>
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <BacktestResults result={result} />
       </Suspense>
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <StrategyCompare results={allStrategyResults} />
       </Suspense>
     </div>
@@ -282,21 +274,21 @@ function App() {
 
   const market = (
     <div className="page-stack">
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <MarketOverview
           connectionState={trading.connectionState}
           market={trading.market}
         />
       </Suspense>
       <div className="two-column wide-left">
-        <Suspense fallback={<PanelFallback />}>
+        <Suspense fallback={<LazyFallback />}>
           <MarketChart />
         </Suspense>
-        <Suspense fallback={<PanelFallback />}>
+        <Suspense fallback={<LazyFallback />}>
           <FlowPanel />
         </Suspense>
       </div>
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <NewsPanel />
       </Suspense>
     </div>
@@ -304,7 +296,7 @@ function App() {
 
   const accountTabContent: Record<AccountTab, ReactNode> = {
     portfolio: (
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <Portfolio
           equity={trading.account?.equity}
           market={trading.market}
@@ -313,13 +305,13 @@ function App() {
       </Suspense>
     ),
     trading: (
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <PaperAccount backend={trading} />
       </Suspense>
     ),
     strategies: <TradingStrategies />,
     orders: (
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <OrderHistory
           orders={trading.orders}
           onCancelOrder={async (orderId: string) => {
@@ -330,13 +322,13 @@ function App() {
       </Suspense>
     ),
     risk: (
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <RiskPanel account={trading.account} limits={trading.limits} />
       </Suspense>
     ),
     monitor: <SystemMonitor />,
     logs: (
-      <Suspense fallback={<PanelFallback />}>
+      <Suspense fallback={<LazyFallback />}>
         <LogViewer />
       </Suspense>
     ),
@@ -402,65 +394,31 @@ function App() {
         mode={trading.mode}
         onViewChange={(view) => navigate(viewPaths[view])}
       >
-        <Routes>
-          {/* Public route - Login */}
-          <Route element={<LoginPage />} path="/login" />
-
-          {/* Protected routes */}
-          <Route
-            element={
-              <AuthGuard>
-                {overview}
-              </AuthGuard>
-            }
-            path="/"
-          />
-          <Route
-            element={
-              <AuthGuard>
-                {strategy}
-              </AuthGuard>
-            }
-            path="/strategy"
-          />
-          <Route
-            element={
-              <AuthGuard>
-                {market}
-              </AuthGuard>
-            }
-            path="/market"
-          />
-          <Route
-            element={
-              <AuthGuard>
-                {account}
-              </AuthGuard>
-            }
-            path="/account"
-          />
-          <Route
-            element={
-              <AuthGuard>
-                <Suspense fallback={<PanelFallback />}>
+        <ErrorBoundary>
+          <Routes>
+            <Route element={overview} path="/" />
+            <Route element={strategy} path="/strategy" />
+            <Route element={market} path="/market" />
+            <Route element={account} path="/account" />
+            <Route
+              element={
+                <Suspense fallback={<LazyFallback />}>
                   <LearningPipeline />
                 </Suspense>
-              </AuthGuard>
-            }
-            path="/learning"
-          />
-          <Route
-            element={
-              <AuthGuard>
-                <Suspense fallback={<PanelFallback />}>
+              }
+              path="/learning"
+            />
+            <Route
+              element={
+                <Suspense fallback={<LazyFallback />}>
                   <Settings />
                 </Suspense>
-              </AuthGuard>
-            }
-            path="/settings"
-          />
-          <Route element={<Navigate replace to="/" />} path="*" />
-        </Routes>
+              }
+              path="/settings"
+            />
+            <Route element={<Navigate replace to="/" />} path="*" />
+          </Routes>
+        </ErrorBoundary>
       </AppShell>
     </>
   );

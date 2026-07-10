@@ -105,15 +105,6 @@ export const translations = {
     "lang.switch": "English",
     "lang.label": "语言",
 
-    // ── Login ───────────────────────────────────────────
-    "login.title": "登录",
-    "login.username": "用户名",
-    "login.password": "密码",
-    "login.submit": "登录",
-    "login.submitting": "登录中...",
-    "login.error.default": "登录失败，请检查凭据",
-    "login.hint": "本地开发环境 · 默认凭据: admin / kairos2026",
-
     // ── Log Viewer ──────────────────────────────────────
     "log.title": "系统日志",
     "log.allLevels": "全部级别",
@@ -246,15 +237,6 @@ export const translations = {
     // ── Language Switcher ────────────────────────────────
     "lang.switch": "中文",
     "lang.label": "Language",
-
-    // ── Login ───────────────────────────────────────────
-    "login.title": "Sign In",
-    "login.username": "Username",
-    "login.password": "Password",
-    "login.submit": "Sign In",
-    "login.submitting": "Signing in...",
-    "login.error.default": "Login failed. Please check your credentials.",
-    "login.hint": "Local dev environment \u00b7 Default: admin / kairos2026",
 
     // ── Log Viewer ──────────────────────────────────────
     "log.title": "System Logs",

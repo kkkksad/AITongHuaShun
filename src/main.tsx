@@ -3,8 +3,8 @@ import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider } from "./hooks/useTheme";
-import { AuthProvider } from "./hooks/useAuth";
 import { I18nProvider } from "./i18n";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/index.css";
 import "./styles/trading-strategies.css";
 
@@ -14,7 +14,7 @@ function PageLoader() {
   return (
     <div className="page-loader">
       <div className="page-loader-spinner" />
-      <span>加载中…</span>
+      <span>加载中�?/span>
     </div>
   );
 }
@@ -48,13 +48,11 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <I18nProvider>
-          <AuthProvider>
-            <BrowserRouter>
-              <Suspense fallback={<PageLoader />}>
-                <App />
-              </Suspense>
-            </BrowserRouter>
-          </AuthProvider>
+          <BrowserRouter>
+            <ErrorBoundary><Suspense fallback={<PageLoader />}>
+              <App />
+            </Suspense>
+          </BrowserRouter></ErrorBoundary>
         </I18nProvider>
       </ThemeProvider>
     </QueryClientProvider>
