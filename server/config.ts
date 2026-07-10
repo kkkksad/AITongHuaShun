@@ -8,10 +8,21 @@ const envSchema = z.object({
   API_HOST: z.string().default("127.0.0.1"),
   API_PORT: z.coerce.number().int().positive().default(8787),
   WEB_ORIGIN: z.string().url().default("http://127.0.0.1:4173"),
+  API_DOCS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   MARKET_MODE: z.enum(["mock", "paper", "live"]).default("mock"),
+  MARKET_DATA_PROVIDER: z.enum(["mock", "akshare"]).default("mock"),
   MARKET_TICK_MS: z.coerce.number().int().min(250).default(1000),
+  MARKET_DATA_TIMEOUT_MS: z.coerce.number().int().min(1000).default(15_000),
+  MARKET_SYMBOLS: z
+    .string()
+    .default("600519,000858,300750,601318,000001,600036,002594,688981"),
+  AKSHARE_BRIDGE_URL: z.string().url().default("http://127.0.0.1:8800"),
+  AKSHARE_BRIDGE_TOKEN: z.string().default(""),
   TRADING_STARTING_CASH: z.coerce.number().positive().default(1_000_000),
   MAX_ORDER_NOTIONAL: z.coerce.number().positive().default(100_000),
   MAX_POSITION_WEIGHT: z.coerce.number().min(0.01).max(1).default(0.25),
