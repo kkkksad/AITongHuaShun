@@ -49,9 +49,7 @@ export class GridTradingStrategy implements BacktestStrategy {
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = context.snapshot.quotes.find(
-      (q) => q.tradable && q.symbol === context.snapshot.quotes[0]?.symbol,
-    );
+    const quote = context.snapshot.quotes.find((q) => q.tradable);
     if (!quote || this.basePrice === null) return [];
 
     this.prices.push(quote.price);
@@ -61,7 +59,8 @@ export class GridTradingStrategy implements BacktestStrategy {
     // gridLevel: basePrice 为 gridCount 层级，价格每下降 gridSpacingPercent%，层级 +1
     const priceRatio = quote.price / this.basePrice;
     const gridLevel = Math.round(
-      this.gridCount + Math.log(priceRatio) / Math.log(1 + this.gridSpacingPercent / 100),
+      this.gridCount -
+        Math.log(priceRatio) / Math.log(1 + this.gridSpacingPercent / 100),
     );
     const clampedLevel = Math.max(0, Math.min(this.gridCount * 2, gridLevel));
 

@@ -33,9 +33,7 @@ export class MomentumStrategy implements BacktestStrategy {
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = context.snapshot.quotes.find(
-      (q) => q.tradable && q.symbol === context.snapshot.quotes[0]?.symbol,
-    );
+    const quote = context.snapshot.quotes.find((q) => q.tradable);
     if (!quote) return [];
 
     this.prices.push(quote.price);
