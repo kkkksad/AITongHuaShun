@@ -29,6 +29,7 @@ vitest.config.d.ts
 # Python generated output
 __pycache__/
 *.py[cod]
+.pytest_cache/
 
 # Editor and operating system files
 .vscode/*

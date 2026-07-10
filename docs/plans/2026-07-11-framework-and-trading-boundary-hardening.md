@@ -29,7 +29,7 @@
 - Modify: `server/app.test.ts`
 - Modify: `.env.example`
 
-- [ ] **Step 1: 写入失败测试**
+- [x] **Step 1: 写入失败测试**
 
 在 `server/app.test.ts` 增加安全响应头和限流测试：
 
@@ -52,13 +52,13 @@ it("rate limits repeated requests", async () => {
 });
 ```
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run: `npm test -- server/app.test.ts`
 
 Expected: 因插件和配置尚未实现而失败。
 
-- [ ] **Step 3: 安装并注册安全插件**
+- [x] **Step 3: 安装并注册安全插件**
 
 Run:
 
@@ -75,7 +75,7 @@ RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
 
 在 `server/app.ts` 注册 Helmet 和全局限流，并保持 WebSocket、CORS 与测试注入可用。
 
-- [ ] **Step 4: 运行后端测试**
+- [x] **Step 4: 运行后端测试**
 
 Run: `npm test -- server/app.test.ts`
 
@@ -90,7 +90,7 @@ Expected: 安全响应头和限流测试通过。
 - Modify: `src/App.tsx`
 - Modify: `src/hooks/useTradingBackend.ts`
 
-- [ ] **Step 1: 安装前端基础框架**
+- [x] **Step 1: 安装前端基础框架**
 
 Run:
 
@@ -98,7 +98,7 @@ Run:
 npm install react-router-dom @tanstack/react-query
 ```
 
-- [ ] **Step 2: 建立应用级 Provider**
+- [x] **Step 2: 建立应用级 Provider**
 
 在 `src/main.tsx` 使用：
 
@@ -110,11 +110,11 @@ npm install react-router-dom @tanstack/react-query
 </QueryClientProvider>
 ```
 
-- [ ] **Step 3: 将视图状态映射为路由**
+- [x] **Step 3: 将视图状态映射为路由**
 
 使用 `/`、`/strategy`、`/market`、`/account`、`/learning` 映射现有五个视图；侧边栏继续使用 `ViewId`，但点击时调用 `navigate()`，刷新页面后保持当前视图。
 
-- [ ] **Step 4: 将 REST 快照迁移到 TanStack Query**
+- [x] **Step 4: 将 REST 快照迁移到 TanStack Query**
 
 `useTradingBackend` 使用固定键：
 
@@ -124,7 +124,7 @@ const tradingQueryKey = ["trading-bootstrap"] as const;
 
 初始 REST 请求由 `useQuery` 管理，WebSocket 和订单 mutation 使用 `queryClient.setQueryData()` 更新同一份 `TradingBootstrap`，避免 REST 与实时状态形成两套来源。
 
-- [ ] **Step 5: 运行类型检查与构建**
+- [x] **Step 5: 运行类型检查与构建**
 
 Run: `npm run build`
 
@@ -137,7 +137,7 @@ Expected: TypeScript 和 Vite 构建通过。
 - Modify: `server/broker/MockBrokerAdapter.ts`
 - Modify: `server/broker/brokerAdapter.test.ts`
 
-- [ ] **Step 1: 写入失败测试**
+- [x] **Step 1: 写入失败测试**
 
 增加以下行为：
 
@@ -152,13 +152,13 @@ expect(
 
 同时增加超额订单测试，证明适配器返回 `MAX_ORDER_NOTIONAL` 风控拒绝，而不是自行撮合。
 
-- [ ] **Step 2: 运行适配器测试并确认失败**
+- [x] **Step 2: 运行适配器测试并确认失败**
 
 Run: `npm test -- server/broker/brokerAdapter.test.ts`
 
 Expected: 当前适配器仍复制撮合逻辑，安全测试失败。
 
-- [ ] **Step 3: 改为代理 PaperBroker**
+- [x] **Step 3: 改为代理 PaperBroker**
 
 `MockBrokerAdapter` 构造函数只接收 `BrokerAdapterConfig` 与现有 `PaperBroker`。订单、账户、持仓、撤单和盯市全部委托给 `PaperBroker`；适配器仅模拟连接、网络延迟和转发事件。
 
@@ -171,7 +171,7 @@ credentialsRef?: string;
 
 当 `environment === "live"` 时，模拟适配器在构造阶段立即拒绝。
 
-- [ ] **Step 4: 运行适配器和风控测试**
+- [x] **Step 4: 运行适配器和风控测试**
 
 Run:
 
@@ -191,11 +191,11 @@ Expected: 连接、事件、订单和风控测试全部通过。
 - Modify: `docs/roadmap.md`
 - Modify: `docs/plans/2026-07-11-framework-and-trading-boundary-hardening.md`
 
-- [ ] **Step 1: 更新权威文档**
+- [x] **Step 1: 更新权威文档**
 
 记录已实现的 Router、Query、安全插件、券商适配安全代理和配置项；明确 PostgreSQL、认证、审批服务与真实执行仍未实现。
 
-- [ ] **Step 2: 扫描 UTF-8 损坏与替换字符**
+- [x] **Step 2: 扫描 UTF-8 损坏与替换字符**
 
 Run:
 
@@ -205,7 +205,7 @@ rg -n "�" AGENTS.md README.md docs server src shared
 
 Expected: 无实际 `U+FFFD` 替换字符。
 
-- [ ] **Step 3: 完整验证**
+- [x] **Step 3: 完整验证**
 
 Run:
 
@@ -217,11 +217,11 @@ git diff --check
 
 Expected: 全部通过，且工作区只包含本计划相关改动和用户已有的未完成策略文件。
 
-- [ ] **Step 4: 浏览器验收**
+- [x] **Step 4: 浏览器验收**
 
 启动 `npm run dev`，验证五个 URL 可直接访问、侧边栏跳转正常、模拟账户数据加载、实时连接建立，且控制台没有新增错误。
 
-- [ ] **Step 5: 中文提交**
+- [x] **Step 5: 中文提交**
 
 仅暂存本计划涉及文件，提交标题：
 
@@ -239,7 +239,7 @@ Expected: 全部通过，且工作区只包含本计划相关改动和用户已�
 ## 验证结果
 
 - 计划开始前：`10` 个测试文件、`156` 项测试通过。
-- 最终结果：待实施完成后填写。
+- 最终结果：`19` 个测试文件、`271` 项测试全部通过；TypeScript 与 Vite 生产构建通过；五个前端路由已完成浏览器验收。
 
 ## 遗留问题
 

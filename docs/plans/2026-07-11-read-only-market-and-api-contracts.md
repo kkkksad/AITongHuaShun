@@ -31,7 +31,7 @@
 - Modify: `src/lib/tradingApi.ts`
 - Modify: `.env.example`
 
-- [ ] **Step 1: 写入能力接口和 OpenAPI 失败测试**
+- [x] **Step 1: 写入能力接口和 OpenAPI 失败测试**
 
 在 `server/app.test.ts` 验证：
 
@@ -45,13 +45,13 @@ expect((await app.inject({ method: "GET", url: "/api/capabilities" })).json())
 
 同时验证启用文档时 `/documentation/json` 返回包含 `/api/orders` 和 `/api/capabilities` 的 OpenAPI 文档。
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run: `npm test -- server/app.test.ts`
 
 Expected: 能力接口或 OpenAPI 路由尚不存在而失败。
 
-- [ ] **Step 3: 安装并注册 OpenAPI 插件**
+- [x] **Step 3: 安装并注册 OpenAPI 插件**
 
 Run:
 
@@ -61,7 +61,7 @@ npm install @fastify/swagger @fastify/swagger-ui
 
 增加 `API_DOCS_ENABLED` 配置；在 Fastify 注册路由前注册 OpenAPI 插件，并新增 `/api/capabilities`。
 
-- [ ] **Step 4: 运行 API 测试**
+- [x] **Step 4: 运行 API 测试**
 
 Run: `npm test -- server/app.test.ts`
 
@@ -78,7 +78,7 @@ Expected: 能力声明、安全响应头、限流和 OpenAPI 测试全部通过�
 - Create: `server/system.test.ts`
 - Modify: `.env.example`
 
-- [ ] **Step 1: 写入提供者选择和实盘拒绝测试**
+- [x] **Step 1: 写入提供者选择和实盘拒绝测试**
 
 测试以下行为：
 
@@ -91,13 +91,13 @@ expect(() => createTradingSystem({
 
 并验证 `MARKET_DATA_PROVIDER=akshare` 时创建 `AkShareMarketProvider`，系统仍使用 `PaperBroker`。
 
-- [ ] **Step 2: 运行测试并确认失败**
+- [x] **Step 2: 运行测试并确认失败**
 
 Run: `npm test -- server/system.test.ts server/market/AkShareProvider.test.ts`
 
 Expected: 新配置和提供者选择尚未实现而失败。
 
-- [ ] **Step 3: 实现最小提供者工厂**
+- [x] **Step 3: 实现最小提供者工厂**
 
 新增配置：
 
@@ -111,7 +111,7 @@ MARKET_DATA_TIMEOUT_MS=15000
 
 `mock` 使用 `MockMarket`；`akshare` 使用 `AkShareMarketProvider`，并要求 `MARKET_MODE=paper`。任何模式都不得启用真实交易。
 
-- [ ] **Step 4: 运行系统与行情测试**
+- [x] **Step 4: 运行系统与行情测试**
 
 Run: `npm test -- server/system.test.ts server/market/AkShareProvider.test.ts`
 
@@ -127,15 +127,15 @@ Expected: 提供者选择、服务端令牌传递和实盘拒绝测试通过。
 - Modify: `akshare-bridge/README.md`
 - Modify: `docker-compose.yml`
 
-- [ ] **Step 1: 增加健康检查、安全头和令牌测试**
+- [x] **Step 1: 增加健康检查、安全头和令牌测试**
 
 使用 FastAPI `TestClient` 验证 `/health` 与 `/api/health` 一致，配置令牌后无授权请求返回 401。
 
-- [ ] **Step 2: 统一入口与容器健康检查**
+- [x] **Step 2: 统一入口与容器健康检查**
 
 只保留 `main.py`，Docker 镜像复制并启动该文件；CORS 默认仅允许本地 Fastify 来源，不允许凭据型通配来源。
 
-- [ ] **Step 3: 运行 Python 测试**
+- [x] **Step 3: 运行 Python 测试**
 
 Run:
 
@@ -159,15 +159,15 @@ Expected: FastAPI 桥接测试全部通过。
 - Modify: `docs/plans/2026-07-11-framework-and-trading-boundary-hardening.md`
 - Modify: `docs/plans/2026-07-11-read-only-market-and-api-contracts.md`
 
-- [ ] **Step 1: 增加三服务调试配置**
+- [x] **Step 1: 增加三服务调试配置**
 
 增加 `KAIROS：AkShare 行情桥接`、`KAIROS：后端纸面交易（AkShare）` 和 `KAIROS：真实行情 + 模拟交易调试`。
 
-- [ ] **Step 2: 更新权威文档和架构决策**
+- [x] **Step 2: 更新权威文档和架构决策**
 
 明确当前框架栈、真实只读行情启用方式、OpenAPI 地址，以及“真实行情不等于真实交易”。
 
-- [ ] **Step 3: 完整验证**
+- [x] **Step 3: 完整验证**
 
 Run:
 
@@ -181,7 +181,7 @@ git diff --check
 
 Expected: 全部通过，无替换字符、无真实订单端点、无浏览器 Token。
 
-- [ ] **Step 4: 中文提交**
+- [x] **Step 4: 中文提交**
 
 仅暂存本计划相关文件，提交标题：
 
@@ -192,7 +192,7 @@ Expected: 全部通过，无替换字符、无真实订单端点、无浏览器 
 ## 验证结果
 
 - 实施前：`15` 个测试文件、`240` 项测试通过。
-- 最终结果：待实施完成后填写。
+- 最终结果：`19` 个 Vitest 文件、`271` 项测试全部通过；FastAPI 桥接 `10` 项测试通过；TypeScript 与 Vite 生产构建通过。
 
 ## 遗留问题
 
