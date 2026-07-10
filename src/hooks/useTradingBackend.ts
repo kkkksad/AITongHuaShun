@@ -10,6 +10,7 @@ import type {
   TradingMode,
 } from "../../shared/trading";
 import {
+  cancelPaperOrder,
   fetchTradingBootstrap,
   getTradingSocketUrl,
   setPaperTradingPaused,
@@ -31,6 +32,7 @@ export interface TradingBackend {
   pendingAction: boolean;
   refresh(): Promise<void>;
   submitOrder(request: OrderRequest): Promise<OrderRecord>;
+  cancelOrder(orderId: string): Promise<OrderRecord>;
   setPaused(paused: boolean): Promise<void>;
 }
 
@@ -146,16 +148,43 @@ export function useTradingBackend(): TradingBackend {
       setAccount(result.account);
       setPositions(result.positions);
       setOrders((current) => upsertOrder(current, result.order));
-      setNotice(
-        result.order.status === "rejected"
-          ? `订单被拒绝：${result.order.rejectionReason ?? "未通过风险检查"}`
-          : `模拟订单已成交：${result.order.symbol} ${result.order.quantity} 股`,
-      );
+      if (result.order.status === "rejected") {
+        setNotice(
+          `订单被拒绝：${result.order.rejectionReason ?? "未通过风险检查"}`,
+        );
+      } else if (result.order.status === "pending") {
+        setNotice(
+          `限价单已挂单：${result.order.symbol} ${result.order.quantity} 股 @ ¥${result.order.limitPrice}`,
+        );
+      } else {
+        setNotice(
+          `模拟订单已成交：${result.order.symbol} ${result.order.quantity} 股`,
+        );
+      }
       return result.order;
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : "模拟下单失败";
       setError(message);
       throw submitError;
+    } finally {
+      setPendingAction(false);
+    }
+  }, []);
+
+  const cancelOrder = useCallback(async (orderId: string) => {
+    setPendingAction(true);
+    setNotice(undefined);
+    try {
+      const result = await cancelPaperOrder(orderId);
+      setAccount(result.account);
+      setPositions(result.positions);
+      setOrders((current) => upsertOrder(current, result.order));
+      setNotice(`订单已撤销`);
+      return result.order;
+    } catch (cancelError) {
+      const message = cancelError instanceof Error ? cancelError.message : "撤单失败";
+      setError(message);
+      throw cancelError;
     } finally {
       setPendingAction(false);
     }
@@ -188,6 +217,7 @@ export function useTradingBackend(): TradingBackend {
     pendingAction,
     refresh,
     submitOrder,
+    cancelOrder,
     setPaused,
   };
 }

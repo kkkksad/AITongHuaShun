@@ -5,8 +5,10 @@ import {
   Play,
   SendHorizontal,
   ShieldAlert,
+  X,
+  Clock,
 } from "lucide-react";
-import type { OrderRequest, OrderSide } from "../../shared/trading";
+import type { OrderRequest, OrderSide, OrderType } from "../../shared/trading";
 import type { TradingBackend } from "../hooks/useTradingBackend";
 
 function money(value: number): string {
@@ -17,15 +19,20 @@ function money(value: number): string {
   }).format(value);
 }
 
-function orderStatus(status: string): string {
+function orderLabel(status: string): string {
   return (
     {
       accepted: "已接收",
       filled: "已成交",
       rejected: "已拒绝",
       cancelled: "已撤销",
+      pending: "挂单中",
     }[status] ?? status
   );
+}
+
+function orderTypeLabel(type: string): string {
+  return type === "limit" ? "限价" : "市价";
 }
 
 interface PaperAccountProps {
@@ -35,10 +42,15 @@ interface PaperAccountProps {
 export function PaperAccount({ backend }: PaperAccountProps) {
   const [symbol, setSymbol] = useState("600519");
   const [side, setSide] = useState<OrderSide>("buy");
+  const [orderType, setOrderType] = useState<OrderType>("market");
   const [quantity, setQuantity] = useState(100);
+  const [limitPrice, setLimitPrice] = useState("");
   const tradableQuotes = backend.market?.quotes.filter((quote) => quote.tradable) ?? [];
   const selectedQuote = tradableQuotes.find((quote) => quote.symbol === symbol);
-  const estimatedNotional = (selectedQuote?.price ?? 0) * quantity;
+  const selectedPrice = orderType === "limit" && limitPrice
+    ? Number(limitPrice)
+    : (selectedQuote?.price ?? 0);
+  const estimatedNotional = selectedPrice * quantity;
   const account = backend.account;
 
   const positionCount = backend.positions.length;
@@ -47,7 +59,8 @@ export function PaperAccount({ backend }: PaperAccountProps) {
     Boolean(account) &&
     !account?.paused &&
     !backend.pendingAction &&
-    quantity > 0;
+    quantity > 0 &&
+    (orderType !== "limit" || (limitPrice !== "" && Number(limitPrice) > 0));
 
   const riskHint = useMemo(() => {
     if (!backend.limits) {
@@ -61,13 +74,22 @@ export function PaperAccount({ backend }: PaperAccountProps) {
     const request: OrderRequest = {
       symbol,
       side,
-      type: "market",
+      type: orderType,
       quantity,
       clientOrderId: globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}`,
     };
+    if (orderType === "limit") {
+      request.limitPrice = Number(limitPrice);
+    }
 
     await backend.submitOrder(request).catch(() => undefined);
   };
+
+  const handleCancel = async (orderId: string) => {
+    await backend.cancelOrder(orderId).catch(() => undefined);
+  };
+
+  const pendingOrders = backend.orders.filter((o) => o.status === "pending");
 
   if (!account) {
     return (
@@ -179,13 +201,58 @@ export function PaperAccount({ backend }: PaperAccountProps) {
               </tbody>
             </table>
           </div>
+
+          {pendingOrders.length > 0 && (
+            <div style={{ marginTop: "1rem" }}>
+              <div className="table-heading">
+                <h3>
+                  <Clock size={16} style={{ marginRight: "0.4rem", verticalAlign: "middle" }} />
+                  挂单队列
+                </h3>
+                <span>{pendingOrders.length} 笔待成交</span>
+              </div>
+              <div className="order-list">
+                {pendingOrders.map((order) => (
+                  <article key={order.id} className="pending-order">
+                    <div>
+                      <span className={order.side === "buy" ? "side buy" : "side sell"}>
+                        {order.side === "buy" ? "买入" : "卖出"}
+                      </span>
+                      <strong>{order.symbol}</strong>
+                      <span className="order-type-tag">限价</span>
+                      <small>
+                        {new Date(order.createdAt).toLocaleTimeString("zh-CN", {
+                          hour12: false,
+                        })}
+                      </small>
+                    </div>
+                    <div>
+                      <strong>
+                        {order.quantity} 股 @ ¥{order.limitPrice?.toFixed(2)}
+                      </strong>
+                      <button
+                        className="cancel-order-btn"
+                        disabled={backend.pendingAction}
+                        onClick={() => handleCancel(order.id)}
+                        type="button"
+                        title="撤销订单"
+                      >
+                        <X size={14} />
+                        撤单
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="trading-rail">
           <form className="order-ticket" onSubmit={handleSubmit}>
             <div className="table-heading">
               <h3>模拟下单</h3>
-              <span>市价撮合</span>
+              <span>{orderType === "limit" ? "限价挂单" : "市价撮合"}</span>
             </div>
             <label>
               <span>交易标的</span>
@@ -213,6 +280,24 @@ export function PaperAccount({ backend }: PaperAccountProps) {
                 卖出
               </button>
             </div>
+            <div className="side-switch" aria-label="订单类型" style={{ marginBottom: "0.5rem" }}>
+              <button
+                className={orderType === "market" ? "active" : ""}
+                onClick={() => setOrderType("market")}
+                type="button"
+                style={{ fontSize: "0.8rem" }}
+              >
+                市价单
+              </button>
+              <button
+                className={orderType === "limit" ? "active" : ""}
+                onClick={() => setOrderType("limit")}
+                type="button"
+                style={{ fontSize: "0.8rem" }}
+              >
+                限价单
+              </button>
+            </div>
             <label>
               <span>数量</span>
               <input
@@ -223,9 +308,26 @@ export function PaperAccount({ backend }: PaperAccountProps) {
                 value={quantity}
               />
             </label>
+            {orderType === "limit" && (
+              <label>
+                <span>限价 (¥)</span>
+                <input
+                  min="0.01"
+                  onChange={(event) => setLimitPrice(event.target.value)}
+                  placeholder={`现价 ¥${selectedQuote?.price.toFixed(2) ?? "--"}`}
+                  step="0.01"
+                  type="number"
+                  value={limitPrice}
+                />
+              </label>
+            )}
             <div className="order-estimate">
               <span>参考价</span>
-              <strong>¥{selectedQuote?.price.toFixed(2) ?? "--"}</strong>
+              <strong>
+                {orderType === "limit" && limitPrice
+                  ? `¥${Number(limitPrice).toFixed(2)}`
+                  : `¥${selectedQuote?.price.toFixed(2) ?? "--"}`}
+              </strong>
               <span>预计金额</span>
               <strong>{money(estimatedNotional)}</strong>
             </div>
@@ -237,7 +339,7 @@ export function PaperAccount({ backend }: PaperAccountProps) {
             )}
             <button className="primary-button full-width" disabled={!canSubmit} type="submit">
               <SendHorizontal size={16} />
-              {backend.pendingAction ? "处理中" : "提交模拟订单"}
+              {backend.pendingAction ? "处理中" : orderType === "limit" ? "提交限价单" : "提交模拟订单"}
             </button>
           </form>
 
@@ -248,13 +350,14 @@ export function PaperAccount({ backend }: PaperAccountProps) {
             </div>
             <div className="order-list">
               {backend.orders.length === 0 && <p className="empty-copy">暂无模拟订单</p>}
-              {backend.orders.slice(0, 8).map((order) => (
+              {backend.orders.slice(0, 12).map((order) => (
                 <article key={order.id}>
                   <div>
                     <span className={order.side === "buy" ? "side buy" : "side sell"}>
                       {order.side === "buy" ? "买入" : "卖出"}
                     </span>
                     <strong>{order.symbol}</strong>
+                    <span className="order-type-tag">{orderTypeLabel(order.type)}</span>
                     <small>
                       {new Date(order.updatedAt).toLocaleTimeString("zh-CN", {
                         hour12: false,
@@ -264,11 +367,23 @@ export function PaperAccount({ backend }: PaperAccountProps) {
                   <div>
                     <strong>
                       {order.quantity} 股 × ¥
-                      {(order.filledPrice ?? order.requestedPrice).toFixed(2)}
+                      {(order.filledPrice ?? order.limitPrice ?? order.requestedPrice).toFixed(2)}
                     </strong>
                     <span className={order.status === "rejected" ? "negative" : ""}>
-                      {orderStatus(order.status)}
+                      {orderLabel(order.status)}
                     </span>
+                    {order.status === "pending" && (
+                      <button
+                        className="cancel-order-btn"
+                        disabled={backend.pendingAction}
+                        onClick={() => handleCancel(order.id)}
+                        type="button"
+                        title="撤销订单"
+                      >
+                        <X size={14} />
+                        撤单
+                      </button>
+                    )}
                   </div>
                 </article>
               ))}

@@ -1165,6 +1165,12 @@ select:focus-visible {
   border-color: #e6a5a5;
 }
 
+.side-switch button.active {
+  color: #2563eb;
+  background: #eef4ff;
+  border-color: #bdd1f2;
+}
+
 .order-estimate {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -1247,9 +1253,7 @@ select:focus-visible {
 }
 
 .order-list article > div:last-child {
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 3px;
+  gap: 5px;
 }
 
 .order-list strong {
@@ -1261,6 +1265,47 @@ select:focus-visible {
 .order-list article > div:last-child span {
   color: #949ca7;
   font-size: 9px;
+}
+
+.order-type-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  color: #7c8490;
+  background: #eef1f5;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.cancel-order-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 9px;
+  color: #b13f3f;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.cancel-order-btn:hover:not(:disabled) {
+  background: #fee2e2;
+}
+
+.cancel-order-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pending-order {
+  background: #fffbeb;
 }
 
 .learning-layout {

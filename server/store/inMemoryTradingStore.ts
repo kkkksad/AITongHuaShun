@@ -45,6 +45,7 @@ export class InMemoryTradingStore {
   private readonly accountId = "PAPER-CN-01";
   private readonly startingEquity: number;
   private cash: number;
+  private blockedCash = 0;
   private paused = false;
   private readonly positions = new Map<string, MutablePosition>();
   private readonly orders: OrderRecord[] = [];
@@ -92,8 +93,16 @@ export class InMemoryTradingStore {
     return this.cash;
   }
 
+  getAvailableCash(): number {
+    return this.cash - this.blockedCash;
+  }
+
   getPositionQuantity(symbol: string): number {
     return this.positions.get(symbol)?.quantity ?? 0;
+  }
+
+  getPendingOrders(): OrderRecord[] {
+    return this.orders.filter((o) => o.status === "pending");
   }
 
   getPositions(snapshot: MarketSnapshot): PositionSnapshot[] {
@@ -140,6 +149,7 @@ export class InMemoryTradingStore {
       (total, position) => total + position.realizedPnl,
       0,
     );
+    const availableCash = this.cash - this.blockedCash;
     const equity = this.cash + marketValue;
     const dailyPnl = equity - this.startingEquity;
     const baseline = Math.max(1, equity - dailyPnl);
@@ -149,7 +159,7 @@ export class InMemoryTradingStore {
     return {
       accountId: this.accountId,
       mode,
-      cash: this.cash,
+      cash: availableCash,
       equity,
       marketValue,
       unrealizedPnl,
@@ -170,13 +180,19 @@ export class InMemoryTradingStore {
     return this.orders.find((order) => order.clientOrderId === clientOrderId);
   }
 
+  findOrderById(id: string): OrderRecord | undefined {
+    return this.orders.find((order) => order.id === id);
+  }
+
   createOrder(request: OrderRequest, requestedPrice: number): OrderRecord {
     this.orderSequence += 1;
     const now = new Date().toISOString();
+    const isLimitOrder = request.type === "limit";
+
     const order: OrderRecord = {
       ...request,
       id: `PO-${Date.now()}-${String(this.orderSequence).padStart(4, "0")}`,
-      status: "accepted",
+      status: isLimitOrder ? "pending" : "accepted",
       requestedPrice,
       filledQuantity: 0,
       notional: 0,
@@ -186,11 +202,19 @@ export class InMemoryTradingStore {
     };
 
     this.orders.unshift(order);
-    this.appendAudit("order", "order.accepted", "模拟订单已接收", {
+
+    if (isLimitOrder && request.limitPrice !== undefined) {
+      const notional = request.limitPrice * request.quantity;
+      this.blockedCash += notional;
+    }
+
+    this.appendAudit("order", "order.accepted", isLimitOrder ? "限价单已挂单" : "模拟订单已接收", {
       orderId: order.id,
       symbol: order.symbol,
       side: order.side,
+      type: order.type,
       quantity: order.quantity,
+      limitPrice: order.limitPrice,
     });
     return order;
   }
@@ -199,8 +223,47 @@ export class InMemoryTradingStore {
     order.status = "rejected";
     order.rejectionReason = reason;
     order.updatedAt = new Date().toISOString();
+
+    if (order.type === "limit" && order.limitPrice !== undefined) {
+      this.blockedCash -= order.limitPrice * order.quantity;
+    }
+
     this.appendAudit("risk", code, reason, { orderId: order.id });
     return { ...order };
+  }
+
+  cancelOrder(order: OrderRecord): OrderRecord {
+    if (order.status !== "pending") {
+      throw new Error(`只能撤销挂单状态的订单，当前状态: ${order.status}`);
+    }
+
+    order.status = "cancelled";
+    order.updatedAt = new Date().toISOString();
+
+    if (order.limitPrice !== undefined) {
+      this.blockedCash -= order.limitPrice * order.quantity;
+    }
+
+    this.appendAudit("order", "order.cancelled", "限价单已撤销", { orderId: order.id });
+    return { ...order };
+  }
+
+  checkLimitOrderFill(
+    order: OrderRecord,
+    quote: { symbol: string; name: string; price: number },
+  ): boolean {
+    if (order.status !== "pending" || order.type !== "limit") {
+      return false;
+    }
+
+    const limitPrice = order.limitPrice!;
+
+    const shouldFill =
+      order.side === "buy"
+        ? quote.price <= limitPrice
+        : quote.price >= limitPrice;
+
+    return shouldFill;
   }
 
   fillOrder(
@@ -209,8 +272,13 @@ export class InMemoryTradingStore {
     fillPrice: number,
     commission: number,
   ): OrderRecord {
+    const wasPending = order.status === "pending";
     const notional = fillPrice * order.quantity;
     const current = this.positions.get(order.symbol);
+
+    if (wasPending && order.limitPrice !== undefined) {
+      this.blockedCash -= order.limitPrice * order.quantity;
+    }
 
     if (order.side === "buy") {
       const previousQuantity = current?.quantity ?? 0;
@@ -247,7 +315,7 @@ export class InMemoryTradingStore {
     order.notional = notional;
     order.commission = commission;
     order.updatedAt = new Date().toISOString();
-    this.appendAudit("order", "order.filled", "模拟订单已成交", {
+    this.appendAudit("order", "order.filled", wasPending ? "限价单已成交" : "模拟订单已成交", {
       orderId: order.id,
       fillPrice,
       commission,

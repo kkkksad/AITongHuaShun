@@ -55,4 +55,98 @@ describe("PaperBroker", () => {
     expect(system.store.getPositionQuantity("600519")).toBe(beforeQuantity);
     expect(system.store.listAudit().some((event) => event.category === "risk")).toBe(true);
   });
+
+  it("accepts a limit order as pending without filling", () => {
+    const system = createTradingSystem(createTestConfig());
+    const before = system.broker.getAccount();
+    // 中国平安 ~¥52, 100 shares at limit 50 = ¥5,000 (well under 100K limit)
+    const order = system.broker.submitOrder({
+      symbol: "601318",
+      side: "buy",
+      type: "limit",
+      quantity: 100,
+      limitPrice: 50,
+      clientOrderId: "limit-buy-1",
+    });
+
+    expect(order.status).toBe("pending");
+    expect(order.limitPrice).toBe(50);
+    expect(order.filledQuantity).toBe(0);
+
+    // Available cash should be reduced by blocked amount
+    const after = system.broker.getAccount();
+    expect(after.cash).toBeLessThan(before.cash);
+  });
+
+  it("cancels a pending limit order", () => {
+    const system = createTradingSystem(createTestConfig());
+    const order = system.broker.submitOrder({
+      symbol: "601318",
+      side: "buy",
+      type: "limit",
+      quantity: 100,
+      limitPrice: 50,
+      clientOrderId: "to-cancel",
+    });
+
+    expect(order.status).toBe("pending");
+
+    const cancelled = system.broker.cancelOrder(order.id);
+    expect(cancelled.status).toBe("cancelled");
+
+    // Verify cancelled orders in audit
+    expect(
+      system.store.listAudit().some(
+        (event) => event.action === "order.cancelled"
+      )
+    ).toBe(true);
+  });
+
+  it("fills a limit order when market price crosses the limit", () => {
+    const system = createTradingSystem(createTestConfig());
+    const quote = system.market.getQuote("601318");
+    const currentPrice = quote!.price; // ~52
+
+    // Place a buy limit order at a price HIGHER than current
+    const order = system.broker.submitOrder({
+      symbol: "601318",
+      side: "buy",
+      type: "limit",
+      quantity: 100,
+      limitPrice: currentPrice + 10,
+      clientOrderId: "limit-fill-1",
+    });
+
+    expect(order.status).toBe("pending");
+
+    // Simulate market tick - current price should be below limit, triggering fill
+    const snapshot = system.market.tick();
+    system.broker.markToMarket(snapshot);
+
+    const updated = system.store.findOrderById(order.id);
+    expect(updated!.status).toBe("filled");
+  });
+
+  it("throws when cancelling a non-existent order", () => {
+    const system = createTradingSystem(createTestConfig());
+    expect(() => system.broker.cancelOrder("non-existent-id")).toThrow(
+      "订单不存在"
+    );
+  });
+
+  it("throws when cancelling a filled order", () => {
+    const system = createTradingSystem(createTestConfig());
+    const order = system.broker.submitOrder({
+      symbol: "300750",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      clientOrderId: "cant-cancel-filled",
+    });
+
+    expect(order.status).toBe("filled");
+    expect(() => system.broker.cancelOrder(order.id)).toThrow(
+      "只能撤销挂单状态的订单"
+    );
+  });
 });

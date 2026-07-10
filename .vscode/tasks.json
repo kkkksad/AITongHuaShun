@@ -2,9 +2,9 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "KAIROS：启动开发服务器",
+      "label": "KAIROS：启动前端开发服务器",
       "type": "npm",
-      "script": "dev:debug",
+      "script": "dev:web",
       "isBackground": true,
       "problemMatcher": {
         "owner": "vite",
@@ -25,6 +25,17 @@
       },
       "runOptions": {
         "instanceLimit": 1
+      }
+    },
+    {
+      "label": "KAIROS：启动完整开发环境",
+      "type": "npm",
+      "script": "dev",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
       }
     },
     {

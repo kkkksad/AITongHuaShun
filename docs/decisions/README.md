@@ -5,6 +5,7 @@
 ## 索引
 
 - [0001：将代码仓库作为记录系统](0001-repository-as-record.md)
+- [0002：采用 TypeScript 模拟交易后端栈](0002-simulation-backend-stack.md)
 
 ## 新建格式
 

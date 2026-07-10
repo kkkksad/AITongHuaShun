@@ -2,7 +2,7 @@
 
 面向量化研究与模拟交易的渐进式工作台。
 
-当前仓库已经恢复为可运行的 React + TypeScript 原型，包含策略参数、确定性回测、市场观察、新闻、模拟账户和研究审批视图。实际能力与验证结果见[当前状态](docs/status/current-state.md)。
+当前仓库是可运行的 React + TypeScript + Fastify 量化研究原型，包含确定性回测、模拟实时行情、风险检查、模拟撮合、账户持仓、订单审计和研究审批视图。实际能力与验证结果见[当前状态](docs/status/current-state.md)。
 
 ## 快速入口
 
@@ -17,17 +17,17 @@
 
 ```powershell
 npm install
-npm run dev -- --host 127.0.0.1
+npm run dev
 npm test
 npm run build
 ```
 
 上述测试和构建命令已在 2026-07-11 验证通过。具体预期和排错方法见[本地开发](docs/operations/development.md)。
 
-使用 VS Code 时，可以直接选择 `KAIROS：启动并调试` 并按 `F5`，自动启动开发服务器和 Edge 调试窗口。
+使用 VS Code 时，可以直接选择 `KAIROS：全栈调试` 并按 `F5`，同时调试 Fastify 后端和 React 前端。
 
 ## 重要声明
 
-当前项目定位为研究原型和模拟交易工具。行情、资金流、新闻、账户及回测结果不得默认视为真实、实时或可用于投资决策的数据。
+当前项目定位为研究原型和模拟交易工具。行情、资金流、新闻、账户及回测结果均为模拟数据，不得视为真实收益或用于投资决策。真实交易保持硬关闭。
 
 面向智能体的仓库导航请阅读 [AGENTS.md](AGENTS.md)。

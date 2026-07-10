@@ -27,7 +27,7 @@ export interface TradingBootstrap {
   limits: RiskLimits;
 }
 
-interface OrderSubmission {
+export interface OrderSubmission {
   order: OrderRecord;
   account: AccountSnapshot;
   positions: PositionSnapshot[];
@@ -73,6 +73,12 @@ export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> 
   return request<OrderSubmission>("/api/orders", {
     method: "POST",
     body: JSON.stringify(order),
+  });
+}
+
+export function cancelPaperOrder(orderId: string): Promise<OrderSubmission> {
+  return request<OrderSubmission>(`/api/orders/${orderId}`, {
+    method: "DELETE",
   });
 }
 

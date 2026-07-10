@@ -15,9 +15,17 @@ import { createTradingSystem, type TradingSystem } from "./system";
 const orderRequestSchema = z.object({
   symbol: z.string().trim().regex(/^\d{6}$/, "标的代码必须是 6 位数字"),
   side: z.enum(["buy", "sell"]),
-  type: z.literal("market").default("market"),
+  type: z.enum(["market", "limit"]).default("market"),
   quantity: z.coerce.number().int().positive(),
+  limitPrice: z.coerce.number().positive().optional(),
   clientOrderId: z.string().trim().min(1).max(80).optional(),
+}).refine(
+  (data) => data.type !== "limit" || data.limitPrice !== undefined,
+  { message: "限价单必须提供 limitPrice", path: ["limitPrice"] },
+);
+
+const cancelParamsSchema = z.object({
+  orderId: z.string().trim().min(1),
 });
 
 const listQuerySchema = z.object({
@@ -39,7 +47,7 @@ export async function buildTradingApp(
 
   await app.register(cors, {
     origin: options.config.WEB_ORIGIN,
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "DELETE"],
   });
   await app.register(websocket);
 
@@ -71,6 +79,13 @@ export async function buildTradingApp(
           path: issue.path.join("."),
           message: issue.message,
         })),
+      });
+    }
+
+    if ((error as { statusCode?: number }).statusCode === 400) {
+      return reply.status(400).send({
+        error: "INVALID_REQUEST",
+        message: error.message,
       });
     }
 
@@ -114,6 +129,24 @@ export async function buildTradingApp(
 
     broadcastPositions(snapshot);
     return reply.status(201).send({ order, account, positions });
+  });
+
+  app.delete("/api/orders/:orderId", async (request, reply) => {
+    const { orderId } = cancelParamsSchema.parse(request.params);
+    try {
+      const cancelled = system.broker.cancelOrder(orderId);
+      const snapshot = system.market.getSnapshot();
+      const account = system.broker.getAccount(snapshot);
+      const positions = system.broker.getPositions(snapshot);
+
+      broadcastPositions(snapshot);
+      return reply.send({ order: cancelled, account, positions });
+    } catch (cancelError) {
+      return reply.status(400).send({
+        error: "INVALID_REQUEST",
+        message: cancelError instanceof Error ? cancelError.message : "撤单失败",
+      });
+    }
   });
 
   app.post("/api/trading/pause", async () => ({

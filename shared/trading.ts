@@ -1,7 +1,7 @@
 export type TradingMode = "mock" | "paper" | "live";
 export type OrderSide = "buy" | "sell";
-export type OrderType = "market";
-export type OrderStatus = "accepted" | "filled" | "rejected" | "cancelled";
+export type OrderType = "market" | "limit";
+export type OrderStatus = "accepted" | "filled" | "rejected" | "cancelled" | "pending";
 
 export interface MarketQuote {
   symbol: string;
@@ -53,6 +53,7 @@ export interface OrderRequest {
   side: OrderSide;
   type: OrderType;
   quantity: number;
+  limitPrice?: number;
   clientOrderId?: string;
 }
 
