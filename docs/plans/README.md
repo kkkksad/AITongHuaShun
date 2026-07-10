@@ -24,3 +24,9 @@ YYYY-MM-DD-short-task-name.md
 - 实际方案偏离计划时，直接更新计划并说明原因。
 - 无法验证的项目必须标明阻塞条件。
 - 完成后保留计划，作为变更过程的记录。
+
+## 已完成计划
+
+- [前后端框架与交易边界加固](2026-07-11-framework-and-trading-boundary-hardening.md)
+- [只读真实行情与 API 契约](2026-07-11-read-only-market-and-api-contracts.md)
+- [东方财富只读行情与统一纸面执行边界](2026-07-11-eastmoney-paper-boundary-hardening.md)
