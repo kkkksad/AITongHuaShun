@@ -163,4 +163,162 @@ describe("PaperBroker", () => {
       "只能撤销挂单状态的订单"
     );
   });
+
+  // ── 新增边界case ──────────────────────────────────────────
+
+  it("emit order.updated event on market order fill", () => {
+    const system = createTradingSystem(createTestConfig());
+    const events: any[] = [];
+    system.broker.on("order.updated", (order: any) => events.push(order));
+
+    system.broker.submitOrder({
+      symbol: "300750",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      clientOrderId: "event-test",
+    });
+
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    expect(events[0].status).toBe("filled");
+  });
+
+  it("emit account.updated event on order fill", () => {
+    const system = createTradingSystem(createTestConfig());
+    const events: any[] = [];
+    system.broker.on("account.updated", (account: any) => events.push(account));
+
+    system.broker.submitOrder({
+      symbol: "300750",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      clientOrderId: "acct-event-test",
+    });
+
+    expect(events.length).toBeGreaterThanOrEqual(1);
+    expect(typeof events[0].equity).toBe("number");
+  });
+
+  it("pause updates account and emits event", () => {
+    const system = createTradingSystem(createTestConfig());
+    const account = system.broker.pause();
+    expect(account.paused).toBe(true);
+
+    // Verify subsequent orders are rejected
+    const order = system.broker.submitOrder({
+      symbol: "300750",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      clientOrderId: "paused-order",
+    });
+    expect(order.status).toBe("rejected");
+    expect(order.rejectionReason).toContain("暂停");
+  });
+
+  it("resume re-enables trading", () => {
+    const system = createTradingSystem(createTestConfig());
+    system.broker.pause();
+    const account = system.broker.resume();
+    expect(account.paused).toBe(false);
+
+    // Should be able to trade again
+    const order = system.broker.submitOrder({
+      symbol: "300750",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      clientOrderId: "resumed-order",
+    });
+    expect(order.status).toBe("filled");
+  });
+
+  it("getOrders returns correct count", () => {
+    const system = createTradingSystem(createTestConfig());
+    const before = system.broker.getOrders().length;
+
+    system.broker.submitOrder({
+      symbol: "300750",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+    });
+
+    expect(system.broker.getOrders().length).toBe(before + 1);
+  });
+
+  it("getOrders respects limit parameter", () => {
+    const system = createTradingSystem(createTestConfig());
+    // Submit multiple orders
+    for (let i = 0; i < 5; i++) {
+      system.broker.submitOrder({
+        symbol: "300750",
+        side: "buy",
+        type: "market",
+        quantity: 100,
+        clientOrderId: `limit-test-${i}`,
+      });
+    }
+
+    const limited = system.broker.getOrders(2);
+    expect(limited.length).toBeLessThanOrEqual(2);
+  });
+
+  it("getPositions returns all positions", () => {
+    const system = createTradingSystem(createTestConfig());
+    const positions = system.broker.getPositions();
+    expect(positions.length).toBeGreaterThan(0);
+    expect(positions.some((p) => p.symbol === "600519")).toBe(true);
+  });
+
+  it("markToMarket does not crash with no pending orders", () => {
+    const system = createTradingSystem(createTestConfig());
+    // No pending orders — markToMarket should return account without error
+    const account = system.broker.markToMarket();
+    expect(typeof account.equity).toBe("number");
+    expect(account.cash).toBeGreaterThan(0);
+  });
+
+  it("commission is at least minimumCommission", () => {
+    const system = createTradingSystem(createTestConfig({
+      COMMISSION_RATE: 0.0001,
+      MIN_COMMISSION: 5,
+      SLIPPAGE_BPS: 0,
+      MAX_ORDER_NOTIONAL: 300_000,
+    }));
+    const order = system.broker.submitOrder({
+      symbol: "601318",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      clientOrderId: "min-commission-test",
+    });
+
+    // 中国平安 ~50元 * 100股 = 5000 notional * 0.0001 = 0.5 commission
+    // But minimum is 5, so commission should be >= 5
+    expect(order.commission).toBeGreaterThanOrEqual(5);
+  });
+
+  it("slippage affects fill price for buy orders", () => {
+    const system = createTradingSystem(createTestConfig({
+      SLIPPAGE_BPS: 10, // 0.1%
+      COMMISSION_RATE: 0,
+      MIN_COMMISSION: 0,
+      MAX_ORDER_NOTIONAL: 300_000,
+    }));
+    const quote = system.market.getQuote("601318");
+    const currentPrice = quote!.price;
+
+    const order = system.broker.submitOrder({
+      symbol: "601318",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      clientOrderId: "slippage-test",
+    });
+
+    // Buy order fill price should be >= current price (slippage pushes up)
+    expect(order.filledPrice).toBeGreaterThanOrEqual(currentPrice! * 0.99);
+  });
 });

@@ -505,4 +505,162 @@ describe("BacktestEngine", () => {
     const filledLimit = limitOrders.filter((o) => o.status === "filled");
     expect(filledLimit.length).toBeGreaterThan(0);
   });
+
+  // ── 新增边界case ──
+
+  it("handles strategy that throws from onBar gracefully", () => {
+    const snapshots = generateSnapshots(30, 100);
+    const strategy: BacktestStrategy = {
+      name: "崩溃策略",
+      onBar(ctx) {
+        if (ctx.barIndex === 10) {
+          throw new Error("策略执行异常");
+        }
+        return [];
+      },
+    };
+
+    const engine = new BacktestEngine(snapshots, strategy, {
+      initialCapital: 1_000_000,
+    });
+
+    // Should not throw — engine catches the error
+    expect(() => engine.run()).not.toThrow();
+    const report = engine.run();
+    expect(report.strategyName).toBe("崩溃策略");
+    expect(report.equityCurve.length).toBe(31); // initial + 30 bars
+  });
+
+  it("handles multiple symbols in backtest", () => {
+    const snapshots: MarketSnapshot[] = [];
+    let price1 = 100;
+    let price2 = 50;
+    for (let i = 0; i < 50; i++) {
+      price1 = price1 * (1 + 0.002);
+      price2 = price2 * (1 - 0.001);
+      snapshots.push({
+        mode: "paper",
+        sequence: i + 1,
+        marketTime: new Date(2024, 0, i + 1).toISOString(),
+        quotes: [
+          {
+            symbol: "600519",
+            name: "贵州茅台",
+            tradable: true,
+            price: Number(price1.toFixed(2)),
+            previousClose: Number((price1 * 0.999).toFixed(2)),
+            changePercent: 0.1,
+            volume: 10_000_000,
+            updatedAt: new Date(2024, 0, i + 1).toISOString(),
+          },
+          {
+            symbol: "300750",
+            name: "宁德时代",
+            tradable: true,
+            price: Number(price2.toFixed(2)),
+            previousClose: Number((price2 * 1.001).toFixed(2)),
+            changePercent: -0.1,
+            volume: 5_000_000,
+            updatedAt: new Date(2024, 0, i + 1).toISOString(),
+          },
+        ],
+      });
+    }
+
+    const strategy: BacktestStrategy = {
+      name: "多标的策略",
+      onBar(ctx) {
+        if (ctx.barIndex === 0) {
+          return [
+            { symbol: "600519", side: "buy", type: "market", targetWeight: 0.4 },
+            { symbol: "300750", side: "buy", type: "market", targetWeight: 0.3 },
+          ];
+        }
+        return [];
+      },
+    };
+
+    const engine = new BacktestEngine(snapshots, strategy, {
+      initialCapital: 1_000_000,
+      maxOrderNotional: 2_000_000,
+      maxPositionWeight: 1.0,
+      slippageBps: 0,
+    });
+
+    const report = engine.run();
+    expect(report.trades.length).toBeGreaterThanOrEqual(2);
+
+    const symbols = new Set(report.trades.map((t) => t.symbol));
+    expect(symbols.has("600519")).toBe(true);
+    expect(symbols.has("300750")).toBe(true);
+  });
+
+  it("handles very small initial capital", () => {
+    const snapshots = generateSnapshots(20, 10);
+    const engine = new BacktestEngine(snapshots, new BuyAndHoldStrategy(), {
+      initialCapital: 1000,
+      maxOrderNotional: 2000,
+      maxPositionWeight: 1.0,
+      slippageBps: 0,
+      commissionRate: 0,
+      minimumCommission: 0,
+    });
+
+    const report = engine.run();
+    expect(report.metrics.initialCapital).toBe(1000);
+    expect(report.metrics.finalEquity).toBeGreaterThan(0);
+    expect(typeof report.metrics.sharpeRatio).toBe("number");
+  });
+
+  it("handles zero slippage and zero commission", () => {
+    let price = 100;
+    const risingSnapshots: MarketSnapshot[] = [];
+    for (let i = 0; i < 20; i++) {
+      price = price * 1.01;
+      risingSnapshots.push({
+        mode: "paper",
+        sequence: i + 1,
+        marketTime: new Date(2024, 0, i + 1).toISOString(),
+        quotes: [{
+          symbol: "600519",
+          name: "MaoTai",
+          tradable: true,
+          price: Number(price.toFixed(2)),
+          previousClose: Number((price * 0.99).toFixed(2)),
+          changePercent: 1.0,
+          volume: 10_000_000,
+          updatedAt: new Date(2024, 0, i + 1).toISOString(),
+        }],
+      });
+    }
+
+    const engine = new BacktestEngine(risingSnapshots, new BuyAndHoldStrategy(), {
+      initialCapital: 1_000_000,
+      commissionRate: 0,
+      minimumCommission: 0,
+      slippageBps: 0,
+      maxOrderNotional: 2_000_000,
+      maxPositionWeight: 1.0,
+    });
+
+    const report = engine.run();
+    expect(report.metrics.totalCommission).toBe(0);
+    expect(report.metrics.totalSlippage).toBe(0);
+  });
+
+  it("rerun produces consistent results (idempotent)", () => {
+    const snapshots = generateSnapshots(50, 100);
+    const engine = new BacktestEngine(snapshots, new MACrossStrategy(), {
+      initialCapital: 1_000_000,
+      maxOrderNotional: 2_000_000,
+      maxPositionWeight: 1.0,
+    });
+
+    const report1 = engine.run();
+    const report2 = engine.run();
+
+    expect(report1.metrics.finalEquity).toBe(report2.metrics.finalEquity);
+    expect(report1.metrics.totalTrades).toBe(report2.metrics.totalTrades);
+    expect(report1.equityCurve.length).toBe(report2.equityCurve.length);
+  });
 });

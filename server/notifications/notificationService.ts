@@ -157,25 +157,61 @@ export class NotificationService {
           this.registerSender(new ConsoleSender());
           break;
         case "dingtalk":
+          {
+            const options = cc.options ?? {};
           this.registerSender(
             new DingTalkSender(
-              (cc.options as DingTalkConfig) ?? { webhookUrl: "" },
+                {
+                  webhookUrl:
+                    typeof options.webhookUrl === "string"
+                      ? options.webhookUrl
+                      : "",
+                  secret:
+                    typeof options.secret === "string"
+                      ? options.secret
+                      : undefined,
+                },
             ),
           );
+          }
           break;
         case "email":
+          {
+            const options = cc.options ?? {};
           this.registerSender(
             new EmailSender(
-              (cc.options as EmailConfig) ?? {
-                smtpHost: "",
-                smtpPort: 587,
-                username: "",
-                password: "",
-                from: "",
-                to: [],
+                {
+                  smtpHost:
+                    typeof options.smtpHost === "string"
+                      ? options.smtpHost
+                      : "",
+                  smtpPort:
+                    typeof options.smtpPort === "number"
+                      ? options.smtpPort
+                      : 587,
+                  username:
+                    typeof options.username === "string"
+                      ? options.username
+                      : "",
+                  password:
+                    typeof options.password === "string"
+                      ? options.password
+                      : "",
+                  from:
+                    typeof options.from === "string"
+                      ? options.from
+                      : "",
+                  to: Array.isArray(options.to)
+                    ? options.to.filter(
+                        (recipient): recipient is string =>
+                          typeof recipient === "string",
+                      )
+                    : [],
+                },
               },
             ),
           );
+          }
           break;
         default:
           // custom channel — skip (caller must register manually)

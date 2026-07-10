@@ -26,7 +26,7 @@ export interface LogEntry {
 
 export interface LoggerConfig {
   /** 最低输出级别（低于此级别的日志不输出） */
-  minLevel: LogLevel;
+  minLevel?: LogLevel;
   /** 日志文件目录（为空则不写文件） */
   logDir?: string;
   /** 日志文件前缀 */
@@ -51,10 +51,10 @@ const LEVEL_WEIGHT: Record<LogLevel, number> = {
 // ── ANSI 颜色 ─────────────────────────────────────────────
 
 const COLORS: Record<LogLevel, string> = {
-  debug: "\x1b[36m", // cyan
-  info: "\x1b[32m", // green
-  warn: "\x1b[33m", // yellow
-  error: "\x1b[31m", // red
+  debug: "\x1b[36m",
+  info: "\x1b[32m",
+  warn: "\x1b[33m",
+  error: "\x1b[31m",
 };
 const COLOR_RESET = "\x1b[0m";
 const COLOR_DIM = "\x1b[2m";
@@ -63,8 +63,7 @@ const COLOR_DIM = "\x1b[2m";
 
 export class Logger {
   private readonly config: Required<LoggerConfig>;
-  private currentDate: string = "";
-  private currentStream: fs.WriteStream | null = null;
+  private currentLogFilePath: string = "";
 
   constructor(config: LoggerConfig = {}) {
     this.config = {
@@ -76,7 +75,6 @@ export class Logger {
       colorize: config.colorize ?? true,
     };
 
-    // 初始化日志目录
     if (this.config.logDir) {
       fs.mkdirSync(this.config.logDir, { recursive: true });
       this.cleanOldFiles();
@@ -107,7 +105,9 @@ export class Logger {
       module,
       message,
       data,
-      error: error ? `${error.name}: ${error.message}\n${error.stack ?? ""}` : undefined,
+      error: error
+        ? `${error.name}: ${error.message}\n${error.stack ?? ""}`
+        : undefined,
     };
 
     if (this.config.console) {
@@ -159,7 +159,7 @@ export class Logger {
     const line = `${prefix} ${mod} ${entry.message}`;
 
     if (entry.data && Object.keys(entry.data).length > 0) {
-      const dataStr = JSON.stringify(entry.data, null, 0);
+      const dataStr = JSON.stringify(entry.data);
       console.log(line, dim + dataStr + reset);
     } else {
       console.log(line);
@@ -170,47 +170,25 @@ export class Logger {
     }
   }
 
-  // ── 文件输出 ─────────────────────────────────────────
+  // ── 文件输出（同步写入，保证测试可靠性）──────────────
 
-  private writeFile(entry: LogEntry): void {
-    const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-    if (date !== this.currentDate) {
-      this.rotateFile(date);
-    }
-
-    const stream = this.currentStream;
-    if (stream) {
-      const line = JSON.stringify(entry) + "\n";
-      stream.write(line);
-    }
+  private getLogFilePath(): string {
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `${this.config.filePrefix}-${date}.log`;
+    return path.join(this.config.logDir!, filename);
   }
 
-  private rotateFile(date: string): void {
-    // 关闭旧流
-    if (this.currentStream) {
-      this.currentStream.end();
-      this.currentStream = null;
+  private writeFile(entry: LogEntry): void {
+    const filePath = this.getLogFilePath();
+
+    // 日期切换时清理旧文件
+    if (filePath !== this.currentLogFilePath) {
+      this.currentLogFilePath = filePath;
+      this.cleanOldFiles();
     }
 
-    this.currentDate = date;
-
-    const filename = `${this.config.filePrefix}-${date}.log`;
-    const filePath = path.join(this.config.logDir!, filename);
-
-    this.currentStream = fs.createWriteStream(filePath, { flags: "a" });
-
-    // 写入启动标记
-    this.currentStream.write(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: "info",
-        module: "logger",
-        message: `Log file rotated: ${filename}`,
-      }) + "\n",
-    );
-
-    // 清理旧文件
-    this.cleanOldFiles();
+    const line = JSON.stringify(entry) + "\n";
+    fs.appendFileSync(filePath, line, "utf-8");
   }
 
   private cleanOldFiles(): void {
@@ -226,9 +204,13 @@ export class Logger {
         if (!file.startsWith(prefix) || !file.endsWith(".log")) continue;
 
         const filePath = path.join(this.config.logDir, file);
-        const stats = fs.statSync(filePath);
-        if (now - stats.mtimeMs > maxAgeMs) {
-          fs.unlinkSync(filePath);
+        try {
+          const stats = fs.statSync(filePath);
+          if (now - stats.mtimeMs > maxAgeMs) {
+            fs.unlinkSync(filePath);
+          }
+        } catch {
+          // 单个文件操作失败不影响整体
         }
       }
     } catch {
@@ -236,21 +218,15 @@ export class Logger {
     }
   }
 
-  /** 获取当前日志文件路径（用于调试） */
+  /** 获取当前日志文件路径（用于调试和测试） */
   get currentLogFile(): string | null {
-    if (!this.config.logDir || !this.currentDate) return null;
-    return path.join(
-      this.config.logDir,
-      `${this.config.filePrefix}-${this.currentDate}.log`,
-    );
+    if (!this.config.logDir) return null;
+    return this.currentLogFilePath || this.getLogFilePath();
   }
 
-  /** 刷新并关闭文件流 */
+  /** 刷新并关闭（同步写模式下为 no-op，保留以兼容接口） */
   close(): void {
-    if (this.currentStream) {
-      this.currentStream.end();
-      this.currentStream = null;
-    }
+    // no-op: 同步写入无需 flush
   }
 }
 

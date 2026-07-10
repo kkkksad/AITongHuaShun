@@ -7,14 +7,20 @@ import { Logger, getLogger, resetLogger, type LogLevel } from "./logger";
 // ── 辅助函数 ──────────────────────────────────────────────
 
 function tempDir(): string {
-  const dir = path.join(os.tmpdir(), `logger-test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+  const dir = path.join(
+    os.tmpdir(),
+    `logger-test-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  );
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
 function readLogFile(filePath: string): string[] {
   const content = fs.readFileSync(filePath, "utf-8");
-  return content.trim().split("\n").filter(Boolean);
+  return content
+    .trim()
+    .split("\n")
+    .filter((l) => l.length > 0);
 }
 
 // ── 测试 ──────────────────────────────────────────────────
@@ -93,9 +99,11 @@ describe("Logger", () => {
 
       logger.info("test", "first message");
       logger.warn("test", "second message", { key: "value" });
-      logger.close();
 
-      const entries = readLogFile(logger.currentLogFile!);
+      const logPath = logger.currentLogFile!;
+      expect(fs.existsSync(logPath)).toBe(true);
+
+      const entries = readLogFile(logPath);
       expect(entries.length).toBeGreaterThanOrEqual(2);
 
       const parsed = entries.map((e) => JSON.parse(e));
@@ -117,7 +125,6 @@ describe("Logger", () => {
       });
 
       logger.info("module", "test message", { userId: "abc123" });
-      logger.close();
 
       const entries = readLogFile(logger.currentLogFile!);
       const parsed = entries.map((e) => JSON.parse(e));
@@ -146,12 +153,11 @@ describe("Logger", () => {
 
       const err = new Error("test failure");
       logger.error("module", "something went wrong", {}, err);
-      logger.close();
 
       const entries = readLogFile(logger.currentLogFile!);
       const errorEntries = entries
         .map((e) => JSON.parse(e))
-        .filter((e) => e.level === "error");
+        .filter((e: { level: string }) => e.level === "error");
 
       expect(errorEntries.length).toBeGreaterThanOrEqual(1);
       expect(errorEntries[0].error).toContain("test failure");
@@ -220,7 +226,7 @@ describe("Logger", () => {
     const spy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const log1 = getLogger({ console: true, minLevel: "info" });
-    const log2 = getLogger({ console: true, minLevel: "warn" }); // second call reuses
+    const log2 = getLogger({ console: true, minLevel: "warn" });
 
     // Singleton — same instance
     expect(log1).toBe(log2);
@@ -236,7 +242,7 @@ describe("Logger", () => {
     spy.mockRestore();
   });
 
-  it("should handle file rotation across dates", () => {
+  it("should create log file with date-based name", () => {
     const dir = tempDir();
     try {
       const logger = new Logger({
@@ -247,24 +253,30 @@ describe("Logger", () => {
       });
 
       logger.info("test", "entry in file");
-      logger.close();
 
-      // At least one file was created
-      const files = fs.readdirSync(dir).filter((f) => f.endsWith(".log"));
-      expect(files.length).toBeGreaterThanOrEqual(1);
-      expect(files[0]).toMatch(/^rotate-\d{4}-\d{2}-\d{2}\.log$/);
+      const logPath = logger.currentLogFile!;
+      expect(fs.existsSync(logPath)).toBe(true);
+
+      // File name should match pattern like rotate-2026-07-10.log
+      const basename = path.basename(logPath);
+      expect(basename).toMatch(/^rotate-\d{4}-\d{2}-\d{2}\.log$/);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("should clean old log files based on maxDays", () => {
+  it("should clean old log files based on mtime (not filename)", () => {
     const dir = tempDir();
     try {
-      // Create an old log file manually
-      const oldFile = path.join(dir, `test-old-${new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}.log`);
+      // Create a file with a very old modification time
+      const oldFile = path.join(dir, "test-old-2000-01-01.log");
       fs.writeFileSync(oldFile, '{"old":true}\n');
 
+      // Set mtime to 30 days ago
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      fs.utimesSync(oldFile, thirtyDaysAgo, thirtyDaysAgo);
+
+      // Logger with maxDays=7 should clean files older than 7 days
       const logger = new Logger({
         logDir: dir,
         filePrefix: "test-old",
@@ -273,29 +285,37 @@ describe("Logger", () => {
       });
 
       logger.info("test", "current log");
-      logger.close();
 
-      // Old file should be cleaned up
+      // Old file should be cleaned (30 days > 7 days max)
       expect(fs.existsSync(oldFile)).toBe(false);
+
+      // Current log should exist
+      expect(fs.existsSync(logger.currentLogFile!)).toBe(true);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  it("should not fail when logDir does not exist", () => {
+  it("should not fail when logDir does not exist (auto-create)", () => {
     const dir = path.join(os.tmpdir(), `nonexistent-${Date.now()}`);
-    // Directory doesn't exist yet — Logger should create it
-    const logger = new Logger({
-      logDir: dir,
-      filePrefix: "test",
-      console: false,
-    });
+    try {
+      expect(fs.existsSync(dir)).toBe(false);
 
-    logger.info("test", "created dir implicitly");
-    logger.close();
+      const logger = new Logger({
+        logDir: dir,
+        filePrefix: "test",
+        console: false,
+      });
 
-    expect(fs.existsSync(dir)).toBe(true);
-    fs.rmSync(dir, { recursive: true, force: true });
+      logger.info("test", "created dir implicitly");
+
+      expect(fs.existsSync(dir)).toBe(true);
+      expect(fs.existsSync(logger.currentLogFile!)).toBe(true);
+    } finally {
+      if (fs.existsSync(dir)) {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
   });
 
   it("should handle console disabled mode", () => {
@@ -322,6 +342,30 @@ describe("Logger", () => {
     expect(calls.every((s) => !s.includes("\x1b["))).toBe(true);
 
     spy.mockRestore();
+  });
+
+  it("should escape special characters in JSON data", () => {
+    const dir = tempDir();
+    try {
+      const logger = new Logger({
+        logDir: dir,
+        filePrefix: "escape",
+        console: false,
+      });
+
+      logger.info("test", "special chars", {
+        text: 'hello "world"\nnewline',
+        nested: { key: "value" },
+      });
+
+      const entries = readLogFile(logger.currentLogFile!);
+      // Should be valid JSON
+      for (const entry of entries) {
+        expect(() => JSON.parse(entry)).not.toThrow();
+      }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
