@@ -1,4 +1,4 @@
-import {
+﻿import {
   createContext,
   useCallback,
   useContext,
@@ -53,7 +53,9 @@ async function authRequest<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const payload = (await response.json()) as T & { message?: string };
   if (!response.ok) {
-    throw new Error(payload.message ?? `认证失败：${response.status}`);
+    throw new Error(
+      payload.message ?? "\u8ba4\u8bc1\u5931\u8d25\uff1a" + response.status,
+    );
   }
   return payload;
 }
@@ -74,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (storedToken && storedUser) {
       // 验证令牌是否仍然有效
       authRequest<VerifyResponse>("/api/auth/verify", {
-        headers: { Authorization: `Bearer ${storedToken}` },
+        headers: { Authorization: "Bearer " + storedToken },
       })
         .then((result) => {
           if (result.valid) {
@@ -103,25 +105,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
-    setLoginError(null);
-    try {
-      const result = await authRequest<LoginResponse>("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ username, password }),
-      });
+  const login = useCallback(
+    async (username: string, password: string): Promise<boolean> => {
+      setLoginError(null);
+      try {
+        const result = await authRequest<LoginResponse>("/api/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ username, password }),
+        });
 
-      setToken(result.token);
-      setUser(result.user);
-      localStorage.setItem(AUTH_TOKEN_KEY, result.token);
-      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(result.user));
-      return true;
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "登录失败";
-      setLoginError(message);
-      return false;
-    }
-  }, []);
+        setToken(result.token);
+        setUser(result.user);
+        localStorage.setItem(AUTH_TOKEN_KEY, result.token);
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(result.user));
+        return true;
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "\u767b\u5f55\u5931\u8d25";
+        setLoginError(message);
+        return false;
+      }
+    },
+    [],
+  );
 
   const logout = useCallback(() => {
     // 尝试通知服务端（fire-and-forget）
@@ -131,7 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${storedToken}`,
+          Authorization: "Bearer " + storedToken,
         },
       }).catch(() => {
         // 忽略登出 API 错误
@@ -158,7 +164,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, token, isLoading, loginError, login, logout],
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  );
 }
 
 // ── Hook ───────────────────────────────────────────────────

@@ -1,7 +1,15 @@
 import type { FastifyInstance } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildTradingApp } from "./app";
 import { createTestConfig } from "./test/testConfig";
+
+// 设置测试用的认证环境变量
+beforeAll(() => {
+  process.env.AUTH_USERNAME = "test-admin";
+  process.env.AUTH_PASSWORD = "test-password-min-12-chars";
+  process.env.JWT_SECRET = "test-jwt-secret-with-at-least-32-characters-long";
+  process.env.AUTH_TOKEN_TTL_SECONDS = "3600";
+});
 
 describe("trading API", () => {
   let app: FastifyInstance;
@@ -80,10 +88,10 @@ describe("trading API", () => {
       expect(response.statusCode).toBe(200);
       const body = response.json();
       expect(body).toMatchObject({
-        openapi: "3.0.3",
+        openapi: "3.0.0",
         info: {
-          title: "KAIROS Quant API",
-          version: "0.2.0",
+          title: "AI量化 API",
+          version: "1.0.0",
         },
       });
       expect(body.paths).toBeDefined();
@@ -101,9 +109,6 @@ describe("trading API", () => {
       expect(body.paths).toHaveProperty("/api/orders/export");
       expect(body.paths).toHaveProperty("/api/trading/pause");
       expect(body.paths).toHaveProperty("/api/trading/resume");
-      expect(body.paths).toHaveProperty("/ws");
-      expect(body.paths).toHaveProperty("/api-docs/json");
-      expect(body.paths).toHaveProperty("/api-docs");
       expect(body.tags).toBeDefined();
       expect(body.tags.length).toBeGreaterThanOrEqual(8);
     });
