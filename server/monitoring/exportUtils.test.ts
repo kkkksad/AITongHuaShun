@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+﻿import { describe, expect, it } from "vitest";
 import {
   contentType,
   exportAuditToCsv,
@@ -39,7 +39,7 @@ describe("exportUtils", () => {
       filledPrice: undefined,
       notional: 0,
       commission: 0,
-      rejectionReason: "限价不满足",
+      rejectionReason: "闄愪环涓嶆弧瓒?,
       clientOrderId: undefined,
       createdAt: "2026-07-11T08:01:00Z",
       updatedAt: "2026-07-11T08:01:01Z",
@@ -51,7 +51,7 @@ describe("exportUtils", () => {
       id: "audit-1",
       category: "order",
       action: "created",
-      message: "订单已创建",
+      message: "璁㈠崟宸插垱寤?,
       timestamp: "2026-07-11T08:00:00Z",
       data: { orderId: "order-1" },
     },
@@ -59,7 +59,7 @@ describe("exportUtils", () => {
       id: "audit-2",
       category: "risk",
       action: "circuit_tripped",
-      message: "熔断器已触发",
+      message: "鐔旀柇鍣ㄥ凡瑙﹀彂",
       timestamp: "2026-07-11T08:05:00Z",
     },
   ];
@@ -85,7 +85,7 @@ describe("exportUtils", () => {
       expect(csv).toContain("150050");
 
       // Rejected order
-      expect(csv).toContain("限价不满足");
+      expect(csv).toContain("闄愪环涓嶆弧瓒?);
       expect(csv).toContain("rejected");
     });
 
@@ -109,13 +109,13 @@ describe("exportUtils", () => {
         requestedPrice: 100,
         notional: 0,
         commission: 0,
-        rejectionReason: '原因: "超出限额", 请联系管理员',
+        rejectionReason: '鍘熷洜: "瓒呭嚭闄愰", 璇疯仈绯荤鐞嗗憳',
         createdAt: "2026-07-11T00:00:00Z",
         updatedAt: "2026-07-11T00:00:01Z",
       }];
       const csv = exportOrdersToCsv(orders);
       // Should escape double quotes by doubling them
-      expect(csv).toContain('"原因: ""超出限额"", 请联系管理员"');
+      expect(csv).toContain('"鍘熷洜: ""瓒呭嚭闄愰"", 璇疯仈绯荤鐞嗗憳"');
     });
 
     it("should handle undefined filledPrice as empty string", () => {
@@ -178,7 +178,7 @@ describe("exportUtils", () => {
     it("should include audit data", () => {
       const csv = exportAuditToCsv(sampleAudit);
 
-      expect(csv).toContain("订单已创建");
+      expect(csv).toContain("璁㈠崟宸插垱寤?);
       expect(csv).toContain("audit-1");
       expect(csv).toContain("circuit_tripped");
     });
@@ -202,12 +202,12 @@ describe("exportUtils", () => {
         id: "audit-quote",
         category: "risk",
         action: "check",
-        message: '检测到 "异常" 交易行为',
+        message: '妫€娴嬪埌 "寮傚父" 浜ゆ槗琛屼负',
         timestamp: "2026-07-11T00:00:00Z",
       }];
       const csv = exportAuditToCsv(events);
       // Double quotes should be escaped by doubling
-      expect(csv).toContain('"检测到 ""异常"" 交易行为"');
+      expect(csv).toContain('"妫€娴嬪埌 ""寮傚父"" 浜ゆ槗琛屼负"');
     });
 
     it("should handle audit data with complex objects", () => {
@@ -215,7 +215,7 @@ describe("exportUtils", () => {
         id: "audit-complex",
         category: "order",
         action: "filled",
-        message: "成交",
+        message: "鎴愪氦",
         timestamp: "2026-07-11T00:00:00Z",
         data: { price: 150.5, quantity: 100, note: "test, with comma" },
       }];
@@ -238,7 +238,7 @@ describe("exportUtils", () => {
         id: "audit-no-data",
         category: "system",
         action: "heartbeat",
-        message: "心跳检测",
+        message: "蹇冭烦妫€娴?,
         timestamp: "2026-07-11T00:00:00Z",
         // No data field
       }];
