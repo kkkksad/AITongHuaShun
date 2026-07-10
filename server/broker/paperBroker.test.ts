@@ -130,6 +130,7 @@ describe("PaperBroker", () => {
       quantity: 100,
       limitPrice: 2_000,
       clientOrderId: "sell-reservation-1",
+    });
     const second = system.broker.submitOrder({
       symbol: "600519",
       side: "sell",
@@ -137,6 +138,7 @@ describe("PaperBroker", () => {
       quantity: 100,
       limitPrice: 2_000,
       clientOrderId: "sell-reservation-2",
+    });
 
     expect(first.status).toBe("pending");
     expect(second.status).toBe("rejected");
