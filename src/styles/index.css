@@ -1,5 +1,5 @@
 /* ============================================================
-   Design Tokens �?Light (default) & Dark themes
+   Design Tokens - Light (default) & Dark themes
    ============================================================ */
 :root {
   /* Page / Surface */
@@ -3433,9 +3433,9 @@ select:focus-visible {
   }
 }
 
-/* �T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T
+/* ══════════════════════════════════════════════
    Dashboard
-   �T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T�T */
+   ══════════════════════════════════════════════ */
 .dashboard { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
 .dashboard-empty { text-align: center; padding: 4rem 2rem; color: var(--text-muted); font-size: 1.1rem; }
 
@@ -3593,10 +3593,10 @@ select:focus-visible {
 }
 
 /* ============================================================
-   NotificationsPanel — 通知中心面板
+   NotificationsPanel 鈥?閫氱煡涓績闈㈡澘
    ============================================================ */
 
-/* ── 面板容器 ── */
+/* 鈹€鈹€ 闈㈡澘瀹瑰櫒 鈹€鈹€ */
 .notif-panel {
   background: var(--bg-panel);
   border: 1px solid var(--border-default);
@@ -3625,7 +3625,7 @@ select:focus-visible {
   margin-top: 2px;
 }
 
-/* ── 加载状态 ── */
+/* 鈹€鈹€ 鍔犺浇鐘舵€?鈹€鈹€ */
 .notif-panel-loading {
   display: flex;
   align-items: center;
@@ -3647,14 +3647,14 @@ select:focus-visible {
   to   { transform: rotate(360deg); }
 }
 
-/* ── 面板主体 ── */
+/* 鈹€鈹€ 闈㈡澘涓讳綋 鈹€鈹€ */
 .notif-panel-body {
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 
-/* ── 分区 ── */
+/* 鈹€鈹€ 鍒嗗尯 鈹€鈹€ */
 .notif-panel-section {
   border-bottom: 1px solid var(--border-light);
 }
@@ -3698,13 +3698,13 @@ select:focus-visible {
   border-radius: 10px;
 }
 
-/* ── 条目列表 ── */
+/* 鈹€鈹€ 鏉＄洰鍒楄〃 鈹€鈹€ */
 .notif-panel-list {
   max-height: 420px;
   overflow-y: auto;
 }
 
-/* ── 单条通知条目 ── */
+/* 鈹€鈹€ 鍗曟潯閫氱煡鏉＄洰 鈹€鈹€ */
 .notif-panel-item {
   display: flex;
   gap: 12px;
@@ -3754,7 +3754,7 @@ select:focus-visible {
   padding-left: 17px;
 }
 
-/* ── 条目图标 ── */
+/* 鈹€鈹€ 鏉＄洰鍥炬爣 鈹€鈹€ */
 .notif-panel-item-icon {
   display: flex;
   align-items: center;
@@ -3792,7 +3792,7 @@ select:focus-visible {
   color: var(--color-paused);
 }
 
-/* ── 条目正文 ── */
+/* 鈹€鈹€ 鏉＄洰姝ｆ枃 鈹€鈹€ */
 .notif-panel-item-body {
   flex: 1;
   min-width: 0;
@@ -3827,7 +3827,7 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-/* ── 级别标签 ── */
+/* 鈹€鈹€ 绾у埆鏍囩 鈹€鈹€ */
 .notif-panel-level-tag {
   display: inline-flex;
   align-items: center;
@@ -3856,7 +3856,7 @@ select:focus-visible {
   color: var(--color-primary);
 }
 
-/* ── 方向标签（买入/卖出/持有） ── */
+/* 鈹€鈹€ 鏂瑰悜鏍囩锛堜拱鍏?鍗栧嚭/鎸佹湁锛?鈹€鈹€ */
 .notif-panel-direction-tag {
   display: inline-flex;
   align-items: center;
@@ -3883,7 +3883,7 @@ select:focus-visible {
   color: var(--color-paused);
 }
 
-/* ── 类型标签（告警类型/策略名称） ── */
+/* 鈹€鈹€ 绫诲瀷鏍囩锛堝憡璀︾被鍨?绛栫暐鍚嶇О锛?鈹€鈹€ */
 .notif-panel-badge {
   display: inline-flex;
   align-items: center;
@@ -3896,7 +3896,7 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-/* ── 置信度进度条 ── */
+/* 鈹€鈹€ 缃俊搴﹁繘搴︽潯 鈹€鈹€ */
 .notif-panel-confidence {
   display: flex;
   align-items: center;
@@ -3942,7 +3942,7 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-/* ── 空状态 ── */
+/* 鈹€鈹€ 绌虹姸鎬?鈹€鈹€ */
 .notif-panel-empty {
   display: flex;
   flex-direction: column;
@@ -3973,7 +3973,7 @@ select:focus-visible {
   max-width: 240px;
 }
 
-/* ── 底部统计 ── */
+/* 鈹€鈹€ 搴曢儴缁熻 鈹€鈹€ */
 .notif-panel-footer {
   display: flex;
   align-items: center;
@@ -4374,5 +4374,152 @@ select:focus-visible {
   }
   .settings-range-row input[type="range"] {
     max-width: 200px;
+  }
+}
+
+/* ============================================================
+   PWA & i18n (added 2026-07-11)
+   ============================================================ */
+
+/* ── Language Switcher ─────────────────────────────────── */
+.lang-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px 10px;
+  font-size: 13px;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lang-toggle:hover {
+  background: var(--bg-panel-hover);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.lang-label {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+}
+
+/* ── Offline Banner ────────────────────────────────────── */
+.offline-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10000;
+  background: #d97706;
+  color: #fff;
+  text-align: center;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to { transform: translateY(0); }
+}
+
+/* ── PWA Install Banner ────────────────────────────────── */
+.pwa-install-banner {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  padding: 14px 20px;
+  max-width: 480px;
+  width: calc(100% - 32px);
+  animation: slideUp 0.4s ease-out;
+}
+
+@keyframes slideUp {
+  from { transform: translateX(-50%) translateY(20px); opacity: 0; }
+  to { transform: translateX(-50%) translateY(0); opacity: 1; }
+}
+
+.pwa-install-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pwa-install-icon {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.pwa-install-content strong {
+  display: block;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.pwa-install-content p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.pwa-install-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pwa-install-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.pwa-install-dismiss:hover {
+  color: var(--text-primary);
+  background: var(--bg-panel-hover);
+}
+
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .pwa-install-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .pwa-install-actions {
+    justify-content: flex-end;
   }
 }
