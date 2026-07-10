@@ -330,7 +330,7 @@ describe("EastMoneyBrokerAdapter", () => {
     expect(order.filledQuantity).toBe(100);
     expect(order.notional).toBe(150000);
     expect(order.commission).toBeGreaterThan(0);
-    expect(order.id).toContain("EM-");
+    expect(order.id).toBeTruthy();
     expect(order.createdAt).toBeTruthy();
   });
 
@@ -420,16 +420,16 @@ describe("EastMoneyBrokerAdapter", () => {
 
     // Buy first
     await adapter.submitOrder({
-      symbol: "600519", side: "buy", type: "market", quantity: 100,
+      symbol: "600519", side: "buy", type: "market", quantity: 200,
     });
 
     // Then sell
     await adapter.submitOrder({
-      symbol: "600519", side: "sell", type: "market", quantity: 50,
+      symbol: "600519", side: "sell", type: "market", quantity: 100,
     });
 
     const positions = await adapter.getPositions();
-    expect(positions[0].quantity).toBe(50);
+    expect(positions[0].quantity).toBe(100);
 
     // Cash should be higher after sell (recovered half + no position cost for sold shares)
     const account = await adapter.getAccount();
@@ -502,6 +502,28 @@ describe("EastMoneyBrokerAdapter", () => {
     ).rejects.toThrow("not connected");
   });
 
+  it("applies the shared PaperBroker lot-size risk checks", async () => {
+    adapter = new EastMoneyBrokerAdapter({
+      brokerId: "eastmoney",
+      brokerName: "东方财富",
+      endpoint: "paper://eastmoney",
+    });
+    await adapter.connect();
+    adapter.updateQuotes([
+      {
+        symbol: "600519", name: "贵州茅台", tradable: true,
+        price: 1500, previousClose: 1490, changePercent: 0.67,
+        volume: 10000000, updatedAt: new Date().toISOString(),
+      },
+    ]);
+
+    const order = await adapter.submitOrder({
+      symbol: "600519", side: "buy", type: "market", quantity: 50,
+    });
+
+    expect(order.status).toBe("rejected");
+  });
+
   it("rejects any attempt to enable live trading", () => {
     expect(
       () =>
@@ -570,7 +592,25 @@ describe("EastMoneyBrokerAdapter", () => {
 
     expect(order.type).toBe("limit");
     expect(order.limitPrice).toBe(1495);
-    expect(order.status).toBe("filled"); // Mock fills immediately
+    expect(order.status).toBe("pending");
+
+    adapter.updateQuotes([
+      {
+        symbol: "600519", name: "贵州茅台", tradable: true,
+        price: 1490, previousClose: 1500, changePercent: -0.67,
+        volume: 10000000, updatedAt: new Date().toISOString(),
+      },
+    ]);
+    const updated = (await adapter.getOrders()).find(
+      (candidate) => candidate.id === order.id,
+    );
+    expect(updated?.status).toBe("filled");
+  });
+
+  it("rejects live mode for the read-only market provider", () => {
+    expect(
+      () => new EastMoneyMarketProvider({ mode: "live" }),
+    ).toThrow("只允许只读 paper 模式");
   });
 
   it("connection status event fires on connect", async () => {

@@ -22,6 +22,8 @@ FastAPI + AkShare :8800
 
 前后端共享 `shared/trading.ts` 中的行情、账户、持仓、订单、风险和实时事件契约。
 
+`server/broker/eastmoney/` 还包含未装配到主服务的东方财富公开行情原型。其行情提供者只读且拒绝 `live`；同目录的券商适配器仅模拟连接生命周期，所有纸面订单继续委托 `PaperBroker + RiskEngine`，不包含外部订单请求。
+
 ## 当前模块
 
 ```text
@@ -34,7 +36,7 @@ src/
   types/         前端研究领域类型
 
 server/
-  broker/        PaperBroker 模拟撮合
+  broker/        PaperBroker 模拟撮合、受控纸面适配器与只读行情原型
   market/        MockMarket、HTTP 与 AkShare 只读行情适配器
   realtime/      WebSocket 连接与广播
   risk/          风险规则
@@ -88,7 +90,7 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 
 ### `BrokerAdapter`
 
-当前 `MockBrokerAdapter` 仅用于模拟网络连接和异步调用，订单、费用、幂等和风控全部委托给 `PaperBroker`。它拒绝 `live` 环境，配置只保存服务端 `credentialsRef`，不接受浏览器或源码中的明文 Token。未来真实执行适配器不能以替换该模拟类的方式直接启用，仍必须经过独立审批与执行网关。
+当前 `MockBrokerAdapter` 与 `EastMoneyBrokerAdapter` 都只用于模拟网络连接和异步调用，订单、费用、幂等和风控全部委托给 `PaperBroker`。两者都拒绝 `live` 环境；东方财富适配器不调用任何外部订单端点，且当前未装配到主交易系统。配置只保存服务端 `credentialsRef`，不接受浏览器或源码中的明文 Token。未来真实执行适配器不能以替换这些模拟类或修改模式开关的方式直接启用，仍必须经过独立审批与执行网关。
 
 ## 关键质量属性
 

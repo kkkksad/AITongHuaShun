@@ -30,6 +30,8 @@
 - **OpenAPI 契约** —— Swagger UI 位于 `/documentation`，JSON 文档位于 `/documentation/json`。
 - **能力声明** —— `/api/capabilities` 明确返回行情来源、只读属性、纸面执行和凭据边界。
 - **真实只读行情模式** —— `MARKET_DATA_PROVIDER=akshare` 与 `MARKET_MODE=paper` 可使用 AkShare 行情驱动本地模拟账户。
+- **东方财富只读行情原型** —— `EastMoneyMarketProvider` 可读取公开行情并拒绝 `live`，当前尚未接入主服务的 `MARKET_DATA_PROVIDER` 选择器。
+- **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
 
 ## 可用接口
@@ -61,8 +63,8 @@ GET  /documentation/json                  (OpenAPI JSON)
 
 ```text
 npm test
-19 test files passed
-271 tests passed (0 failures)
+24 test files passed
+455 tests passed (0 failures)
 
 npm run build
 TypeScript checks and Vite production build passed

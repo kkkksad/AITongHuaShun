@@ -6,7 +6,7 @@
  *
  * 安全约束：
  * - 默认仅获取行情，不执行任何交易操作
- * - 仅支持 "paper" 模式（模拟），"live" 模式需额外配置
+ * - 仅支持 "paper" 模式（模拟），明确拒绝 "live"
  */
 
 import { EventEmitter } from "node:events";
@@ -66,6 +66,9 @@ export class EastMoneyMarketProvider
 
   constructor(config: EastMoneyMarketConfig = {}) {
     super();
+    if ((config.mode ?? "paper") === "live") {
+      throw new Error("东方财富行情提供者只允许只读 paper 模式");
+    }
     this.symbols = config.symbols ?? DEFAULT_SYMBOLS;
     this.indices = config.indices ?? DEFAULT_INDICES;
     this.pollIntervalMs = Math.max(1000, config.pollIntervalMs ?? 3000);
