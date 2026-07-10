@@ -22,6 +22,24 @@ npm run dev -- --host 127.0.0.1
 
 Vite 会从 `index.html` 加载 `/src/main.tsx`。
 
+## VS Code 一键调试
+
+仓库已经提供共享的 `.vscode/launch.json`、`tasks.json` 和 `settings.json`。
+
+1. 使用 VS Code 打开项目根目录。
+2. 首次运行时在终端执行 `npm install`。
+3. 打开“运行和调试”，选择 `KAIROS：启动并调试`。
+4. 按 `F5`。
+
+VS Code 会自动执行 `npm run dev:debug`，等待 Vite 监听 `http://127.0.0.1:4173/`，随后使用 Edge 打开页面并连接前端调试器。可以直接在 `src/**/*.tsx` 和 `src/**/*.ts` 中设置断点。
+
+如果提示 4173 端口已被占用，请先停止已有的开发服务器。`dev:debug` 使用 `--strictPort`，不会静默切换到其他端口，避免浏览器连接到错误的服务。
+
+其他 VS Code 任务：
+
+- `KAIROS：运行单元测试`
+- `KAIROS：生产构建`
+
 ## 质量检查
 
 ```powershell
