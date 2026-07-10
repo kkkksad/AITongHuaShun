@@ -4,6 +4,7 @@
 
 ```text
 React + TypeScript :4173
+React Router + TanStack Query
         │ REST / WebSocket
         ▼
 Fastify + TypeScript :8787
@@ -45,6 +46,7 @@ shared/
 ## 依赖方向
 
 - React 组件只能通过 `tradingApi` 和 `useTradingBackend` 访问服务端，不直接依赖存储或券商实现。
+- React Router 只负责视图 URL；TanStack Query 保存 REST 快照，WebSocket 和交易 mutation 增量更新同一缓存。
 - `PaperBroker` 依赖行情、风险和仓储，不依赖 HTTP、WebSocket 或 React。
 - `RiskEngine` 只依赖共享领域数据，不产生网络或存储副作用。
 - `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都不是未来数据库模型的替代品。
@@ -61,6 +63,8 @@ shared/
 6. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
 7. 新账户、持仓和订单状态再次通过 WebSocket 推送。
 
+Fastify 使用 Helmet 设置基础安全响应头，并使用 Rate Limit 对 HTTP 请求进行全局限流。统一错误处理必须保留插件产生的 4xx 状态，不能把 429 改写为 500。
+
 ## 面向真实数据的适配器
 
 ### `MarketDataProvider`
@@ -74,6 +78,10 @@ shared/
 ### `ExecutionGateway`
 
 真实券商执行必须是独立实现和独立部署的权限域，不能把 `PaperBroker` 改一个配置就升级为实盘。真实执行需要账户白名单、逐笔批准、额度、幂等、审计、撤单和紧急停止。
+
+### `BrokerAdapter`
+
+当前 `MockBrokerAdapter` 仅用于模拟网络连接和异步调用，订单、费用、幂等和风控全部委托给 `PaperBroker`。它拒绝 `live` 环境，配置只保存服务端 `credentialsRef`，不接受浏览器或源码中的明文 Token。未来真实执行适配器不能以替换该模拟类的方式直接启用，仍必须经过独立审批与执行网关。
 
 ## 关键质量属性
 

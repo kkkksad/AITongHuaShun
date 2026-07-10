@@ -2,6 +2,7 @@ export type TradingMode = "mock" | "paper" | "live";
 export type OrderSide = "buy" | "sell";
 export type OrderType = "market" | "limit";
 export type OrderStatus = "accepted" | "filled" | "rejected" | "cancelled" | "pending";
+export type CircuitState = "normal" | "warning" | "tripped";
 
 export interface MarketQuote {
   symbol: string;
@@ -76,6 +77,41 @@ export interface RiskLimits {
   maxDailyLoss: number;
   lotSize: number;
   realTradingEnabled: boolean;
+}
+
+/** 熔断器配置 */
+export interface CircuitBreakerConfig {
+  /** 连续亏损次数阈值（触发熔断） */
+  maxConsecutiveLosses: number;
+  /** 日内最大回撤比例（触发熔断，例如 0.05 = 5%） */
+  maxDailyDrawdown: number;
+  /** 熔断冷却时间（分钟） */
+  cooldownMinutes: number;
+  /** 恢复观察期（分钟），冷却后需观察此时间方可解除 */
+  recoveryMinutes: number;
+}
+
+/** 增强型风控限额 */
+export interface EnhancedRiskLimits extends RiskLimits {
+  circuitBreaker: CircuitBreakerConfig;
+  /** 启用动态仓位缩放（根据回撤调整最大仓位权重） */
+  dynamicPositionScaling: boolean;
+  /** 最大回撤时仓位缩减至原始权重的比例（0.2 = 回撤最大时仅允许原始20%仓位） */
+  maxDrawdownReductionFactor: number;
+}
+
+/** 风控运行时状态 */
+export interface RiskState {
+  circuitState: CircuitState;
+  consecutiveLosses: number;
+  dailyDrawdown: number;
+  peakDailyEquity: number;
+  trippedAt: string | null;
+  warningAt: string | null;
+  tradeCount: number;
+  lossCount: number;
+  lastTradeTime: string | null;
+  lastEvaluationTime: string | null;
 }
 
 export interface RiskDecision {

@@ -17,6 +17,15 @@ npm install
 
 需要修改默认端口或风控参数时，将 `.env.example` 复制为未提交的 `.env.local`。任何供应商 Token 或密钥只能放在 `.env.local`，不得使用 `VITE_*` 暴露给浏览器。
 
+本地 HTTP 安全配置：
+
+```text
+RATE_LIMIT_MAX=120
+RATE_LIMIT_WINDOW_MS=60000
+```
+
+这两个值控制 Fastify 全局限流。生产环境还需要由反向代理或 API 网关实施独立限流，不能只依赖应用进程内计数。
+
 交易状态默认使用内存仓储。需要在本地重启后保留模拟账户时，可在 `.env.local` 设置：
 
 ```text
@@ -48,6 +57,14 @@ npm run dev:web
 ```
 
 Vite 将 `/api` 和 `/ws` 代理到本地 Fastify 服务。当前 `MARKET_MODE` 只允许 `mock` 或 `paper`；配置为 `live` 会拒绝启动。
+
+前端视图可直接访问：
+
+- `http://127.0.0.1:4173/`
+- `http://127.0.0.1:4173/strategy`
+- `http://127.0.0.1:4173/market`
+- `http://127.0.0.1:4173/account`
+- `http://127.0.0.1:4173/learning`
 
 ## VS Code 一键全栈调试
 
@@ -109,10 +126,11 @@ Invoke-RestMethod `
 
 2026-07-11 的验证结果：
 
-1. `npm test`：6 个测试文件、55 项测试全部通过。
+1. `npm test`：11 个测试文件、173 项测试全部通过。
 2. `npm run build`：TypeScript 检查与 Vite 生产构建通过。
-3. 测试覆盖回测、风险、限价单、撤单、契约、JSON 恢复和 Fastify API。
-4. 生产构建已拆分应用、图表和图标包；Recharts 图表包约 420 kB。
+3. 测试覆盖回测、参数优化、风险、限价单、撤单、契约、JSON 恢复、HTTP 行情适配器、券商模拟适配器和 Fastify API。
+4. API 测试验证 Helmet 安全响应头和 Rate Limit 的 429 行为。
+5. 生产构建已拆分应用、图表和图标包；图表包仍是最大的独立 chunk。
 
 ## 生成文件
 

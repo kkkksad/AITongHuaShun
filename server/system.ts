@@ -1,4 +1,4 @@
-import type { RiskLimits } from "../shared/trading";
+import type { EnhancedRiskLimits } from "../shared/trading";
 import type { ServerConfig } from "./config";
 import type { MarketDataProvider } from "./contracts/MarketDataProvider";
 import type { TradingStore } from "./contracts/TradingStore";
@@ -13,7 +13,7 @@ export interface TradingSystem {
   store: TradingStore;
   risk: RiskEngine;
   broker: PaperBroker;
-  limits: RiskLimits;
+  limits: EnhancedRiskLimits;
 }
 
 function createStore(config: ServerConfig): TradingStore {
@@ -28,12 +28,20 @@ export function createTradingSystem(config: ServerConfig): TradingSystem {
     throw new Error("Live market providers are not implemented. Use MARKET_MODE=mock.");
   }
 
-  const limits: RiskLimits = {
+  const limits: EnhancedRiskLimits = {
     maxOrderNotional: config.MAX_ORDER_NOTIONAL,
     maxPositionWeight: config.MAX_POSITION_WEIGHT,
     maxDailyLoss: config.MAX_DAILY_LOSS,
     lotSize: 100,
     realTradingEnabled: config.REAL_TRADING_ENABLED,
+    circuitBreaker: {
+      maxConsecutiveLosses: config.CIRCUIT_MAX_CONSECUTIVE_LOSSES,
+      maxDailyDrawdown: config.CIRCUIT_MAX_DAILY_DRAWDOWN,
+      cooldownMinutes: config.CIRCUIT_COOLDOWN_MINUTES,
+      recoveryMinutes: config.CIRCUIT_RECOVERY_MINUTES,
+    },
+    dynamicPositionScaling: config.DYNAMIC_POSITION_SCALING,
+    maxDrawdownReductionFactor: config.MAX_DRAWDOWN_REDUCTION_FACTOR,
   };
   const market: MarketDataProvider = new MockMarket(config.MARKET_MODE, config.MARKET_TICK_MS);
   const store: TradingStore = createStore(config);

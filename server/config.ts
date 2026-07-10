@@ -27,6 +27,22 @@ const envSchema = z.object({
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   /** JSON 存储目录（仅 STORE_BACKEND=json 时生效） */
   DATA_DIR: z.string().default("./data"),
+  /** ── 增强风控配置 ── */
+  /** 连续亏损次数触发熔断 */
+  CIRCUIT_MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().min(1).max(50).default(5),
+  /** 日内最大回撤比例触发熔断 */
+  CIRCUIT_MAX_DAILY_DRAWDOWN: z.coerce.number().min(0.01).max(0.5).default(0.08),
+  /** 熔断冷却时间（分钟） */
+  CIRCUIT_COOLDOWN_MINUTES: z.coerce.number().int().min(5).max(480).default(15),
+  /** 恢复观察期（分钟） */
+  CIRCUIT_RECOVERY_MINUTES: z.coerce.number().int().min(0).max(120).default(5),
+  /** 是否启用动态仓位缩放 */
+  DYNAMIC_POSITION_SCALING: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  /** 最大回撤时仓位缩减至原始权重的比例 */
+  MAX_DRAWDOWN_REDUCTION_FACTOR: z.coerce.number().min(0.1).max(1.0).default(0.25),
 });
 
 export type ServerConfig = ReturnType<typeof getConfig>;

@@ -121,6 +121,16 @@ export async function buildTradingApp(
   app.get("/api/positions", async () => system.broker.getPositions());
   app.get("/api/risk/limits", async () => system.risk.getLimits());
 
+  app.get("/api/risk/state", async () => system.risk.getState());
+
+  app.post("/api/risk/reset", async () => {
+    system.risk.resetCircuit();
+    return {
+      circuitState: system.risk.getState().circuitState,
+      message: "熔断器已重置",
+    };
+  });
+
   app.get("/api/orders", async (request) => {
     const { limit } = listQuerySchema.parse(request.query);
     return system.broker.getOrders(limit);
