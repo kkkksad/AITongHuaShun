@@ -3432,3 +3432,45 @@ select:focus-visible {
     display: flex;
   }
 }
+
+/* ¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T
+   Dashboard
+   ¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T¨T */
+.dashboard { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
+.dashboard-empty { text-align: center; padding: 4rem 2rem; color: var(--text-muted); font-size: 1.1rem; }
+
+.dashboard-hero {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark, #1a56db) 100%);
+  border-radius: 16px; padding: 2rem; color: #fff; margin-bottom: 1.5rem;
+}
+[data-theme="dark"] .dashboard-hero { background: linear-gradient(135deg, #1e40af 0%, #1e3a5f 100%); }
+.dashboard-title { font-size: 0.9rem; opacity: 0.85; margin: 0 0 0.5rem; font-weight: 500; }
+.dashboard-equity { font-size: 2.5rem; font-weight: 700; margin: 0 0 0.75rem; font-variant-numeric: tabular-nums; }
+.dashboard-daily { display: flex; align-items: center; gap: 0.75rem; font-size: 0.95rem; }
+.dashboard-daily.positive .dashboard-value { color: #4ade80; }
+.dashboard-daily.negative .dashboard-value { color: #f87171; }
+.dashboard-value { display: flex; align-items: center; gap: 0.35rem; font-weight: 600; }
+
+.dashboard-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.dashboard-card {
+  background: var(--card-bg, #fff); border-radius: 12px; padding: 1.25rem;
+  border: 1px solid var(--border); display: flex; align-items: center; gap: 1rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.dashboard-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.card-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+.card-icon.blue { background: #eff6ff; color: #3b82f6; }
+.card-icon.teal { background: #f0fdfa; color: #14b8a6; }
+.card-icon.amber { background: #fffbeb; color: #f59e0b; }
+.card-icon.violet { background: #f5f3ff; color: #8b5cf6; }
+[data-theme="dark"] .card-icon.blue { background: #1e3a5f; color: #60a5fa; }
+[data-theme="dark"] .card-icon.teal { background: #134e4a; color: #2dd4bf; }
+[data-theme="dark"] .card-icon.amber { background: #451a03; color: #fbbf24; }
+[data-theme="dark"] .card-icon.violet { background: #2e1065; color: #a78bfa; }
+.card-body { display: flex; flex-direction: column; gap: 0.3rem; }
+.card-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.card-value { font-size: 1.3rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.card-value.warning { color: #f59e0b; }
+
+.risk-bar { margin-top: 0.5rem; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.risk-bar-fill { height: 100%; background: var(--primary); border-radius: 2px; transition: width 0.5s ease; }

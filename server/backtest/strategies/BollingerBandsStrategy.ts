@@ -33,6 +33,11 @@ export class BollingerBandsStrategy implements BacktestStrategy {
       customName ?? `布林带(${period},${stdMultiplier}σ)`;
   }
 
+  reset(): void {
+    this.prices.length = 0;
+    this.inPosition = false;
+  }
+
   onBar(context: StrategyContext): StrategySignal[] {
     const quote = context.snapshot.quotes.find((q) => q.tradable);
     if (!quote) return [];

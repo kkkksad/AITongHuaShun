@@ -41,6 +41,8 @@ export interface StrategySignal {
 export interface BacktestStrategy {
   /** 策略名称 */
   readonly name: string;
+  /** 可选：重复运行同一回测引擎前重置策略内部状态 */
+  reset?(): void;
   /**
    * 每根K线调用一次，返回交易信号数组。
    * 返回空数组表示本bar不交易。

@@ -48,9 +48,9 @@ import { HistoricalDataProvider } from "./HistoricalDataProvider";
 export class BacktestEngine {
   private readonly config: BacktestConfig;
   private readonly provider: HistoricalDataProvider;
-  private readonly store: InMemoryTradingStore;
-  private readonly broker: PaperBroker;
-  private readonly risk: RiskEngine;
+  private store!: InMemoryTradingStore;
+  private broker!: PaperBroker;
+  private risk!: RiskEngine;
   private readonly equityCurve: EquityPoint[] = [];
   private readonly trades: TradeRecord[] = [];
   private readonly allOrders: OrderRecord[] = [];
@@ -84,6 +84,10 @@ export class BacktestEngine {
     };
 
     this.provider = new HistoricalDataProvider(snapshots);
+    this.resetRuntime();
+  }
+
+  private resetRuntime(): void {
     this.store = new InMemoryTradingStore(this.config.initialCapital, false);
     this.risk = new RiskEngine(this.limits);
     this.broker = new PaperBroker(this.provider, this.store, this.risk, {
@@ -98,6 +102,8 @@ export class BacktestEngine {
   /** 执行回测并返回报告 */
   run(): BacktestReport {
     this.provider.reset();
+    this.resetRuntime();
+    this.strategy.reset?.();
     this.equityCurve.length = 0;
     this.trades.length = 0;
     this.allOrders.length = 0;
