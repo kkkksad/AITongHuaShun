@@ -8,6 +8,7 @@ import type {
   RiskLimits,
   TradingMode,
 } from "../../shared/trading";
+import type { TradingStore } from "../contracts/TradingStore";
 
 interface MutablePosition {
   symbol: string;
@@ -41,7 +42,7 @@ const seededPositions: MutablePosition[] = [
   },
 ];
 
-export class InMemoryTradingStore {
+export class InMemoryTradingStore implements TradingStore {
   private readonly accountId = "PAPER-CN-01";
   private readonly startingEquity: number;
   private cash: number;

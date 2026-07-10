@@ -8,9 +8,9 @@ import type {
   RiskLimits,
   TradingMode,
 } from "../../shared/trading";
-import type { MockMarket } from "../market/mockMarket";
+import type { MarketDataProvider } from "../contracts/MarketDataProvider";
+import type { TradingStore } from "../contracts/TradingStore";
 import type { RiskEngine } from "../risk/riskEngine";
-import type { InMemoryTradingStore } from "../store/inMemoryTradingStore";
 
 interface PaperBrokerOptions {
   mode: TradingMode;
@@ -22,8 +22,8 @@ interface PaperBrokerOptions {
 
 export class PaperBroker extends EventEmitter {
   constructor(
-    private readonly market: MockMarket,
-    private readonly store: InMemoryTradingStore,
+    private readonly market: MarketDataProvider,
+    private readonly store: TradingStore,
     private readonly risk: RiskEngine,
     private readonly options: PaperBrokerOptions,
   ) {

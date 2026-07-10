@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { MarketQuote, MarketSnapshot, TradingMode } from "../../shared/trading";
+import type { MarketDataProvider } from "../contracts/MarketDataProvider";
 
 const initialQuotes = [
   {
@@ -60,7 +61,7 @@ const initialQuotes = [
   },
 ] as const;
 
-export class MockMarket extends EventEmitter {
+export class MockMarket extends EventEmitter implements MarketDataProvider {
   private readonly mode: TradingMode;
   private readonly tickMs: number;
   private readonly quotes = new Map<string, MarketQuote>();

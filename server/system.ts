@@ -1,11 +1,21 @@
 import type { RiskLimits } from "../shared/trading";
 import type { ServerConfig } from "./config";
+import type { MarketDataProvider } from "./contracts/MarketDataProvider";
+import type { TradingStore } from "./contracts/TradingStore";
 import { PaperBroker } from "./broker/paperBroker";
 import { MockMarket } from "./market/mockMarket";
 import { RiskEngine } from "./risk/riskEngine";
 import { InMemoryTradingStore } from "./store/inMemoryTradingStore";
 
-export function createTradingSystem(config: ServerConfig) {
+export interface TradingSystem {
+  market: MarketDataProvider;
+  store: TradingStore;
+  risk: RiskEngine;
+  broker: PaperBroker;
+  limits: RiskLimits;
+}
+
+export function createTradingSystem(config: ServerConfig): TradingSystem {
   if (config.MARKET_MODE === "live") {
     throw new Error("Live market providers are not implemented. Use MARKET_MODE=mock.");
   }
@@ -17,8 +27,8 @@ export function createTradingSystem(config: ServerConfig) {
     lotSize: 100,
     realTradingEnabled: config.REAL_TRADING_ENABLED,
   };
-  const market = new MockMarket(config.MARKET_MODE, config.MARKET_TICK_MS);
-  const store = new InMemoryTradingStore(config.TRADING_STARTING_CASH);
+  const market: MarketDataProvider = new MockMarket(config.MARKET_MODE, config.MARKET_TICK_MS);
+  const store: TradingStore = new InMemoryTradingStore(config.TRADING_STARTING_CASH);
   const risk = new RiskEngine(limits);
   const broker = new PaperBroker(market, store, risk, {
     mode: config.MARKET_MODE,
@@ -36,5 +46,3 @@ export function createTradingSystem(config: ServerConfig) {
     limits,
   };
 }
-
-export type TradingSystem = ReturnType<typeof createTradingSystem>;

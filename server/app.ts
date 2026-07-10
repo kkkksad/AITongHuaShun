@@ -85,7 +85,7 @@ export async function buildTradingApp(
     if ((error as { statusCode?: number }).statusCode === 400) {
       return reply.status(400).send({
         error: "INVALID_REQUEST",
-        message: error.message,
+        message: (error as Error).message,
       });
     }
 
