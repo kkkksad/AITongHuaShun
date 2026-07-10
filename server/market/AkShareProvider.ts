@@ -25,6 +25,8 @@ export interface AkShareMarketConfig {
   mode?: TradingMode;
   /** API 超时（毫秒） */
   timeout?: number;
+  /** 服务端桥接令牌，不得暴露到浏览器。 */
+  apiKey?: string;
 }
 
 /** A 股核心资产默认列表 */
@@ -47,6 +49,7 @@ export class AkShareMarketProvider extends HttpMarketProvider {
       mode: config.mode ?? "paper",
       symbols: config.symbols ?? AKSHARE_DEFAULT_SYMBOLS,
       timeout: config.timeout ?? 15_000, // AkShare 可能较慢
+      apiKey: config.apiKey || undefined,
     };
     super(httpConfig);
   }

@@ -1,6 +1,8 @@
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import swagger from "@fastify/swagger";
+import swaggerUi from "@fastify/swagger-ui";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
@@ -47,6 +49,7 @@ export async function buildTradingApp(
   const system = options.system ?? createTradingSystem(options.config);
   const hub = new WebSocketHub();
 
+  // ── Plugins ──────────────────────────────────────────────
   await app.register(helmet, {
     contentSecurityPolicy: false,
   });
@@ -60,6 +63,43 @@ export async function buildTradingApp(
     methods: ["GET", "POST", "DELETE"],
   });
   await app.register(websocket);
+
+  // ── Swagger / OpenAPI ───────────────────────────────────
+  if (options.config.API_DOCS_ENABLED) {
+    await app.register(swagger, {
+      openapi: {
+        info: {
+          title: "KAIROS 量化交易 API",
+          description:
+            "AI 量化交易工作台后端 API —— 提供行情数据、模拟交易、回测、风控等服务。",
+          version: "0.1.0",
+        },
+        servers: [
+          {
+            url: `http://${options.config.API_HOST}:${options.config.API_PORT}`,
+            description: "本地开发服务器",
+          },
+        ],
+        tags: [
+          { name: "系统", description: "健康检查与服务状态" },
+          { name: "行情", description: "市场行情数据" },
+          { name: "账户", description: "账户、持仓与订单" },
+          { name: "风控", description: "风险控制与熔断" },
+          { name: "交易", description: "下单、撤单与交易控制" },
+          { name: "审计", description: "交易审计事件" },
+        ],
+      },
+    });
+    await app.register(swaggerUi, {
+      routePrefix: "/docs",
+      uiConfig: {
+        docExpansion: "list",
+        deepLinking: true,
+      },
+    });
+  }
+
+  // ── Broadcast helpers ───────────────────────────────────
 
   const broadcastPositions = (snapshot?: MarketSnapshot) => {
     hub.broadcast({
@@ -79,6 +119,8 @@ export async function buildTradingApp(
   system.broker.on("order.updated", (order: OrderRecord) => {
     hub.broadcast({ type: "order.updated", data: order });
   });
+
+  // ── Error handler ───────────────────────────────────────
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {
@@ -107,7 +149,29 @@ export async function buildTradingApp(
     });
   });
 
-  app.get("/api/health", async () => ({
+  // ── Routes ──────────────────────────────────────────────
+
+  // 系统
+  app.get("/api/health", {
+    schema: {
+      tags: ["系统"],
+      summary: "健康检查",
+      description: "返回服务运行状态、模式和 WebSocket 连接数",
+      response: {
+        200: {
+          type: "object",
+          properties: {
+            ok: { type: "boolean" },
+            service: { type: "string" },
+            mode: { type: "string" },
+            realTradingEnabled: { type: "boolean" },
+            websocketConnections: { type: "number" },
+            timestamp: { type: "string" },
+          },
+        },
+      },
+    },
+  }, async () => ({
     ok: true,
     service: "kairos-trading-api",
     mode: options.config.MARKET_MODE,
@@ -116,14 +180,65 @@ export async function buildTradingApp(
     timestamp: new Date().toISOString(),
   }));
 
-  app.get("/api/market/snapshot", async () => system.market.getSnapshot());
-  app.get("/api/account", async () => system.broker.getAccount());
-  app.get("/api/positions", async () => system.broker.getPositions());
-  app.get("/api/risk/limits", async () => system.risk.getLimits());
+  // 行情
+  app.get("/api/market/snapshot", {
+    schema: {
+      tags: ["行情"],
+      summary: "获取市场快照",
+      description: "返回当前所有监控标的的实时行情快照",
+    },
+  }, async () => system.market.getSnapshot());
 
-  app.get("/api/risk/state", async () => system.risk.getState());
+  // 账户
+  app.get("/api/account", {
+    schema: {
+      tags: ["账户"],
+      summary: "获取账户快照",
+      description: "返回当前账户权益、现金、持仓市值等信息",
+    },
+  }, async () => system.broker.getAccount());
 
-  app.post("/api/risk/reset", async () => {
+  app.get("/api/positions", {
+    schema: {
+      tags: ["账户"],
+      summary: "获取持仓列表",
+      description: "返回当前所有持仓及市值信息",
+    },
+  }, async () => system.broker.getPositions());
+
+  // 风控
+  app.get("/api/risk/limits", {
+    schema: {
+      tags: ["风控"],
+      summary: "获取风控限额",
+      description: "返回当前风控限额配置（单笔金额、仓位权重、日亏损上限等）",
+    },
+  }, async () => system.risk.getLimits());
+
+  app.get("/api/risk/state", {
+    schema: {
+      tags: ["风控"],
+      summary: "获取风控状态",
+      description: "返回熔断器状态、连续亏损次数、日内回撤等信息",
+    },
+  }, async () => system.risk.getState());
+
+  app.post("/api/risk/reset", {
+    schema: {
+      tags: ["风控"],
+      summary: "重置熔断器",
+      description: "手动重置熔断器状态，恢复正常交易",
+      response: {
+        200: {
+          type: "object",
+          properties: {
+            circuitState: { type: "string" },
+            message: { type: "string" },
+          },
+        },
+      },
+    },
+  }, async () => {
     system.risk.resetCircuit();
     return {
       circuitState: system.risk.getState().circuitState,
@@ -131,17 +246,61 @@ export async function buildTradingApp(
     };
   });
 
-  app.get("/api/orders", async (request) => {
+  // 订单
+  app.get("/api/orders", {
+    schema: {
+      tags: ["账户"],
+      summary: "获取订单列表",
+      description: "返回最近的订单记录，支持 limit 参数控制数量",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: { type: "integer", default: 100, description: "返回订单数量上限" },
+        },
+      },
+    },
+  }, async (request) => {
     const { limit } = listQuerySchema.parse(request.query);
     return system.broker.getOrders(limit);
   });
 
-  app.get("/api/audit", async (request) => {
+  app.get("/api/audit", {
+    schema: {
+      tags: ["审计"],
+      summary: "获取审计事件",
+      description: "返回最近的交易审计事件记录",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: { type: "integer", default: 100 },
+        },
+      },
+    },
+  }, async (request) => {
     const { limit } = listQuerySchema.parse(request.query);
     return system.store.listAudit(limit);
   });
 
-  app.post("/api/orders", async (request, reply) => {
+  // 下单
+  app.post("/api/orders", {
+    schema: {
+      tags: ["交易"],
+      summary: "提交订单",
+      description: "提交市价单或限价单到模拟交易系统",
+      body: {
+        type: "object",
+        required: ["symbol", "side", "quantity"],
+        properties: {
+          symbol: { type: "string", description: "6位股票代码" },
+          side: { type: "string", enum: ["buy", "sell"] },
+          type: { type: "string", enum: ["market", "limit"], default: "market" },
+          quantity: { type: "integer", description: "委托数量（股）" },
+          limitPrice: { type: "number", description: "限价（限价单必填）" },
+          clientOrderId: { type: "string", description: "客户端订单ID（可选，用于幂等）" },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const orderRequest = orderRequestSchema.parse(request.body) as OrderRequest;
     const order = system.broker.submitOrder(orderRequest);
     const snapshot = system.market.getSnapshot();
@@ -152,7 +311,21 @@ export async function buildTradingApp(
     return reply.status(201).send({ order, account, positions });
   });
 
-  app.delete("/api/orders/:orderId", async (request, reply) => {
+  // 撤单
+  app.delete("/api/orders/:orderId", {
+    schema: {
+      tags: ["交易"],
+      summary: "撤销订单",
+      description: "撤销指定ID的未成交订单",
+      params: {
+        type: "object",
+        required: ["orderId"],
+        properties: {
+          orderId: { type: "string", description: "订单ID" },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { orderId } = cancelParamsSchema.parse(request.params);
     try {
       const cancelled = system.broker.cancelOrder(orderId);
@@ -170,15 +343,36 @@ export async function buildTradingApp(
     }
   });
 
-  app.post("/api/trading/pause", async () => ({
+  // 交易控制
+  app.post("/api/trading/pause", {
+    schema: {
+      tags: ["交易"],
+      summary: "暂停交易",
+      description: "暂停模拟交易撮合，新订单将排队等待",
+    },
+  }, async () => ({
     account: system.broker.pause(),
   }));
 
-  app.post("/api/trading/resume", async () => ({
+  app.post("/api/trading/resume", {
+    schema: {
+      tags: ["交易"],
+      summary: "恢复交易",
+      description: "恢复模拟交易撮合，处理排队订单",
+    },
+  }, async () => ({
     account: system.broker.resume(),
   }));
 
-  app.get("/ws", { websocket: true }, (socket) => {
+  // WebSocket
+  app.get("/ws", {
+    schema: {
+      tags: ["行情"],
+      summary: "WebSocket 实时通道",
+      description: "建立 WebSocket 连接以接收实时行情、账户、持仓和订单推送",
+    },
+    websocket: true,
+  }, (socket) => {
     hub.add(socket);
     hub.send(socket, {
       type: "system.status",
@@ -197,6 +391,8 @@ export async function buildTradingApp(
       data: system.broker.getPositions(),
     });
   });
+
+  // ── Lifecycle ───────────────────────────────────────────
 
   app.addHook("onClose", async () => {
     system.market.stop();
