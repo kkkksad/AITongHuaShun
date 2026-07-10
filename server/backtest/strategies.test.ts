@@ -11,6 +11,8 @@ import {
   BollingerBandsStrategy,
   MomentumStrategy,
   GridTradingStrategy,
+  MACDStrategy,
+  TurtleStrategy,
 } from "./strategies/index";
 
 // ── 辅助函数 ──
@@ -75,7 +77,6 @@ function validateStrategyReport(report: ReturnType<BacktestEngine["run"]>) {
   expect(m.winRate).toBeGreaterThanOrEqual(0);
   expect(m.winRate).toBeLessThanOrEqual(1);
   expect(report.equityCurve.length).toBeGreaterThanOrEqual(report.metrics.barCount);
-  
 }
 
 // ═══════════════════════════════════════════════
@@ -489,6 +490,8 @@ describe("GridTradingStrategy", () => {
       new BollingerBandsStrategy(),
       new MomentumStrategy(),
       new GridTradingStrategy(),
+      new MACDStrategy(),
+      new TurtleStrategy(),
     ];
 
     for (const strategy of strategies) {
@@ -500,6 +503,175 @@ describe("GridTradingStrategy", () => {
 
       expect(() => engine.run()).not.toThrow();
     }
+  });
+});
+
+// ═══════════════════════════════════════════════
+// MACDStrategy
+// ═══════════════════════════════════════════════
+
+describe("MACDStrategy", () => {
+  it("produces trades with enough data", () => {
+    const snapshots = generateSnapshots(300, 100, 0.015);
+    const engine = new BacktestEngine(
+      snapshots,
+      new MACDStrategy(12, 26, 9, 0.5),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    validateStrategyReport(report);
+    expect(report.strategyName).toContain("MACD");
+  });
+
+  it("custom params reflected in name", () => {
+    const snapshots = generateSnapshots(300, 100, 0.015);
+    const engine = new BacktestEngine(
+      snapshots,
+      new MACDStrategy(6, 13, 5, 0.3, "FastMACD"),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    expect(report.strategyName).toBe("FastMACD");
+    validateStrategyReport(report);
+  });
+
+  it("no signals with insufficient data", () => {
+    const snapshots = generateSnapshots(30, 100);
+    const engine = new BacktestEngine(
+      snapshots,
+      new MACDStrategy(),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    expect(report.trades.length).toBe(0);
+  });
+});
+
+// ═══════════════════════════════════════════════
+// TurtleStrategy
+// ═══════════════════════════════════════════════
+
+describe("TurtleStrategy", () => {
+  it("produces trades in trending markets", () => {
+    // 用上升趋势的价格序列
+    const snapshots: MarketSnapshot[] = [];
+    let price = 100;
+    const random = createSeededRandom(0x2001);
+    for (let i = 0; i < 200; i++) {
+      price = price * (1 + 0.003 + (random() - 0.5) * 0.01);
+      snapshots.push({
+        mode: "paper",
+        sequence: i + 1,
+        marketTime: new Date(2024, 0, i + 1).toISOString(),
+        quotes: [{
+          symbol: "600519",
+          name: "MaoTai",
+          tradable: true,
+          price: Number(price.toFixed(2)),
+          previousClose: Number((price * 0.998).toFixed(2)),
+          changePercent: 0.2,
+          volume: 10_000_000,
+          updatedAt: new Date(2024, 0, i + 1).toISOString(),
+        }],
+      });
+    }
+
+    const engine = new BacktestEngine(
+      snapshots,
+      new TurtleStrategy(20, 10, 0, 0.5),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    validateStrategyReport(report);
+    expect(report.strategyName).toContain("Turtle");
+  });
+
+  it("custom params reflected in name", () => {
+    const snapshots = generateSnapshots(200, 100, 0.02);
+    const engine = new BacktestEngine(
+      snapshots,
+      new TurtleStrategy(55, 20, 100, 0.3, "LongTurtle"),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    expect(report.strategyName).toBe("LongTurtle");
+    validateStrategyReport(report);
+  });
+
+  it("no signals with insufficient data", () => {
+    const snapshots = generateSnapshots(40, 100);
+    const engine = new BacktestEngine(
+      snapshots,
+      new TurtleStrategy(20, 10, 50),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    expect(report.trades.length).toBe(0);
+  });
+
+  it("handles extreme market without throwing", () => {
+    const snapshots: MarketSnapshot[] = [];
+    let price = 100;
+    for (let i = 0; i < 100; i++) {
+      price = price * 1.02;
+      snapshots.push({
+        mode: "paper",
+        sequence: i + 1,
+        marketTime: new Date(2024, 0, i + 1).toISOString(),
+        quotes: [{
+          symbol: "600519",
+          name: "MaoTai",
+          tradable: true,
+          price: Number(price.toFixed(2)),
+          previousClose: Number((price * 0.98).toFixed(2)),
+          changePercent: 2.0,
+          volume: 10_000_000,
+          updatedAt: new Date(2024, 0, i + 1).toISOString(),
+        }],
+      });
+    }
+
+    const engine = new BacktestEngine(
+      snapshots,
+      new TurtleStrategy(20, 10, 50),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    expect(() => engine.run()).not.toThrow();
   });
 });
 

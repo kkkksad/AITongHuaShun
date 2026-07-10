@@ -13,6 +13,8 @@ export { RSIStrategy } from "./RSIStrategy";
 export { BollingerBandsStrategy } from "./BollingerBandsStrategy";
 export { MomentumStrategy } from "./MomentumStrategy";
 export { GridTradingStrategy } from "./GridTradingStrategy";
+export { MACDStrategy } from "./MACDStrategy";
+export { TurtleStrategy } from "./TurtleStrategy";
 
 // 技术指标也可以导出，方便自定义策略使用
 export {
