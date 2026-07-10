@@ -20,6 +20,7 @@ import type { ConnectionState } from "../hooks/useTradingBackend";
 import { useTheme } from "../hooks/useTheme";
 import { useI18n, type Locale } from "../i18n";
 import type { TradingMode } from "../../shared/trading";
+import { MobileNav } from "./MobileNav";
 
 export type ViewId = "overview" | "strategy" | "market" | "account" | "learning" | "settings";
 
@@ -199,6 +200,7 @@ export function AppShell({
           </div>
         </header>
         <main className="main-content">{children}</main>
+        <MobileNav activeView={activeView} onViewChange={onViewChange} />
       </div>
     </div>
   );

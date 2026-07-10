@@ -14,7 +14,7 @@ function PageLoader() {
   return (
     <div className="page-loader">
       <div className="page-loader-spinner" />
-      <span>加载中�?/span>
+      <span>加载中…</span>
     </div>
   );
 }
@@ -45,16 +45,18 @@ if ("serviceWorker" in navigator) {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <I18nProvider>
-          <BrowserRouter>
-            <ErrorBoundary><Suspense fallback={<PageLoader />}>
-              <App />
-            </Suspense>
-          </BrowserRouter></ErrorBoundary>
-        </I18nProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <I18nProvider>
+            <BrowserRouter>
+              <Suspense fallback={<PageLoader />}>
+                <App />
+              </Suspense>
+            </BrowserRouter>
+          </I18nProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );
