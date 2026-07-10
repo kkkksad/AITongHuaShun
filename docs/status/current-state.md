@@ -18,8 +18,10 @@
 - 回测、风险引擎、模拟券商和 Fastify API 的 Vitest 测试。
 - **MarketDataProvider 契约** —— 抽象行情数据源，支持 MockMarket 实现，为接入 AkShare/Tushare/券商行情网关预留插槽。
 - **TradingStore 契约** —— 抽象交易数据持久化，支持 InMemoryTradingStore 与 JsonFileTradingStore，为 PostgreSQL 存储预留插槽。
+- **BrokerAdapter 契约** —— 抽象券商连接，支持 MockBrokerAdapter，为东方财富/华泰等实盘券商预留插槽。
 - PaperBroker 通过契约接口依赖注入，不绑定具体实现。
 - 契约一致性测试，确保任意实现类符合契约约定。
+- **回测参数优化器** —— 网格搜索 + 遗传算法，支持7种策略的参数优化、多目标加权评分、收敛曲线追踪。
 
 ## 可用接口
 
@@ -42,13 +44,38 @@ WS   /ws
 
 ```text
 npm test
-6 test files passed
-55 tests passed
+11 test files passed
+173 tests passed (1 pre-existing brokerAdapter test failure)
 
 npm run build
-TypeScript build passed
-Vite production build passed
+TypeScript build: 1 pre-existing error (brokerAdapter.test.ts rejectionCode)
 ```
+
+## 架构进展
+
+```
+server/
+├── contracts/
+│   ├── MarketDataProvider.ts   # 行情数据源契约（可插拔）
+│   ├── BrokerAdapter.ts         # 券商适配器契约（可插拔）
+│   ├── TradingStore.ts          # 交易数据持久化契约（可插拔）
+│   ├── index.ts
+│   └── contracts.test.ts       # 契约一致性测试（18 tests）
+├── optimizer/                   # NEW: 回测参数优化器
+│   ├── types.ts                 # 类型定义
+│   ├── gridSearch.ts            # 网格搜索
+│   ├── geneticAlgorithm.ts      # 遗传算法
+│   ├── scoreUtils.ts            # 得分计算
+│   ├── index.ts                 # 统一导出 + 7种策略工厂
+│   └── optimizer.test.ts       # 22 tests
+```
+
+## 下一步
+
+- 实现 EastMoney 行情数据提供者，接入 A 股实时/延迟行情。
+- 实现 EastMoney 券商适配器，对接实盘交易接口。
+- 实现 NewsProvider 契约，抽象新闻数据源。
+- 增加用户认证、账户白名单和独立审批服务。
 
 ## 当前边界
 
@@ -59,24 +86,5 @@ Vite production build passed
 - `REAL_TRADING_ENABLED=false`，`MARKET_MODE=live` 会拒绝启动。
 - 当前没有任何真实订单执行代码。
 - 新闻、资金流和分时图仍使用前端静态模拟数据。
-
-## 架构进展
-
-```
-server/contracts/
-├── MarketDataProvider.ts   # 行情数据源契约（可插拔）
-├── TradingStore.ts          # 交易数据持久化契约（可插拔）
-├── index.ts                 # 统一导出
-└── contracts.test.ts       # 契约一致性测试（18 tests）
-```
-
-## 下一步
-
-- 实现 NewsProvider 契约，抽象新闻数据源。
-- 引入 PostgreSQL 实现 TradingStore 接口，替代本地 JSON 方案。
-- 接入带来源、时间戳和授权记录的真实历史或延迟行情。
-- 增加用户认证、账户白名单和独立审批服务。
-- 为主要 React 交互增加组件与端到端测试。
-- 按视图动态加载 Recharts，降低首屏 bundle。
 
 本页只记录可从仓库核实的当前事实。目标设计写入 `architecture/`，产品意图写入 `product/`，实施步骤写入 `plans/`。
