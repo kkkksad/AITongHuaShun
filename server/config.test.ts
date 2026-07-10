@@ -455,12 +455,12 @@ describe("ServerConfig", () => {
   describe("exported getConfig", () => {
     it("getConfig is a function", async () => {
       // Dynamic import to test the real getConfig
-      const { getConfig } = await import("../config");
+      const { getConfig } = await import("./config");
       expect(typeof getConfig).toBe("function");
     });
 
     it("getConfig returns an object with expected shape", async () => {
-      const { getConfig } = await import("../config");
+      const { getConfig } = await import("./config");
       const config = getConfig();
       expect(typeof config).toBe("object");
       expect(typeof config.API_HOST).toBe("string");

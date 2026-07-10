@@ -96,6 +96,71 @@ describe("exportUtils", () => {
       expect(lines.length).toBe(1); // header only
       expect(lines[0]).toContain("id");
     });
+
+    it("should handle rejectionReason with commas and quotes", () => {
+      const orders: OrderRecord[] = [{
+        id: "order-csv",
+        symbol: "600519",
+        side: "buy",
+        type: "market",
+        status: "rejected",
+        quantity: 100,
+        filledQuantity: 0,
+        requestedPrice: 100,
+        notional: 0,
+        commission: 0,
+        rejectionReason: '原因: "超出限额", 请联系管理员',
+        createdAt: "2026-07-11T00:00:00Z",
+        updatedAt: "2026-07-11T00:00:01Z",
+      }];
+      const csv = exportOrdersToCsv(orders);
+      // Should escape double quotes by doubling them
+      expect(csv).toContain('"原因: ""超出限额"", 请联系管理员"');
+    });
+
+    it("should handle undefined filledPrice as empty string", () => {
+      const orders: OrderRecord[] = [{
+        id: "order-no-fill",
+        symbol: "300750",
+        side: "sell",
+        type: "limit",
+        status: "pending",
+        quantity: 100,
+        filledQuantity: 0,
+        requestedPrice: 250,
+        filledPrice: undefined,
+        notional: 0,
+        commission: 0,
+        createdAt: "2026-07-11T00:00:00Z",
+        updatedAt: "2026-07-11T00:00:01Z",
+      }];
+      const csv = exportOrdersToCsv(orders);
+      // filledPrice column should be empty string (not "undefined")
+      const lines = csv.split("\n");
+      const fields = lines[1].split(",");
+      const filledPriceIdx = 8; // 0-indexed position of filledPrice
+      expect(fields[filledPriceIdx]).toBe("");
+    });
+
+    it("should handle single order", () => {
+      const singleOrder = [sampleOrders[0]];
+      const csv = exportOrdersToCsv(singleOrder);
+      const lines = csv.split("\n");
+      expect(lines.length).toBe(2); // header + 1 row
+      expect(lines[1]).toContain("order-1");
+    });
+
+    it("should handle large orders array (1000 orders)", () => {
+      const orders: OrderRecord[] = Array.from({ length: 1000 }, (_, i) => ({
+        ...sampleOrders[0],
+        id: `order-${i}`,
+        clientOrderId: `client-${i}`,
+      }));
+      const csv = exportOrdersToCsv(orders);
+      const lines = csv.split("\n");
+      expect(lines.length).toBe(1001); // header + 1000 rows
+      expect(lines[0]).toContain("id");
+    });
   });
 
   describe("exportAuditToCsv", () => {
@@ -131,6 +196,59 @@ describe("exportUtils", () => {
       const csv = exportAuditToCsv(events);
       expect(csv).toContain("audit-x");
     });
+
+    it("should handle messages with double quotes", () => {
+      const events: AuditEvent[] = [{
+        id: "audit-quote",
+        category: "risk",
+        action: "check",
+        message: '检测到 "异常" 交易行为',
+        timestamp: "2026-07-11T00:00:00Z",
+      }];
+      const csv = exportAuditToCsv(events);
+      // Double quotes should be escaped by doubling
+      expect(csv).toContain('"检测到 ""异常"" 交易行为"');
+    });
+
+    it("should handle audit data with complex objects", () => {
+      const events: AuditEvent[] = [{
+        id: "audit-complex",
+        category: "order",
+        action: "filled",
+        message: "成交",
+        timestamp: "2026-07-11T00:00:00Z",
+        data: { price: 150.5, quantity: 100, note: "test, with comma" },
+      }];
+      const csv = exportAuditToCsv(events);
+      // The data field should be JSON stringified with commas (which would
+      // be wrapped in quotes in the CSV)
+      expect(csv).toContain("audit-complex");
+      // Verify the JSON is present (with escaped quotes)
+      expect(csv).toContain('"{\\"price\\":150.5');
+    });
+
+    it("should handle empty audit array", () => {
+      const csv = exportAuditToCsv([]);
+      const lines = csv.split("\n");
+      expect(lines.length).toBe(1); // header only
+    });
+
+    it("should handle audit without data field", () => {
+      const events: AuditEvent[] = [{
+        id: "audit-no-data",
+        category: "system",
+        action: "heartbeat",
+        message: "心跳检测",
+        timestamp: "2026-07-11T00:00:00Z",
+        // No data field
+      }];
+      const csv = exportAuditToCsv(events);
+      expect(csv).toContain("audit-no-data");
+      // data column should be empty string
+      const lines = csv.split("\n");
+      const fields = lines[1].split(",");
+      expect(fields[5]).toBe('""');
+    });
   });
 
   describe("withBom", () => {
@@ -141,6 +259,12 @@ describe("exportUtils", () => {
       // UTF-8 BOM is \uFEFF
       expect(result.charCodeAt(0)).toBe(0xfeff);
       expect(result.slice(1)).toBe(csv);
+    });
+
+    it("should handle empty string", () => {
+      const result = withBom("");
+      expect(result.charCodeAt(0)).toBe(0xfeff);
+      expect(result.length).toBe(1);
     });
   });
 
@@ -164,6 +288,14 @@ describe("exportUtils", () => {
     it("should use correct extension for JSON", () => {
       const name = exportFilename("orders", "json");
       expect(name).toMatch(/\.json$/);
+    });
+
+    it("should distinguish audit from orders", () => {
+      const auditName = exportFilename("audit", "csv");
+      const ordersName = exportFilename("orders", "csv");
+      expect(auditName).toContain("audit");
+      expect(ordersName).toContain("orders");
+      expect(auditName).not.toBe(ordersName);
     });
   });
 });

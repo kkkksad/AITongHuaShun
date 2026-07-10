@@ -510,3 +510,141 @@ describe("RiskEngine - recovery flow", () => {
     expect(risk.getState().consecutiveLosses).toBe(0);
   });
 });
+
+// ── 告警回调集成测试 ─────────────────────────────────────
+
+describe("RiskEngine - circuit breaker callback", () => {
+  it("fires critical alert when circuit breaker trips on consecutive losses", () => {
+    const events: Array<{
+      type: string;
+      level: string;
+      title: string;
+      message: string;
+      data: Record<string, unknown>;
+    }> = [];
+
+    const risk = new RiskEngine(limits, (event) => {
+      events.push(event);
+    });
+    risk.setInitialEquity(1_000_000);
+
+    let equity = 1_000_000;
+    for (let i = 0; i < 5; i++) {
+      equity -= 5000;
+      risk.recordTradeResult(-5000, equity);
+    }
+
+    expect(risk.getState().circuitState).toBe("tripped");
+    expect(events.length).toBeGreaterThanOrEqual(1);
+
+    const tripEvent = events.find((e) => e.type === "risk_circuit_breaker");
+    expect(tripEvent).toBeDefined();
+    expect(tripEvent!.level).toBe("critical");
+    expect(tripEvent!.title).toBe("熔断器触发");
+    expect(tripEvent!.data.consecutiveLosses).toBe(5);
+  });
+
+  it("fires warn alert on drawdown warning", () => {
+    const events: Array<{
+      type: string;
+      level: string;
+      title: string;
+    }> = [];
+
+    const risk = new RiskEngine(limits, (event) => {
+      events.push(event);
+    });
+    risk.setInitialEquity(1_000_000);
+
+    // 3 consecutive losses triggers warning
+    let equity = 1_000_000;
+    for (let i = 0; i < 3; i++) {
+      equity -= 1000;
+      risk.recordTradeResult(-1000, equity);
+    }
+
+    expect(risk.getState().circuitState).toBe("warning");
+    expect(events.length).toBeGreaterThanOrEqual(1);
+
+    const warnEvent = events.find(
+      (e) => e.type === "risk_drawdown_warning" && e.level === "warn",
+    );
+    expect(warnEvent).toBeDefined();
+    expect(warnEvent!.title).toContain("预警");
+  });
+
+  it("fires critical alert when circuit breaker trips on drawdown", () => {
+    const events: Array<{
+      type: string;
+      level: string;
+      title: string;
+      data: Record<string, unknown>;
+    }> = [];
+
+    const risk = new RiskEngine(limits, (event) => {
+      events.push(event);
+    });
+    risk.setInitialEquity(1_000_000);
+
+    // 10% drawdown exceeds 8% threshold → trip
+    risk.recordTradeResult(-100_000, 900_000);
+
+    expect(risk.getState().circuitState).toBe("tripped");
+
+    const tripEvent = events.find((e) => e.type === "risk_circuit_breaker");
+    expect(tripEvent).toBeDefined();
+    expect(tripEvent!.level).toBe("critical");
+    expect(tripEvent!.data.dailyDrawdown).toBeCloseTo(0.1, 2);
+  });
+
+  it("does not fire duplicate critical alerts when already tripped", () => {
+    let criticalCount = 0;
+
+    const risk = new RiskEngine(limits, (event) => {
+      if (event.type === "risk_circuit_breaker") criticalCount++;
+    });
+    risk.setInitialEquity(1_000_000);
+
+    let equity = 1_000_000;
+    // 5 losses trip the circuit
+    for (let i = 0; i < 5; i++) {
+      equity -= 5000;
+      risk.recordTradeResult(-5000, equity);
+    }
+
+    expect(criticalCount).toBe(1);
+
+    // Another loss while already tripped should not fire again
+    risk.recordTradeResult(-1000, equity - 1000);
+    expect(criticalCount).toBe(1);
+  });
+
+  it("callback exceptions do not crash the risk engine", () => {
+    const risk = new RiskEngine(limits, () => {
+      throw new Error("callback exploded");
+    });
+    risk.setInitialEquity(1_000_000);
+
+    // Should not throw
+    let equity = 1_000_000;
+    for (let i = 0; i < 5; i++) {
+      equity -= 5000;
+      risk.recordTradeResult(-5000, equity);
+    }
+
+    expect(risk.getState().circuitState).toBe("tripped");
+  });
+
+  it("works without callback (backward compatible)", () => {
+    const risk = new RiskEngine(limits); // no callback
+    risk.setInitialEquity(1_000_000);
+
+    let equity = 1_000_000;
+    for (let i = 0; i < 5; i++) {
+      equity -= 5000;
+      risk.recordTradeResult(-5000, equity);
+    }
+
+    expect(risk.getState().circuitState).toBe("tripped");
+  });
+});

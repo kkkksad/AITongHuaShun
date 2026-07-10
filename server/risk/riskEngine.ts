@@ -11,6 +11,16 @@ import type {
   RiskState,
   TradingMode,
 } from "../../shared/trading";
+import type { AlertType } from "../notifications/types";
+
+/** 熔断器事件回调 — 用于集成告警通知 */
+export type CircuitBreakerCallback = (event: {
+  type: AlertType;
+  level: "warn" | "critical";
+  title: string;
+  message: string;
+  data: Record<string, unknown>;
+}) => void;
 
 const DEFAULT_CIRCUIT_BREAKER: CircuitBreakerConfig = {
   maxConsecutiveLosses: 5,
@@ -36,10 +46,15 @@ function toEnhanced(limits: RiskLimits | EnhancedRiskLimits): EnhancedRiskLimits
 export class RiskEngine {
   private state: RiskState;
   private readonly limits: EnhancedRiskLimits;
+  private readonly onCircuitBreaker?: CircuitBreakerCallback;
 
-  constructor(limits: RiskLimits | EnhancedRiskLimits) {
+  constructor(
+    limits: RiskLimits | EnhancedRiskLimits,
+    onCircuitBreaker?: CircuitBreakerCallback,
+  ) {
     this.limits = toEnhanced(limits);
     this.state = this.initialState();
+    this.onCircuitBreaker = onCircuitBreaker;
   }
 
   // ── 公开 API ──────────────────────────────────────────────
@@ -307,6 +322,7 @@ export class RiskEngine {
 
   private evaluateCircuit(now: string): void {
     const { circuitBreaker } = this.limits;
+    const previousState = this.state.circuitState;
 
     // 检查是否触发熔断
     if (
@@ -315,6 +331,24 @@ export class RiskEngine {
     ) {
       this.state.circuitState = "tripped";
       this.state.trippedAt = now;
+
+      // 🔔 熔断触发 → 发送 critical 告警
+      if (previousState !== "tripped") {
+        this.notifyCircuitBreaker(
+          "risk_circuit_breaker",
+          "critical",
+          "熔断器触发",
+          `连续亏损 ${this.state.consecutiveLosses} 次，日内回撤 ${(this.state.dailyDrawdown * 100).toFixed(2)}%，熔断器已触发`,
+          {
+            consecutiveLosses: this.state.consecutiveLosses,
+            dailyDrawdown: this.state.dailyDrawdown,
+            maxConsecutiveLosses: circuitBreaker.maxConsecutiveLosses,
+            maxDailyDrawdown: circuitBreaker.maxDailyDrawdown,
+            cooldownMinutes: circuitBreaker.cooldownMinutes,
+            trippedAt: now,
+          },
+        );
+      }
       return;
     }
 
@@ -323,8 +357,23 @@ export class RiskEngine {
       this.state.consecutiveLosses >=
       Math.floor(circuitBreaker.maxConsecutiveLosses * 0.6)
     ) {
+      const wasAlreadyWarning = previousState === "warning";
       this.state.circuitState = "warning";
       this.state.warningAt = now;
+
+      // 🔔 首次进入预警 → 发送 warn 告警
+      if (!wasAlreadyWarning) {
+        this.notifyCircuitBreaker(
+          "risk_drawdown_warning",
+          "warn",
+          "风控预警",
+          `连续亏损 ${this.state.consecutiveLosses} 次（阈值 ${circuitBreaker.maxConsecutiveLosses}），已触发风控预警`,
+          {
+            consecutiveLosses: this.state.consecutiveLosses,
+            threshold: circuitBreaker.maxConsecutiveLosses,
+          },
+        );
+      }
       return;
     }
 
@@ -333,10 +382,27 @@ export class RiskEngine {
       this.state.dailyDrawdown >=
       circuitBreaker.maxDailyDrawdown * 0.6
     ) {
+      const wasAlreadyWarning = previousState === "warning";
       this.state.circuitState = "warning";
       this.state.warningAt = now;
+
+      // 🔔 首次进入预警 → 发送 warn 告警
+      if (!wasAlreadyWarning) {
+        this.notifyCircuitBreaker(
+          "risk_drawdown_warning",
+          "warn",
+          "回撤预警",
+          `日内回撤 ${(this.state.dailyDrawdown * 100).toFixed(2)}%（阈值 ${(circuitBreaker.maxDailyDrawdown * 100).toFixed(2)}%），已触发回撤预警`,
+          {
+            dailyDrawdown: this.state.dailyDrawdown,
+            threshold: circuitBreaker.maxDailyDrawdown,
+          },
+        );
+      }
       return;
     }
+
+    // 状态恢复正常（从 warning/tripped 恢复后由外部调用 resetCircuit）
   }
 
   /** 根据日内回撤动态计算当前仓位权重上限 */
@@ -360,6 +426,24 @@ export class RiskEngine {
       maxPositionWeight * maxDrawdownReductionFactor,
       maxPositionWeight * reductionFactor,
     );
+  }
+
+  /** 调用熔断器回调（如已注册） */
+  private notifyCircuitBreaker(
+    type: AlertType,
+    level: "warn" | "critical",
+    title: string,
+    message: string,
+    data: Record<string, unknown>,
+  ): void {
+    if (this.onCircuitBreaker) {
+      try {
+        this.onCircuitBreaker({ type, level, title, message, data });
+      } catch (err) {
+        // 回调异常不应影响风控主流程
+        console.error("[RiskEngine] 熔断器回调异常:", err);
+      }
+    }
   }
 
   private reject(code: string, message: string): RiskDecision {
