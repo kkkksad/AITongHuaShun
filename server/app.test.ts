@@ -31,6 +31,44 @@ describe("trading API", () => {
     });
   });
 
+  it("declares read-only market data and paper-only execution capabilities", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/capabilities",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      marketData: {
+        provider: "mock",
+        readOnly: true,
+        external: false,
+      },
+      execution: {
+        provider: "paper-broker",
+        mode: "paper",
+        liveSupported: false,
+        humanApprovalRequiredForLive: true,
+      },
+    });
+  });
+
+  it("publishes an OpenAPI document for the simulation API", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/documentation/json",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      info: {
+        title: "KAIROS Quant API",
+      },
+    });
+    expect(response.json().paths).toHaveProperty("/api/orders");
+    expect(response.json().paths).toHaveProperty("/api/capabilities");
+  });
+
   it("adds baseline security headers", async () => {
     const response = await app.inject({
       method: "GET",
