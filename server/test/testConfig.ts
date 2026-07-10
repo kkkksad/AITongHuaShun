@@ -21,6 +21,12 @@ export function createTestConfig(
     REAL_TRADING_ENABLED: false,
     STORE_BACKEND: "memory",
     DATA_DIR: "./data",
+    CIRCUIT_MAX_CONSECUTIVE_LOSSES: 5,
+    CIRCUIT_MAX_DAILY_DRAWDOWN: 0.08,
+    CIRCUIT_COOLDOWN_MINUTES: 15,
+    CIRCUIT_RECOVERY_MINUTES: 5,
+    DYNAMIC_POSITION_SCALING: false,
+    MAX_DRAWDOWN_REDUCTION_FACTOR: 0.25,
     ...overrides,
   };
 }
