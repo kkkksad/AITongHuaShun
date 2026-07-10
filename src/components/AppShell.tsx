@@ -10,6 +10,7 @@ import {
   Menu,
   Moon,
   Search,
+  Settings,
   ShieldCheck,
   Sun,
   X,
@@ -17,10 +18,8 @@ import {
 import type { ConnectionState } from "../hooks/useTradingBackend";
 import { useTheme } from "../hooks/useTheme";
 import type { TradingMode } from "../../shared/trading";
-import type { NotificationItem } from "./NotificationCenter";
-import { NotificationCenter } from "./NotificationCenter";
 
-export type ViewId = "overview" | "strategy" | "market" | "account" | "learning";
+export type ViewId = "overview" | "strategy" | "market" | "account" | "learning" | "settings";
 
 interface AppShellProps {
   activeView: ViewId;
@@ -28,11 +27,6 @@ interface AppShellProps {
   connectionState: ConnectionState;
   mode: TradingMode;
   children: ReactNode;
-  /** 通知中心数据 */
-  notifications?: NotificationItem[];
-  unreadCount?: number;
-  onNotificationClearAll?: () => void;
-  onNotificationDismiss?: (id: string) => void;
 }
 
 const navigation = [
@@ -41,6 +35,7 @@ const navigation = [
   { id: "market" as const, label: "市场观察", icon: ChartNoAxesCombined },
   { id: "account" as const, label: "模拟账户", icon: BriefcaseBusiness },
   { id: "learning" as const, label: "研究管线", icon: BookOpenCheck },
+  { id: "settings" as const, label: "系统设置", icon: Settings },
 ];
 
 const titles: Record<ViewId, { eyebrow: string; title: string }> = {
@@ -49,6 +44,7 @@ const titles: Record<ViewId, { eyebrow: string; title: string }> = {
   market: { eyebrow: "市场观察", title: "指数、资金与事件" },
   account: { eyebrow: "模拟交易", title: "账户与订单" },
   learning: { eyebrow: "受控学习", title: "候选验证与审批" },
+  settings: { eyebrow: "系统配置", title: "设置" },
 };
 
 const connectionLabels: Record<ConnectionState, string> = {
@@ -63,10 +59,6 @@ export function AppShell({
   connectionState,
   mode,
   children,
-  notifications = [],
-  unreadCount = 0,
-  onNotificationClearAll,
-  onNotificationDismiss,
 }: AppShellProps) {
   const { theme, toggle } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -165,13 +157,6 @@ export function AppShell({
               <Search size={17} />
               <input aria-label="搜索" placeholder="搜索标的或策略" />
             </label>
-            {/* 通知中心 */}
-            <NotificationCenter
-              notifications={notifications}
-              unreadCount={unreadCount}
-              onClearAll={onNotificationClearAll}
-              onDismiss={onNotificationDismiss}
-            />
             <button
               aria-label={theme === "light" ? "切换到暗色主题" : "切换到亮色主题"}
               className="theme-toggle"

@@ -3,6 +3,7 @@ import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider } from "./hooks/useTheme";
+import { I18nProvider } from "./i18n";
 import "./styles/index.css";
 import "./styles/trading-strategies.css";
 
@@ -27,30 +28,16 @@ const queryClient = new QueryClient({
   },
 });
 
-// ── Register Service Worker for PWA offline support ──────────
+// Register service worker for PWA offline support
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register("/sw.js")
-      .then((registration) => {
-        console.log("[PWA] Service Worker registered:", registration.scope);
-
-        // Check for updates
-        registration.addEventListener("updatefound", () => {
-          const newWorker = registration.installing;
-          if (!newWorker) return;
-          newWorker.addEventListener("statechange", () => {
-            if (
-              newWorker.state === "installed" &&
-              navigator.serviceWorker.controller
-            ) {
-              console.log("[PWA] New content available — refresh to update.");
-            }
-          });
-        });
+      .register("/sw.js", { scope: "/" })
+      .then((reg) => {
+        console.log("[KAIROS PWA] Service Worker registered:", reg.scope);
       })
       .catch((err) => {
-        console.warn("[PWA] Service Worker registration failed:", err);
+        console.warn("[KAIROS PWA] Service Worker registration failed:", err);
       });
   });
 }
@@ -59,11 +46,13 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <BrowserRouter>
-          <Suspense fallback={<PageLoader />}>
-            <App />
-          </Suspense>
-        </BrowserRouter>
+        <I18nProvider>
+          <BrowserRouter>
+            <Suspense fallback={<PageLoader />}>
+              <App />
+            </Suspense>
+          </BrowserRouter>
+        </I18nProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,

@@ -1,9 +1,8 @@
 /**
- * 东方财富券商适配器。
+ * 东方财富纸面券商适配器。
  *
- * 实现 BrokerAdapter 契约的纸面交易演示。
- *
- * 当前版本只维护本地模拟账户，不发送任何外部订单请求。
+ * 当前版本只模拟连接生命周期，所有订单、费用、风控、幂等和账户状态
+ * 都委托给标准 PaperBroker 运行时，不发送任何外部订单请求。
  *
  * 安全约束：
  * - tradingEnabled 或 environment=live 会在构造阶段失败
@@ -19,11 +18,16 @@ import type {
   OrderRecord,
   OrderRequest,
   PositionSnapshot,
+  RiskLimits,
 } from "../../../shared/trading";
 import type {
   BrokerAdapter,
   BrokerAdapterConfig,
 } from "../../contracts/BrokerAdapter";
+import type { MarketDataProvider } from "../../contracts/MarketDataProvider";
+import { PaperBroker } from "../paperBroker";
+import { RiskEngine } from "../../risk/riskEngine";
+import { InMemoryTradingStore } from "../../store/inMemoryTradingStore";
 
 /** 东方财富券商特定配置 */
 export interface EastMoneyBrokerConfig extends BrokerAdapterConfig {
@@ -33,6 +37,45 @@ export interface EastMoneyBrokerConfig extends BrokerAdapterConfig {
   tradingEnabled?: boolean;
   /** 初始资金（模拟模式） */
   initialCapital?: number;
+}
+
+class MutablePaperMarket extends EventEmitter implements MarketDataProvider {
+  private sequence = 0;
+  private quotes = new Map<string, MarketQuote>();
+  private marketTime = new Date().toISOString();
+
+  start(): void {}
+
+  stop(): void {}
+
+  tick(): MarketSnapshot {
+    this.sequence += 1;
+    this.marketTime = new Date().toISOString();
+    const snapshot = this.getSnapshot();
+    this.emit("snapshot", snapshot);
+    return snapshot;
+  }
+
+  updateQuotes(quotes: MarketQuote[]): MarketSnapshot {
+    for (const quote of quotes) {
+      this.quotes.set(quote.symbol, { ...quote });
+    }
+    return this.tick();
+  }
+
+  getQuote(symbol: string): MarketQuote | undefined {
+    const quote = this.quotes.get(symbol);
+    return quote ? { ...quote } : undefined;
+  }
+
+  getSnapshot(): MarketSnapshot {
+    return {
+      mode: "paper",
+      sequence: this.sequence,
+      marketTime: this.marketTime,
+      quotes: [...this.quotes.values()].map((quote) => ({ ...quote })),
+    };
+  }
 }
 
 export class EastMoneyBrokerAdapter
@@ -47,59 +90,69 @@ export class EastMoneyBrokerAdapter
     credentialsRef: string;
     accountId: string;
     heartbeatMs: number;
-    timeoutMs: number;
-    initialCapital: number;
   };
+  private readonly market = new MutablePaperMarket();
+  private readonly paperBroker: PaperBroker;
   private connected = false;
   private heartbeatTimer?: NodeJS.Timeout;
-  private connectedAt: Date | null = null;
-
-  // 模拟状态
-  private mockCash: number;
-  private mockPositions = new Map<string, {
-    symbol: string;
-    name: string;
-    quantity: number;
-    avgPrice: number;
-  }>();
-  private mockOrders = new Map<string, OrderRecord>();
-  private orderIdCounter = 0;
-  private mockQuotes = new Map<string, MarketQuote>();
 
   constructor(config: EastMoneyBrokerConfig) {
     super();
 
-    if (config.tradingEnabled || config.environment === "live") {
+    const environment = config.environment ?? "paper";
+    if (config.tradingEnabled || environment === "live") {
       throw new Error("东方财富真实交易未实现，当前适配器禁止实盘");
     }
 
+    const initialCapital = config.initialCapital ?? 1_000_000;
+    const limits: RiskLimits = {
+      maxOrderNotional: Math.max(initialCapital, 1_000_000),
+      maxPositionWeight: 1,
+      maxDailyLoss: 0.2,
+      lotSize: 100,
+      realTradingEnabled: false,
+    };
+    const store = new InMemoryTradingStore(initialCapital, false);
+    const risk = new RiskEngine(limits);
+    risk.setInitialEquity(initialCapital);
+
+    this.paperBroker = new PaperBroker(this.market, store, risk, {
+      mode: "paper",
+      commissionRate: 0.0003,
+      minimumCommission: 5,
+      slippageBps: 0,
+      limits,
+    });
     this.config = {
       brokerId: config.brokerId ?? "eastmoney",
       brokerName: config.brokerName ?? "东方财富",
-      endpoint: config.endpoint ?? "https://trading.eastmoney.com/api",
-      environment: config.environment ?? "paper",
+      endpoint: config.endpoint ?? "paper://eastmoney",
+      environment,
       credentialsRef: config.credentialsRef ?? "",
       accountId: config.accountId ?? "EM-PAPER",
-      heartbeatMs: config.heartbeatMs ?? 30000,
-      timeoutMs: config.timeoutMs ?? 10000,
-      initialCapital: config.initialCapital ?? 1_000_000,
+      heartbeatMs: config.heartbeatMs ?? 30_000,
     };
 
-    this.mockCash = this.config.initialCapital;
+    this.paperBroker.on("order.updated", (order: OrderRecord) => {
+      if (this.connected) {
+        this.emit("order.updated", order);
+      }
+    });
+    this.paperBroker.on("account.updated", (account: AccountSnapshot) => {
+      if (this.connected) {
+        this.emit("account.updated", {
+          ...account,
+          accountId: this.config.accountId,
+        });
+      }
+    });
   }
-
-  // ── 连接管理 ──
 
   async connect(): Promise<void> {
     if (this.connected) return;
 
-    // 模拟网络延迟
-    await this.delay(200);
-
+    await this.delay(50);
     this.connected = true;
-    this.connectedAt = new Date();
-
-    // 心跳
     this.heartbeatTimer = setInterval(() => {
       this.emit("connection.status", {
         connected: this.connected,
@@ -130,191 +183,45 @@ export class EastMoneyBrokerAdapter
     return this.connected;
   }
 
-  // ── 订单管理 ──
-
   async submitOrder(request: OrderRequest): Promise<OrderRecord> {
     this.ensureConnected();
-    return this.submitMockOrder(request);
+    await this.delay(30);
+    return this.paperBroker.submitOrder(request);
   }
 
   async cancelOrder(orderId: string): Promise<OrderRecord> {
     this.ensureConnected();
-
-    const order = this.mockOrders.get(orderId);
-    if (!order) {
-      throw new Error(`订单不存在: ${orderId}`);
-    }
-
-    if (order.status !== "pending" && order.status !== "accepted") {
-      throw new Error(`订单状态 ${order.status} 不允许撤销`);
-    }
-
-    const cancelled: OrderRecord = {
-      ...order,
-      status: "cancelled",
-      updatedAt: new Date().toISOString(),
-    };
-    this.mockOrders.set(orderId, cancelled);
-    this.emit("order.updated", cancelled);
-    return cancelled;
+    await this.delay(20);
+    return this.paperBroker.cancelOrder(orderId);
   }
 
-  async getOrders(limit = 50): Promise<OrderRecord[]> {
+  async getOrders(limit?: number): Promise<OrderRecord[]> {
     this.ensureConnected();
-    const orders = [...this.mockOrders.values()]
-      .sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
-      .slice(0, limit);
-    return orders;
+    await this.delay(10);
+    return this.paperBroker.getOrders(limit);
   }
-
-  // ── 持仓与账户 ──
 
   async getPositions(snapshot?: MarketSnapshot): Promise<PositionSnapshot[]> {
     this.ensureConnected();
-
-    // 更新行情缓存
-    if (snapshot) {
-      for (const q of snapshot.quotes) {
-        this.mockQuotes.set(q.symbol, q);
-      }
-    }
-
-    const positions: PositionSnapshot[] = [];
-    for (const [, pos] of this.mockPositions) {
-      const quote = this.mockQuotes.get(pos.symbol);
-      const currentPrice = quote?.price ?? pos.avgPrice;
-      const marketValue = currentPrice * pos.quantity;
-      const unrealizedPnl = (currentPrice - pos.avgPrice) * pos.quantity;
-
-      positions.push({
-        symbol: pos.symbol,
-        name: pos.name,
-        quantity: pos.quantity,
-        averagePrice: pos.avgPrice,
-        currentPrice,
-        marketValue,
-        unrealizedPnl,
-        realizedPnl: 0,
-        weight: this.mockCash > 0 ? marketValue / (this.mockCash + marketValue) : 0,
-      });
-    }
-
-    return positions;
+    await this.delay(10);
+    return this.paperBroker.getPositions(snapshot);
   }
 
   async getAccount(snapshot?: MarketSnapshot): Promise<AccountSnapshot> {
     this.ensureConnected();
-
-    if (snapshot) {
-      for (const q of snapshot.quotes) {
-        this.mockQuotes.set(q.symbol, q);
-      }
-    }
-
-    const positions = await this.getPositions(snapshot);
-    let marketValue = 0;
-    let unrealizedPnl = 0;
-
-    for (const pos of positions) {
-      marketValue += pos.marketValue;
-      unrealizedPnl += pos.unrealizedPnl;
-    }
-
-    const equity = this.mockCash + marketValue;
-
+    await this.delay(10);
     return {
+      ...this.paperBroker.getAccount(snapshot),
       accountId: this.config.accountId,
-      mode: "paper",
-      cash: this.mockCash,
-      equity,
-      marketValue,
-      unrealizedPnl,
-      realizedPnl: 0,
-      dailyPnl: equity - this.config.initialCapital,
-      dailyPnlPercent:
-        ((equity - this.config.initialCapital) / this.config.initialCapital) *
-        100,
-      riskUtilization: 0,
-      paused: false,
-      updatedAt: new Date().toISOString(),
     };
   }
 
-  // ── 行情更新 ──
-
-  /**
-   * 更新内部行情缓存（供 mark-to-market 使用）。
-   */
+  /** 更新纸面运行时的行情缓存，不会触发任何外部订单请求。 */
   updateQuotes(quotes: MarketQuote[]): void {
-    for (const q of quotes) {
-      this.mockQuotes.set(q.symbol, q);
+    const snapshot = this.market.updateQuotes(quotes);
+    if (this.connected) {
+      this.paperBroker.markToMarket(snapshot);
     }
-  }
-
-  // ── 私有方法 ──
-
-  private submitMockOrder(request: OrderRequest): OrderRecord {
-    const quote = this.mockQuotes.get(request.symbol);
-    const price = quote?.price ?? 0;
-    const notional = price * request.quantity;
-    const commission = Math.max(5, notional * 0.0003);
-
-    const orderId = `EM-${++this.orderIdCounter}-${Date.now()}`;
-    const now = new Date().toISOString();
-
-    // 模拟成交
-    const order: OrderRecord = {
-      id: orderId,
-      symbol: request.symbol,
-      side: request.side,
-      type: request.type,
-      quantity: request.quantity,
-      limitPrice: request.limitPrice,
-      clientOrderId: request.clientOrderId,
-      status: "filled",
-      requestedPrice: request.type === "limit" ? (request.limitPrice ?? price) : price,
-      filledPrice: price,
-      filledQuantity: request.quantity,
-      notional,
-      commission,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    // 更新模拟持仓和现金
-    if (request.side === "buy") {
-      this.mockCash -= notional + commission;
-      const existing = this.mockPositions.get(request.symbol);
-      if (existing) {
-        const totalQty = existing.quantity + request.quantity;
-        const totalCost = existing.avgPrice * existing.quantity + notional;
-        existing.quantity = totalQty;
-        existing.avgPrice = totalCost / totalQty;
-      } else {
-        this.mockPositions.set(request.symbol, {
-          symbol: request.symbol,
-          name: quote?.name ?? request.symbol,
-          quantity: request.quantity,
-          avgPrice: price,
-        });
-      }
-    } else {
-      this.mockCash += notional - commission;
-      const existing = this.mockPositions.get(request.symbol);
-      if (existing) {
-        existing.quantity -= request.quantity;
-        if (existing.quantity <= 0) {
-          this.mockPositions.delete(request.symbol);
-        }
-      }
-    }
-
-    this.mockOrders.set(orderId, order);
-    this.emit("order.updated", order);
-    return order;
   }
 
   private ensureConnected(): void {

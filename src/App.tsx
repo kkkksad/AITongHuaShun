@@ -27,6 +27,7 @@ const OrderHistory = lazyNamed(() => import("./components/OrderHistory"), "Order
 const PaperAccount = lazyNamed(() => import("./components/PaperAccount"), "PaperAccount");
 const Portfolio = lazyNamed(() => import("./components/Portfolio"), "Portfolio");
 const RiskPanel = lazyNamed(() => import("./components/RiskPanel"), "RiskPanel");
+const Settings = lazyNamed(() => import("./components/Settings"), "Settings");
 const StrategyCompare = lazyNamed(() => import("./components/StrategyCompare"), "StrategyCompare");
 const StrategyLab = lazyNamed(() => import("./components/StrategyLab"), "StrategyLab");
 
@@ -68,6 +69,7 @@ const viewPaths: Record<ViewId, string> = {
   market: "/market",
   account: "/account",
   learning: "/learning",
+  settings: "/settings",
 };
 
 const pathViews = Object.fromEntries(
@@ -399,6 +401,14 @@ function App() {
             </Suspense>
           }
           path="/learning"
+        />
+        <Route
+          element={
+            <Suspense fallback={<PanelFallback />}>
+              <Settings />
+            </Suspense>
+          }
+          path="/settings"
         />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>
