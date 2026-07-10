@@ -11,7 +11,7 @@ Fastify + TypeScript :8787
         ├─ MockMarket       确定性模拟行情
         ├─ RiskEngine       下单前风险检查
         ├─ PaperBroker      模拟撮合与账户更新
-        └─ InMemoryStore    订单、持仓与审计事件
+        └─ TradingStore     内存或本地 JSON 状态
 ```
 
 前后端共享 `shared/trading.ts` 中的行情、账户、持仓、订单、风险和实时事件契约。
@@ -32,7 +32,8 @@ server/
   market/        MockMarket 模拟行情
   realtime/      WebSocket 连接与广播
   risk/          风险规则
-  store/         内存交易状态与审计
+  store/         内存与本地 JSON 交易状态
+  contracts/     行情和交易仓储适配器契约
   app.ts         Fastify 插件、路由和事件装配
   config.ts      Zod 环境变量校验
   index.ts       服务进程入口
@@ -46,7 +47,7 @@ shared/
 - React 组件只能通过 `tradingApi` 和 `useTradingBackend` 访问服务端，不直接依赖存储或券商实现。
 - `PaperBroker` 依赖行情、风险和仓储，不依赖 HTTP、WebSocket 或 React。
 - `RiskEngine` 只依赖共享领域数据，不产生网络或存储副作用。
-- `InMemoryTradingStore` 是当前状态实现，不是未来数据库模型的替代品。
+- `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都不是未来数据库模型的替代品。
 - `shared/` 只保存跨进程契约，不包含浏览器或 Node.js 运行时副作用。
 - 行情读取和订单执行保持为不同模块与未来不同权限域。
 
@@ -57,7 +58,7 @@ shared/
 3. React 通过 `POST /api/orders` 提交带客户端幂等键的模拟订单。
 4. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
 5. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
-6. `InMemoryTradingStore` 更新现金、持仓、订单和审计事件。
+6. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
 7. 新账户、持仓和订单状态再次通过 WebSocket 推送。
 
 ## 面向真实数据的适配器

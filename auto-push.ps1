@@ -17,7 +17,7 @@ if (-not $status) {
 # Commit and push
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 git add -A 2>&1 | Out-Null
-git commit -m "auto: $timestamp" 2>&1 | Out-Null
+git commit -m "自动：保存开发进度 $timestamp" 2>&1 | Out-Null
 git push 2>&1 | Out-Null
 
 Write-Output "[PUSHED] $timestamp — changes pushed to origin/main"

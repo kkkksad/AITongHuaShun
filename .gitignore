@@ -4,6 +4,7 @@ node_modules/
 # Production and test output
 dist/
 coverage/
+data/
 
 # Local environment files
 .env

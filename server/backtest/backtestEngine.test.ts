@@ -10,13 +10,25 @@ import { HistoricalDataProvider } from "./HistoricalDataProvider";
 
 // ── 辅助：生成历史快照 ──
 
+function createSeededRandom(seed = 0x243f6a88): () => number {
+  let state = seed;
+  return () => {
+    let value = (state += 0x6d2b79f5);
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    state = value ^ (value >>> 14);
+    return (state >>> 0) / 4294967296;
+  };
+}
+
 function generateSnapshots(count: number, seedPrice = 100): MarketSnapshot[] {
   const snapshots: MarketSnapshot[] = [];
   let price = seedPrice;
+  const random = createSeededRandom();
 
   for (let i = 0; i < count; i++) {
     // 简单随机游走
-    price = price * (1 + (Math.random() - 0.48) * 0.02);
+    price = price * (1 + (random() - 0.48) * 0.02);
     price = Math.max(1, price);
 
     snapshots.push({

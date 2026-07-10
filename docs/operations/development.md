@@ -17,6 +17,15 @@ npm install
 
 需要修改默认端口或风控参数时，将 `.env.example` 复制为未提交的 `.env.local`。任何供应商 Token 或密钥只能放在 `.env.local`，不得使用 `VITE_*` 暴露给浏览器。
 
+交易状态默认使用内存仓储。需要在本地重启后保留模拟账户时，可在 `.env.local` 设置：
+
+```text
+STORE_BACKEND=json
+DATA_DIR=./data
+```
+
+JSON 仓储仅用于本地单进程模拟，不具备数据库事务、多实例锁或合规审计能力。`data/` 已被 Git 忽略。
+
 ## 开发服务器
 
 同时启动 Fastify API 和 Vite：
@@ -100,9 +109,9 @@ Invoke-RestMethod `
 
 2026-07-11 的验证结果：
 
-1. `npm test`：4 个测试文件、15 项测试全部通过。
+1. `npm test`：6 个测试文件、55 项测试全部通过。
 2. `npm run build`：TypeScript 检查与 Vite 生产构建通过。
-3. Fastify 注入测试验证健康检查、请求校验、模拟成交与暂停拒单。
+3. 测试覆盖回测、风险、限价单、撤单、契约、JSON 恢复和 Fastify API。
 4. 生产构建已拆分应用、图表和图标包；Recharts 图表包约 420 kB。
 
 ## 生成文件

@@ -24,7 +24,7 @@ while ($true) {
         
         git pull 2>&1 | Out-Null
         
-        $prompt = "继续开发AI量化项目。先查看当前项目代码状态和最新提交，然后选择最重要的功能实现。完成后git add -A && git commit -m 'feat: 描述' && git push。目标实盘交易。不要停止。"
+        $prompt = "继续开发 AI 量化项目。先阅读 AGENTS.md、当前状态和安全边界，再查看最新提交。每轮只完成一个可测试的最小任务；当前只允许研究和模拟交易，不得接入真实券商下单。测试和构建通过后提交并推送。Git 提交标题和正文必须全部使用中文，不使用 feat、fix、chore 等英文前缀。"
         
         # 后台启动，不等待
         $args = @('chat', '-q', $prompt, '-t', 'terminal,file,web', '-w')

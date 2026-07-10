@@ -16,6 +16,17 @@ import {
 // ── 辅助函数 ──
 
 /** 生成随机游走价格序列的市场快照 */
+function createSeededRandom(seed = 0x9e3779b9): () => number {
+  let state = seed;
+  return () => {
+    let value = (state += 0x6d2b79f5);
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    state = value ^ (value >>> 14);
+    return (state >>> 0) / 4294967296;
+  };
+}
+
 function generateSnapshots(
   count: number,
   seedPrice = 100,
@@ -24,10 +35,11 @@ function generateSnapshots(
 ): MarketSnapshot[] {
   const snapshots: MarketSnapshot[] = [];
   const prices = symbols.map(() => seedPrice);
+  const random = createSeededRandom();
 
   for (let i = 0; i < count; i++) {
     const quotes = symbols.map((symbol, idx) => {
-      prices[idx] = prices[idx] * (1 + (Math.random() - 0.48) * volatility);
+      prices[idx] = prices[idx] * (1 + (random() - 0.48) * volatility);
       prices[idx] = Math.max(1, prices[idx]);
       return {
         symbol,
@@ -35,7 +47,7 @@ function generateSnapshots(
         tradable: true,
         price: Number(prices[idx].toFixed(2)),
         previousClose: Number((prices[idx] * 0.99).toFixed(2)),
-        changePercent: Number(((Math.random() - 0.5) * 2).toFixed(2)),
+        changePercent: Number(((random() - 0.5) * 2).toFixed(2)),
         volume: 10_000_000,
         updatedAt: new Date(2024, 0, i + 1).toISOString(),
       };
@@ -274,7 +286,7 @@ describe("MomentumStrategy", () => {
     const snapshots: MarketSnapshot[] = [];
     let price = 100;
     for (let i = 0; i < 200; i++) {
-      price = price * (1 + 0.002 + (Math.random() - 0.5) * 0.01);
+      price = price * (1 + 0.002 + (random() - 0.5) * 0.01);
       snapshots.push({
         mode: "paper",
         sequence: i + 1,
@@ -314,7 +326,7 @@ describe("MomentumStrategy", () => {
     const snapshots: MarketSnapshot[] = [];
     let price = 100;
     for (let i = 0; i < 200; i++) {
-      price = price * (1 - 0.002 + (Math.random() - 0.5) * 0.01);
+      price = price * (1 - 0.002 + (random() - 0.5) * 0.01);
       snapshots.push({
         mode: "paper",
         sequence: i + 1,
@@ -375,7 +387,7 @@ describe("GridTradingStrategy", () => {
     let price = 100;
     for (let i = 0; i < 200; i++) {
       const wave = Math.sin((i / 50) * Math.PI * 2) * 10;
-      price = 100 + wave + (Math.random() - 0.5) * 2;
+      price = 100 + wave + (random() - 0.5) * 2;
       price = Math.max(50, price);
 
       snapshots.push({
