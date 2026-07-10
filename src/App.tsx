@@ -7,12 +7,16 @@ import { LearningPipeline } from "./components/LearningPipeline";
 import { MarketChart } from "./components/MarketChart";
 import { MarketOverview } from "./components/MarketOverview";
 import { NewsPanel } from "./components/NewsPanel";
+import { OrderHistory } from "./components/OrderHistory";
 import { PaperAccount } from "./components/PaperAccount";
+import { Portfolio } from "./components/Portfolio";
 import { StrategyLab } from "./components/StrategyLab";
 import { strategies } from "./data/mockData";
 import { runBacktest } from "./lib/backtest";
 import { useTradingBackend } from "./hooks/useTradingBackend";
 import type { StrategyId, StrategyParameters } from "./types";
+
+type AccountTab = "portfolio" | "trading" | "orders";
 
 const defaultParameters: StrategyParameters = {
   lookback: 20,
@@ -27,9 +31,16 @@ function percent(value: number): string {
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
 }
 
+const accountTabs: { id: AccountTab; label: string }[] = [
+  { id: "portfolio", label: "持仓分析" },
+  { id: "trading", label: "交易下单" },
+  { id: "orders", label: "订单历史" },
+];
+
 function App() {
   const trading = useTradingBackend();
   const [activeView, setActiveView] = useState<ViewId>("overview");
+  const [accountTab, setAccountTab] = useState<AccountTab>("portfolio");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyId>("momentum");
   const [parameters, setParameters] = useState<StrategyParameters>(defaultParameters);
   const [committedParameters, setCommittedParameters] =
@@ -212,11 +223,83 @@ function App() {
     </div>
   );
 
+  const accountTabContent: Record<AccountTab, ReactNode> = {
+    portfolio: (
+      <Portfolio
+        equity={trading.account?.equity}
+        market={trading.market}
+        positions={trading.positions}
+      />
+    ),
+    trading: <PaperAccount backend={trading} />,
+    orders: (
+      <OrderHistory
+        orders={trading.orders}
+        onCancelOrder={async (orderId) => {
+          await trading.cancelOrder(orderId);
+        }}
+        pendingAction={trading.pendingAction}
+      />
+    ),
+  };
+
+  const account = (
+    <div className="page-stack">
+      {/* Account Header */}
+      {trading.account && (
+        <section className="panel account-hero-panel">
+          <div className="account-hero-row">
+            <div>
+              <span className="section-kicker">{trading.account.accountId} · {trading.mode}</span>
+              <h2>
+                {new Intl.NumberFormat("zh-CN", {
+                  style: "currency",
+                  currency: "CNY",
+                  maximumFractionDigits: 0,
+                }).format(trading.account.equity)}
+              </h2>
+              <p>
+                今日权益{" "}
+                <strong
+                  className={trading.account.dailyPnl >= 0 ? "positive" : "negative"}
+                >
+                  {trading.account.dailyPnl >= 0 ? "+" : ""}
+                  {(trading.account.dailyPnlPercent * 100).toFixed(2)}%
+                </strong>
+                {" · "}可用 {new Intl.NumberFormat("zh-CN", {
+                  style: "currency",
+                  currency: "CNY",
+                  maximumFractionDigits: 0,
+                }).format(trading.account.cash)}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Tab Navigation */}
+      <nav className="account-tabs" aria-label="账户子页面">
+        {accountTabs.map((tab) => (
+          <button
+            className={accountTab === tab.id ? "account-tab active" : "account-tab"}
+            key={tab.id}
+            onClick={() => setAccountTab(tab.id)}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {accountTabContent[accountTab]}
+    </div>
+  );
+
   const views: Record<ViewId, ReactNode> = {
     overview,
     strategy,
     market,
-    account: <PaperAccount backend={trading} />,
+    account,
     learning: <LearningPipeline />,
   };
 

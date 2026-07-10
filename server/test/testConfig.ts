@@ -7,6 +7,8 @@ export function createTestConfig(
     API_HOST: "127.0.0.1",
     API_PORT: 8787,
     WEB_ORIGIN: "http://127.0.0.1:4173",
+    RATE_LIMIT_MAX: 120,
+    RATE_LIMIT_WINDOW_MS: 60_000,
     MARKET_MODE: "mock",
     MARKET_TICK_MS: 1000,
     TRADING_STARTING_CASH: 1_000_000,

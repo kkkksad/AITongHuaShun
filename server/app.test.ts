@@ -31,6 +31,42 @@ describe("trading API", () => {
     });
   });
 
+  it("adds baseline security headers", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/health",
+    });
+
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers["x-frame-options"]).toBe("SAMEORIGIN");
+  });
+
+  it("rate limits repeated requests", async () => {
+    const limitedApp = await buildTradingApp({
+      config: {
+        ...createTestConfig(),
+        RATE_LIMIT_MAX: 1,
+        RATE_LIMIT_WINDOW_MS: 60_000,
+      },
+      startMarket: false,
+    });
+
+    try {
+      await limitedApp.inject({
+        method: "GET",
+        url: "/api/health",
+      });
+      const response = await limitedApp.inject({
+        method: "GET",
+        url: "/api/health",
+      });
+
+      expect(response.statusCode).toBe(429);
+    } finally {
+      await limitedApp.close();
+    }
+  });
+
   it("validates order request payloads", async () => {
     const response = await app.inject({
       method: "POST",
