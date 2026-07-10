@@ -1,0 +1,27 @@
+{
+  "name": "KAIROS Quant Workbench",
+  "short_name": "KAIROS",
+  "description": "面向量化研究、确定性回测与模拟交易的本地工作台",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1117",
+  "theme_color": "#1f242c",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

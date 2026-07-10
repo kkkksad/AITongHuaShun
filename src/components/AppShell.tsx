@@ -17,6 +17,8 @@ import {
 import type { ConnectionState } from "../hooks/useTradingBackend";
 import { useTheme } from "../hooks/useTheme";
 import type { TradingMode } from "../../shared/trading";
+import type { NotificationItem } from "./NotificationCenter";
+import { NotificationCenter } from "./NotificationCenter";
 
 export type ViewId = "overview" | "strategy" | "market" | "account" | "learning";
 
@@ -26,6 +28,11 @@ interface AppShellProps {
   connectionState: ConnectionState;
   mode: TradingMode;
   children: ReactNode;
+  /** 通知中心数据 */
+  notifications?: NotificationItem[];
+  unreadCount?: number;
+  onNotificationClearAll?: () => void;
+  onNotificationDismiss?: (id: string) => void;
 }
 
 const navigation = [
@@ -56,6 +63,10 @@ export function AppShell({
   connectionState,
   mode,
   children,
+  notifications = [],
+  unreadCount = 0,
+  onNotificationClearAll,
+  onNotificationDismiss,
 }: AppShellProps) {
   const { theme, toggle } = useTheme();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -154,6 +165,13 @@ export function AppShell({
               <Search size={17} />
               <input aria-label="搜索" placeholder="搜索标的或策略" />
             </label>
+            {/* 通知中心 */}
+            <NotificationCenter
+              notifications={notifications}
+              unreadCount={unreadCount}
+              onClearAll={onNotificationClearAll}
+              onDismiss={onNotificationDismiss}
+            />
             <button
               aria-label={theme === "light" ? "切换到暗色主题" : "切换到亮色主题"}
               className="theme-toggle"
