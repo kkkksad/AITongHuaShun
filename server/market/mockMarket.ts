@@ -2,14 +2,62 @@ import { EventEmitter } from "node:events";
 import type { MarketQuote, MarketSnapshot, TradingMode } from "../../shared/trading";
 
 const initialQuotes = [
-  { symbol: "000001", name: "上证指数", price: 3521.84, previousClose: 3498.06 },
-  { symbol: "399001", name: "深证成指", price: 10794.32, previousClose: 10674.77 },
-  { symbol: "399006", name: "创业板指", price: 2238.61, previousClose: 2206.4 },
-  { symbol: "000300", name: "沪深 300", price: 4146.28, previousClose: 4115.82 },
-  { symbol: "600519", name: "贵州茅台", price: 1492.6, previousClose: 1486.8 },
-  { symbol: "300750", name: "宁德时代", price: 253.4, previousClose: 249.7 },
-  { symbol: "688981", name: "中芯国际", price: 93.2, previousClose: 90.65 },
-  { symbol: "601318", name: "中国平安", price: 52.1, previousClose: 51.72 },
+  {
+    symbol: "000001",
+    name: "上证指数",
+    tradable: false,
+    price: 3521.84,
+    previousClose: 3498.06,
+  },
+  {
+    symbol: "399001",
+    name: "深证成指",
+    tradable: false,
+    price: 10794.32,
+    previousClose: 10674.77,
+  },
+  {
+    symbol: "399006",
+    name: "创业板指",
+    tradable: false,
+    price: 2238.61,
+    previousClose: 2206.4,
+  },
+  {
+    symbol: "000300",
+    name: "沪深 300",
+    tradable: false,
+    price: 4146.28,
+    previousClose: 4115.82,
+  },
+  {
+    symbol: "600519",
+    name: "贵州茅台",
+    tradable: true,
+    price: 1492.6,
+    previousClose: 1486.8,
+  },
+  {
+    symbol: "300750",
+    name: "宁德时代",
+    tradable: true,
+    price: 253.4,
+    previousClose: 249.7,
+  },
+  {
+    symbol: "688981",
+    name: "中芯国际",
+    tradable: true,
+    price: 93.2,
+    previousClose: 90.65,
+  },
+  {
+    symbol: "601318",
+    name: "中国平安",
+    tradable: true,
+    price: 52.1,
+    previousClose: 51.72,
+  },
 ] as const;
 
 export class MockMarket extends EventEmitter {

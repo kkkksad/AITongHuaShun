@@ -6,6 +6,7 @@ export type OrderStatus = "accepted" | "filled" | "rejected" | "cancelled";
 export interface MarketQuote {
   symbol: string;
   name: string;
+  tradable: boolean;
   price: number;
   previousClose: number;
   changePercent: number;
@@ -94,5 +95,6 @@ export interface AuditEvent {
 export type TradingEvent =
   | { type: "market.snapshot"; data: MarketSnapshot }
   | { type: "account.snapshot"; data: AccountSnapshot }
+  | { type: "positions.snapshot"; data: PositionSnapshot[] }
   | { type: "order.updated"; data: OrderRecord }
   | { type: "system.status"; data: { connected: boolean; message: string } };

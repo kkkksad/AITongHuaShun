@@ -24,7 +24,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -34,6 +35,11 @@ button {
 
 button:focus-visible,
 input:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+select:focus-visible {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
 }
@@ -257,6 +263,11 @@ input:focus-visible {
 .status-dot.amber {
   background: #d97706;
   box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
+}
+
+.status-dot.red {
+  background: #d24848;
+  box-shadow: 0 0 0 3px rgba(210, 72, 72, 0.12);
 }
 
 .main-content {
@@ -817,7 +828,7 @@ input:focus-visible {
 }
 
 .primary-button:disabled {
-  cursor: progress;
+  cursor: not-allowed;
   opacity: 0.68;
 }
 
@@ -1089,6 +1100,131 @@ input:focus-visible {
   grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.8fr);
   gap: 24px;
   padding: 24px 26px 28px;
+}
+
+.trading-rail {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.order-ticket {
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #dfe5ec;
+  border-radius: 7px;
+}
+
+.order-ticket > label {
+  display: grid;
+  gap: 7px;
+  margin-top: 13px;
+  color: #69727f;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.order-ticket select,
+.order-ticket input {
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  color: #303640;
+  background: #ffffff;
+  border: 1px solid #d9dfe6;
+  border-radius: 5px;
+}
+
+.side-switch {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-top: 13px;
+}
+
+.side-switch button {
+  height: 36px;
+  color: #69727f;
+  background: #ffffff;
+  border: 1px solid #d9dfe6;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.side-switch button.active.buy {
+  color: #0d7656;
+  background: #e8f6f1;
+  border-color: #89ccb3;
+}
+
+.side-switch button.active.sell {
+  color: #b13f3f;
+  background: #fcecec;
+  border-color: #e6a5a5;
+}
+
+.order-estimate {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px 12px;
+  padding: 12px 0;
+  margin-top: 13px;
+  border-top: 1px solid #e1e6eb;
+  border-bottom: 1px solid #e1e6eb;
+  font-size: 10px;
+}
+
+.order-estimate span {
+  color: #858e99;
+}
+
+.order-estimate strong {
+  color: #303640;
+  text-align: right;
+}
+
+.risk-hint,
+.order-feedback,
+.empty-copy {
+  margin: 10px 0;
+  color: #858e99;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.order-feedback {
+  padding: 8px 9px;
+  color: #246a52;
+  background: #eaf6f1;
+  border-radius: 4px;
+}
+
+.order-feedback.error {
+  color: #a23b3b;
+  background: #fff0f0;
+}
+
+.account-empty {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.account-empty > div {
+  flex: 1;
+}
+
+.account-empty h2,
+.account-empty p {
+  margin: 0;
+}
+
+.account-empty p {
+  margin-top: 5px;
+  color: #7c8490;
+  font-size: 11px;
 }
 
 .order-list article {
@@ -1445,6 +1581,11 @@ input:focus-visible {
   .account-hero,
   .account-actions {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .account-empty {
+    align-items: flex-start;
     flex-direction: column;
   }
 

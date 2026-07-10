@@ -10,12 +10,16 @@ import {
   Search,
   ShieldCheck,
 } from "lucide-react";
+import type { ConnectionState } from "../hooks/useTradingBackend";
+import type { TradingMode } from "../../shared/trading";
 
 export type ViewId = "overview" | "strategy" | "market" | "account" | "learning";
 
 interface AppShellProps {
   activeView: ViewId;
   onViewChange: (view: ViewId) => void;
+  connectionState: ConnectionState;
+  mode: TradingMode;
   children: ReactNode;
 }
 
@@ -35,7 +39,19 @@ const titles: Record<ViewId, { eyebrow: string; title: string }> = {
   learning: { eyebrow: "受控学习", title: "候选验证与审批" },
 };
 
-export function AppShell({ activeView, onViewChange, children }: AppShellProps) {
+const connectionLabels: Record<ConnectionState, string> = {
+  connected: "模拟行情实时连接",
+  connecting: "正在连接交易后端",
+  offline: "后端离线，静态演示",
+};
+
+export function AppShell({
+  activeView,
+  onViewChange,
+  connectionState,
+  mode,
+  children,
+}: AppShellProps) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -68,7 +84,11 @@ export function AppShell({ activeView, onViewChange, children }: AppShellProps) 
             <ShieldCheck size={17} />
             <span>研究环境</span>
           </div>
-          <p>所有行情、新闻与账户数据均为模拟数据。</p>
+          <p>
+            {connectionState === "connected"
+              ? "行情与账户来自本地模拟后端，真实交易保持关闭。"
+              : "后端未连接，页面保留静态研究数据作为降级展示。"}
+          </p>
         </div>
 
         <div className="profile">
@@ -91,9 +111,17 @@ export function AppShell({ activeView, onViewChange, children }: AppShellProps) 
               <Search size={17} />
               <input aria-label="搜索" placeholder="搜索标的或策略" />
             </label>
-            <div className="market-state">
-              <span className="status-dot" />
-              <span>模拟市场已收盘</span>
+            <div className={`market-state connection-${connectionState}`}>
+              <span
+                className={
+                  connectionState === "connected"
+                    ? "status-dot"
+                    : connectionState === "connecting"
+                      ? "status-dot amber"
+                      : "status-dot red"
+                }
+              />
+              <span>{connectionLabels[connectionState]} · {mode}</span>
             </div>
           </div>
         </header>

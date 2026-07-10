@@ -36,6 +36,10 @@ export class RiskEngine {
       return this.reject("UNKNOWN_SYMBOL", "没有可用的行情报价");
     }
 
+    if (!quote.tradable) {
+      return this.reject("NON_TRADABLE_SYMBOL", "当前标的仅用于行情展示，不能下单");
+    }
+
     if (!Number.isInteger(request.quantity) || request.quantity <= 0) {
       return this.reject("INVALID_QUANTITY", "订单数量必须是正整数");
     }

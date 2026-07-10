@@ -11,6 +11,7 @@ import { PaperAccount } from "./components/PaperAccount";
 import { StrategyLab } from "./components/StrategyLab";
 import { strategies } from "./data/mockData";
 import { runBacktest } from "./lib/backtest";
+import { useTradingBackend } from "./hooks/useTradingBackend";
 import type { StrategyId, StrategyParameters } from "./types";
 
 const defaultParameters: StrategyParameters = {
@@ -27,6 +28,7 @@ function percent(value: number): string {
 }
 
 function App() {
+  const trading = useTradingBackend();
   const [activeView, setActiveView] = useState<ViewId>("overview");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyId>("momentum");
   const [parameters, setParameters] = useState<StrategyParameters>(defaultParameters);
@@ -70,7 +72,15 @@ function App() {
         <div className="banner-summary">
           <div>
             <span>组合权益</span>
-            <strong>¥1,286,420</strong>
+            <strong>
+              {trading.account
+                ? new Intl.NumberFormat("zh-CN", {
+                    style: "currency",
+                    currency: "CNY",
+                    maximumFractionDigits: 0,
+                  }).format(trading.account.equity)
+                : "等待连接"}
+            </strong>
           </div>
           <div>
             <span>本期策略收益</span>
@@ -120,7 +130,10 @@ function App() {
         </article>
       </section>
 
-      <MarketOverview />
+      <MarketOverview
+        connectionState={trading.connectionState}
+        market={trading.market}
+      />
 
       <div className="two-column wide-left">
         <BacktestResults compact result={result} />
@@ -187,7 +200,10 @@ function App() {
 
   const market = (
     <div className="page-stack">
-      <MarketOverview />
+      <MarketOverview
+        connectionState={trading.connectionState}
+        market={trading.market}
+      />
       <div className="two-column wide-left">
         <MarketChart />
         <FlowPanel />
@@ -200,12 +216,17 @@ function App() {
     overview,
     strategy,
     market,
-    account: <PaperAccount />,
+    account: <PaperAccount backend={trading} />,
     learning: <LearningPipeline />,
   };
 
   return (
-    <AppShell activeView={activeView} onViewChange={setActiveView}>
+    <AppShell
+      activeView={activeView}
+      connectionState={trading.connectionState}
+      mode={trading.mode}
+      onViewChange={setActiveView}
+    >
       {views[activeView]}
     </AppShell>
   );
