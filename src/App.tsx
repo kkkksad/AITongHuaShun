@@ -10,13 +10,15 @@ import { NewsPanel } from "./components/NewsPanel";
 import { OrderHistory } from "./components/OrderHistory";
 import { PaperAccount } from "./components/PaperAccount";
 import { Portfolio } from "./components/Portfolio";
+import { RiskPanel } from "./components/RiskPanel";
+import { StrategyCompare } from "./components/StrategyCompare";
 import { StrategyLab } from "./components/StrategyLab";
 import { strategies } from "./data/mockData";
 import { runBacktest } from "./lib/backtest";
 import { useTradingBackend } from "./hooks/useTradingBackend";
 import type { StrategyId, StrategyParameters } from "./types";
 
-type AccountTab = "portfolio" | "trading" | "orders";
+type AccountTab = "portfolio" | "trading" | "orders" | "risk";
 
 const defaultParameters: StrategyParameters = {
   lookback: 20,
@@ -35,6 +37,7 @@ const accountTabs: { id: AccountTab; label: string }[] = [
   { id: "portfolio", label: "持仓分析" },
   { id: "trading", label: "交易下单" },
   { id: "orders", label: "订单历史" },
+  { id: "risk", label: "风控面板" },
 ];
 
 function App() {
@@ -51,6 +54,16 @@ function App() {
   const result = useMemo(
     () => runBacktest(committedStrategy, committedParameters),
     [committedParameters, committedStrategy],
+  );
+
+  // Pre-compute all strategy results for comparison
+  const allStrategyResults = useMemo(
+    () =>
+      strategies.map((strategy) => ({
+        strategy,
+        result: runBacktest(strategy.id, committedParameters),
+      })),
+    [committedParameters],
   );
 
   const currentStrategy =
@@ -206,6 +219,7 @@ function App() {
         selectedStrategy={selectedStrategy}
       />
       <BacktestResults result={result} />
+      <StrategyCompare results={allStrategyResults} />
     </div>
   );
 
@@ -241,6 +255,7 @@ function App() {
         pendingAction={trading.pendingAction}
       />
     ),
+    risk: <RiskPanel account={trading.account} limits={trading.limits} />,
   };
 
   const account = (

@@ -92,9 +92,10 @@ export async function buildTradingApp(
       });
     }
 
-    if ((error as { statusCode?: number }).statusCode === 400) {
-      return reply.status(400).send({
-        error: "INVALID_REQUEST",
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode && statusCode >= 400 && statusCode < 500) {
+      return reply.status(statusCode).send({
+        error: statusCode === 429 ? "RATE_LIMITED" : "INVALID_REQUEST",
         message: (error as Error).message,
       });
     }

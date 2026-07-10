@@ -45,6 +45,10 @@ function upsertOrder(orders: OrderRecord[], next: OrderRecord): OrderRecord[] {
   return orders.map((order, index) => (index === existingIndex ? next : order));
 }
 
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
+const HEARTBEAT_GRACE_MS = 60_000;
+
 export function useTradingBackend(): TradingBackend {
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
@@ -58,6 +62,7 @@ export function useTradingBackend(): TradingBackend {
   const [notice, setNotice] = useState<string>();
   const [pendingAction, setPendingAction] = useState(false);
   const mountedRef = useRef(true);
+  const reconnectAttemptRef = useRef(0);
 
   const refresh = useCallback(async () => {
     try {
@@ -85,6 +90,50 @@ export function useTradingBackend(): TradingBackend {
     mountedRef.current = true;
     let socket: WebSocket | undefined;
     let reconnectTimer: number | undefined;
+    let heartbeatTimer: number | undefined;
+    let lastMessageTime = Date.now();
+
+    const resetReconnectDelay = () => {
+      reconnectAttemptRef.current = 0;
+    };
+
+    const scheduleReconnect = () => {
+      if (!mountedRef.current) return;
+      setConnectionState("offline");
+      const attempt = reconnectAttemptRef.current;
+      const delay = Math.min(
+        RECONNECT_BASE_MS * Math.pow(2, attempt),
+        RECONNECT_MAX_MS,
+      );
+      reconnectAttemptRef.current = attempt + 1;
+      reconnectTimer = window.setTimeout(connect, delay);
+    };
+
+    const clearTimers = () => {
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+      }
+      if (heartbeatTimer) {
+        window.clearTimeout(heartbeatTimer);
+        heartbeatTimer = undefined;
+      }
+    };
+
+    const startHeartbeat = () => {
+      lastMessageTime = Date.now();
+      if (heartbeatTimer) {
+        window.clearTimeout(heartbeatTimer);
+      }
+      heartbeatTimer = window.setInterval(() => {
+        if (!mountedRef.current) return;
+        const elapsed = Date.now() - lastMessageTime;
+        if (elapsed > HEARTBEAT_GRACE_MS) {
+          setError("实时通道心跳超时，正在重连");
+          socket?.close();
+        }
+      }, 15_000);
+    };
 
     const connect = () => {
       setConnectionState("connecting");
@@ -93,8 +142,12 @@ export function useTradingBackend(): TradingBackend {
       socket.addEventListener("open", () => {
         setConnectionState("connected");
         setError(undefined);
+        resetReconnectDelay();
+        startHeartbeat();
       });
+
       socket.addEventListener("message", (message) => {
+        lastMessageTime = Date.now();
         const event = JSON.parse(message.data as string) as TradingEvent;
 
         switch (event.type) {
@@ -116,13 +169,14 @@ export function useTradingBackend(): TradingBackend {
             break;
         }
       });
+
       socket.addEventListener("close", () => {
         if (!mountedRef.current) {
           return;
         }
-        setConnectionState("offline");
-        reconnectTimer = window.setTimeout(connect, 2000);
+        scheduleReconnect();
       });
+
       socket.addEventListener("error", () => {
         setError("实时通道连接失败，正在重试");
       });
@@ -133,9 +187,7 @@ export function useTradingBackend(): TradingBackend {
 
     return () => {
       mountedRef.current = false;
-      if (reconnectTimer) {
-        window.clearTimeout(reconnectTimer);
-      }
+      clearTimers();
       socket?.close();
     };
   }, [refresh]);
