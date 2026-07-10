@@ -200,7 +200,7 @@ Expected: 连接、事件、订单和风控测试全部通过。
 Run:
 
 ```powershell
-rg -n "�" AGENTS.md README.md docs server src shared
+rg -n "\x{FFFD}" AGENTS.md README.md docs server src shared
 ```
 
 Expected: 无实际 `U+FFFD` 替换字符。
@@ -239,7 +239,7 @@ Expected: 全部通过，且工作区只包含本计划相关改动和用户已�
 ## 验证结果
 
 - 计划开始前：`10` 个测试文件、`156` 项测试通过。
-- 最终结果：`19` 个测试文件、`271` 项测试全部通过；TypeScript 与 Vite 生产构建通过；五个前端路由已完成浏览器验收。
+- 最终结果：`24` 个测试文件、`455` 项测试全部通过；TypeScript 与 Vite 生产构建通过；五个前端路由已完成浏览器验收。
 
 ## 遗留问题
 
