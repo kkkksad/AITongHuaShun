@@ -11,7 +11,6 @@ import { z } from "zod";
 
 const DEFAULT_SECRET = "kairos-local-dev-secret-change-in-production";
 const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_SECRET;
-const TOKEN_EXPIRY = "24h";
 
 // 默认管理员凭据（仅用于本地开发）
 const DEFAULT_USERNAME = "admin";
@@ -199,16 +198,6 @@ export function registerAuthRoutes(app: FastifyInstance): void {
       tags: ["认证"],
       summary: "验证令牌",
       description: "验证当前 Bearer 令牌是否有效",
-      headers: {
-        type: "object",
-        properties: {
-          authorization: {
-            type: "string",
-            description: "Bearer <token>",
-          },
-        },
-        required: ["authorization"],
-      },
       response: {
         200: {
           type: "object",
