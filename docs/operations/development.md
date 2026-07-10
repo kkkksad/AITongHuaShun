@@ -155,7 +155,7 @@ Invoke-RestMethod `
 
 2026-07-11 的验证结果：
 
-1. `npm test`：24 个测试文件、455 项测试全部通过。
+1. `npm test`：25 个测试文件、461 项测试全部通过。
 2. `npm run build`：TypeScript 检查与 Vite 生产构建通过。
 3. `python -m pytest akshare-bridge/test_bridge.py -q`：10 项测试通过。
 4. 测试覆盖回测、参数优化、风险、限价单、撤单、契约、JSON 恢复、HTTP/AkShare 行情适配器、监控、导出和 Fastify API。

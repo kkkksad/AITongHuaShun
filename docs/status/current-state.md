@@ -64,8 +64,8 @@ GET  /documentation/json                  (OpenAPI JSON)
 
 ```text
 npm test
-24 test files passed
-455 tests passed (0 failures)
+25 test files passed
+461 tests passed (0 failures)
 
 npm run build
 TypeScript checks and Vite production build passed
