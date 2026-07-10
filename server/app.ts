@@ -1,4 +1,6 @@
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { z, ZodError } from "zod";
@@ -45,6 +47,14 @@ export async function buildTradingApp(
   const system = options.system ?? createTradingSystem(options.config);
   const hub = new WebSocketHub();
 
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+  });
+  await app.register(rateLimit, {
+    global: true,
+    max: options.config.RATE_LIMIT_MAX,
+    timeWindow: options.config.RATE_LIMIT_WINDOW_MS,
+  });
   await app.register(cors, {
     origin: options.config.WEB_ORIGIN,
     methods: ["GET", "POST", "DELETE"],
