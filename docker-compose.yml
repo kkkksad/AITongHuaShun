@@ -5,6 +5,7 @@ version: "3.8"
 # ============================================================
 # 开发环境: docker compose --profile dev up
 # 生产环境: docker compose --profile prod up
+# 仅行情桥接: docker compose up akshare-bridge
 # ============================================================
 
 services:
@@ -156,4 +157,28 @@ services:
     depends_on:
       - backend-dev
     profiles:
+      - dev
+
+  # ==========================================================
+  # AkShare 行情桥接微服务
+  # ==========================================================
+  akshare-bridge:
+    build:
+      context: ./akshare-bridge
+      dockerfile: Dockerfile
+    image: kairos-akshare-bridge:latest
+    container_name: kairos-akshare
+    ports:
+      - "8800:8800"
+    environment:
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8800/api/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - prod
       - dev

@@ -1,22 +1,17 @@
 # Dependencies
 node_modules/
+.pnp
+.pnp.js
 
-# Build output
+# Build outputs
 dist/
 server-dist/
+
+# Test artifacts
+coverage/
 *.tsbuildinfo
 
-# Git
-.git/
-.gitignore
-.gitattributes
-
-# Environment files (secrets)
-.env
-.env.local
-.env.*.local
-
-# IDE / Editor
+# IDE
 .vscode/
 .idea/
 *.swp
@@ -27,23 +22,36 @@ server-dist/
 .DS_Store
 Thumbs.db
 
-# Docker
-Dockerfile
-.dockerignore
-docker-compose*.yml
+# Environment
+.env
+.env.local
+.env.*.local
 
-# Docs (not needed at runtime)
-docs/
+# Git
+.git/
+.gitignore
 
-# Test files (not needed at runtime)
-**/*.test.ts
-**/*.spec.ts
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
 
-# Node
+# Data
+data/
+*.db
+*.sqlite
+
+# Logs
+logs/
+*.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# Misc
-*.md
-LICENSE
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Docs (keep in git but don't copy to image)
+docs/

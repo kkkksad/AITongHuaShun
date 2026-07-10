@@ -31,7 +31,11 @@ async function get(app: FastifyInstance, url: string) {
   return { status: res.statusCode, body: res.json() };
 }
 
-async function post(app: FastifyInstance, url: string, payload: unknown) {
+async function post(
+  app: FastifyInstance,
+  url: string,
+  payload: Record<string, unknown>,
+) {
   const res = await app.inject({ method: "POST", url, payload });
   return { status: res.statusCode, body: res.json() };
 }

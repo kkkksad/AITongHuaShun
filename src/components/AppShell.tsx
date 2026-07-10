@@ -7,10 +7,13 @@ import {
   CircleUserRound,
   FlaskConical,
   LayoutDashboard,
+  Moon,
   Search,
   ShieldCheck,
+  Sun,
 } from "lucide-react";
 import type { ConnectionState } from "../hooks/useTradingBackend";
+import { useTheme } from "../hooks/useTheme";
 import type { TradingMode } from "../../shared/trading";
 
 export type ViewId = "overview" | "strategy" | "market" | "account" | "learning";
@@ -52,6 +55,8 @@ export function AppShell({
   mode,
   children,
 }: AppShellProps) {
+  const { theme, toggle } = useTheme();
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -111,6 +116,15 @@ export function AppShell({
               <Search size={17} />
               <input aria-label="搜索" placeholder="搜索标的或策略" />
             </label>
+            <button
+              aria-label={theme === "light" ? "切换到暗色主题" : "切换到亮色主题"}
+              className="theme-toggle"
+              onClick={toggle}
+              title={theme === "light" ? "暗色模式" : "亮色模式"}
+              type="button"
+            >
+              {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
+            </button>
             <div className={`market-state connection-${connectionState}`}>
               <span
                 className={

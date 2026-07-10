@@ -1,49 +1,44 @@
-# EastMoney API 对接
+# 东方财富只读行情与纸面适配器
 
 **日期：** 2026-07-11
-**状态：开发中**
+**状态：** 已完成安全收敛
 
 ## 目标
 
-实现东方财富 API 对接，分两步：
-1. **行情数据提供者** — 实现 MarketDataProvider 契约，获取 A 股实时行情
-2. **券商适配器** — 实现 BrokerAdapter 契约，对接东方财富交易接口
+1. 使用东方财富公开行情接口实现只读 `MarketDataProvider`。
+2. 提供仅维护本地模拟账户的纸面 `BrokerAdapter` 演示。
+3. 不读取真实券商凭据，不发送真实订单，不提供实盘开关。
 
 ## 架构
 
-```
+```text
 server/broker/eastmoney/
-├── EastMoneyMarketProvider.ts   # MarketDataProvider 实现
-├── EastMoneyBrokerAdapter.ts    # BrokerAdapter 实现
-├── eastMoneyApi.ts              # 底层 HTTP API 客户端
-├── eastMoney.test.ts            # 测试
+├── EastMoneyMarketProvider.ts   # 只读公开行情适配器
+├── EastMoneyBrokerAdapter.ts    # 本地纸面账户演示
+├── eastMoneyApi.ts              # 公开行情 HTTP 客户端
+└── eastmoney.test.ts            # 离线单元测试
 ```
 
 ## 行情数据
 
-使用东方财富公开行情 API（无需认证）：
-- 实时行情：`push2.eastmoney.com/api/qt/stock/get`
-- 板块列表：`push2.eastmoney.com/api/qt/clist/get`
-- 支持沪深两市全部 A 股
+东方财富公开行情接口不需要账户认证，但仍必须记录来源、抓取时间、市场时区、更新频率和供应商使用条款。该提供器当前未接入默认 `createTradingSystem`，本地系统仍使用 `MockMarket`。
 
-## 交易接口
+## 纸面交易
 
-东方财富券商交易接口（需认证）：
-- 使用 BrokerAdapter 契约接口
-- 支持市价单/限价单
-- 支持订单查询、持仓查询、账户查询
-- 初始版本使用模拟模式（mock 响应），真实连接需配置凭证
+- `EastMoneyBrokerAdapter` 只维护本地模拟现金、持仓和订单。
+- `tradingEnabled=true` 或 `environment=live` 会在构造阶段直接失败。
+- 源码中不包含 `/order/submit`、券商授权头或真实账户 Token。
+- 该适配器不代表东方财富官方交易接口，也不能用于真实资金。
 
 ## 安全约束
 
-- 默认仅行情读取，不下单
-- 真实交易需显式设置 `EASTMONEY_TRADING_ENABLED=true`
-- 所有 API 调用记录审计日志
-- 请求频率限制，防止被封 IP
+- 默认系统继续使用 `PaperBroker` 和 `RiskEngine`。
+- 真实执行必须由独立项目、独立部署、密钥管理、账户白名单、逐笔审批和审计体系实现。
+- 浏览器、MCP 或研究智能体不得直接获得订单执行权限。
 
-## 进度
+## 验证
 
-- [ ] eastMoneyApi.ts - HTTP API 客户端
-- [ ] EastMoneyMarketProvider.ts - 行情数据提供者
-- [ ] EastMoneyBrokerAdapter.ts - 券商适配器
-- [ ] eastMoney.test.ts - 测试
+- [x] `eastMoneyApi.ts` 公开行情客户端。
+- [x] `EastMoneyMarketProvider.ts` 只读行情提供器。
+- [x] `EastMoneyBrokerAdapter.ts` 删除真实订单 HTTP 分支。
+- [x] `eastmoney.test.ts` 验证 paper 行为与 live 拒绝。

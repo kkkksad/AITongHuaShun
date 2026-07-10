@@ -1,0 +1,94 @@
+"""
+AkShare 桥接微服务单元测试
+运行: python -m pytest test_bridge.py -v
+或:   python test_bridge.py
+"""
+
+import json
+import sys
+import time
+from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+# Mock akshare before importing main
+sys.modules["akshare"] = MagicMock()
+
+from main import app, QuotesResponse, MarketQuote, QuoteCache
+
+client = TestClient(app)
+
+
+class TestHealthEndpoint:
+    def test_health_returns_ok(self):
+        response = client.get("/health")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["service"] == "akshare-market-bridge"
+
+
+class TestQuotesEndpoint:
+    def test_missing_symbols_returns_400(self):
+        response = client.get("/api/market/quotes")
+        assert response.status_code == 422  # FastAPI validation
+
+    def test_empty_symbols_returns_400(self):
+        response = client.get("/api/market/quotes?symbols=")
+        assert response.status_code == 400
+        assert "不能为空" in response.json()["detail"]
+
+    def test_too_many_symbols_returns_400(self):
+        symbols = ",".join([f"{i:06d}" for i in range(101)])
+        response = client.get(f"/api/market/quotes?symbols={symbols}")
+        assert response.status_code == 400
+        assert "100" in response.json()["detail"]
+
+
+class TestQuoteCache:
+    def test_cache_starts_empty(self):
+        cache = QuoteCache(ttl_sec=3.0)
+        assert cache.count == 0
+        assert cache.age_sec == float("inf")
+
+
+class TestMarketQuoteModel:
+    def test_model_serialization(self):
+        quote = MarketQuote(
+            symbol="600519",
+            name="贵州茅台",
+            tradable=True,
+            price=1492.60,
+            previousClose=1486.80,
+            changePercent=0.39,
+            volume=12345678,
+            updatedAt="2026-07-11T03:00:00.000Z",
+        )
+        data = quote.model_dump()
+        assert data["symbol"] == "600519"
+        assert data["price"] == 1492.60
+        assert data["tradable"] is True
+
+    def test_quotes_response_serialization(self):
+        quotes = [
+            MarketQuote(
+                symbol="600519", name="茅台", tradable=True,
+                price=1500.0, previousClose=1490.0,
+                changePercent=0.67, volume=10000000,
+                updatedAt="2026-07-11T00:00:00.000Z",
+            ),
+            MarketQuote(
+                symbol="000001", name="平安银行", tradable=True,
+                price=12.5, previousClose=12.3,
+                changePercent=1.63, volume=50000000,
+                updatedAt="2026-07-11T00:00:00.000Z",
+            ),
+        ]
+        response = QuotesResponse(quotes=quotes)
+        data = response.model_dump()
+        assert len(data["quotes"]) == 2
+
+
+if __name__ == "__main__":
+    # Run tests directly
+    pytest.main([__file__, "-v"])
