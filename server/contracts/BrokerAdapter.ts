@@ -6,11 +6,13 @@ import type {
   PositionSnapshot,
 } from "../../shared/trading";
 
+export type BrokerEnvironment = "paper" | "sandbox" | "live";
+
 /**
- * 券商适配器契约 —— 所有实盘/模拟券商连接都必须实现此接口。
+ * 券商适配器契约 —— 隔离连接生命周期与订单执行入口。
  *
  * 设计原则：
- * - 接口与 PaperBroker 对齐但面向外部券商网关（华泰、中信、东方财富等）
+ * - 适配器不得自行绕过风控、审批或幂等检查。
  * - 所有方法返回不可变副本，不持有外部引用
  * - 事件语义：'order.updated' / 'account.updated' / 'connection.status'
  * - 连接生命周期与行情分离，支持独立 connect/disconnect
@@ -102,8 +104,11 @@ export interface BrokerAdapterConfig {
   /** 券商 API 网关地址 */
   endpoint: string;
 
-  /** API 认证令牌 */
-  token?: string;
+  /** 运行环境；模拟实现必须拒绝 live。 */
+  environment?: BrokerEnvironment;
+
+  /** 服务端密钥管理系统中的凭据引用，不保存明文 Token。 */
+  credentialsRef?: string;
 
   /** 心跳间隔（毫秒），默认 30000 */
   heartbeatMs?: number;

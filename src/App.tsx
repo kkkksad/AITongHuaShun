@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Activity, CircleAlert, Database, Gauge, TrendingUp } from "lucide-react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppShell, type ViewId } from "./components/AppShell";
 import { BacktestResults } from "./components/BacktestResults";
 import { FlowPanel } from "./components/FlowPanel";
@@ -40,9 +41,22 @@ const accountTabs: { id: AccountTab; label: string }[] = [
   { id: "risk", label: "风控面板" },
 ];
 
+const viewPaths: Record<ViewId, string> = {
+  overview: "/",
+  strategy: "/strategy",
+  market: "/market",
+  account: "/account",
+  learning: "/learning",
+};
+
+const pathViews = Object.fromEntries(
+  Object.entries(viewPaths).map(([view, path]) => [path, view]),
+) as Record<string, ViewId>;
+
 function App() {
   const trading = useTradingBackend();
-  const [activeView, setActiveView] = useState<ViewId>("overview");
+  const location = useLocation();
+  const navigate = useNavigate();
   const [accountTab, setAccountTab] = useState<AccountTab>("portfolio");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyId>("momentum");
   const [parameters, setParameters] = useState<StrategyParameters>(defaultParameters);
@@ -68,6 +82,8 @@ function App() {
 
   const currentStrategy =
     strategies.find((strategy) => strategy.id === committedStrategy) ?? strategies[0];
+  const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
+  const activeView = pathViews[normalizedPath] ?? "overview";
 
   const handleRun = () => {
     setIsRunning(true);
@@ -310,22 +326,21 @@ function App() {
     </div>
   );
 
-  const views: Record<ViewId, ReactNode> = {
-    overview,
-    strategy,
-    market,
-    account,
-    learning: <LearningPipeline />,
-  };
-
   return (
     <AppShell
       activeView={activeView}
       connectionState={trading.connectionState}
       mode={trading.mode}
-      onViewChange={setActiveView}
+      onViewChange={(view) => navigate(viewPaths[view])}
     >
-      {views[activeView]}
+      <Routes>
+        <Route element={overview} path="/" />
+        <Route element={strategy} path="/strategy" />
+        <Route element={market} path="/market" />
+        <Route element={account} path="/account" />
+        <Route element={<LearningPipeline />} path="/learning" />
+        <Route element={<Navigate replace to="/" />} path="*" />
+      </Routes>
     </AppShell>
   );
 }

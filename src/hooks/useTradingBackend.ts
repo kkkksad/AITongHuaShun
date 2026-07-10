@@ -1,3 +1,8 @@
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AccountSnapshot,
@@ -15,6 +20,7 @@ import {
   getTradingSocketUrl,
   setPaperTradingPaused,
   submitPaperOrder,
+  type TradingBootstrap,
 } from "../lib/tradingApi";
 
 export type ConnectionState = "connecting" | "connected" | "offline";
@@ -36,6 +42,11 @@ export interface TradingBackend {
   setPaused(paused: boolean): Promise<void>;
 }
 
+const tradingQueryKey = ["trading-bootstrap"] as const;
+const RECONNECT_BASE_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
+const HEARTBEAT_GRACE_MS = 60_000;
+
 function upsertOrder(orders: OrderRecord[], next: OrderRecord): OrderRecord[] {
   const existingIndex = orders.findIndex((order) => order.id === next.id);
   if (existingIndex < 0) {
@@ -45,46 +56,51 @@ function upsertOrder(orders: OrderRecord[], next: OrderRecord): OrderRecord[] {
   return orders.map((order, index) => (index === existingIndex ? next : order));
 }
 
-const RECONNECT_BASE_MS = 1_000;
-const RECONNECT_MAX_MS = 30_000;
-const HEARTBEAT_GRACE_MS = 60_000;
+function errorMessage(error: unknown, fallback?: string): string | undefined {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return fallback;
+}
 
 export function useTradingBackend(): TradingBackend {
+  const queryClient = useQueryClient();
   const [connectionState, setConnectionState] =
     useState<ConnectionState>("connecting");
-  const [mode, setMode] = useState<TradingMode>("mock");
-  const [market, setMarket] = useState<MarketSnapshot>();
-  const [account, setAccount] = useState<AccountSnapshot>();
-  const [positions, setPositions] = useState<PositionSnapshot[]>([]);
-  const [orders, setOrders] = useState<OrderRecord[]>([]);
-  const [limits, setLimits] = useState<RiskLimits>();
-  const [error, setError] = useState<string>();
+  const [transportError, setTransportError] = useState<string>();
   const [notice, setNotice] = useState<string>();
-  const [pendingAction, setPendingAction] = useState(false);
   const mountedRef = useRef(true);
   const reconnectAttemptRef = useRef(0);
 
+  const bootstrapQuery = useQuery({
+    queryKey: tradingQueryKey,
+    queryFn: fetchTradingBootstrap,
+  });
+
+  const updateBootstrap = useCallback(
+    (updater: (current: TradingBootstrap) => TradingBootstrap) => {
+      queryClient.setQueryData<TradingBootstrap>(
+        tradingQueryKey,
+        (current) => (current ? updater(current) : current),
+      );
+    },
+    [queryClient],
+  );
+
   const refresh = useCallback(async () => {
     try {
-      const bootstrap = await fetchTradingBootstrap();
-      if (!mountedRef.current) {
-        return;
-      }
-
-      setMode(bootstrap.health.mode);
-      setMarket(bootstrap.market);
-      setAccount(bootstrap.account);
-      setPositions(bootstrap.positions);
-      setOrders(bootstrap.orders);
-      setLimits(bootstrap.limits);
-      setError(undefined);
+      await queryClient.fetchQuery({
+        queryKey: tradingQueryKey,
+        queryFn: fetchTradingBootstrap,
+        staleTime: 0,
+      });
+      setTransportError(undefined);
     } catch (refreshError) {
-      if (mountedRef.current) {
-        setConnectionState("offline");
-        setError(refreshError instanceof Error ? refreshError.message : "交易后端不可用");
-      }
+      setConnectionState("offline");
+      setTransportError(errorMessage(refreshError, "交易后端不可用"));
+      throw refreshError;
     }
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -97,42 +113,81 @@ export function useTradingBackend(): TradingBackend {
       reconnectAttemptRef.current = 0;
     };
 
-    const scheduleReconnect = () => {
-      if (!mountedRef.current) return;
-      setConnectionState("offline");
-      const attempt = reconnectAttemptRef.current;
-      const delay = Math.min(
-        RECONNECT_BASE_MS * Math.pow(2, attempt),
-        RECONNECT_MAX_MS,
-      );
-      reconnectAttemptRef.current = attempt + 1;
-      reconnectTimer = window.setTimeout(connect, delay);
-    };
-
     const clearTimers = () => {
       if (reconnectTimer) {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = undefined;
       }
       if (heartbeatTimer) {
-        window.clearTimeout(heartbeatTimer);
+        window.clearInterval(heartbeatTimer);
         heartbeatTimer = undefined;
       }
+    };
+
+    const scheduleReconnect = () => {
+      if (!mountedRef.current) {
+        return;
+      }
+      setConnectionState("offline");
+      const attempt = reconnectAttemptRef.current;
+      const delay = Math.min(
+        RECONNECT_BASE_MS * 2 ** attempt,
+        RECONNECT_MAX_MS,
+      );
+      reconnectAttemptRef.current = attempt + 1;
+      reconnectTimer = window.setTimeout(connect, delay);
     };
 
     const startHeartbeat = () => {
       lastMessageTime = Date.now();
       if (heartbeatTimer) {
-        window.clearTimeout(heartbeatTimer);
+        window.clearInterval(heartbeatTimer);
       }
       heartbeatTimer = window.setInterval(() => {
-        if (!mountedRef.current) return;
-        const elapsed = Date.now() - lastMessageTime;
-        if (elapsed > HEARTBEAT_GRACE_MS) {
-          setError("实时通道心跳超时，正在重连");
+        if (!mountedRef.current) {
+          return;
+        }
+        if (Date.now() - lastMessageTime > HEARTBEAT_GRACE_MS) {
+          setTransportError("实时通道心跳超时，正在重连");
           socket?.close();
         }
       }, 15_000);
+    };
+
+    const applyEvent = (event: TradingEvent) => {
+      switch (event.type) {
+        case "market.snapshot":
+          updateBootstrap((current) => ({
+            ...current,
+            health: {
+              ...current.health,
+              mode: event.data.mode,
+            },
+            market: event.data,
+          }));
+          break;
+        case "account.snapshot":
+          updateBootstrap((current) => ({
+            ...current,
+            account: event.data,
+          }));
+          break;
+        case "positions.snapshot":
+          updateBootstrap((current) => ({
+            ...current,
+            positions: event.data,
+          }));
+          break;
+        case "order.updated":
+          updateBootstrap((current) => ({
+            ...current,
+            orders: upsertOrder(current.orders, event.data),
+          }));
+          break;
+        case "system.status":
+          setNotice(event.data.message);
+          break;
+      }
     };
 
     const connect = () => {
@@ -141,48 +196,31 @@ export function useTradingBackend(): TradingBackend {
 
       socket.addEventListener("open", () => {
         setConnectionState("connected");
-        setError(undefined);
+        setTransportError(undefined);
         resetReconnectDelay();
         startHeartbeat();
       });
 
       socket.addEventListener("message", (message) => {
         lastMessageTime = Date.now();
-        const event = JSON.parse(message.data as string) as TradingEvent;
-
-        switch (event.type) {
-          case "market.snapshot":
-            setMarket(event.data);
-            setMode(event.data.mode);
-            break;
-          case "account.snapshot":
-            setAccount(event.data);
-            break;
-          case "positions.snapshot":
-            setPositions(event.data);
-            break;
-          case "order.updated":
-            setOrders((current) => upsertOrder(current, event.data));
-            break;
-          case "system.status":
-            setNotice(event.data.message);
-            break;
+        try {
+          applyEvent(JSON.parse(message.data as string) as TradingEvent);
+        } catch {
+          setTransportError("实时通道返回了无法解析的消息");
         }
       });
 
       socket.addEventListener("close", () => {
-        if (!mountedRef.current) {
-          return;
+        if (mountedRef.current) {
+          scheduleReconnect();
         }
-        scheduleReconnect();
       });
 
       socket.addEventListener("error", () => {
-        setError("实时通道连接失败，正在重试");
+        setTransportError("实时通道连接失败，正在重试");
       });
     };
 
-    void refresh();
     connect();
 
     return () => {
@@ -190,16 +228,22 @@ export function useTradingBackend(): TradingBackend {
       clearTimers();
       socket?.close();
     };
-  }, [refresh]);
+  }, [updateBootstrap]);
 
-  const submitOrder = useCallback(async (request: OrderRequest) => {
-    setPendingAction(true);
-    setNotice(undefined);
-    try {
-      const result = await submitPaperOrder(request);
-      setAccount(result.account);
-      setPositions(result.positions);
-      setOrders((current) => upsertOrder(current, result.order));
+  const submitMutation = useMutation({
+    mutationFn: submitPaperOrder,
+    onMutate: () => {
+      setNotice(undefined);
+      setTransportError(undefined);
+    },
+    onSuccess: (result) => {
+      updateBootstrap((current) => ({
+        ...current,
+        account: result.account,
+        positions: result.positions,
+        orders: upsertOrder(current.orders, result.order),
+      }));
+
       if (result.order.status === "rejected") {
         setNotice(
           `订单被拒绝：${result.order.rejectionReason ?? "未通过风险检查"}`,
@@ -213,58 +257,85 @@ export function useTradingBackend(): TradingBackend {
           `模拟订单已成交：${result.order.symbol} ${result.order.quantity} 股`,
         );
       }
-      return result.order;
-    } catch (submitError) {
-      const message = submitError instanceof Error ? submitError.message : "模拟下单失败";
-      setError(message);
-      throw submitError;
-    } finally {
-      setPendingAction(false);
-    }
-  }, []);
+    },
+    onError: (submitError) => {
+      setTransportError(errorMessage(submitError, "模拟下单失败"));
+    },
+  });
 
-  const cancelOrder = useCallback(async (orderId: string) => {
-    setPendingAction(true);
-    setNotice(undefined);
-    try {
-      const result = await cancelPaperOrder(orderId);
-      setAccount(result.account);
-      setPositions(result.positions);
-      setOrders((current) => upsertOrder(current, result.order));
-      setNotice(`订单已撤销`);
-      return result.order;
-    } catch (cancelError) {
-      const message = cancelError instanceof Error ? cancelError.message : "撤单失败";
-      setError(message);
-      throw cancelError;
-    } finally {
-      setPendingAction(false);
-    }
-  }, []);
+  const cancelMutation = useMutation({
+    mutationFn: cancelPaperOrder,
+    onMutate: () => {
+      setNotice(undefined);
+      setTransportError(undefined);
+    },
+    onSuccess: (result) => {
+      updateBootstrap((current) => ({
+        ...current,
+        account: result.account,
+        positions: result.positions,
+        orders: upsertOrder(current.orders, result.order),
+      }));
+      setNotice("订单已撤销");
+    },
+    onError: (cancelError) => {
+      setTransportError(errorMessage(cancelError, "撤单失败"));
+    },
+  });
 
-  const setPaused = useCallback(async (paused: boolean) => {
-    setPendingAction(true);
-    try {
-      const result = await setPaperTradingPaused(paused);
-      setAccount(result.account);
+  const pauseMutation = useMutation({
+    mutationFn: setPaperTradingPaused,
+    onMutate: () => {
+      setTransportError(undefined);
+    },
+    onSuccess: (result, paused) => {
+      updateBootstrap((current) => ({
+        ...current,
+        account: result.account,
+      }));
       setNotice(paused ? "模拟交易已暂停" : "模拟交易已恢复");
-    } catch (pauseError) {
-      setError(pauseError instanceof Error ? pauseError.message : "交易状态更新失败");
-      throw pauseError;
-    } finally {
-      setPendingAction(false);
-    }
-  }, []);
+    },
+    onError: (pauseError) => {
+      setTransportError(errorMessage(pauseError, "交易状态更新失败"));
+    },
+  });
+
+  const submitOrder = useCallback(
+    async (request: OrderRequest) =>
+      (await submitMutation.mutateAsync(request)).order,
+    [submitMutation],
+  );
+
+  const cancelOrder = useCallback(
+    async (orderId: string) =>
+      (await cancelMutation.mutateAsync(orderId)).order,
+    [cancelMutation],
+  );
+
+  const setPaused = useCallback(
+    async (paused: boolean) => {
+      await pauseMutation.mutateAsync(paused);
+    },
+    [pauseMutation],
+  );
+
+  const bootstrap = bootstrapQuery.data;
+  const pendingAction =
+    submitMutation.isPending ||
+    cancelMutation.isPending ||
+    pauseMutation.isPending;
 
   return {
     connectionState,
-    mode,
-    market,
-    account,
-    positions,
-    orders,
-    limits,
-    error,
+    mode: bootstrap?.health.mode ?? bootstrap?.market.mode ?? "mock",
+    market: bootstrap?.market,
+    account: bootstrap?.account,
+    positions: bootstrap?.positions ?? [],
+    orders: bootstrap?.orders ?? [],
+    limits: bootstrap?.limits,
+    error:
+      transportError ??
+      errorMessage(bootstrapQuery.error, "交易后端不可用"),
     notice,
     pendingAction,
     refresh,
