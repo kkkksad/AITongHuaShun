@@ -3,6 +3,7 @@ import { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider } from "./hooks/useTheme";
+import { AuthProvider } from "./hooks/useAuth";
 import { I18nProvider } from "./i18n";
 import "./styles/index.css";
 import "./styles/trading-strategies.css";
@@ -47,11 +48,13 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <I18nProvider>
-          <BrowserRouter>
-            <Suspense fallback={<PageLoader />}>
-              <App />
-            </Suspense>
-          </BrowserRouter>
+          <AuthProvider>
+            <BrowserRouter>
+              <Suspense fallback={<PageLoader />}>
+                <App />
+              </Suspense>
+            </BrowserRouter>
+          </AuthProvider>
         </I18nProvider>
       </ThemeProvider>
     </QueryClientProvider>

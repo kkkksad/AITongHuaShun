@@ -2,6 +2,8 @@ import { useMemo, useState, type ReactNode, lazy, Suspense } from "react";
 import { Activity, CircleAlert, Database, Gauge, TrendingUp } from "lucide-react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppShell, type ViewId } from "./components/AppShell";
+import { AuthGuard } from "./components/AuthGuard";
+import { LoginPage } from "./components/LoginPage";
 import { PwaInstallPrompt, OfflineBanner } from "./components/PwaInstallPrompt";
 import { TradingStrategies } from "./components/TradingStrategies";
 import { SystemMonitor } from "./components/SystemMonitor";
@@ -21,6 +23,7 @@ function lazyNamed(importer: () => Promise<any>, name: string): any {
 const BacktestResults = lazyNamed(() => import("./components/BacktestResults"), "BacktestResults");
 const FlowPanel = lazyNamed(() => import("./components/FlowPanel"), "FlowPanel");
 const LearningPipeline = lazyNamed(() => import("./components/LearningPipeline"), "LearningPipeline");
+const LogViewer = lazyNamed(() => import("./components/LogViewer"), "LogViewer");
 const MarketChart = lazyNamed(() => import("./components/MarketChart"), "MarketChart");
 const MarketOverview = lazyNamed(() => import("./components/MarketOverview"), "MarketOverview");
 const NewsPanel = lazyNamed(() => import("./components/NewsPanel"), "NewsPanel");
@@ -40,7 +43,7 @@ function PanelFallback() {
   );
 }
 
-type AccountTab = "portfolio" | "trading" | "orders" | "risk" | "strategies" | "monitor";
+type AccountTab = "portfolio" | "trading" | "orders" | "risk" | "strategies" | "monitor" | "logs";
 
 const defaultParameters: StrategyParameters = {
   lookback: 20,
@@ -52,7 +55,7 @@ const defaultParameters: StrategyParameters = {
 };
 
 function percent(value: number): string {
-  return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
+  return (value >= 0 ? "+" : "") + (value * 100).toFixed(2) + "%";
 }
 
 const accountTabs: { id: AccountTab; label: string }[] = [
@@ -62,6 +65,7 @@ const accountTabs: { id: AccountTab; label: string }[] = [
   { id: "orders", label: "订单历史" },
   { id: "risk", label: "风控面板" },
   { id: "monitor", label: "系统监控" },
+  { id: "logs", label: "系统日志" },
 ];
 
 const viewPaths: Record<ViewId, string> = {
@@ -331,6 +335,11 @@ function App() {
       </Suspense>
     ),
     monitor: <SystemMonitor />,
+    logs: (
+      <Suspense fallback={<PanelFallback />}>
+        <LogViewer />
+      </Suspense>
+    ),
   };
 
   const account = (
@@ -394,23 +403,59 @@ function App() {
         onViewChange={(view) => navigate(viewPaths[view])}
       >
         <Routes>
-          <Route element={overview} path="/" />
-          <Route element={strategy} path="/strategy" />
-          <Route element={market} path="/market" />
-          <Route element={account} path="/account" />
+          {/* Public route - Login */}
+          <Route element={<LoginPage />} path="/login" />
+
+          {/* Protected routes */}
           <Route
             element={
-              <Suspense fallback={<PanelFallback />}>
-                <LearningPipeline />
-              </Suspense>
+              <AuthGuard>
+                {overview}
+              </AuthGuard>
+            }
+            path="/"
+          />
+          <Route
+            element={
+              <AuthGuard>
+                {strategy}
+              </AuthGuard>
+            }
+            path="/strategy"
+          />
+          <Route
+            element={
+              <AuthGuard>
+                {market}
+              </AuthGuard>
+            }
+            path="/market"
+          />
+          <Route
+            element={
+              <AuthGuard>
+                {account}
+              </AuthGuard>
+            }
+            path="/account"
+          />
+          <Route
+            element={
+              <AuthGuard>
+                <Suspense fallback={<PanelFallback />}>
+                  <LearningPipeline />
+                </Suspense>
+              </AuthGuard>
             }
             path="/learning"
           />
           <Route
             element={
-              <Suspense fallback={<PanelFallback />}>
-                <Settings />
-              </Suspense>
+              <AuthGuard>
+                <Suspense fallback={<PanelFallback />}>
+                  <Settings />
+                </Suspense>
+              </AuthGuard>
             }
             path="/settings"
           />

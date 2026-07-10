@@ -104,6 +104,32 @@ export const translations = {
     // ── Language Switcher ────────────────────────────────
     "lang.switch": "English",
     "lang.label": "语言",
+
+    // ── Login ───────────────────────────────────────────
+    "login.title": "登录",
+    "login.username": "用户名",
+    "login.password": "密码",
+    "login.submit": "登录",
+    "login.submitting": "登录中...",
+    "login.error.default": "登录失败，请检查凭据",
+    "login.hint": "本地开发环境 · 默认凭据: admin / kairos2026",
+
+    // ── Log Viewer ──────────────────────────────────────
+    "log.title": "系统日志",
+    "log.allLevels": "全部级别",
+    "log.allModules": "全部模块",
+    "log.search": "搜索模块名...",
+    "log.autoRefresh": "自动刷新（10秒）",
+    "log.export": "导出为 JSON",
+    "log.retry": "重试",
+    "log.loading": "加载日志...",
+    "log.empty.title": "暂无日志",
+    "log.empty.desc": "当前日期没有日志记录，或日志文件尚未生成。",
+    "log.time": "时间",
+    "log.module": "模块",
+    "log.stackTrace": "错误堆栈",
+    "log.showing": "显示",
+    "log.total": "共",
   },
 
   en: {
@@ -220,6 +246,32 @@ export const translations = {
     // ── Language Switcher ────────────────────────────────
     "lang.switch": "中文",
     "lang.label": "Language",
+
+    // ── Login ───────────────────────────────────────────
+    "login.title": "Sign In",
+    "login.username": "Username",
+    "login.password": "Password",
+    "login.submit": "Sign In",
+    "login.submitting": "Signing in...",
+    "login.error.default": "Login failed. Please check your credentials.",
+    "login.hint": "Local dev environment \u00b7 Default: admin / kairos2026",
+
+    // ── Log Viewer ──────────────────────────────────────
+    "log.title": "System Logs",
+    "log.allLevels": "All Levels",
+    "log.allModules": "All Modules",
+    "log.search": "Search module name...",
+    "log.autoRefresh": "Auto refresh (10s)",
+    "log.export": "Export as JSON",
+    "log.retry": "Retry",
+    "log.loading": "Loading logs...",
+    "log.empty.title": "No Logs",
+    "log.empty.desc": "No log entries for the selected date.",
+    "log.time": "Time",
+    "log.module": "Module",
+    "log.stackTrace": "Stack Trace",
+    "log.showing": "Showing",
+    "log.total": "total",
   },
 } as const;
 

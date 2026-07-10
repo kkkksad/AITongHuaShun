@@ -1,7 +1,6 @@
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
-import fastifyStatic from "@fastify/static";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import websocket from "@fastify/websocket";
@@ -16,7 +15,6 @@ import type {
   OrderRequest,
 } from "../shared/trading";
 import type { ServerConfig } from "./config";
-import { registerAuthRoutes } from "./auth";
 import {
   getMetricsText,
   recordAccountCash,
@@ -36,7 +34,6 @@ import {
 } from "./monitoring/exportUtils";
 import type { ExportFormat } from "./monitoring/exportUtils";
 import { WebSocketHub } from "./realtime/webSocketHub";
-import { buildOpenApiSpec } from "./swagger";
 import { createTradingSystem, type TradingSystem } from "./system";
 
 const orderRequestSchema = z.object({
@@ -98,9 +95,6 @@ export async function buildTradingApp(
   });
   await app.register(websocket);
 
-  // ── Auth Routes ──────────────────────────────────────────
-  registerAuthRoutes(app);
-
   // ── Swagger / OpenAPI ───────────────────────────────────
   if (options.config.API_DOCS_ENABLED) {
     await app.register(swagger, {
@@ -127,7 +121,6 @@ export async function buildTradingApp(
           { name: "导出", description: "审计与交易记录导出" },
           { name: "监控", description: "Prometheus 指标端点" },
           { name: "日志", description: "系统日志查看" },
-          { name: "认证", description: "用户登录与认证" },
         ],
       },
     });
@@ -138,34 +131,6 @@ export async function buildTradingApp(
         docExpansion: "list",
         deepLinking: false,
       },
-    });
-  }
-
-  // ── swagger-jsdoc + swagger-ui-express (via @fastify/static) ──
-  if (options.config.API_DOCS_ENABLED) {
-    const openApiSpec = buildOpenApiSpec(options.config);
-
-    // 找到 swagger-ui-dist 静态资源目录
-    const swaggerUiDistPath = path.dirname(
-      require.resolve("swagger-ui-dist/package.json"),
-    );
-
-    // 注册静态文件服务：提供 swagger-ui 的 CSS/JS/图片
-    await app.register(fastifyStatic, {
-      root: swaggerUiDistPath,
-      prefix: "/api-docs/",
-      decorateReply: false,
-    });
-
-    // JSON 端点：返回 swagger-jsdoc 生成的 OpenAPI 规范
-    app.get("/api-docs/json", async (_request, reply) => {
-      return reply.send(openApiSpec);
-    });
-
-    // Swagger UI HTML：指向 /api-docs/json 的交互式文档页面
-    app.get("/api-docs", async (_request, reply) => {
-      const html = generateSwaggerUiHtml(openApiSpec, options.config);
-      return reply.header("Content-Type", "text/html; charset=utf-8").send(html);
     });
   }
 
@@ -308,7 +273,7 @@ export async function buildTradingApp(
       storage: "server-environment-only",
     },
     openApi: options.config.API_DOCS_ENABLED
-      ? "/api-docs/json"
+      ? "/documentation/json"
       : null,
   }));
 
@@ -758,50 +723,4 @@ export async function buildTradingApp(
   }
 
   return app;
-}
-
-/**
- * 生成 Swagger UI HTML 页面
- *
- * 使用 swagger-ui-dist 提供的静态资源，
- * 加载 /api-docs/json 中由 swagger-jsdoc 生成的 OpenAPI 规范。
- */
-function generateSwaggerUiHtml(
-  spec: object,
-  config: ServerConfig,
-): string {
-  return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>KAIROS Quant API Docs</title>
-  <link rel="stylesheet" href="./swagger-ui.css" />
-  <style>
-    .swagger-ui .topbar { display: none }
-    .swagger-ui .info { margin: 20px 0 }
-  </style>
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="./swagger-ui-bundle.js" crossorigin></script>
-  <script src="./swagger-ui-standalone-preset.js" crossorigin></script>
-  <script>
-    window.onload = function () {
-      SwaggerUIBundle({
-        url: "./json",
-        dom_id: "#swagger-ui",
-        deepLinking: true,
-        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
-        layout: "StandaloneLayout",
-        defaultModelsExpandDepth: 1,
-        defaultModelExpandDepth: 1,
-        docExpansion: "list",
-        filter: true,
-        showExtensions: true,
-      });
-    };
-  </script>
-</body>
-</html>`;
 }
