@@ -42,6 +42,7 @@ server/
   risk/          风险规则
   store/         内存与本地 JSON 交易状态
   contracts/     行情和交易仓储适配器契约
+  auth.ts        未装配的显式配置认证原型
   app.ts         Fastify 插件、路由和事件装配
   config.ts      Zod 环境变量校验
   index.ts       服务进程入口
@@ -59,6 +60,7 @@ shared/
 - `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都不是未来数据库模型的替代品。
 - `shared/` 只保存跨进程契约，不包含浏览器或 Node.js 运行时副作用。
 - 行情读取和订单执行保持为不同模块与未来不同权限域。
+- `server/auth.ts` 当前不由 `app.ts` 注册；未来启用必须显式注入账号、密码和至少 32 字符的密钥，并为真实执行使用独立身份提供商和会话策略。
 
 ## 运行时数据流
 

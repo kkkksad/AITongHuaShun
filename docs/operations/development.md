@@ -18,6 +18,17 @@ python -m pip install -r akshare-bridge/requirements.txt
 
 需要修改默认端口或风控参数时，将 `.env.example` 复制为未提交的 `.env.local`。任何供应商 Token 或密钥只能放在 `.env.local`，不得使用 `VITE_*` 暴露给浏览器。
 
+仓库包含尚未注册到主服务的认证原型。未来本地启用前必须在 `.env.local` 显式设置：
+
+```text
+AUTH_USERNAME=<local-user>
+AUTH_PASSWORD=<at-least-12-characters>
+JWT_SECRET=<at-least-32-random-characters>
+AUTH_TOKEN_TTL_SECONDS=3600
+```
+
+认证原型不存在默认凭据。当前 `buildTradingApp` 没有注册 `/api/auth/*`，因此这些变量不会改变现有开发启动流程，也不代表 API 已受保护。
+
 本地 HTTP 安全配置：
 
 ```text

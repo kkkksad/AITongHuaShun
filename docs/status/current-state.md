@@ -32,6 +32,7 @@
 - **真实只读行情模式** —— `MARKET_DATA_PROVIDER=akshare` 与 `MARKET_MODE=paper` 可使用 AkShare 行情驱动本地模拟账户。
 - **东方财富只读行情原型** —— `EastMoneyMarketProvider` 可读取公开行情并拒绝 `live`，当前尚未接入主服务的 `MARKET_DATA_PROVIDER` 选择器。
 - **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
+- **认证安全原型** —— `server/auth.ts` 提供显式配置、短期 HMAC 令牌和恒定时间凭据比较，但尚未注册到主 Fastify 服务，不保护当前 API。
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
 
 ## 可用接口
@@ -139,7 +140,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 ## 下一步
 
 - 实现 NewsProvider 契约，抽象新闻数据源。
-- 增加用户认证、账户白名单和独立审批服务。
+- 将认证原型装配到 API，并增加账户白名单、角色权限和独立审批服务。
 - 前端集成网格交易运行器控制面板。
 - PostgreSQL 替代 JSON 文件持久化。
 - 评估券商官方模拟环境或沙箱，继续禁止连接真实资金。
@@ -149,7 +150,8 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 默认行情、资金流、新闻、账户与订单数据仍是本地模拟数据；可选 AkShare 行情是只读外部数据。
 - 回测和模拟成交不代表真实策略收益，也不构成投资建议。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
-- 当前没有事务型数据库、用户认证、真实账户连接或真实券商执行。
+- 当前没有事务型数据库或已启用的用户认证，也没有真实账户连接或真实券商执行。
+- 认证原型没有默认账号、默认密码或默认 JWT 密钥；缺少显式安全配置时必须拒绝注册。
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。
 - AkShare 模式必须使用 `MARKET_MODE=paper`，真实行情不改变订单执行权限。
 - 当前没有任何真实订单执行代码。
