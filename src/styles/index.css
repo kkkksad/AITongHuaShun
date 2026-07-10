@@ -55,7 +55,7 @@
   --sidebar-note-border: #3c4450;
   --sidebar-active-border: #424b59;
   --accent-light: #73a4ff;
-  --brand-mark-color: var(--brand-mark-color);
+  --brand-mark-color: #ffffff;
   --brand-mark-bg: #2563eb;
   --sidebar-note-title: #dce8ff;
   --sidebar-note-text: #9da7b6;
@@ -66,13 +66,13 @@
   --banner-text: #aeb7c3;
   --banner-summary-strong: #ffffff;
   --risk-normal-color: #64d4a6;
-  --summary-icon-blue-color: #2563eb;
+  --summary-icon-blue-color: var(--summary-icon-blue-color);
   --summary-icon-blue-bg: #eaf1ff;
-  --summary-icon-teal-color: #0f766e;
+  --summary-icon-teal-color: var(--summary-icon-teal-color);
   --summary-icon-teal-bg: #e5f5f2;
-  --summary-icon-amber-color: #b96506;
+  --summary-icon-amber-color: var(--summary-icon-amber-color);
   --summary-icon-amber-bg: #fff3dc;
-  --summary-icon-violet-color: #6d46b6;
+  --summary-icon-violet-color: var(--summary-icon-violet-color);
   --summary-icon-violet-bg: #f1ebfb;
   --strategy-card-hover-border: #bdc6d2;
   --strategy-card-selected-shadow: 0 6px 20px rgba(38, 49, 65, 0.08);
@@ -82,10 +82,10 @@
   --side-switch-sell-border: #e6a5a5;
   --cancel-order-border: #fecaca;
   --cancel-order-hover-bg: #fee2e2;
-  --account-metrics-icon-color: #4a6fa9;
+  --account-metrics-icon-color: var(--account-metrics-icon-color);
   --account-metrics-icon-bg: #edf3fb;
-  --pipeline-done-color: var(--brand-mark-color);
-  --pipeline-running-color: var(--brand-mark-color);
+  --pipeline-done-color: #ffffff;
+  --pipeline-running-color: #ffffff;
   --pipeline-review-border: #e8c27d;
   --risk-banner-normal-border: #a7f3d0;
   --risk-banner-warn-border: #fde68a;
@@ -165,7 +165,7 @@
   color-scheme: dark;
   --sidebar-active-border: #353d50;
   --accent-light: #73a4ff;
-  --brand-mark-color: var(--brand-mark-color);
+  --brand-mark-color: #ffffff;
   --brand-mark-bg: #4d8cf7;
   --sidebar-note-title: #b8c8f0;
   --sidebar-note-text: #7a8495;
@@ -194,8 +194,8 @@
   --cancel-order-hover-bg: #3a1a1a;
   --account-metrics-icon-color: #6098f5;
   --account-metrics-icon-bg: #1a2540;
-  --pipeline-done-color: var(--brand-mark-color);
-  --pipeline-running-color: var(--brand-mark-color);
+  --pipeline-done-color: #ffffff;
+  --pipeline-running-color: #ffffff;
   --pipeline-review-border: #4a3820;
   --risk-banner-normal-border: #1a4a30;
   --risk-banner-warn-border: #4a3820;
@@ -219,6 +219,7 @@
 /* ============================================================
    Reset & Base
    ============================================================ */
+
 * {
   box-sizing: border-box;
 }
@@ -226,8 +227,25 @@
 html {
   min-width: 320px;
   background: var(--bg-page);
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+
+/* Theme transition for all elements */
+html *,
+html *::before,
+html *::after {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.2s ease, box-shadow 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  html *,
+  html *::before,
+  html *::after {
+    transition: none !important;
+  }
+}
 body {
   min-width: 320px;
   min-height: 100vh;
@@ -566,12 +584,12 @@ select:focus-visible {
   left: 0;
   width: 5px;
   height: 100%;
-  background: #3976dd;
+  background: var(--banner-accent-stripe);
   content: "";
 }
 
 .overview-banner .section-kicker {
-  color: #8fb5fa;
+  color: var(--banner-kicker);
 }
 
 .overview-banner h2 {
@@ -584,7 +602,7 @@ select:focus-visible {
 .overview-banner p {
   max-width: 640px;
   margin: 0;
-  color: #aeb7c3;
+  color: var(--banner-text);
   font-size: 13px;
   line-height: 1.7;
 }
@@ -622,7 +640,7 @@ select:focus-visible {
 }
 
 .risk-normal {
-  color: #64d4a6 !important;
+  color: var(--risk-normal-color) !important;
 }
 
 /* ============================================================
@@ -669,23 +687,23 @@ select:focus-visible {
 }
 
 .summary-icon.blue {
-  color: #2563eb;
-  background: #eaf1ff;
+  color: var(--summary-icon-blue-color);
+  background: var(--summary-icon-blue-bg);
 }
 
 .summary-icon.teal {
-  color: #0f766e;
-  background: #e5f5f2;
+  color: var(--summary-icon-teal-color);
+  background: var(--summary-icon-teal-bg);
 }
 
 .summary-icon.amber {
-  color: #b96506;
-  background: #fff3dc;
+  color: var(--summary-icon-amber-color);
+  background: var(--summary-icon-amber-bg);
 }
 
 .summary-icon.violet {
-  color: #6d46b6;
-  background: #f1ebfb;
+  color: var(--summary-icon-violet-color);
+  background: var(--summary-icon-violet-bg);
 }
 
 .summary-grid article > strong {
@@ -870,7 +888,7 @@ select:focus-visible {
 
 .strategy-card:hover {
   transform: translateY(-2px);
-  border-color: #bdc6d2;
+  border-color: var(--strategy-card-hover-border);
 }
 
 .strategy-card.selected {
@@ -1329,8 +1347,8 @@ select:focus-visible {
   width: 28px;
   height: 28px;
   place-items: center;
-  color: #4a6fa9;
-  background: #edf3fb;
+  color: var(--account-metrics-icon-color);
+  background: var(--account-metrics-icon-bg);
   border-radius: 5px;
 }
 
@@ -1400,13 +1418,13 @@ select:focus-visible {
 .side-switch button.active.buy {
   color: var(--color-positive);
   background: var(--color-positive-bg);
-  border-color: #89ccb3;
+  border-color: var(--side-switch-buy-border);
 }
 
 .side-switch button.active.sell {
   color: var(--color-negative);
   background: var(--color-negative-bg);
-  border-color: #e6a5a5;
+  border-color: var(--side-switch-sell-border);
 }
 
 .side-switch button.active {
@@ -1543,7 +1561,7 @@ select:focus-visible {
 }
 
 .cancel-order-btn:hover:not(:disabled) {
-  background: #fee2e2;
+  background: var(--cancel-order-hover-bg);
 }
 
 .cancel-order-btn:disabled {
@@ -1619,7 +1637,7 @@ select:focus-visible {
 .pipeline-stage.review .stage-marker {
   color: var(--color-warning);
   background: var(--color-warning-bg);
-  border-color: #e8c27d;
+  border-color: var(--pipeline-review-border);
 }
 
 .stage-copy > div {
@@ -2350,12 +2368,12 @@ select:focus-visible {
 }
 
 .podium-2 .podium-rank {
-  background: #7c8ba0;
+  background: var(--podium-rank-2-bg);
   color: var(--brand-mark-color);
 }
 
 .podium-3 .podium-rank {
-  background: #d1a05a;
+  background: var(--podium-rank-3-bg);
   color: var(--brand-mark-color);
 }
 
@@ -2450,12 +2468,12 @@ select:focus-visible {
 }
 
 .rank-badge.rank-2 {
-  background: #7c8ba0;
+  background: var(--podium-rank-2-bg);
   color: var(--brand-mark-color);
 }
 
 .rank-badge.rank-3 {
-  background: #d1a05a;
+  background: var(--podium-rank-3-bg);
   color: var(--brand-mark-color);
 }
 
@@ -2826,5 +2844,5 @@ select:focus-visible {
    Risk Normal Tag
    ============================================================ */
 .risk-normal {
-  color: #16a36a !important;
+  color: var(--risk-normal-alt) !important;
 }
