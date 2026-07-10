@@ -16,14 +16,14 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 复制源码
-COPY server.py .
+COPY main.py .
 
 # 暴露端口
 EXPOSE 8800
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8800/api/health')" || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8800/health')" || exit 1
 
 # 启动服务
-CMD ["python", "server.py"]
+CMD ["python", "main.py"]
