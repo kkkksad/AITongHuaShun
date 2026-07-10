@@ -51,6 +51,7 @@ describe("trading API", () => {
         humanApprovalRequiredForLive: true,
       },
     });
+    expect(response.json().openApi).toBe("/api-docs/json");
   });
 
   it("publishes an OpenAPI document for the simulation API", async () => {
@@ -67,6 +68,67 @@ describe("trading API", () => {
     });
     expect(response.json().paths).toHaveProperty("/api/orders");
     expect(response.json().paths).toHaveProperty("/api/capabilities");
+  });
+
+  describe("swagger-jsdoc + swagger-ui-express", () => {
+    it("serves the OpenAPI JSON document at /api-docs/json", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api-docs/json",
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json();
+      expect(body).toMatchObject({
+        openapi: "3.0.3",
+        info: {
+          title: "KAIROS Quant API",
+          version: "0.2.0",
+        },
+      });
+      expect(body.paths).toBeDefined();
+      expect(body.paths).toHaveProperty("/api/health");
+      expect(body.paths).toHaveProperty("/api/capabilities");
+      expect(body.paths).toHaveProperty("/api/orders");
+      expect(body.paths).toHaveProperty("/api/account");
+      expect(body.paths).toHaveProperty("/api/positions");
+      expect(body.paths).toHaveProperty("/api/market/snapshot");
+      expect(body.paths).toHaveProperty("/api/risk/limits");
+      expect(body.paths).toHaveProperty("/api/risk/state");
+      expect(body.paths).toHaveProperty("/api/risk/reset");
+      expect(body.paths).toHaveProperty("/api/audit");
+      expect(body.paths).toHaveProperty("/api/audit/export");
+      expect(body.paths).toHaveProperty("/api/orders/export");
+      expect(body.paths).toHaveProperty("/api/trading/pause");
+      expect(body.paths).toHaveProperty("/api/trading/resume");
+      expect(body.paths).toHaveProperty("/ws");
+      expect(body.paths).toHaveProperty("/api-docs/json");
+      expect(body.paths).toHaveProperty("/api-docs");
+      expect(body.tags).toBeDefined();
+      expect(body.tags.length).toBeGreaterThanOrEqual(8);
+    });
+
+    it("serves the Swagger UI HTML at /api-docs", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api-docs",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["content-type"]).toMatch(/text\/html/);
+      expect(response.body).toContain("swagger-ui");
+      expect(response.body).toContain("KAIROS Quant API Docs");
+    });
+
+    it("serves Swagger UI static assets (CSS bundle)", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api-docs/swagger-ui.css",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.headers["content-type"]).toMatch(/text\/css/);
+    });
   });
 
   it("adds baseline security headers", async () => {

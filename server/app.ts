@@ -1,10 +1,14 @@
 import cors from "@fastify/cors";
+import fastifyExpress from "@fastify/express";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import swaggerUiExpress from "swagger-ui-express";
 import { z, ZodError } from "zod";
 import type {
   AccountSnapshot,
@@ -13,6 +17,7 @@ import type {
   OrderRequest,
 } from "../shared/trading";
 import type { ServerConfig } from "./config";
+import { registerAuthRoutes } from "./auth";
 import {
   getMetricsText,
   recordAccountCash,
@@ -32,6 +37,7 @@ import {
 } from "./monitoring/exportUtils";
 import type { ExportFormat } from "./monitoring/exportUtils";
 import { WebSocketHub } from "./realtime/webSocketHub";
+import { buildOpenApiSpec } from "./swagger";
 import { createTradingSystem, type TradingSystem } from "./system";
 
 const orderRequestSchema = z.object({
@@ -56,6 +62,13 @@ const listQuerySchema = z.object({
 
 const exportQuerySchema = z.object({
   format: z.enum(["csv", "json"]).default("csv"),
+});
+
+const logsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(2000).default(200),
+  level: z.enum(["debug", "info", "warn", "error"]).optional(),
+  module: z.string().optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 interface BuildTradingAppOptions {
@@ -85,6 +98,10 @@ export async function buildTradingApp(
     methods: ["GET", "POST", "DELETE"],
   });
   await app.register(websocket);
+  await app.register(fastifyExpress);
+
+  // ── Auth Routes ──────────────────────────────────────────
+  registerAuthRoutes(app);
 
   // ── Swagger / OpenAPI ───────────────────────────────────
   if (options.config.API_DOCS_ENABLED) {
@@ -111,6 +128,8 @@ export async function buildTradingApp(
           { name: "审计", description: "交易审计事件" },
           { name: "导出", description: "审计与交易记录导出" },
           { name: "监控", description: "Prometheus 指标端点" },
+          { name: "日志", description: "系统日志查看" },
+          { name: "认证", description: "用户登录与认证" },
         ],
       },
     });
@@ -122,6 +141,26 @@ export async function buildTradingApp(
         deepLinking: false,
       },
     });
+  }
+
+  // ── swagger-jsdoc + swagger-ui-express ──────────────────
+  if (options.config.API_DOCS_ENABLED) {
+    const openApiSpec = buildOpenApiSpec(options.config);
+
+    // JSON 端点：返回 swagger-jsdoc 生成的 OpenAPI 规范
+    app.get("/api-docs/json", async (_request, reply) => {
+      return reply.send(openApiSpec);
+    });
+
+    // Swagger UI：使用 swagger-ui-express 提供交互式文档
+    app.use(
+      "/api-docs",
+      swaggerUiExpress.serve,
+      swaggerUiExpress.setup(openApiSpec, {
+        customSiteTitle: "KAIROS Quant API Docs",
+        customCss: ".swagger-ui .topbar { display: none }",
+      }),
+    );
   }
 
   // ── HTTP request timing hook ─────────────────────────────
@@ -263,7 +302,7 @@ export async function buildTradingApp(
       storage: "server-environment-only",
     },
     openApi: options.config.API_DOCS_ENABLED
-      ? "/documentation/json"
+      ? "/api-docs/json"
       : null,
   }));
 
@@ -457,6 +496,131 @@ export async function buildTradingApp(
         `attachment; filename="${exportFilename("orders", format)}"`,
       )
       .send(JSON.stringify(orders, null, 2));
+  });
+
+  // ── 系统日志端点 ──────────────────────────────────────────
+
+  // 获取可用日志日期列表
+  app.get("/api/logs/dates", {
+    schema: {
+      tags: ["日志"],
+      summary: "获取日志日期列表",
+      description: "返回所有可用的日志文件日期",
+    },
+  }, async () => {
+    const logDir = path.resolve(process.cwd(), "logs");
+    try {
+      if (!fs.existsSync(logDir)) {
+        return { dates: [] as string[] };
+      }
+      const files = fs.readdirSync(logDir);
+      const dates = files
+        .filter((f) => f.startsWith("app-") && f.endsWith(".log"))
+        .map((f) => f.replace("app-", "").replace(".log", ""))
+        .sort()
+        .reverse();
+      return { dates };
+    } catch {
+      return { dates: [] as string[] };
+    }
+  });
+
+  // 获取日志内容
+  app.get("/api/logs", {
+    schema: {
+      tags: ["日志"],
+      summary: "获取系统日志",
+      description: "按日期、级别和模块过滤系统日志条目。默认返回最近 200 条。",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: { type: "integer", default: 200, description: "返回条数上限" },
+          level: { type: "string", enum: ["debug", "info", "warn", "error"], description: "日志级别过滤" },
+          module: { type: "string", description: "模块名过滤（模糊匹配）" },
+          date: { type: "string", description: "日期过滤，格式 YYYY-MM-DD" },
+        },
+      },
+    },
+  }, async (request) => {
+    const query = logsQuerySchema.parse(request.query);
+    const today = new Date().toISOString().slice(0, 10);
+    const date = query.date ?? today;
+    const logDir = path.resolve(process.cwd(), "logs");
+    const logFile = path.join(logDir, `app-${date}.log`);
+
+    // 收集所有日志条目
+    const entries: Array<{
+      timestamp: string;
+      level: string;
+      module: string;
+      message: string;
+      data?: Record<string, unknown>;
+      error?: string;
+    }> = [];
+
+    // 读取指定日期的日志文件
+    if (fs.existsSync(logFile)) {
+      try {
+        const content = fs.readFileSync(logFile, "utf-8");
+        const lines = content.split("\n").filter((line) => line.trim());
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line);
+            entries.push(entry);
+          } catch {
+            // 跳过无法解析的行
+          }
+        }
+      } catch {
+        // 读取失败返回空
+      }
+    }
+
+    // 如果请求的日期没有日志，也尝试读取今天的日志作为降级
+    if (entries.length === 0 && date !== today) {
+      const todayFile = path.join(logDir, `app-${today}.log`);
+      if (fs.existsSync(todayFile)) {
+        try {
+          const content = fs.readFileSync(todayFile, "utf-8");
+          const lines = content.split("\n").filter((line) => line.trim());
+          for (const line of lines) {
+            try {
+              const entry = JSON.parse(line);
+              entries.push(entry);
+            } catch {
+              // 跳过
+            }
+          }
+        } catch {
+          // 忽略
+        }
+      }
+    }
+
+    // 过滤
+    let filtered = entries;
+    if (query.level) {
+      const levelWeights: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 3 };
+      const minWeight = levelWeights[query.level];
+      filtered = filtered.filter((e) => (levelWeights[e.level] ?? 0) >= minWeight);
+    }
+    if (query.module) {
+      const modLower = query.module.toLowerCase();
+      filtered = filtered.filter((e) => e.module.toLowerCase().includes(modLower));
+    }
+
+    // 倒序：最新的在前
+    filtered.reverse();
+
+    // 截断
+    const limited = filtered.slice(0, query.limit);
+
+    return {
+      date,
+      total: entries.length,
+      filtered: limited.length,
+      entries: limited,
+    };
   });
 
   // 下单
