@@ -285,6 +285,7 @@ describe("MomentumStrategy", () => {
   it("buys on breakout in uptrend", () => {
     const snapshots: MarketSnapshot[] = [];
     let price = 100;
+    const random = createSeededRandom(0x1001);
     for (let i = 0; i < 200; i++) {
       price = price * (1 + 0.002 + (random() - 0.5) * 0.01);
       snapshots.push({
@@ -325,6 +326,7 @@ describe("MomentumStrategy", () => {
   it("handles downtrend without crash", () => {
     const snapshots: MarketSnapshot[] = [];
     let price = 100;
+    const random = createSeededRandom(0x1002);
     for (let i = 0; i < 200; i++) {
       price = price * (1 - 0.002 + (random() - 0.5) * 0.01);
       snapshots.push({
@@ -385,6 +387,7 @@ describe("GridTradingStrategy", () => {
   it("buys low and sells high in range-bound markets", () => {
     const snapshots: MarketSnapshot[] = [];
     let price = 100;
+    const random = createSeededRandom(0x1003);
     for (let i = 0; i < 200; i++) {
       const wave = Math.sin((i / 50) * Math.PI * 2) * 10;
       price = 100 + wave + (random() - 0.5) * 2;
