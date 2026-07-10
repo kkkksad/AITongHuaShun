@@ -36,6 +36,13 @@ export class DCAStrategy implements BacktestStrategy {
     this.name = customName ?? `定投${symLabel}每${intervalBars}K/${investAmount}元`;
   }
 
+  reset(): void {
+    this.lastInvestBar = -1;
+    this.investedTotal = 0;
+    this.investedShares = 0;
+    this.averageCost = 0;
+  }
+
   onBar(context: StrategyContext): StrategySignal[] {
     // 找到目标标的
     const quote = this.symbol
@@ -98,10 +105,7 @@ export class DCAStrategy implements BacktestStrategy {
     ];
   }
 
-  onStart?(context: Omit<StrategyContext, "barIndex" | "totalBars">): void {
-    this.lastInvestBar = -1;
-    this.investedTotal = 0;
-    this.investedShares = 0;
-    this.averageCost = 0;
+  onStart(): void {
+    this.reset();
   }
 }

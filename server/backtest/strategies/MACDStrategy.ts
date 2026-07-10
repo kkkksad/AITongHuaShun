@@ -36,6 +36,12 @@ export class MACDStrategy implements BacktestStrategy {
       `MACD(${fastPeriod},${slowPeriod},${signalPeriod})`;
   }
 
+  reset(): void {
+    this.prices.length = 0;
+    this.inPosition = false;
+    this.prevHistogram = null;
+  }
+
   onBar(context: StrategyContext): StrategySignal[] {
     const quote = context.snapshot.quotes.find((q) => q.tradable);
     if (!quote) return [];

@@ -36,7 +36,15 @@ export class GridTradingStrategy implements BacktestStrategy {
       customName ?? `网格交易(${gridCount}层,${gridSpacingPercent}%)`;
   }
 
+  reset(): void {
+    this.prices.length = 0;
+    this.basePrice = null;
+    this.lastBuyLevel = null;
+    this.lastSellLevel = null;
+  }
+
   onStart(ctx: Omit<StrategyContext, "barIndex" | "totalBars">): void {
+    this.reset();
     // 从初始价格确定基准价
     const quote = ctx.snapshot.quotes.find(
       (q) => q.tradable,
