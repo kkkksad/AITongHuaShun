@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import {
   BarChart3,
   BookOpenCheck,
@@ -6,6 +6,7 @@ import {
   ChartNoAxesCombined,
   CircleUserRound,
   FlaskConical,
+  Globe,
   LayoutDashboard,
   Menu,
   Moon,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import type { ConnectionState } from "../hooks/useTradingBackend";
 import { useTheme } from "../hooks/useTheme";
+import { useI18n, type Locale } from "../i18n";
 import type { TradingMode } from "../../shared/trading";
 
 export type ViewId = "overview" | "strategy" | "market" | "account" | "learning" | "settings";
@@ -29,30 +31,6 @@ interface AppShellProps {
   children: ReactNode;
 }
 
-const navigation = [
-  { id: "overview" as const, label: "总览", icon: LayoutDashboard },
-  { id: "strategy" as const, label: "策略实验室", icon: FlaskConical },
-  { id: "market" as const, label: "市场观察", icon: ChartNoAxesCombined },
-  { id: "account" as const, label: "模拟账户", icon: BriefcaseBusiness },
-  { id: "learning" as const, label: "研究管线", icon: BookOpenCheck },
-  { id: "settings" as const, label: "系统设置", icon: Settings },
-];
-
-const titles: Record<ViewId, { eyebrow: string; title: string }> = {
-  overview: { eyebrow: "研究控制台", title: "今日总览" },
-  strategy: { eyebrow: "策略研究", title: "参数与回测" },
-  market: { eyebrow: "市场观察", title: "指数、资金与事件" },
-  account: { eyebrow: "模拟交易", title: "账户与订单" },
-  learning: { eyebrow: "受控学习", title: "候选验证与审批" },
-  settings: { eyebrow: "系统配置", title: "设置" },
-};
-
-const connectionLabels: Record<ConnectionState, string> = {
-  connected: "模拟行情实时连接",
-  connecting: "正在连接交易后端",
-  offline: "后端离线，静态演示",
-};
-
 export function AppShell({
   activeView,
   onViewChange,
@@ -60,12 +38,41 @@ export function AppShell({
   mode,
   children,
 }: AppShellProps) {
-  const { theme, toggle } = useTheme();
+  const { theme, toggle: toggleTheme } = useTheme();
+  const { t, locale, setLocale } = useI18n();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleNavClick = (view: ViewId) => {
     onViewChange(view);
     setMobileMenuOpen(false);
+  };
+
+  const toggleLocale = useCallback(() => {
+    setLocale(locale === "zh" ? "en" : "zh");
+  }, [locale, setLocale]);
+
+  const navigation = [
+    { id: "overview" as const, label: t("nav.overview"), icon: LayoutDashboard },
+    { id: "strategy" as const, label: t("nav.strategy"), icon: FlaskConical },
+    { id: "market" as const, label: t("nav.market"), icon: ChartNoAxesCombined },
+    { id: "account" as const, label: t("nav.account"), icon: BriefcaseBusiness },
+    { id: "learning" as const, label: t("nav.learning"), icon: BookOpenCheck },
+    { id: "settings" as const, label: t("nav.settings"), icon: Settings },
+  ];
+
+  const titles: Record<ViewId, { eyebrow: string; title: string }> = {
+    overview: { eyebrow: t("eyebrow.overview"), title: t("title.overview") },
+    strategy: { eyebrow: t("eyebrow.strategy"), title: t("title.strategy") },
+    market: { eyebrow: t("eyebrow.market"), title: t("title.market") },
+    account: { eyebrow: t("eyebrow.account"), title: t("title.account") },
+    learning: { eyebrow: t("eyebrow.learning"), title: t("title.learning") },
+    settings: { eyebrow: t("eyebrow.settings"), title: t("title.settings") },
+  };
+
+  const connectionLabels: Record<ConnectionState, string> = {
+    connected: t("connection.connected"),
+    connecting: t("connection.connecting"),
+    offline: t("connection.offline"),
   };
 
   return (
@@ -82,7 +89,7 @@ export function AppShell({
       <aside className={`sidebar${mobileMenuOpen ? " mobile-open" : ""}`}>
         {/* Close button for mobile */}
         <button
-          aria-label="关闭菜单"
+          aria-label={t("menu.close")}
           className="mobile-menu-close"
           onClick={() => setMobileMenuOpen(false)}
           type="button"
@@ -96,11 +103,11 @@ export function AppShell({
           </div>
           <div>
             <strong>KAIROS</strong>
-            <span>Quant Workbench</span>
+            <span>{t("brand.subtitle")}</span>
           </div>
         </div>
 
-        <nav className="primary-nav" aria-label="主导航">
+        <nav className="primary-nav" aria-label={locale === "zh" ? "主导航" : "Main navigation"}>
           {navigation.map(({ id, label, icon: Icon }) => (
             <button
               className={activeView === id ? "nav-item active" : "nav-item"}
@@ -117,20 +124,20 @@ export function AppShell({
         <div className="sidebar-note">
           <div className="sidebar-note-title">
             <ShieldCheck size={17} />
-            <span>研究环境</span>
+            <span>{t("sidebar.note.title")}</span>
           </div>
           <p>
             {connectionState === "connected"
-              ? "行情与账户来自本地模拟后端，真实交易保持关闭。"
-              : "后端未连接，页面保留静态研究数据作为降级展示。"}
+              ? t("sidebar.note.connected")
+              : t("sidebar.note.offline")}
           </p>
         </div>
 
         <div className="profile">
           <CircleUserRound size={30} />
           <div>
-            <strong>Research Desk</strong>
-            <span>本地工作区</span>
+            <strong>{t("profile.name")}</strong>
+            <span>{t("profile.role")}</span>
           </div>
         </div>
       </aside>
@@ -140,7 +147,7 @@ export function AppShell({
           <div className="topbar-left-group">
             {/* Mobile hamburger */}
             <button
-              aria-label="打开菜单"
+              aria-label={t("menu.open")}
               className="mobile-menu-toggle"
               onClick={() => setMobileMenuOpen(true)}
               type="button"
@@ -155,13 +162,24 @@ export function AppShell({
           <div className="topbar-actions">
             <label className="search-box">
               <Search size={17} />
-              <input aria-label="搜索" placeholder="搜索标的或策略" />
+              <input aria-label={locale === "zh" ? "搜索" : "Search"} placeholder={t("search.placeholder")} />
             </label>
+            {/* Language switcher */}
             <button
-              aria-label={theme === "light" ? "切换到暗色主题" : "切换到亮色主题"}
+              aria-label={t("lang.label")}
+              className="lang-toggle"
+              onClick={toggleLocale}
+              title={t("lang.switch")}
+              type="button"
+            >
+              <Globe size={17} />
+              <span className="lang-label">{locale === "zh" ? "EN" : "中文"}</span>
+            </button>
+            <button
+              aria-label={theme === "light" ? t("theme.light") : t("theme.dark")}
               className="theme-toggle"
-              onClick={toggle}
-              title={theme === "light" ? "暗色模式" : "亮色模式"}
+              onClick={toggleTheme}
+              title={theme === "light" ? t("theme.mode.light") : t("theme.mode.dark")}
               type="button"
             >
               {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}

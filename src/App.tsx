@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode, lazy, Suspense } from "react";
 import { Activity, CircleAlert, Database, Gauge, TrendingUp } from "lucide-react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppShell, type ViewId } from "./components/AppShell";
+import { PwaInstallPrompt, OfflineBanner } from "./components/PwaInstallPrompt";
 import { TradingStrategies } from "./components/TradingStrategies";
 import { SystemMonitor } from "./components/SystemMonitor";
 import { strategies } from "./data/mockData";
@@ -383,36 +384,40 @@ function App() {
   );
 
   return (
-    <AppShell
-      activeView={activeView}
-      connectionState={trading.connectionState}
-      mode={trading.mode}
-      onViewChange={(view) => navigate(viewPaths[view])}
-    >
-      <Routes>
-        <Route element={overview} path="/" />
-        <Route element={strategy} path="/strategy" />
-        <Route element={market} path="/market" />
-        <Route element={account} path="/account" />
-        <Route
-          element={
-            <Suspense fallback={<PanelFallback />}>
-              <LearningPipeline />
-            </Suspense>
-          }
-          path="/learning"
-        />
-        <Route
-          element={
-            <Suspense fallback={<PanelFallback />}>
-              <Settings />
-            </Suspense>
-          }
-          path="/settings"
-        />
-        <Route element={<Navigate replace to="/" />} path="*" />
-      </Routes>
-    </AppShell>
+    <>
+      <OfflineBanner />
+      <PwaInstallPrompt />
+      <AppShell
+        activeView={activeView}
+        connectionState={trading.connectionState}
+        mode={trading.mode}
+        onViewChange={(view) => navigate(viewPaths[view])}
+      >
+        <Routes>
+          <Route element={overview} path="/" />
+          <Route element={strategy} path="/strategy" />
+          <Route element={market} path="/market" />
+          <Route element={account} path="/account" />
+          <Route
+            element={
+              <Suspense fallback={<PanelFallback />}>
+                <LearningPipeline />
+              </Suspense>
+            }
+            path="/learning"
+          />
+          <Route
+            element={
+              <Suspense fallback={<PanelFallback />}>
+                <Settings />
+              </Suspense>
+            }
+            path="/settings"
+          />
+          <Route element={<Navigate replace to="/" />} path="*" />
+        </Routes>
+      </AppShell>
+    </>
   );
 }
 
