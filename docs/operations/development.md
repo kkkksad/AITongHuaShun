@@ -68,6 +68,10 @@ npm run dev:api
 npm run dev:web
 ```
 
+Windows 受限目录环境下，`dev:web` 使用 Vite 的 `runner` 配置加载器，避免开发服务器在加载 `vite.config.ts` 时扫描项目父目录并触发权限错误。
+
+如果控制台提示 `Port 4173 is already in use` 或 `EADDRINUSE 127.0.0.1:8787`，说明前端或 API 已经启动。先直接访问上述地址；需要重启时，应先停止之前运行 `npm run dev` 的终端，再重新执行命令，不要同时启动多套服务。
+
 Vite 将 `/api` 和 `/ws` 代理到本地 Fastify 服务。当前 `MARKET_MODE` 只允许 `mock` 或 `paper`；配置为 `live` 会拒绝启动。
 
 使用 AkShare 只读行情时，在 `.env.local` 设置：
