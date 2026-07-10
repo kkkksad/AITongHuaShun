@@ -9,10 +9,15 @@ React Router + TanStack Query
         ▼
 Fastify + TypeScript :8787
         │
-        ├─ MockMarket       确定性模拟行情
+        ├─ MarketDataProvider
+        │   ├─ MockMarket               确定性模拟行情
+        │   └─ AkShareMarketProvider    只读外部行情
         ├─ RiskEngine       下单前风险检查
         ├─ PaperBroker      模拟撮合与账户更新
         └─ TradingStore     内存或本地 JSON 状态
+
+FastAPI + AkShare :8800
+        └─ 只读行情桥接，无账户和订单接口
 ```
 
 前后端共享 `shared/trading.ts` 中的行情、账户、持仓、订单、风险和实时事件契约。
@@ -30,7 +35,7 @@ src/
 
 server/
   broker/        PaperBroker 模拟撮合
-  market/        MockMarket 模拟行情
+  market/        MockMarket、HTTP 与 AkShare 只读行情适配器
   realtime/      WebSocket 连接与广播
   risk/          风险规则
   store/         内存与本地 JSON 交易状态
@@ -55,21 +60,23 @@ shared/
 
 ## 运行时数据流
 
-1. `MockMarket` 使用固定随机状态生成可复现的行情 Tick。
-2. Fastify 将行情通过 `/ws` 广播给 React。
-3. React 通过 `POST /api/orders` 提交带客户端幂等键的模拟订单。
-4. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
-5. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
-6. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
-7. 新账户、持仓和订单状态再次通过 WebSocket 推送。
+1. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
+2. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
+3. Fastify 将行情通过 `/ws` 广播给 React。
+4. React 通过 `POST /api/orders` 提交带客户端幂等键的模拟订单。
+5. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
+6. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
+7. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
+8. 新账户、持仓和订单状态再次通过 WebSocket 推送。
 
 Fastify 使用 Helmet 设置基础安全响应头，并使用 Rate Limit 对 HTTP 请求进行全局限流。统一错误处理必须保留插件产生的 4xx 状态，不能把 429 改写为 500。
+Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabilities` 声明只读行情与纸面执行边界。
 
 ## 面向真实数据的适配器
 
 ### `MarketDataProvider`
 
-未来提供带来源、授权、时间戳、交易日历、时区和复权语义的行情。上层逻辑不得直接绑定 AkShare、Tushare Pro 或单一供应商返回格式。
+当前可使用 MockMarket 或 AkShare 桥接。外部行情必须保留来源、授权、时间戳、交易日历、时区和复权语义；上层逻辑不得直接绑定单一供应商返回格式。
 
 ### `NewsProvider`
 
