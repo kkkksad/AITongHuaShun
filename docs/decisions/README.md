@@ -6,6 +6,7 @@
 
 - [0001：将代码仓库作为记录系统](0001-repository-as-record.md)
 - [0002：采用 TypeScript 模拟交易后端栈](0002-simulation-backend-stack.md)
+- [0003：真实行情只读接入与纸面执行隔离](0003-read-only-market-provider-boundary.md)
 
 ## 新建格式
 

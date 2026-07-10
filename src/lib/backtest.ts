@@ -19,6 +19,7 @@ const strategyDrift: Record<StrategyId, number> = {
   "mean-reversion": 0.00055,
   breakout: 0.00066,
   "multi-factor": 0.00061,
+  dca: 0.00032,
 };
 
 function hashSeed(value: string): number {
@@ -108,10 +109,10 @@ export function runBacktest(
 
     if (day > 4 && day % Math.max(5, parameters.rebalanceDays + 3) === 0) {
       const [symbol, basePrice] = symbols[trades.length % symbols.length];
-      const side = trades.length % 3 === 2 ? "卖出" : "买入";
+      const side = trades.length % 3 === 2 ? "\u5356\u51FA" : "\u4E70\u5165";
       const quantity = 100 * (1 + (trades.length % 6));
       const price = basePrice * (0.97 + random() * 0.08);
-      const pnl = side === "卖出" ? (random() - 0.34) * price * quantity * 0.08 : 0;
+      const pnl = side === "\u5356\u51FA" ? (random() - 0.34) * price * quantity * 0.08 : 0;
 
       trades.push({
         id: `TR-${String(trades.length + 1).padStart(3, "0")}`,
@@ -130,7 +131,7 @@ export function runBacktest(
   const annualizedReturn = (1 + totalReturn) ** (252 / periods) - 1;
   const meanReturn = returns.reduce((sum, value) => sum + value, 0) / returns.length;
   const volatility = standardDeviation(returns);
-  const closedTrades = trades.filter((trade) => trade.side === "卖出");
+  const closedTrades = trades.filter((trade) => trade.side === "\u5356\u51FA");
   const winningTrades = closedTrades.filter((trade) => trade.pnl > 0);
 
   return {

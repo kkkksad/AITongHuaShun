@@ -26,11 +26,16 @@ vite.config.d.ts
 vitest.config.js
 vitest.config.d.ts
 
+# Python generated output
+__pycache__/
+*.py[cod]
+
 # Editor and operating system files
 .vscode/*
 !.vscode/launch.json
 !.vscode/tasks.json
 !.vscode/settings.json
+!.vscode/extensions.json
 .idea/
 .DS_Store
 Thumbs.db

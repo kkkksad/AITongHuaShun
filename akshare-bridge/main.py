@@ -15,7 +15,6 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import akshare as ak
 from fastapi import FastAPI, HTTPException, Query
@@ -28,6 +27,14 @@ HOST = os.getenv("AKSHARE_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.getenv("AKSHARE_BRIDGE_PORT", "8800"))
 CACHE_TTL_SEC = float(os.getenv("AKSHARE_BRIDGE_CACHE_TTL", "3.0"))
 AUTH_TOKEN = os.getenv("AKSHARE_BRIDGE_TOKEN", "")
+ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "AKSHARE_BRIDGE_ORIGINS",
+        "http://127.0.0.1:8787",
+    ).split(",")
+    if origin.strip()
+]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -168,10 +175,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET"],
+    allow_headers=["Authorization"],
 )
 
 
@@ -179,7 +186,8 @@ app.add_middleware(
 
 @app.middleware("http")
 async def auth_middleware(request, call_next):
-    if AUTH_TOKEN:
+    public_paths = {"/health", "/api/health", "/docs", "/openapi.json"}
+    if AUTH_TOKEN and request.url.path not in public_paths:
         auth = request.headers.get("Authorization", "")
         if auth != f"Bearer {AUTH_TOKEN}":
             from fastapi.responses import JSONResponse
@@ -187,19 +195,26 @@ async def auth_middleware(request, call_next):
                 status_code=401,
                 content={"error": "Unauthorized", "message": "无效的认证令牌"},
             )
-    return await call_next(request)
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # ── API 端点 ──────────────────────────────────────────────
 
 @app.get("/health")
+@app.get("/api/health")
 async def health():
     """健康检查。"""
+    cache_age = cache.age_sec
     return {
         "status": "ok",
         "service": "akshare-market-bridge",
         "cachedSymbols": cache.count,
-        "cacheAgeSec": round(cache.age_sec, 1),
+        "cacheAgeSec": None
+        if cache_age == float("inf")
+        else round(cache_age, 1),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
@@ -209,7 +224,6 @@ async def get_quotes(
     symbols: str = Query(
         ...,
         description="逗号分隔的股票代码，如 600519,000001,300750",
-        min_length=1,
     ),
 ):
     """

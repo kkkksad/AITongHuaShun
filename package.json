@@ -10,6 +10,7 @@
     "dev:debug": "npm run dev",
     "start:api": "tsx server/index.ts",
     "build": "tsc -b && vite build",
+    "build:analyze": "vite build --config vite.analyze.config.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -37,6 +38,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^10.0.3",
     "jsdom": "^29.1.1",
+    "rollup-plugin-visualizer": "^5.14.0",
     "tsx": "^4.23.0",
     "typescript": "~5.7.2",
     "vite": "^6.0.5",

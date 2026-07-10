@@ -15,6 +15,7 @@ export { MomentumStrategy } from "./MomentumStrategy";
 export { GridTradingStrategy } from "./GridTradingStrategy";
 export { MACDStrategy } from "./MACDStrategy";
 export { TurtleStrategy } from "./TurtleStrategy";
+export { DCAStrategy } from "./DCAStrategy";
 
 // 技术指标也可以导出，方便自定义策略使用
 export {

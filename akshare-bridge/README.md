@@ -28,7 +28,8 @@ AKSHARE_BRIDGE_PORT=8800 python main.py
 | `AKSHARE_BRIDGE_HOST` | `127.0.0.1` | 监听地址 |
 | `AKSHARE_BRIDGE_PORT` | `8800` | 监听端口 |
 | `AKSHARE_BRIDGE_CACHE_TTL` | `3.0` | 行情缓存有效期（秒） |
-| `AKSHARE_BRIDGE_AUTH_TOKEN` | (空) | API 认证令牌（不设置则不校验） |
+| `AKSHARE_BRIDGE_TOKEN` | (空) | 服务端 API 认证令牌（不设置则不校验） |
+| `AKSHARE_BRIDGE_ORIGINS` | `http://127.0.0.1:8787` | 允许的来源，多个值使用逗号分隔 |
 
 ### API
 
@@ -36,6 +37,7 @@ AKSHARE_BRIDGE_PORT=8800 python main.py
 
 ```
 GET /health
+GET /api/health
 ```
 
 响应：
@@ -77,15 +79,19 @@ GET /api/market/quotes?symbols=600519,000001,300750
 
 ```typescript
 // server/system.ts 或启动脚本中
-import { HttpMarketProvider } from "./market/HttpMarketProvider";
+import { AkShareMarketProvider } from "./market/AkShareProvider";
 
-const market = new HttpMarketProvider({
+const market = new AkShareMarketProvider({
   baseUrl: "http://127.0.0.1:8800",
-  tickMs: 3000,         // 每3秒轮询（快于 AkShare 缓存刷新）
+  tickMs: 5000,
   mode: "paper",
   symbols: ["600519", "000001", "300750"],
+  apiKey: process.env.AKSHARE_BRIDGE_TOKEN,
 });
 ```
+
+真实行情只改变 `MarketDataProvider`，订单仍进入 TypeScript 服务中的
+`PaperBroker`。该桥接不包含账户、持仓或下单接口。
 
 ### 数据来源
 

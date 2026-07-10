@@ -7,6 +7,10 @@ on:
     branches: [main, master]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-and-build:
     name: Test & Build (Node ${{ matrix.node-version }})
@@ -29,14 +33,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: TypeScript type-check
-        run: npx tsc --noEmit -p tsconfig.server.json 2>&1 | head -20 || true
+      - name: TypeScript type-check (server)
+        run: npx tsc --noEmit -p tsconfig.server.json
+
+      - name: TypeScript type-check (app)
+        run: npx tsc --noEmit -p tsconfig.app.json
 
       - name: Run tests
         run: npm test
 
-      - name: Build frontend
-        run: npx vite build
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifact
+        if: matrix.node-version == '22'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
 
   docker-build:
     name: Docker Build
@@ -71,9 +86,8 @@ jobs:
           cache-to: type=gha,mode=max
 
   lint:
-    name: Lint (optional)
+    name: Lint
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - name: Checkout
@@ -88,9 +102,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check formatting (prettier-like - informational only)
+      - name: Check formatting (prettier-like — informational only)
         run: |
-          echo "::group::File structure check"
-          find . -name "*.ts" -not -path "./node_modules/*" -not -path "./dist/*" | sort
+          echo "::group::Project structure"
+          find . \( -name "*.ts" -o -name "*.tsx" \) \
+            -not -path "./node_modules/*" \
+            -not -path "./dist/*" | sort
           echo "::endgroup::"
-          echo "Lint step complete (add eslint/prettier for full linting)"
+          echo "Lint step complete — add eslint/prettier for full linting"

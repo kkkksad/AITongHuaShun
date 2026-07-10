@@ -5,6 +5,7 @@ version: "3.8"
 # ============================================================
 # 开发环境: docker compose --profile dev up
 # 生产环境: docker compose --profile prod up
+# 监控环境: docker compose --profile monitoring up
 # 仅行情桥接: docker compose up akshare-bridge
 # ============================================================
 
@@ -93,7 +94,6 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      # 挂载源码目录，支持热重载
       - ./server:/app/server
       - ./shared:/app/shared
       - ./package.json:/app/package.json:ro
@@ -123,7 +123,6 @@ services:
     ports:
       - "5173:5173"
     volumes:
-      # 挂载源码目录，支持 HMR
       - ./src:/app/src
       - ./shared:/app/shared
       - ./index.html:/app/index.html:ro
@@ -172,9 +171,12 @@ services:
       - "8800:8800"
     environment:
       - TZ=Asia/Shanghai
+      - AKSHARE_BRIDGE_HOST=0.0.0.0
+      - AKSHARE_BRIDGE_TOKEN=${AKSHARE_BRIDGE_TOKEN:-}
+      - AKSHARE_BRIDGE_ORIGINS=http://backend:3001
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8800/api/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8800/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -182,3 +184,48 @@ services:
     profiles:
       - prod
       - dev
+
+  # ==========================================================
+  # Prometheus 监控采集
+  # ==========================================================
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    container_name: kairos-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # ==========================================================
+  # Grafana 仪表盘可视化
+  # ==========================================================
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: kairos-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-clock-panel
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana-datasources:/etc/grafana/provisioning/datasources:ro
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    profiles:
+      - monitoring
+
+volumes:
+  prometheus_data:
+  grafana_data:

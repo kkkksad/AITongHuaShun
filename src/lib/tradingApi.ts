@@ -13,13 +13,37 @@ export interface HealthSnapshot {
   ok: boolean;
   service: string;
   mode: TradingMode;
+  marketDataProvider: MarketDataProviderName;
   realTradingEnabled: boolean;
   websocketConnections: number;
   timestamp: string;
 }
 
+export type MarketDataProviderName = "mock" | "akshare";
+
+export interface CapabilitiesSnapshot {
+  marketData: {
+    provider: MarketDataProviderName;
+    mode: TradingMode;
+    readOnly: true;
+    external: boolean;
+  };
+  execution: {
+    provider: "paper-broker";
+    mode: "paper";
+    liveSupported: false;
+    humanApprovalRequiredForLive: true;
+  };
+  credentials: {
+    browserAllowed: false;
+    storage: "server-environment-only";
+  };
+  openApi: string | null;
+}
+
 export interface TradingBootstrap {
   health: HealthSnapshot;
+  capabilities: CapabilitiesSnapshot;
   market: MarketSnapshot;
   account: AccountSnapshot;
   positions: PositionSnapshot[];
@@ -57,16 +81,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function fetchTradingBootstrap(): Promise<TradingBootstrap> {
-  const [health, market, account, positions, orders, limits] = await Promise.all([
-    request<HealthSnapshot>("/api/health"),
-    request<MarketSnapshot>("/api/market/snapshot"),
-    request<AccountSnapshot>("/api/account"),
-    request<PositionSnapshot[]>("/api/positions"),
-    request<OrderRecord[]>("/api/orders?limit=50"),
-    request<RiskLimits>("/api/risk/limits"),
-  ]);
+  const [health, capabilities, market, account, positions, orders, limits] =
+    await Promise.all([
+      request<HealthSnapshot>("/api/health"),
+      request<CapabilitiesSnapshot>("/api/capabilities"),
+      request<MarketSnapshot>("/api/market/snapshot"),
+      request<AccountSnapshot>("/api/account"),
+      request<PositionSnapshot[]>("/api/positions"),
+      request<OrderRecord[]>("/api/orders?limit=50"),
+      request<RiskLimits>("/api/risk/limits"),
+    ]);
 
-  return { health, market, account, positions, orders, limits };
+  return { health, capabilities, market, account, positions, orders, limits };
 }
 
 export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> {

@@ -19,6 +19,43 @@
       ]
     },
     {
+      "name": "KAIROS：后端纸面交易（AkShare）",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--import",
+        "tsx"
+      ],
+      "program": "${workspaceFolder}/server/index.ts",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": {
+        "MARKET_MODE": "paper",
+        "MARKET_DATA_PROVIDER": "akshare",
+        "AKSHARE_BRIDGE_URL": "http://127.0.0.1:8800",
+        "REAL_TRADING_ENABLED": "false"
+      },
+      "skipFiles": [
+        "<node_internals>/**",
+        "${workspaceFolder}/node_modules/**"
+      ]
+    },
+    {
+      "name": "KAIROS：AkShare 行情桥接",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/akshare-bridge/main.py",
+      "cwd": "${workspaceFolder}/akshare-bridge",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}/.env.local",
+      "env": {
+        "AKSHARE_BRIDGE_HOST": "127.0.0.1",
+        "AKSHARE_BRIDGE_PORT": "8800"
+      }
+    },
+    {
       "name": "KAIROS：前端 React",
       "type": "msedge",
       "request": "launch",
@@ -38,6 +75,15 @@
       "name": "KAIROS：全栈调试",
       "configurations": [
         "KAIROS：后端 API",
+        "KAIROS：前端 React"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "KAIROS：真实行情 + 模拟交易调试",
+      "configurations": [
+        "KAIROS：AkShare 行情桥接",
+        "KAIROS：后端纸面交易（AkShare）",
         "KAIROS：前端 React"
       ],
       "stopAll": true

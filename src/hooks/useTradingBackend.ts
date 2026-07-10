@@ -20,6 +20,7 @@ import {
   getTradingSocketUrl,
   setPaperTradingPaused,
   submitPaperOrder,
+  type MarketDataProviderName,
   type TradingBootstrap,
 } from "../lib/tradingApi";
 
@@ -28,6 +29,7 @@ export type ConnectionState = "connecting" | "connected" | "offline";
 export interface TradingBackend {
   connectionState: ConnectionState;
   mode: TradingMode;
+  marketDataProvider: MarketDataProviderName;
   market?: MarketSnapshot;
   account?: AccountSnapshot;
   positions: PositionSnapshot[];
@@ -328,6 +330,10 @@ export function useTradingBackend(): TradingBackend {
   return {
     connectionState,
     mode: bootstrap?.health.mode ?? bootstrap?.market.mode ?? "mock",
+    marketDataProvider:
+      bootstrap?.capabilities.marketData.provider ??
+      bootstrap?.health.marketDataProvider ??
+      "mock",
     market: bootstrap?.market,
     account: bootstrap?.account,
     positions: bootstrap?.positions ?? [],

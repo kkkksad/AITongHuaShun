@@ -4,9 +4,7 @@ AkShare 桥接微服务单元测试
 或:   python test_bridge.py
 """
 
-import json
 import sys
-import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,9 +24,25 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["service"] == "akshare-market-bridge"
+        assert response.headers["x-content-type-options"] == "nosniff"
+
+    def test_api_health_alias_returns_same_service(self):
+        response = client.get("/api/health")
+        assert response.status_code == 200
+        assert response.json()["service"] == "akshare-market-bridge"
+
+    def test_health_remains_public_when_token_is_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/health")
+        assert response.status_code == 200
 
 
 class TestQuotesEndpoint:
+    def test_quotes_require_server_token_when_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/api/market/quotes?symbols=600519")
+        assert response.status_code == 401
+
     def test_missing_symbols_returns_400(self):
         response = client.get("/api/market/quotes")
         assert response.status_code == 422  # FastAPI validation

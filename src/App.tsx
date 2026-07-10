@@ -1,25 +1,44 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode, lazy, Suspense } from "react";
 import { Activity, CircleAlert, Database, Gauge, TrendingUp } from "lucide-react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppShell, type ViewId } from "./components/AppShell";
-import { BacktestResults } from "./components/BacktestResults";
-import { FlowPanel } from "./components/FlowPanel";
-import { LearningPipeline } from "./components/LearningPipeline";
-import { MarketChart } from "./components/MarketChart";
-import { MarketOverview } from "./components/MarketOverview";
-import { NewsPanel } from "./components/NewsPanel";
-import { OrderHistory } from "./components/OrderHistory";
-import { PaperAccount } from "./components/PaperAccount";
-import { Portfolio } from "./components/Portfolio";
-import { RiskPanel } from "./components/RiskPanel";
-import { StrategyCompare } from "./components/StrategyCompare";
-import { StrategyLab } from "./components/StrategyLab";
+import { TradingStrategies } from "./components/TradingStrategies";
+import { SystemMonitor } from "./components/SystemMonitor";
 import { strategies } from "./data/mockData";
 import { runBacktest } from "./lib/backtest";
 import { useTradingBackend } from "./hooks/useTradingBackend";
 import type { StrategyId, StrategyParameters } from "./types";
 
-type AccountTab = "portfolio" | "trading" | "orders" | "risk";
+// ── Helper for lazy-loading named exports ────────────────────
+// eslint-disable-next-line
+function lazyNamed(importer: () => Promise<any>, name: string): any {
+  // eslint-disable-next-line
+  return lazy(() => importer().then((m: any) => ({ default: m[name] })));
+}
+
+// ── Lazy-loaded heavy components ──────────────────────────────
+const BacktestResults = lazyNamed(() => import("./components/BacktestResults"), "BacktestResults");
+const FlowPanel = lazyNamed(() => import("./components/FlowPanel"), "FlowPanel");
+const LearningPipeline = lazyNamed(() => import("./components/LearningPipeline"), "LearningPipeline");
+const MarketChart = lazyNamed(() => import("./components/MarketChart"), "MarketChart");
+const MarketOverview = lazyNamed(() => import("./components/MarketOverview"), "MarketOverview");
+const NewsPanel = lazyNamed(() => import("./components/NewsPanel"), "NewsPanel");
+const OrderHistory = lazyNamed(() => import("./components/OrderHistory"), "OrderHistory");
+const PaperAccount = lazyNamed(() => import("./components/PaperAccount"), "PaperAccount");
+const Portfolio = lazyNamed(() => import("./components/Portfolio"), "Portfolio");
+const RiskPanel = lazyNamed(() => import("./components/RiskPanel"), "RiskPanel");
+const StrategyCompare = lazyNamed(() => import("./components/StrategyCompare"), "StrategyCompare");
+const StrategyLab = lazyNamed(() => import("./components/StrategyLab"), "StrategyLab");
+
+function PanelFallback() {
+  return (
+    <div className="page-loader" style={{ minHeight: 200 }}>
+      <div className="page-loader-spinner" />
+    </div>
+  );
+}
+
+type AccountTab = "portfolio" | "trading" | "orders" | "risk" | "strategies" | "monitor";
 
 const defaultParameters: StrategyParameters = {
   lookback: 20,
@@ -37,8 +56,10 @@ function percent(value: number): string {
 const accountTabs: { id: AccountTab; label: string }[] = [
   { id: "portfolio", label: "持仓分析" },
   { id: "trading", label: "交易下单" },
+  { id: "strategies", label: "交易策略" },
   { id: "orders", label: "订单历史" },
   { id: "risk", label: "风控面板" },
+  { id: "monitor", label: "系统监控" },
 ];
 
 const viewPaths: Record<ViewId, string> = {
@@ -70,7 +91,6 @@ function App() {
     [committedParameters, committedStrategy],
   );
 
-  // Pre-compute all strategy results for comparison
   const allStrategyResults = useMemo(
     () =>
       strategies.map((strategy) => ({
@@ -170,18 +190,26 @@ function App() {
         </article>
       </section>
 
-      <MarketOverview
-        connectionState={trading.connectionState}
-        market={trading.market}
-      />
+      <Suspense fallback={<PanelFallback />}>
+        <MarketOverview
+          connectionState={trading.connectionState}
+          market={trading.market}
+        />
+      </Suspense>
 
       <div className="two-column wide-left">
-        <BacktestResults compact result={result} />
-        <FlowPanel />
+        <Suspense fallback={<PanelFallback />}>
+          <BacktestResults compact result={result} />
+        </Suspense>
+        <Suspense fallback={<PanelFallback />}>
+          <FlowPanel />
+        </Suspense>
       </div>
 
       <div className="two-column">
-        <NewsPanel />
+        <Suspense fallback={<PanelFallback />}>
+          <NewsPanel />
+        </Suspense>
         <section className="panel watch-panel">
           <div className="panel-header">
             <div>
@@ -223,60 +251,87 @@ function App() {
 
   const strategy = (
     <div className="page-stack">
-      <StrategyLab
-        isRunning={isRunning}
-        onParameterChange={(key, value) =>
-          setParameters((current) => ({ ...current, [key]: value }))
-        }
-        onReset={() => setParameters(defaultParameters)}
-        onRun={handleRun}
-        onStrategyChange={setSelectedStrategy}
-        parameters={parameters}
-        selectedStrategy={selectedStrategy}
-      />
-      <BacktestResults result={result} />
-      <StrategyCompare results={allStrategyResults} />
+      <Suspense fallback={<PanelFallback />}>
+        <StrategyLab
+          isRunning={isRunning}
+          onParameterChange={(key: string, value: number) =>
+            setParameters((current) => ({ ...current, [key]: value }))
+          }
+          onReset={() => setParameters(defaultParameters)}
+          onRun={handleRun}
+          onStrategyChange={setSelectedStrategy}
+          parameters={parameters}
+          selectedStrategy={selectedStrategy}
+        />
+      </Suspense>
+      <Suspense fallback={<PanelFallback />}>
+        <BacktestResults result={result} />
+      </Suspense>
+      <Suspense fallback={<PanelFallback />}>
+        <StrategyCompare results={allStrategyResults} />
+      </Suspense>
     </div>
   );
 
   const market = (
     <div className="page-stack">
-      <MarketOverview
-        connectionState={trading.connectionState}
-        market={trading.market}
-      />
+      <Suspense fallback={<PanelFallback />}>
+        <MarketOverview
+          connectionState={trading.connectionState}
+          market={trading.market}
+        />
+      </Suspense>
       <div className="two-column wide-left">
-        <MarketChart />
-        <FlowPanel />
+        <Suspense fallback={<PanelFallback />}>
+          <MarketChart />
+        </Suspense>
+        <Suspense fallback={<PanelFallback />}>
+          <FlowPanel />
+        </Suspense>
       </div>
-      <NewsPanel />
+      <Suspense fallback={<PanelFallback />}>
+        <NewsPanel />
+      </Suspense>
     </div>
   );
 
   const accountTabContent: Record<AccountTab, ReactNode> = {
     portfolio: (
-      <Portfolio
-        equity={trading.account?.equity}
-        market={trading.market}
-        positions={trading.positions}
-      />
+      <Suspense fallback={<PanelFallback />}>
+        <Portfolio
+          equity={trading.account?.equity}
+          market={trading.market}
+          positions={trading.positions}
+        />
+      </Suspense>
     ),
-    trading: <PaperAccount backend={trading} />,
+    trading: (
+      <Suspense fallback={<PanelFallback />}>
+        <PaperAccount backend={trading} />
+      </Suspense>
+    ),
+    strategies: <TradingStrategies />,
     orders: (
-      <OrderHistory
-        orders={trading.orders}
-        onCancelOrder={async (orderId) => {
-          await trading.cancelOrder(orderId);
-        }}
-        pendingAction={trading.pendingAction}
-      />
+      <Suspense fallback={<PanelFallback />}>
+        <OrderHistory
+          orders={trading.orders}
+          onCancelOrder={async (orderId: string) => {
+            await trading.cancelOrder(orderId);
+          }}
+          pendingAction={trading.pendingAction}
+        />
+      </Suspense>
     ),
-    risk: <RiskPanel account={trading.account} limits={trading.limits} />,
+    risk: (
+      <Suspense fallback={<PanelFallback />}>
+        <RiskPanel account={trading.account} limits={trading.limits} />
+      </Suspense>
+    ),
+    monitor: <SystemMonitor />,
   };
 
   const account = (
     <div className="page-stack">
-      {/* Account Header */}
       {trading.account && (
         <section className="panel account-hero-panel">
           <div className="account-hero-row">
@@ -308,7 +363,6 @@ function App() {
         </section>
       )}
 
-      {/* Tab Navigation */}
       <nav className="account-tabs" aria-label="账户子页面">
         {accountTabs.map((tab) => (
           <button
@@ -338,7 +392,14 @@ function App() {
         <Route element={strategy} path="/strategy" />
         <Route element={market} path="/market" />
         <Route element={account} path="/account" />
-        <Route element={<LearningPipeline />} path="/learning" />
+        <Route
+          element={
+            <Suspense fallback={<PanelFallback />}>
+              <LearningPipeline />
+            </Suspense>
+          }
+          path="/learning"
+        />
         <Route element={<Navigate replace to="/" />} path="*" />
       </Routes>
     </AppShell>

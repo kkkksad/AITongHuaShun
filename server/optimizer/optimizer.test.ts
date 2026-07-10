@@ -362,8 +362,8 @@ describe("builtInFactories", () => {
     }, 30000); // 30s timeout for optimization tests
   }
 
-  it("builtInFactories contains all 7 strategies", () => {
-    expect(Object.keys(builtInFactories)).toHaveLength(7);
+  it("builtInFactories contains all 8 strategies", () => {
+    expect(Object.keys(builtInFactories)).toHaveLength(8);
   });
 });
 

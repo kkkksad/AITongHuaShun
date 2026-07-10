@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   BarChart3,
   BookOpenCheck,
@@ -7,10 +7,12 @@ import {
   CircleUserRound,
   FlaskConical,
   LayoutDashboard,
+  Menu,
   Moon,
   Search,
   ShieldCheck,
   Sun,
+  X,
 } from "lucide-react";
 import type { ConnectionState } from "../hooks/useTradingBackend";
 import { useTheme } from "../hooks/useTheme";
@@ -56,10 +58,35 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const { theme, toggle } = useTheme();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const handleNavClick = (view: ViewId) => {
+    onViewChange(view);
+    setMobileMenuOpen(false);
+  };
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={() => setMobileMenuOpen(false)}
+          role="presentation"
+        />
+      )}
+
+      <aside className={`sidebar${mobileMenuOpen ? " mobile-open" : ""}`}>
+        {/* Close button for mobile */}
+        <button
+          aria-label="关闭菜单"
+          className="mobile-menu-close"
+          onClick={() => setMobileMenuOpen(false)}
+          type="button"
+        >
+          <X size={20} />
+        </button>
+
         <div className="brand">
           <div className="brand-mark" aria-hidden="true">
             <BarChart3 size={21} />
@@ -75,7 +102,7 @@ export function AppShell({
             <button
               className={activeView === id ? "nav-item active" : "nav-item"}
               key={id}
-              onClick={() => onViewChange(id)}
+              onClick={() => handleNavClick(id)}
               type="button"
             >
               <Icon size={18} />
@@ -107,9 +134,20 @@ export function AppShell({
 
       <div className="workspace">
         <header className="topbar">
-          <div>
-            <span className="eyebrow">{titles[activeView].eyebrow}</span>
-            <h1>{titles[activeView].title}</h1>
+          <div className="topbar-left-group">
+            {/* Mobile hamburger */}
+            <button
+              aria-label="打开菜单"
+              className="mobile-menu-toggle"
+              onClick={() => setMobileMenuOpen(true)}
+              type="button"
+            >
+              <Menu size={20} />
+            </button>
+            <div>
+              <span className="eyebrow">{titles[activeView].eyebrow}</span>
+              <h1>{titles[activeView].title}</h1>
+            </div>
           </div>
           <div className="topbar-actions">
             <label className="search-box">

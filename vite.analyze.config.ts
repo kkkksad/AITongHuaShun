@@ -1,8 +1,26 @@
-import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { visualizer } from "rollup-plugin-visualizer";
+import { defineConfig } from "vite";
 
+/**
+ * Vite 构建分析配置
+ *
+ * 用于分析打包体积和代码分割效果。
+ * 使用: npm run build:analyze
+ *
+ * 生成 dist/stats.html —— 在浏览器中打开查看 treemap 可视化。
+ */
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    visualizer({
+      filename: "dist/stats.html",
+      open: false,
+      gzipSize: true,
+      brotliSize: true,
+      template: "treemap",
+    }),
+  ],
   server: {
     host: "127.0.0.1",
     port: 4173,
@@ -22,17 +40,13 @@ export default defineConfig({
     target: "es2020",
     cssMinify: true,
     sourcemap: false,
-    reportCompressedSize: false,
+    reportCompressedSize: true,
     rollupOptions: {
       output: {
         manualChunks: {
-          // Framework vendors — stable, cache-friendly
           vendor: ["react", "react-dom", "react-router-dom"],
-          // Query layer
           query: ["@tanstack/react-query"],
-          // Heavy charting library
           charts: ["recharts"],
-          // Icon library
           icons: ["lucide-react"],
         },
       },

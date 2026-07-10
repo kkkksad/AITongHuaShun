@@ -2,7 +2,7 @@
  * 回测参数优化器 —— 统一入口。
  *
  * 提供：
- * - 7 种内置策略的参数空间定义和工厂函数
+ * - 8 种内置策略的参数空间定义和工厂函数
  * - 网格搜索和遗传算法两种优化方法
  * - 便捷的 runOptimization() 高层 API
  */
@@ -42,8 +42,6 @@ export { computeScore } from "./scoreUtils";
 
 /**
  * 均线交叉策略参数空间
- *
- * 参数：fastPeriod(3-20), slowPeriod(10-60), targetWeight(0.1-1.0)
  */
 export const movingAverageCrossFactory: StrategyFactory = {
   name: "均线交叉",
@@ -64,11 +62,6 @@ export const movingAverageCrossFactory: StrategyFactory = {
   },
 };
 
-/**
- * RSI 策略参数空间
- *
- * 参数：period(5-30), oversoldThreshold(20-40), overboughtThreshold(60-80), targetWeight(0.1-1.0)
- */
 export const rsiFactory: StrategyFactory = {
   name: "RSI",
   parameters: [
@@ -88,11 +81,6 @@ export const rsiFactory: StrategyFactory = {
   },
 };
 
-/**
- * 布林带策略参数空间
- *
- * 参数：period(10-50), stdMultiplier(1.0-3.0), targetWeight(0.1-1.0)
- */
 export const bollingerBandsFactory: StrategyFactory = {
   name: "布林带",
   parameters: [
@@ -112,11 +100,6 @@ export const bollingerBandsFactory: StrategyFactory = {
   },
 };
 
-/**
- * 动量突破策略参数空间
- *
- * 参数：entryPeriod(10-50), exitPeriod(5-30), targetWeight(0.1-1.0)
- */
 export const momentumFactory: StrategyFactory = {
   name: "动量突破",
   parameters: [
@@ -136,11 +119,6 @@ export const momentumFactory: StrategyFactory = {
   },
 };
 
-/**
- * 网格交易策略参数空间
- *
- * 参数：gridCount(3-10), gridSpacingPercent(1-5), lotsPerGrid(100-500)
- */
 export const gridTradingFactory: StrategyFactory = {
   name: "网格交易",
   parameters: [
@@ -160,11 +138,6 @@ export const gridTradingFactory: StrategyFactory = {
   },
 };
 
-/**
- * MACD 策略参数空间
- *
- * 参数：fastPeriod(8-20), slowPeriod(20-40), signalPeriod(5-15), targetWeight(0.1-1.0)
- */
 export const macdFactory: StrategyFactory = {
   name: "MACD",
   parameters: [
@@ -184,11 +157,6 @@ export const macdFactory: StrategyFactory = {
   },
 };
 
-/**
- * 海龟交易策略参数空间
- *
- * 参数：entryPeriod(10-55), exitPeriod(5-25), trendFilterPeriod(0-100), targetWeight(0.1-1.0)
- */
 export const turtleFactory: StrategyFactory = {
   name: "Turtle",
   parameters: [
@@ -211,6 +179,31 @@ export const turtleFactory: StrategyFactory = {
 };
 
 /**
+ * 定投策略参数空间
+ *
+ * 参数：intervalBars(1-20), investAmount(1000-100000), takeProfitPercent(0-50)
+ */
+export const dcaFactory: StrategyFactory = {
+  name: "定投策略",
+  parameters: [
+    { name: "intervalBars", type: "int", min: 1, max: 20, step: 1 },
+    { name: "investAmount", type: "int", min: 1000, max: 100000, step: 1000 },
+    { name: "takeProfitPercent", type: "float", min: 0, max: 50, step: 5 },
+  ],
+  create: async (params) => {
+    const { DCAStrategy } = await import(
+      "../backtest/strategies/DCAStrategy"
+    );
+    return new DCAStrategy(
+      params.intervalBars,
+      params.investAmount,
+      "", // auto-select first tradable symbol
+      params.takeProfitPercent,
+    );
+  },
+};
+
+/**
  * 所有内置策略工厂映射。
  */
 export const builtInFactories: Record<string, StrategyFactory> = {
@@ -221,29 +214,13 @@ export const builtInFactories: Record<string, StrategyFactory> = {
   gridTrading: gridTradingFactory,
   macd: macdFactory,
   turtle: turtleFactory,
+  dca: dcaFactory,
 };
 
 // ═══════════════════════════════════════════════
 // 高层 API
 // ═══════════════════════════════════════════════
 
-/**
- * 运行参数优化。
- *
- * @example
- * ```typescript
- * import { runOptimization, rsiFactory } from "./optimizer";
- *
- * const report = await runOptimization(snapshots, rsiFactory, {
- *   method: "grid",
- *   grid: {
- *     objectives: [{ metric: "sharpeRatio", weight: 1 }],
- *   },
- * });
- * console.log("最优参数:", report.best.params);
- * console.log("最优得分:", report.best.score);
- * ```
- */
 export async function runOptimization(
   snapshots: MarketSnapshot[],
   factory: StrategyFactory,

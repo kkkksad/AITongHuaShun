@@ -13,6 +13,24 @@ import type {
   OrderRequest,
 } from "../shared/trading";
 import type { ServerConfig } from "./config";
+import {
+  getMetricsText,
+  recordAccountCash,
+  recordAccountEquity,
+  recordAccountPositions,
+  recordCircuitBreaker,
+  recordHttpRequest,
+  recordOrder,
+  recordOrderCancellation,
+  recordWebSocketConnection,
+} from "./metrics";
+import {
+  contentType,
+  exportAuditToCsv,
+  exportFilename,
+  exportOrdersToCsv,
+} from "./monitoring/exportUtils";
+import type { ExportFormat } from "./monitoring/exportUtils";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
 
@@ -34,6 +52,10 @@ const cancelParamsSchema = z.object({
 
 const listQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+
+const exportQuerySchema = z.object({
+  format: z.enum(["csv", "json"]).default("csv"),
 });
 
 interface BuildTradingAppOptions {
@@ -69,10 +91,10 @@ export async function buildTradingApp(
     await app.register(swagger, {
       openapi: {
         info: {
-          title: "KAIROS 量化交易 API",
+          title: "KAIROS Quant API",
           description:
-            "AI 量化交易工作台后端 API —— 提供行情数据、模拟交易、回测、风控等服务。",
-          version: "0.1.0",
+            "量化研究、确定性回测和模拟交易 API。当前不提供真实订单执行。",
+          version: "0.2.0",
         },
         servers: [
           {
@@ -87,17 +109,38 @@ export async function buildTradingApp(
           { name: "风控", description: "风险控制与熔断" },
           { name: "交易", description: "下单、撤单与交易控制" },
           { name: "审计", description: "交易审计事件" },
+          { name: "导出", description: "审计与交易记录导出" },
+          { name: "监控", description: "Prometheus 指标端点" },
         ],
       },
     });
     await app.register(swaggerUi, {
-      routePrefix: "/docs",
+      routePrefix: "/documentation",
+      staticCSP: true,
       uiConfig: {
         docExpansion: "list",
-        deepLinking: true,
+        deepLinking: false,
       },
     });
   }
+
+  // ── HTTP request timing hook ─────────────────────────────
+  app.addHook("onRequest", async (request) => {
+    (request as unknown as Record<string, unknown>).__startTime = Date.now();
+  });
+
+  app.addHook("onResponse", async (request, reply) => {
+    const start = (request as unknown as Record<string, number>).__startTime;
+    if (start) {
+      const duration = (Date.now() - start) / 1000;
+      recordHttpRequest(
+        request.method,
+        request.routeOptions.url ?? request.url,
+        reply.statusCode,
+        duration,
+      );
+    }
+  });
 
   // ── Broadcast helpers ───────────────────────────────────
 
@@ -108,6 +151,16 @@ export async function buildTradingApp(
     });
   };
 
+  const updateMetrics = () => {
+    const account = system.broker.getAccount();
+    if (account) {
+      recordAccountEquity(account.equity);
+      recordAccountCash(account.cash);
+    }
+    const riskState = system.risk.getState();
+    recordCircuitBreaker(riskState.circuitState === "tripped");
+  };
+
   system.market.on("snapshot", (snapshot: MarketSnapshot) => {
     hub.broadcast({ type: "market.snapshot", data: snapshot });
     system.broker.markToMarket(snapshot);
@@ -115,6 +168,10 @@ export async function buildTradingApp(
   });
   system.broker.on("account.updated", (account: AccountSnapshot) => {
     hub.broadcast({ type: "account.snapshot", data: account });
+    recordAccountEquity(account.equity);
+    recordAccountCash(account.cash);
+    const positions = system.broker.getPositions();
+    recordAccountPositions(positions.length);
   });
   system.broker.on("order.updated", (order: OrderRecord) => {
     hub.broadcast({ type: "order.updated", data: order });
@@ -164,6 +221,7 @@ export async function buildTradingApp(
             ok: { type: "boolean" },
             service: { type: "string" },
             mode: { type: "string" },
+            marketDataProvider: { type: "string", enum: ["mock", "akshare"] },
             realTradingEnabled: { type: "boolean" },
             websocketConnections: { type: "number" },
             timestamp: { type: "string" },
@@ -175,10 +233,54 @@ export async function buildTradingApp(
     ok: true,
     service: "kairos-trading-api",
     mode: options.config.MARKET_MODE,
+    marketDataProvider: system.marketDataProvider,
     realTradingEnabled: options.config.REAL_TRADING_ENABLED,
     websocketConnections: hub.connectionCount,
     timestamp: new Date().toISOString(),
   }));
+
+  app.get("/api/capabilities", {
+    schema: {
+      tags: ["系统"],
+      summary: "获取系统能力边界",
+      description: "明确区分只读行情来源与本地纸面订单执行能力。",
+    },
+  }, async () => ({
+    marketData: {
+      provider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
+      readOnly: true,
+      external: system.marketDataProvider !== "mock",
+    },
+    execution: {
+      provider: "paper-broker",
+      mode: "paper",
+      liveSupported: false,
+      humanApprovalRequiredForLive: true,
+    },
+    credentials: {
+      browserAllowed: false,
+      storage: "server-environment-only",
+    },
+    openApi: options.config.API_DOCS_ENABLED
+      ? "/documentation/json"
+      : null,
+  }));
+
+  // 监控
+  app.get("/metrics", {
+    schema: {
+      tags: ["监控"],
+      summary: "Prometheus 指标",
+      description: "以 Prometheus 文本格式返回 HTTP、WebSocket、订单和账户指标",
+      hide: true,
+    },
+  }, async (_request, reply) => {
+    updateMetrics();
+    return reply
+      .header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+      .send(getMetricsText());
+  });
 
   // 行情
   app.get("/api/market/snapshot", {
@@ -281,6 +383,82 @@ export async function buildTradingApp(
     return system.store.listAudit(limit);
   });
 
+  // ── 导出端点 ──────────────────────────────────────────────
+
+  app.get("/api/audit/export", {
+    schema: {
+      tags: ["导出"],
+      summary: "导出审计日志",
+      description: "以 CSV 或 JSON 格式导出审计事件记录",
+      querystring: {
+        type: "object",
+        properties: {
+          format: { type: "string", enum: ["csv", "json"], default: "csv" },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { format } = exportQuerySchema.parse(request.query) as { format: ExportFormat };
+    const events = system.store.listAudit(10_000);
+
+    if (format === "csv") {
+      const csv = exportAuditToCsv(events);
+      const bomCsv = "\uFEFF" + csv;
+      return reply
+        .header("Content-Type", contentType(format))
+        .header(
+          "Content-Disposition",
+          `attachment; filename="${exportFilename("audit", format)}"`,
+        )
+        .send(bomCsv);
+    }
+
+    return reply
+      .header("Content-Type", contentType(format))
+      .header(
+        "Content-Disposition",
+        `attachment; filename="${exportFilename("audit", format)}"`,
+      )
+      .send(JSON.stringify(events, null, 2));
+  });
+
+  app.get("/api/orders/export", {
+    schema: {
+      tags: ["导出"],
+      summary: "导出交易记录",
+      description: "以 CSV 或 JSON 格式导出订单记录",
+      querystring: {
+        type: "object",
+        properties: {
+          format: { type: "string", enum: ["csv", "json"], default: "csv" },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { format } = exportQuerySchema.parse(request.query) as { format: ExportFormat };
+    const orders = system.broker.getOrders(10_000);
+
+    if (format === "csv") {
+      const csv = exportOrdersToCsv(orders);
+      const bomCsv = "\uFEFF" + csv;
+      return reply
+        .header("Content-Type", contentType(format))
+        .header(
+          "Content-Disposition",
+          `attachment; filename="${exportFilename("orders", format)}"`,
+        )
+        .send(bomCsv);
+    }
+
+    return reply
+      .header("Content-Type", contentType(format))
+      .header(
+        "Content-Disposition",
+        `attachment; filename="${exportFilename("orders", format)}"`,
+      )
+      .send(JSON.stringify(orders, null, 2));
+  });
+
   // 下单
   app.post("/api/orders", {
     schema: {
@@ -303,6 +481,7 @@ export async function buildTradingApp(
   }, async (request, reply) => {
     const orderRequest = orderRequestSchema.parse(request.body) as OrderRequest;
     const order = system.broker.submitOrder(orderRequest);
+    recordOrder(orderRequest.side, order.status);
     const snapshot = system.market.getSnapshot();
     const account = system.broker.getAccount(snapshot);
     const positions = system.broker.getPositions(snapshot);
@@ -329,6 +508,7 @@ export async function buildTradingApp(
     const { orderId } = cancelParamsSchema.parse(request.params);
     try {
       const cancelled = system.broker.cancelOrder(orderId);
+      recordOrderCancellation();
       const snapshot = system.market.getSnapshot();
       const account = system.broker.getAccount(snapshot);
       const positions = system.broker.getPositions(snapshot);
@@ -374,6 +554,7 @@ export async function buildTradingApp(
     websocket: true,
   }, (socket) => {
     hub.add(socket);
+    recordWebSocketConnection(1);
     hub.send(socket, {
       type: "system.status",
       data: { connected: true, message: "模拟交易实时通道已连接" },
@@ -389,6 +570,10 @@ export async function buildTradingApp(
     hub.send(socket, {
       type: "positions.snapshot",
       data: system.broker.getPositions(),
+    });
+
+    socket.on("close", () => {
+      recordWebSocketConnection(-1);
     });
   });
 

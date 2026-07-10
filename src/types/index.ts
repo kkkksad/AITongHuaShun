@@ -1,4 +1,9 @@
-export type StrategyId = "momentum" | "mean-reversion" | "breakout" | "multi-factor";
+export type StrategyId =
+  | "momentum"
+  | "mean-reversion"
+  | "breakout"
+  | "multi-factor"
+  | "dca";
 
 export type Sentiment = "positive" | "neutral" | "negative";
 
@@ -18,6 +23,27 @@ export interface StrategyParameters {
   takeProfit: number;
   maxPosition: number;
   rebalanceDays: number;
+}
+
+/** 建仓计划 / 定投计划 */
+export interface DcaPlan {
+  id: string;
+  name: string;
+  symbol: string;
+  symbolName: string;
+  totalAmount: number; // 计划总投入
+  perInvestAmount: number; // 每期投入
+  interval: "daily" | "weekly" | "biweekly" | "monthly";
+  startDate: string;
+  endDate?: string;
+  currentInvested: number; // 已投入金额
+  currentShares: number; // 当前持有股数
+  averageCost: number; // 平均成本
+  currentValue: number; // 当前市值
+  profitPercent: number; // 盈亏百分比
+  status: "active" | "paused" | "completed";
+  takeProfitPercent: number; // 止盈百分比（0=不止盈）
+  stopLossPercent: number; // 止损百分比（0=不止损）
 }
 
 export interface EquityPoint {

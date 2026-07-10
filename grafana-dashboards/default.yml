@@ -1,0 +1,9 @@
+# Grafana 仪表盘自动加载
+apiVersion: 1
+
+providers:
+  - name: "KAIROS Quant"
+    folder: "KAIROS"
+    type: file
+    options:
+      path: /etc/grafana/provisioning/dashboards
