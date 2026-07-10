@@ -27,7 +27,6 @@ function generateSnapshots(count: number, seedPrice = 100): MarketSnapshot[] {
   const random = createSeededRandom();
 
   for (let i = 0; i < count; i++) {
-    // 简单随机游走
     price = price * (1 + (random() - 0.48) * 0.02);
     price = Math.max(1, price);
 
@@ -65,7 +64,6 @@ function generateSnapshots(count: number, seedPrice = 100): MarketSnapshot[] {
 
 // ── 测试策略 ──
 
-/** 买入持有策略：第一根 bar 全仓买入，之后不动 */
 class BuyAndHoldStrategy implements BacktestStrategy {
   readonly name = "买入持有";
   private entered = false;
@@ -73,20 +71,12 @@ class BuyAndHoldStrategy implements BacktestStrategy {
   onBar(context: StrategyContext): StrategySignal[] {
     if (!this.entered && context.barIndex === 0) {
       this.entered = true;
-      return [
-        {
-          symbol: "600519",
-          side: "buy",
-          type: "market",
-          targetWeight: 0.95, // 95%仓位
-        },
-      ];
+      return [{ symbol: "600519", side: "buy", type: "market", targetWeight: 0.95 }];
     }
     return [];
   }
 }
 
-/** 均线交叉策略：5日均线上穿20日均线买入，下穿卖出 */
 class MACrossStrategy implements BacktestStrategy {
   readonly name = "均线交叉";
   private prices: number[] = [];
@@ -95,9 +85,7 @@ class MACrossStrategy implements BacktestStrategy {
   onBar(context: StrategyContext): StrategySignal[] {
     const quote = context.snapshot.quotes.find((q) => q.symbol === "600519");
     if (!quote) return [];
-
     this.prices.push(quote.price);
-
     if (this.prices.length < 20) return [];
 
     const ma5 = this.sma(5);
@@ -105,32 +93,14 @@ class MACrossStrategy implements BacktestStrategy {
     const prevMa5 = this.smaPrev(5);
     const prevMa20 = this.smaPrev(20);
 
-    // 金叉买入
     if (!this.inPosition && prevMa5 <= prevMa20 && ma5 > ma20) {
       this.inPosition = true;
-      return [
-        {
-          symbol: "600519",
-          side: "buy",
-          type: "market",
-          targetWeight: 0.5,
-        },
-      ];
+      return [{ symbol: "600519", side: "buy", type: "market", targetWeight: 0.5 }];
     }
-
-    // 死叉卖出
     if (this.inPosition && prevMa5 >= prevMa20 && ma5 < ma20) {
       this.inPosition = false;
-      return [
-        {
-          symbol: "600519",
-          side: "sell",
-          type: "market",
-          targetWeight: 1.0, // 全部卖出
-        },
-      ];
+      return [{ symbol: "600519", side: "sell", type: "market", targetWeight: 1.0 }];
     }
-
     return [];
   }
 
@@ -138,42 +108,32 @@ class MACrossStrategy implements BacktestStrategy {
     const slice = this.prices.slice(-period);
     return slice.reduce((s, p) => s + p, 0) / period;
   }
-
   private smaPrev(period: number): number {
     const slice = this.prices.slice(-period - 1, -1);
     return slice.reduce((s, p) => s + p, 0) / period;
   }
 }
 
-/** 空策略：永远不交易 */
 class NoOpStrategy implements BacktestStrategy {
   readonly name = "空策略";
-  onBar(_context: StrategyContext): StrategySignal[] {
-    return [];
-  }
+  onBar(_context: StrategyContext): StrategySignal[] { return []; }
 }
 
-// ═══════════════════════════════════════════════
-// 测试
 // ═══════════════════════════════════════════════
 
 describe("HistoricalDataProvider", () => {
   it("正确初始化并返回首根 bar", () => {
     const snapshots = generateSnapshots(10, 100);
     const provider = new HistoricalDataProvider(snapshots);
-
     expect(provider.length).toBe(10);
     expect(provider.index).toBe(0);
     expect(provider.isComplete).toBe(false);
-
-    const snapshot = provider.getSnapshot();
-    expect(snapshot.sequence).toBe(1);
+    expect(provider.getSnapshot().sequence).toBe(1);
   });
 
   it("tick 推进到下一根 bar", () => {
     const snapshots = generateSnapshots(5);
     const provider = new HistoricalDataProvider(snapshots);
-
     expect(provider.index).toBe(0);
     provider.tick();
     expect(provider.index).toBe(1);
@@ -183,7 +143,6 @@ describe("HistoricalDataProvider", () => {
   it("getQuote 返回当前 bar 的报价", () => {
     const snapshots = generateSnapshots(5, 150);
     const provider = new HistoricalDataProvider(snapshots);
-
     const quote = provider.getQuote("600519");
     expect(quote).toBeDefined();
     expect(quote!.symbol).toBe("600519");
@@ -193,25 +152,22 @@ describe("HistoricalDataProvider", () => {
   it("getQuote 对不存在的标的返回 undefined", () => {
     const snapshots = generateSnapshots(5);
     const provider = new HistoricalDataProvider(snapshots);
-
     expect(provider.getQuote("999999")).toBeUndefined();
   });
 
   it("isComplete 在最后 bar 后为 true", () => {
     const snapshots = generateSnapshots(3);
     const provider = new HistoricalDataProvider(snapshots);
-
     expect(provider.isComplete).toBe(false);
-    provider.tick(); // index 1
+    provider.tick();
     expect(provider.isComplete).toBe(false);
-    provider.tick(); // index 2 (last)
+    provider.tick();
     expect(provider.isComplete).toBe(true);
   });
 
   it("seek 跳转到指定 bar", () => {
     const snapshots = generateSnapshots(10);
     const provider = new HistoricalDataProvider(snapshots);
-
     provider.seek(5);
     expect(provider.index).toBe(5);
     expect(provider.getSnapshot().sequence).toBe(6);
@@ -220,7 +176,6 @@ describe("HistoricalDataProvider", () => {
   it("seek 越界抛出异常", () => {
     const snapshots = generateSnapshots(5);
     const provider = new HistoricalDataProvider(snapshots);
-
     expect(() => provider.seek(-1)).toThrow();
     expect(() => provider.seek(10)).toThrow();
   });
@@ -228,9 +183,7 @@ describe("HistoricalDataProvider", () => {
   it("reset 回到第一根 bar", () => {
     const snapshots = generateSnapshots(5);
     const provider = new HistoricalDataProvider(snapshots);
-
-    provider.tick();
-    provider.tick();
+    provider.tick(); provider.tick();
     expect(provider.index).toBe(2);
     provider.reset();
     expect(provider.index).toBe(0);
@@ -243,51 +196,34 @@ describe("HistoricalDataProvider", () => {
 
 describe("BacktestEngine", () => {
   it("买入持有策略：最终权益应反映价格上涨", () => {
-    // 生成持续上涨的数据
     const snapshots: MarketSnapshot[] = [];
     let price = 100;
     for (let i = 0; i < 50; i++) {
-      price = price * 1.001; // 每天涨 0.1%
+      price = price * 1.001;
       snapshots.push({
-        mode: "paper",
-        sequence: i + 1,
+        mode: "paper", sequence: i + 1,
         marketTime: new Date(2024, 0, i + 1).toISOString(),
-        quotes: [
-          {
-            symbol: "600519",
-            name: "贵州茅台",
-            tradable: true,
-            price: Number(price.toFixed(2)),
-            previousClose: Number((price * 0.999).toFixed(2)),
-            changePercent: 0.1,
-            volume: 10_000_000,
-            updatedAt: new Date(2024, 0, i + 1).toISOString(),
-          },
-        ],
+        quotes: [{
+          symbol: "600519", name: "贵州茅台", tradable: true,
+          price: Number(price.toFixed(2)),
+          previousClose: Number((price * 0.999).toFixed(2)),
+          changePercent: 0.1, volume: 10_000_000,
+          updatedAt: new Date(2024, 0, i + 1).toISOString(),
+        }],
       });
     }
-
     const engine = new BacktestEngine(snapshots, new BuyAndHoldStrategy(), {
-      initialCapital: 1_000_000,
-      commissionRate: 0.0003,
-      minimumCommission: 5,
-      slippageBps: 0, maxOrderNotional: 2_000_000, maxPositionWeight: 1.0, // 无滑点简化测试
+      initialCapital: 1_000_000, commissionRate: 0.0003, minimumCommission: 5,
+      slippageBps: 0, maxOrderNotional: 2_000_000, maxPositionWeight: 1.0,
     });
-
     const report = engine.run();
-
-    // 基本断言
     expect(report.strategyName).toBe("买入持有");
     expect(report.metrics.totalTrades).toBeGreaterThan(0);
     expect(report.metrics.initialCapital).toBe(1_000_000);
-    expect(report.metrics.finalEquity).toBeGreaterThan(1_000_000); // 上涨中应该盈利
-
-    // 权益曲线
-    expect(report.equityCurve.length).toBe(51); // 初始 + 50 bar
+    expect(report.metrics.finalEquity).toBeGreaterThan(1_000_000);
+    expect(report.equityCurve.length).toBe(51);
     expect(report.equityCurve[0].equity).toBe(1_000_000);
     expect(report.equityCurve[0].cumulativeReturn).toBe(0);
-
-    // 指标应为数值
     expect(report.metrics.sharpeRatio).not.toBeNaN();
     expect(report.metrics.maxDrawdownPercent).toBeGreaterThanOrEqual(0);
     expect(report.metrics.winRate).toBeGreaterThanOrEqual(0);
@@ -296,37 +232,24 @@ describe("BacktestEngine", () => {
   it("空策略：权益不变（扣除佣金后略有变动）", () => {
     const snapshots = generateSnapshots(30, 100);
     const engine = new BacktestEngine(snapshots, new NoOpStrategy(), {
-      initialCapital: 1_000_000,
-      slippageBps: 0,
+      initialCapital: 1_000_000, slippageBps: 0,
     });
-
     const report = engine.run();
-
     expect(report.metrics.totalTrades).toBe(0);
-    // 无交易时权益应等于初始资金
     expect(report.metrics.finalEquity).toBe(1_000_000);
     expect(report.metrics.totalReturn).toBe(0);
   });
 
   it("均线交叉策略：合理运行并产生交易", () => {
     const snapshots = generateSnapshots(200, 100);
-    const engine = new BacktestEngine(snapshots, new MACrossStrategy(), { maxOrderNotional: 2_000_000, maxPositionWeight: 1.0,
-      initialCapital: 1_000_000,
-      commissionRate: 0.0003,
-      minimumCommission: 5,
-      slippageBps: 5,
+    const engine = new BacktestEngine(snapshots, new MACrossStrategy(), {
+      maxOrderNotional: 2_000_000, maxPositionWeight: 1.0,
+      initialCapital: 1_000_000, commissionRate: 0.0003, minimumCommission: 5, slippageBps: 5,
     });
-
     const report = engine.run();
-
-    // 基本结构验证
     expect(report.strategyName).toBe("均线交叉");
     expect(report.equityCurve.length).toBe(201);
-
-    // 应该有一些交易（在200根bar中均线交叉应该会产生交易）
     expect(report.trades.length).toBeGreaterThan(0);
-
-    // 指标完整性
     const m = report.metrics;
     expect(m.totalTrades).toBeGreaterThan(0);
     expect(m.winRate).toBeGreaterThanOrEqual(0);
@@ -336,73 +259,38 @@ describe("BacktestEngine", () => {
     expect(typeof m.sortinoRatio).toBe("number");
     expect(typeof m.calmarRatio).toBe("number");
     expect(typeof m.profitFactor).toBe("number");
-
-    // 佣金 > 0（有交易）
     expect(m.totalCommission).toBeGreaterThan(0);
-
-    // 配置回传
     expect(report.config.initialCapital).toBe(1_000_000);
   });
 
   it("少于2根 bar 抛出异常", () => {
     const snapshots = generateSnapshots(1);
-    expect(
-      () => new BacktestEngine(snapshots, new NoOpStrategy()),
-    ).toThrow("至少需要 2 根 bar 数据");
+    expect(() => new BacktestEngine(snapshots, new NoOpStrategy())).toThrow("至少需要 2 根 bar 数据");
   });
 
   it("回测报告包含完整的绩效指标", () => {
     const snapshots = generateSnapshots(60, 100);
-    const engine = new BacktestEngine(snapshots, new BuyAndHoldStrategy(), {
-      initialCapital: 500_000,
-    });
-
+    const engine = new BacktestEngine(snapshots, new BuyAndHoldStrategy(), { initialCapital: 500_000 });
     const report = engine.run();
     const m = report.metrics;
-
-    // 所有指标应该存在且为数值
     const numericKeys: (keyof typeof m)[] = [
-      "initialCapital",
-      "finalEquity",
-      "totalReturn",
-      "totalReturnPercent",
-      "annualizedReturn",
-      "annualizedVolatility",
-      "sharpeRatio",
-      "sortinoRatio",
-      "maxDrawdown",
-      "maxDrawdownPercent",
-      "calmarRatio",
-      "totalTrades",
-      "winningTrades",
-      "losingTrades",
-      "winRate",
-      "avgWin",
-      "avgLoss",
-      "profitFactor",
-      "totalCommission",
-      "totalSlippage",
-      "barCount",
+      "initialCapital", "finalEquity", "totalReturn", "totalReturnPercent",
+      "annualizedReturn", "annualizedVolatility", "sharpeRatio", "sortinoRatio",
+      "maxDrawdown", "maxDrawdownPercent", "calmarRatio", "totalTrades",
+      "winningTrades", "losingTrades", "winRate", "avgWin", "avgLoss",
+      "profitFactor", "totalCommission", "totalSlippage", "barCount",
     ];
-
     for (const key of numericKeys) {
-      expect(
-        typeof m[key],
-        `${key} should be a number`,
-      ).toBe("number");
+      expect(typeof m[key], `${key} should be a number`).toBe("number");
       expect(m[key], `${key} should not be NaN`).not.toBeNaN();
     }
   });
 
   it("权益曲线随 bar 推进记录每个点", () => {
     const snapshots = generateSnapshots(10, 100);
-    const engine = new BacktestEngine(snapshots, new NoOpStrategy(), {
-      initialCapital: 100_000,
-    });
-
+    const engine = new BacktestEngine(snapshots, new NoOpStrategy(), { initialCapital: 100_000 });
     const report = engine.run();
-
-    expect(report.equityCurve.length).toBe(11); // 初始点 + 10 bar
+    expect(report.equityCurve.length).toBe(11);
     for (const point of report.equityCurve) {
       expect(point.equity).toBeGreaterThan(0);
       expect(point.cash).toBeGreaterThanOrEqual(0);
@@ -412,63 +300,39 @@ describe("BacktestEngine", () => {
   });
 
   it("onStart / onEnd 回调被正确调用", () => {
-    let startCalled = false;
-    let endCalled = false;
-    let startEquity = 0;
-    let endBarIndex = -1;
-
+    let startCalled = false, endCalled = false, startEquity = 0, endBarIndex = -1;
     const strategy: BacktestStrategy = {
       name: "回调测试",
       onBar: () => [],
-      onStart(ctx) {
-        startCalled = true;
-        startEquity = ctx.equity;
-      },
-      onEnd(ctx) {
-        endCalled = true;
-        endBarIndex = ctx.barIndex;
-      },
+      onStart(ctx) { startCalled = true; startEquity = ctx.equity; },
+      onEnd(ctx) { endCalled = true; endBarIndex = ctx.barIndex; },
     };
-
     const snapshots = generateSnapshots(20, 100);
-    const engine = new BacktestEngine(snapshots, strategy, {
-      initialCapital: 200_000,
-    });
-
+    const engine = new BacktestEngine(snapshots, strategy, { initialCapital: 200_000 });
     engine.run();
-
     expect(startCalled).toBe(true);
     expect(endCalled).toBe(true);
     expect(startEquity).toBe(200_000);
-    expect(endBarIndex).toBe(19); // 最后一根 bar 索引
+    expect(endBarIndex).toBe(19);
   });
 
   it("限价单在回测中正确挂单和成交", () => {
-    // 创建一个下降趋势的数据，限价买单应该能成交
     const snapshots: MarketSnapshot[] = [];
     let price = 100;
     for (let i = 0; i < 30; i++) {
-      price = price * (1 - 0.005); // 每天跌 0.2%
+      price = price * (1 - 0.005);
       snapshots.push({
-        mode: "paper",
-        sequence: i + 1,
+        mode: "paper", sequence: i + 1,
         marketTime: new Date(2024, 0, i + 1).toISOString(),
-        quotes: [
-          {
-            symbol: "600519",
-            name: "贵州茅台",
-            tradable: true,
-            price: Number(price.toFixed(2)),
-            previousClose: Number((price * 1.002).toFixed(2)),
-            changePercent: -0.2,
-            volume: 10_000_000,
-            updatedAt: new Date(2024, 0, i + 1).toISOString(),
-          },
-        ],
+        quotes: [{
+          symbol: "600519", name: "贵州茅台", tradable: true,
+          price: Number(price.toFixed(2)),
+          previousClose: Number((price * 1.002).toFixed(2)),
+          changePercent: -0.2, volume: 10_000_000,
+          updatedAt: new Date(2024, 0, i + 1).toISOString(),
+        }],
       });
     }
-
-    // 策略：在 bar 5 挂一个限价买单（价格比当前低很多，等下跌后成交）
     let limitPlaced = false;
     const strategy: BacktestStrategy = {
       name: "限价单测试",
@@ -476,32 +340,21 @@ describe("BacktestEngine", () => {
         if (!limitPlaced && ctx.barIndex === 5) {
           limitPlaced = true;
           const quote = ctx.snapshot.quotes[0];
-          return [
-            {
-              symbol: "600519",
-              side: "buy",
-              type: "limit",
-              quantity: 100,
-              limitPrice: Number((quote.price * 0.9).toFixed(2)), // 比当前价低10%
-            },
-          ];
+          return [{
+            symbol: "600519", side: "buy", type: "limit",
+            quantity: 100,
+            limitPrice: Number((quote.price * 0.9).toFixed(2)),
+          }];
         }
         return [];
       },
     };
-
     const engine = new BacktestEngine(snapshots, strategy, {
-      initialCapital: 1_000_000,
-      slippageBps: 0,
+      initialCapital: 1_000_000, slippageBps: 0,
     });
-
     const report = engine.run();
-
-    // 限价单应该最终成交（价格持续下跌）
     const limitOrders = report.orders.filter((o) => o.type === "limit");
     expect(limitOrders.length).toBeGreaterThan(0);
-
-    // 检查是否有成交的限价单
     const filledLimit = limitOrders.filter((o) => o.status === "filled");
     expect(filledLimit.length).toBeGreaterThan(0);
   });
@@ -513,60 +366,35 @@ describe("BacktestEngine", () => {
     const strategy: BacktestStrategy = {
       name: "崩溃策略",
       onBar(ctx) {
-        if (ctx.barIndex === 10) {
-          throw new Error("策略执行异常");
-        }
+        if (ctx.barIndex === 10) throw new Error("策略执行异常");
         return [];
       },
     };
-
-    const engine = new BacktestEngine(snapshots, strategy, {
-      initialCapital: 1_000_000,
-    });
-
-    // Should not throw — engine catches the error
+    const engine = new BacktestEngine(snapshots, strategy, { initialCapital: 1_000_000 });
     expect(() => engine.run()).not.toThrow();
     const report = engine.run();
     expect(report.strategyName).toBe("崩溃策略");
-    expect(report.equityCurve.length).toBe(31); // initial + 30 bars
+    expect(report.equityCurve.length).toBe(31);
   });
 
   it("handles multiple symbols in backtest", () => {
     const snapshots: MarketSnapshot[] = [];
-    let price1 = 100;
-    let price2 = 50;
+    let price1 = 100, price2 = 50;
     for (let i = 0; i < 50; i++) {
-      price1 = price1 * (1 + 0.002);
-      price2 = price2 * (1 - 0.001);
+      price1 *= 1.002; price2 *= 0.999;
       snapshots.push({
-        mode: "paper",
-        sequence: i + 1,
+        mode: "paper", sequence: i + 1,
         marketTime: new Date(2024, 0, i + 1).toISOString(),
         quotes: [
-          {
-            symbol: "600519",
-            name: "贵州茅台",
-            tradable: true,
-            price: Number(price1.toFixed(2)),
-            previousClose: Number((price1 * 0.999).toFixed(2)),
-            changePercent: 0.1,
-            volume: 10_000_000,
-            updatedAt: new Date(2024, 0, i + 1).toISOString(),
-          },
-          {
-            symbol: "300750",
-            name: "宁德时代",
-            tradable: true,
-            price: Number(price2.toFixed(2)),
-            previousClose: Number((price2 * 1.001).toFixed(2)),
-            changePercent: -0.1,
-            volume: 5_000_000,
-            updatedAt: new Date(2024, 0, i + 1).toISOString(),
-          },
+          { symbol: "600519", name: "贵州茅台", tradable: true, price: Number(price1.toFixed(2)),
+            previousClose: Number((price1 * 0.999).toFixed(2)), changePercent: 0.1, volume: 10_000_000,
+            updatedAt: new Date(2024, 0, i + 1).toISOString() },
+          { symbol: "300750", name: "宁德时代", tradable: true, price: Number(price2.toFixed(2)),
+            previousClose: Number((price2 * 1.001).toFixed(2)), changePercent: -0.1, volume: 5_000_000,
+            updatedAt: new Date(2024, 0, i + 1).toISOString() },
         ],
       });
     }
-
     const strategy: BacktestStrategy = {
       name: "多标的策略",
       onBar(ctx) {
@@ -579,17 +407,11 @@ describe("BacktestEngine", () => {
         return [];
       },
     };
-
     const engine = new BacktestEngine(snapshots, strategy, {
-      initialCapital: 1_000_000,
-      maxOrderNotional: 2_000_000,
-      maxPositionWeight: 1.0,
-      slippageBps: 0,
+      initialCapital: 1_000_000, maxOrderNotional: 2_000_000, maxPositionWeight: 1.0, slippageBps: 0,
     });
-
     const report = engine.run();
     expect(report.trades.length).toBeGreaterThanOrEqual(2);
-
     const symbols = new Set(report.trades.map((t) => t.symbol));
     expect(symbols.has("600519")).toBe(true);
     expect(symbols.has("300750")).toBe(true);
@@ -598,14 +420,9 @@ describe("BacktestEngine", () => {
   it("handles very small initial capital", () => {
     const snapshots = generateSnapshots(20, 10);
     const engine = new BacktestEngine(snapshots, new BuyAndHoldStrategy(), {
-      initialCapital: 1000,
-      maxOrderNotional: 2000,
-      maxPositionWeight: 1.0,
-      slippageBps: 0,
-      commissionRate: 0,
-      minimumCommission: 0,
+      initialCapital: 1000, maxOrderNotional: 2000, maxPositionWeight: 1.0,
+      slippageBps: 0, commissionRate: 0, minimumCommission: 0,
     });
-
     const report = engine.run();
     expect(report.metrics.initialCapital).toBe(1000);
     expect(report.metrics.finalEquity).toBeGreaterThan(0);
@@ -616,49 +433,36 @@ describe("BacktestEngine", () => {
     let price = 100;
     const risingSnapshots: MarketSnapshot[] = [];
     for (let i = 0; i < 20; i++) {
-      price = price * 1.01;
+      price *= 1.01;
       risingSnapshots.push({
-        mode: "paper",
-        sequence: i + 1,
+        mode: "paper", sequence: i + 1,
         marketTime: new Date(2024, 0, i + 1).toISOString(),
-        quotes: [{
-          symbol: "600519",
-          name: "MaoTai",
-          tradable: true,
-          price: Number(price.toFixed(2)),
-          previousClose: Number((price * 0.99).toFixed(2)),
-          changePercent: 1.0,
-          volume: 10_000_000,
-          updatedAt: new Date(2024, 0, i + 1).toISOString(),
-        }],
+        quotes: [{ symbol: "600519", name: "MaoTai", tradable: true,
+          price: Number(price.toFixed(2)), previousClose: Number((price * 0.99).toFixed(2)),
+          changePercent: 1.0, volume: 10_000_000,
+          updatedAt: new Date(2024, 0, i + 1).toISOString() }],
       });
     }
-
     const engine = new BacktestEngine(risingSnapshots, new BuyAndHoldStrategy(), {
-      initialCapital: 1_000_000,
-      commissionRate: 0,
-      minimumCommission: 0,
-      slippageBps: 0,
-      maxOrderNotional: 2_000_000,
-      maxPositionWeight: 1.0,
+      initialCapital: 1_000_000, commissionRate: 0, minimumCommission: 0,
+      slippageBps: 0, maxOrderNotional: 2_000_000, maxPositionWeight: 1.0,
     });
-
     const report = engine.run();
     expect(report.metrics.totalCommission).toBe(0);
     expect(report.metrics.totalSlippage).toBe(0);
   });
 
-  it("rerun produces consistent results (idempotent)", () => {
+  it("rerun with separate engine instances produces consistent results", () => {
     const snapshots = generateSnapshots(50, 100);
-    const engine = new BacktestEngine(snapshots, new MACrossStrategy(), {
-      initialCapital: 1_000_000,
-      maxOrderNotional: 2_000_000,
-      maxPositionWeight: 1.0,
+    // Use separate engine instances because MACrossStrategy is stateful
+    const engine1 = new BacktestEngine(snapshots, new MACrossStrategy(), {
+      initialCapital: 1_000_000, maxOrderNotional: 2_000_000, maxPositionWeight: 1.0,
     });
-
-    const report1 = engine.run();
-    const report2 = engine.run();
-
+    const engine2 = new BacktestEngine(snapshots, new MACrossStrategy(), {
+      initialCapital: 1_000_000, maxOrderNotional: 2_000_000, maxPositionWeight: 1.0,
+    });
+    const report1 = engine1.run();
+    const report2 = engine2.run();
     expect(report1.metrics.finalEquity).toBe(report2.metrics.finalEquity);
     expect(report1.metrics.totalTrades).toBe(report2.metrics.totalTrades);
     expect(report1.equityCurve.length).toBe(report2.equityCurve.length);
