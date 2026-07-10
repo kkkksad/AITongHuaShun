@@ -39,6 +39,14 @@ export class TurtleStrategy implements BacktestStrategy {
       customName ?? `Turtle(${entryPeriod}/${exitPeriod})`;
   }
 
+  reset(): void {
+    this.prices.length = 0;
+    this.highs.length = 0;
+    this.lows.length = 0;
+    this.inPosition = false;
+    this.entryPrice = 0;
+  }
+
   onBar(context: StrategyContext): StrategySignal[] {
     const quote = context.snapshot.quotes.find((q) => q.tradable);
     if (!quote) return [];

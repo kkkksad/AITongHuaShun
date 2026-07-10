@@ -31,6 +31,11 @@ export class MovingAverageCrossStrategy implements BacktestStrategy {
     this.name = customName ?? `均线交叉(${fastPeriod},${slowPeriod})`;
   }
 
+  reset(): void {
+    this.prices.length = 0;
+    this.inPosition = false;
+  }
+
   onBar(context: StrategyContext): StrategySignal[] {
     const quote = context.snapshot.quotes.find((q) => q.tradable);
     if (!quote) return [];

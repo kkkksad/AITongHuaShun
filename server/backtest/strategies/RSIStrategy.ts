@@ -35,6 +35,11 @@ export class RSIStrategy implements BacktestStrategy {
       `RSI(${period},${oversoldThreshold}/${overboughtThreshold})`;
   }
 
+  reset(): void {
+    this.prices.length = 0;
+    this.inPosition = false;
+  }
+
   onBar(context: StrategyContext): StrategySignal[] {
     const quote = context.snapshot.quotes.find((q) => q.tradable);
     if (!quote) return [];

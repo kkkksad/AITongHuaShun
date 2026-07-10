@@ -75,6 +75,10 @@ class BuyAndHoldStrategy implements BacktestStrategy {
     }
     return [];
   }
+
+  reset(): void {
+    this.entered = false;
+  }
 }
 
 class MACrossStrategy implements BacktestStrategy {
@@ -102,6 +106,11 @@ class MACrossStrategy implements BacktestStrategy {
       return [{ symbol: "600519", side: "sell", type: "market", targetWeight: 1.0 }];
     }
     return [];
+  }
+
+  reset(): void {
+    this.prices.length = 0;
+    this.inPosition = false;
   }
 
   private sma(period: number): number {
@@ -452,17 +461,13 @@ describe("BacktestEngine", () => {
     expect(report.metrics.totalSlippage).toBe(0);
   });
 
-  it("rerun with separate engine instances produces consistent results", () => {
+  it("rerun produces consistent results (idempotent)", () => {
     const snapshots = generateSnapshots(50, 100);
-    // Use separate engine instances because MACrossStrategy is stateful
-    const engine1 = new BacktestEngine(snapshots, new MACrossStrategy(), {
+    const engine = new BacktestEngine(snapshots, new MACrossStrategy(), {
       initialCapital: 1_000_000, maxOrderNotional: 2_000_000, maxPositionWeight: 1.0,
     });
-    const engine2 = new BacktestEngine(snapshots, new MACrossStrategy(), {
-      initialCapital: 1_000_000, maxOrderNotional: 2_000_000, maxPositionWeight: 1.0,
-    });
-    const report1 = engine1.run();
-    const report2 = engine2.run();
+    const report1 = engine.run();
+    const report2 = engine.run();
     expect(report1.metrics.finalEquity).toBe(report2.metrics.finalEquity);
     expect(report1.metrics.totalTrades).toBe(report2.metrics.totalTrades);
     expect(report1.equityCurve.length).toBe(report2.equityCurve.length);

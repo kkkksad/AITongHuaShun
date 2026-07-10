@@ -32,6 +32,11 @@ export class MomentumStrategy implements BacktestStrategy {
       customName ?? `动量突破(${entryPeriod},${exitPeriod})`;
   }
 
+  reset(): void {
+    this.prices.length = 0;
+    this.inPosition = false;
+  }
+
   onBar(context: StrategyContext): StrategySignal[] {
     const quote = context.snapshot.quotes.find((q) => q.tradable);
     if (!quote) return [];
