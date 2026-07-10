@@ -159,58 +159,53 @@ export class NotificationService {
         case "dingtalk":
           {
             const options = cc.options ?? {};
-          this.registerSender(
-            new DingTalkSender(
-                {
-                  webhookUrl:
-                    typeof options.webhookUrl === "string"
-                      ? options.webhookUrl
-                      : "",
-                  secret:
-                    typeof options.secret === "string"
-                      ? options.secret
-                      : undefined,
-                },
-            ),
-          );
+            this.registerSender(
+              new DingTalkSender({
+                webhookUrl:
+                  typeof options.webhookUrl === "string"
+                    ? options.webhookUrl
+                    : "",
+                secret:
+                  typeof options.secret === "string"
+                    ? options.secret
+                    : undefined,
+              }),
+            );
           }
           break;
         case "email":
           {
             const options = cc.options ?? {};
-          this.registerSender(
-            new EmailSender(
-                {
-                  smtpHost:
-                    typeof options.smtpHost === "string"
-                      ? options.smtpHost
-                      : "",
-                  smtpPort:
-                    typeof options.smtpPort === "number"
-                      ? options.smtpPort
-                      : 587,
-                  username:
-                    typeof options.username === "string"
-                      ? options.username
-                      : "",
-                  password:
-                    typeof options.password === "string"
-                      ? options.password
-                      : "",
-                  from:
-                    typeof options.from === "string"
-                      ? options.from
-                      : "",
-                  to: Array.isArray(options.to)
-                    ? options.to.filter(
-                        (recipient): recipient is string =>
-                          typeof recipient === "string",
-                      )
-                    : [],
-                },
-              },
-            ),
-          );
+            this.registerSender(
+              new EmailSender({
+                smtpHost:
+                  typeof options.smtpHost === "string"
+                    ? options.smtpHost
+                    : "",
+                smtpPort:
+                  typeof options.smtpPort === "number"
+                    ? options.smtpPort
+                    : 587,
+                username:
+                  typeof options.username === "string"
+                    ? options.username
+                    : "",
+                password:
+                  typeof options.password === "string"
+                    ? options.password
+                    : "",
+                from:
+                  typeof options.from === "string"
+                    ? options.from
+                    : "",
+                to: Array.isArray(options.to)
+                  ? options.to.filter(
+                      (recipient): recipient is string =>
+                        typeof recipient === "string",
+                    )
+                  : [],
+              }),
+            );
           }
           break;
         default:

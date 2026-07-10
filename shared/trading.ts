@@ -134,4 +134,70 @@ export type TradingEvent =
   | { type: "account.snapshot"; data: AccountSnapshot }
   | { type: "positions.snapshot"; data: PositionSnapshot[] }
   | { type: "order.updated"; data: OrderRecord }
-  | { type: "system.status"; data: { connected: boolean; message: string } };
+  | { type: "system.status"; data: { connected: boolean; message: string } }
+  | { type: "signal"; data: TradingSignal };
+
+// ── 策略信号 ─────────────────────────────────────────────
+
+/** 信号方向 */
+export type SignalDirection = "buy" | "sell" | "hold";
+
+/** 信号强度（0-1），1 表示最强信号 */
+export type SignalStrength = number;
+
+/** 策略交易信号 */
+export interface TradingSignal {
+  /** 信号唯一ID */
+  id: string;
+  /** 策略ID */
+  strategyId: string;
+  /** 策略名称 */
+  strategyName: string;
+  /** 标的代码 */
+  symbol: string;
+  /** 信号方向 */
+  direction: SignalDirection;
+  /** 信号强度 0-1 */
+  strength: SignalStrength;
+  /** 建议仓位占比 */
+  positionSize: number;
+  /** 触发价格 */
+  price: number;
+  /** 信号原因/描述 */
+  reason: string;
+  /** 信号生成时间 */
+  timestamp: string;
+  /** 信号有效期（秒），0 表示无限制 */
+  ttlSeconds: number;
+  /** 置信度 0-1 */
+  confidence: number;
+  /** 附加指标数据 */
+  indicators?: Record<string, number>;
+  /** 信号状态 */
+  status: "active" | "expired" | "executed" | "cancelled";
+}
+
+/** 信号订阅筛选条件 */
+export interface SignalSubscription {
+  /** 订阅的策略ID列表（空 = 全部） */
+  strategyIds?: string[];
+  /** 订阅的标的列表（空 = 全部） */
+  symbols?: string[];
+  /** 最低信号强度（0-1），低于此强度不推送 */
+  minStrength?: SignalStrength;
+  /** 最低置信度（0-1） */
+  minConfidence?: number;
+}
+
+/** WebSocket 订阅请求 */
+export interface WsSubscriptionRequest {
+  type: "subscribe";
+  topic: "signals" | "market" | "account" | "orders";
+  filter?: SignalSubscription;
+}
+
+/** WebSocket 取消订阅请求 */
+export interface WsUnsubscribeRequest {
+  type: "unsubscribe";
+  topic: "signals" | "market" | "account" | "orders";
+}
