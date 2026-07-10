@@ -502,17 +502,26 @@ describe("EastMoneyBrokerAdapter", () => {
     ).rejects.toThrow("not connected");
   });
 
-  it("tradingEnabled requires token and accountId", async () => {
-    adapter = new EastMoneyBrokerAdapter({
-      brokerId: "eastmoney",
-      brokerName: "东方财富",
-      endpoint: "https://trading.eastmoney.com/api",
-      tradingEnabled: true,
-      token: "",
-      accountId: "",
-    });
+  it("rejects any attempt to enable live trading", () => {
+    expect(
+      () =>
+        new EastMoneyBrokerAdapter({
+          brokerId: "eastmoney",
+          brokerName: "东方财富",
+          endpoint: "https://trading.eastmoney.com/api",
+          tradingEnabled: true,
+        }),
+    ).toThrow("禁止实盘");
 
-    await expect(adapter.connect()).rejects.toThrow("token");
+    expect(
+      () =>
+        new EastMoneyBrokerAdapter({
+          brokerId: "eastmoney",
+          brokerName: "东方财富",
+          endpoint: "https://trading.eastmoney.com/api",
+          environment: "live",
+        }),
+    ).toThrow("禁止实盘");
   });
 
   it("getAccount returns correct initial state", async () => {

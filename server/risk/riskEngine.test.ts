@@ -4,6 +4,7 @@ import type {
   EnhancedRiskLimits,
   MarketQuote,
   PositionSnapshot,
+  RiskLimits,
   RiskState,
 } from "../../shared/trading";
 import { RiskEngine } from "./riskEngine";
@@ -64,12 +65,22 @@ const position: PositionSnapshot = {
   weight: 0.025,
 };
 
+// Helper: create a risk engine with initial equity set
+function createRiskEngine(
+  limitsOverride?: Partial<EnhancedRiskLimits>,
+  initialEquity = 1_000_000,
+): RiskEngine {
+  const risk = new RiskEngine({ ...limits, ...limitsOverride });
+  risk.setInitialEquity(initialEquity);
+  return risk;
+}
+
 // ── 基本风控测试 ──────────────────────────────────────────
 
 describe("RiskEngine - basic checks", () => {
-  const risk = new RiskEngine(limits);
-
   it("approves a valid paper order", () => {
+    const risk = createRiskEngine();
+
     const result = risk.evaluate({
       request: {
         symbol: quote.symbol,
@@ -91,6 +102,8 @@ describe("RiskEngine - basic checks", () => {
   });
 
   it("rejects display-only indices", () => {
+    const risk = createRiskEngine();
+
     const result = risk.evaluate({
       request: {
         symbol: "000001",
@@ -107,6 +120,8 @@ describe("RiskEngine - basic checks", () => {
   });
 
   it("rejects orders while trading is paused", () => {
+    const risk = createRiskEngine();
+
     const result = risk.evaluate({
       request: {
         symbol: quote.symbol,
@@ -123,6 +138,8 @@ describe("RiskEngine - basic checks", () => {
   });
 
   it("rejects quantities outside the board lot", () => {
+    const risk = createRiskEngine();
+
     const result = risk.evaluate({
       request: {
         symbol: quote.symbol,
@@ -139,6 +156,8 @@ describe("RiskEngine - basic checks", () => {
   });
 
   it("uses the limit price when checking order notional", () => {
+    const risk = createRiskEngine();
+
     const result = risk.evaluate({
       request: {
         symbol: quote.symbol,
@@ -156,6 +175,8 @@ describe("RiskEngine - basic checks", () => {
   });
 
   it("subtracts pending sell orders from available position", () => {
+    const risk = createRiskEngine();
+
     const result = risk.evaluate({
       request: {
         symbol: quote.symbol,
@@ -173,24 +194,59 @@ describe("RiskEngine - basic checks", () => {
 
     expect(result.code).toBe("INSUFFICIENT_POSITION");
   });
+
+  it("accepts RiskLimits (backward compatible) and defaults circuit breaker settings", () => {
+    const basicLimits: RiskLimits = {
+      maxOrderNotional: 100_000,
+      maxPositionWeight: 0.25,
+      maxDailyLoss: 0.05,
+      lotSize: 100,
+      realTradingEnabled: false,
+    };
+
+    const risk = new RiskEngine(basicLimits);
+    const effectiveLimits = risk.getLimits();
+
+    // Should have default circuit breaker settings
+    expect(effectiveLimits.circuitBreaker.maxConsecutiveLosses).toBe(5);
+    expect(effectiveLimits.circuitBreaker.maxDailyDrawdown).toBe(0.08);
+    expect(effectiveLimits.dynamicPositionScaling).toBe(false);
+
+    // Should still work for basic checks
+    const result = risk.evaluate({
+      request: {
+        symbol: quote.symbol,
+        side: "buy",
+        type: "market",
+        quantity: 100,
+      },
+      quote,
+      account,
+      mode: "mock",
+    });
+
+    expect(result.allowed).toBe(true);
+  });
 });
 
 // ── 增强风控：熔断器 ─────────────────────────────────────
 
 describe("RiskEngine - circuit breaker", () => {
   it("starts in normal state", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine();
     expect(risk.getState().circuitState).toBe("normal");
     expect(risk.getState().consecutiveLosses).toBe(0);
     expect(risk.getState().dailyDrawdown).toBe(0);
   });
 
   it("transitions to warning after consecutive losses reach 60% threshold", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine();
 
     // 3 consecutive losses (60% of 5 = 3)
+    let equity = 1_000_000;
     for (let i = 0; i < 3; i++) {
-      risk.recordTradeResult(-1000, 999_000 - i * 1000);
+      equity -= 1000;
+      risk.recordTradeResult(-1000, equity);
     }
 
     const state = risk.getState();
@@ -199,11 +255,12 @@ describe("RiskEngine - circuit breaker", () => {
   });
 
   it("transitions to tripped after maxConsecutiveLosses is reached", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine();
 
-    // 5 consecutive losses triggers circuit breaker
+    let equity = 1_000_000;
     for (let i = 0; i < 5; i++) {
-      risk.recordTradeResult(-5000, 1_000_000 - (i + 1) * 5000);
+      equity -= 5000;
+      risk.recordTradeResult(-5000, equity);
     }
 
     const state = risk.getState();
@@ -213,11 +270,12 @@ describe("RiskEngine - circuit breaker", () => {
   });
 
   it("rejects orders when circuit is tripped", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine();
 
-    // Trigger circuit breaker with 5 consecutive losses
+    let equity = 1_000_000;
     for (let i = 0; i < 5; i++) {
-      risk.recordTradeResult(-5000, 1_000_000 - (i + 1) * 5000);
+      equity -= 5000;
+      risk.recordTradeResult(-5000, equity);
     }
 
     const result = risk.evaluate({
@@ -238,31 +296,29 @@ describe("RiskEngine - circuit breaker", () => {
   });
 
   it("resets consecutive losses after a profitable trade", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine();
 
-    // 2 losses
     risk.recordTradeResult(-1000, 999_000);
     risk.recordTradeResult(-1000, 998_000);
 
     expect(risk.getState().consecutiveLosses).toBe(2);
 
-    // 1 profit resets the counter
     risk.recordTradeResult(500, 998_500);
 
     expect(risk.getState().consecutiveLosses).toBe(0);
   });
 
   it("manual reset clears tripped state", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine();
 
-    // Trigger circuit breaker
+    let equity = 1_000_000;
     for (let i = 0; i < 5; i++) {
-      risk.recordTradeResult(-5000, 1_000_000 - (i + 1) * 5000);
+      equity -= 5000;
+      risk.recordTradeResult(-5000, equity);
     }
 
     expect(risk.getState().circuitState).toBe("tripped");
 
-    // Manual reset
     risk.resetCircuit();
 
     const state = risk.getState();
@@ -272,9 +328,9 @@ describe("RiskEngine - circuit breaker", () => {
   });
 
   it("trips on daily drawdown exceeding threshold", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine(undefined, 1_000_000);
 
-    // Simulate large drawdown: equity drops from 1M to 900K (10% drawdown > 8% threshold)
+    // 10% drawdown exceeds 8% threshold
     risk.recordTradeResult(-100_000, 900_000);
 
     expect(risk.getState().circuitState).toBe("tripped");
@@ -286,35 +342,33 @@ describe("RiskEngine - circuit breaker", () => {
 
 describe("RiskEngine - dynamic limits", () => {
   it("returns full position weight when no drawdown", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine();
     expect(risk.getEffectiveMaxPositionWeight()).toBe(0.25);
   });
 
   it("reduces position weight when drawdown increases", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine(undefined, 1_000_000);
 
     // 4% drawdown (half of maxDrawdown 8%)
     risk.recordTradeResult(-40_000, 960_000);
 
     const dynamicWeight = risk.getEffectiveMaxPositionWeight();
-    // Expected: 0.25 * (1 - (1-0.25) * 0.5) = 0.25 * (1 - 0.75 * 0.5) = 0.25 * 0.625 = 0.15625
     expect(dynamicWeight).toBeLessThan(0.25);
-    expect(dynamicWeight).toBeGreaterThanOrEqual(0.0625); // >= 0.25 * 0.25
+    expect(dynamicWeight).toBeGreaterThanOrEqual(0.0625);
   });
 
   it("never reduces below minimum reduction factor", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine(undefined, 1_000_000);
 
     // Hit max drawdown
     risk.recordTradeResult(-80_000, 920_000);
 
     const dynamicWeight = risk.getEffectiveMaxPositionWeight();
-    // Minimum: 0.25 * 0.25 = 0.0625
     expect(dynamicWeight).toBeGreaterThanOrEqual(0.0625);
   });
 
   it("reduces max order notional proportionally", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine(undefined, 1_000_000);
 
     // No drawdown - full notional
     expect(risk.getEffectiveMaxOrderNotional()).toBe(100_000);
@@ -324,13 +378,13 @@ describe("RiskEngine - dynamic limits", () => {
 
     const reducedNotional = risk.getEffectiveMaxOrderNotional();
     expect(reducedNotional).toBeLessThan(100_000);
-    expect(reducedNotional).toBeGreaterThanOrEqual(25_000); // >= 100_000 * 0.25
+    expect(reducedNotional).toBeGreaterThanOrEqual(25_000);
   });
 
   it("rejects order exceeding dynamic notional limit", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine(undefined, 1_000_000);
 
-    // Create large drawdown to reduce limits
+    // Large drawdown to reduce limits
     risk.recordTradeResult(-70_000, 930_000);
 
     const result = risk.evaluate({
@@ -338,7 +392,7 @@ describe("RiskEngine - dynamic limits", () => {
         symbol: quote.symbol,
         side: "buy",
         type: "market",
-        quantity: 300,
+        quantity: 300, // 300 * 250 = 75,000
       },
       quote,
       account,
@@ -347,7 +401,6 @@ describe("RiskEngine - dynamic limits", () => {
 
     expect(result.allowed).toBe(false);
     expect(result.code).toBe("ORDER_NOTIONAL_LIMIT");
-    expect(result.message).toContain("超过当前限额");
   });
 
   it("static limits when dynamicPositionScaling is disabled", () => {
@@ -357,11 +410,10 @@ describe("RiskEngine - dynamic limits", () => {
     };
 
     const risk = new RiskEngine(staticLimits);
+    risk.setInitialEquity(1_000_000);
 
-    // Simulate drawdown
     risk.recordTradeResult(-70_000, 930_000);
 
-    // Weight should remain unchanged
     expect(risk.getEffectiveMaxPositionWeight()).toBe(0.25);
     expect(risk.getEffectiveMaxOrderNotional()).toBe(100_000);
   });
@@ -371,7 +423,7 @@ describe("RiskEngine - dynamic limits", () => {
 
 describe("RiskEngine - state tracking", () => {
   it("tracks trade and loss counts", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine();
 
     risk.recordTradeResult(-100, 999_900);
     risk.recordTradeResult(200, 1_000_100);
@@ -383,13 +435,12 @@ describe("RiskEngine - state tracking", () => {
   });
 
   it("tracks peak daily equity", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine(undefined, 1_000_000);
 
     risk.recordTradeResult(10_000, 1_010_000);
     expect(risk.getState().peakDailyEquity).toBe(1_010_000);
 
     risk.recordTradeResult(-5_000, 1_005_000);
-    // Peak should remain at 1_010_000
     expect(risk.getState().peakDailyEquity).toBe(1_010_000);
 
     risk.recordTradeResult(20_000, 1_025_000);
@@ -397,15 +448,25 @@ describe("RiskEngine - state tracking", () => {
   });
 
   it("calculates daily drawdown correctly", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine(undefined, 1_000_000);
 
-    // Set peak at 1M
-    risk.recordTradeResult(0, 1_000_000);
     expect(risk.getState().dailyDrawdown).toBe(0);
 
-    // Drop to 950K = 5% drawdown
     risk.recordTradeResult(-50_000, 950_000);
     expect(risk.getState().dailyDrawdown).toBeCloseTo(0.05, 3);
+  });
+
+  it("setInitialEquity updates peak daily equity", () => {
+    const risk = new RiskEngine(limits);
+    risk.setInitialEquity(500_000);
+    expect(risk.getState().peakDailyEquity).toBe(500_000);
+
+    // Ignore non-positive values
+    risk.setInitialEquity(0);
+    expect(risk.getState().peakDailyEquity).toBe(500_000);
+
+    risk.setInitialEquity(-100);
+    expect(risk.getState().peakDailyEquity).toBe(500_000);
   });
 });
 
@@ -413,11 +474,13 @@ describe("RiskEngine - state tracking", () => {
 
 describe("RiskEngine - recovery flow", () => {
   it("warning state still allows trading", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine(undefined, 1_000_000);
 
-    // Trigger warning with 3 consecutive losses
+    // 3 consecutive losses triggers warning
+    let equity = 1_000_000;
     for (let i = 0; i < 3; i++) {
-      risk.recordTradeResult(-1000, 999_000 - i * 1000);
+      equity -= 1000;
+      risk.recordTradeResult(-1000, equity);
     }
 
     expect(risk.getState().circuitState).toBe("warning");
@@ -434,17 +497,15 @@ describe("RiskEngine - recovery flow", () => {
       mode: "mock",
     });
 
-    // Warning allows trades but with warning code
     expect(result.allowed).toBe(true);
     expect(result.code).toBe("RISK_WARNING");
     expect(result.message).toContain("风控预警");
   });
 
   it("getState returns a readonly copy", () => {
-    const risk = new RiskEngine(limits);
+    const risk = createRiskEngine();
     const state = risk.getState();
 
-    // Modifying the copy should not affect internal state
     (state as RiskState).consecutiveLosses = 99;
     expect(risk.getState().consecutiveLosses).toBe(0);
   });

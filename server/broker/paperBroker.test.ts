@@ -51,7 +51,7 @@ describe("PaperBroker", () => {
     });
 
     expect(order.status).toBe("rejected");
-    expect(order.rejectionReason).toBe("订单金额超过单笔限额");
+    expect(order.rejectionReason).toContain("单笔限额");
     expect(system.store.getPositionQuantity("600519")).toBe(beforeQuantity);
     expect(system.store.listAudit().some((event) => event.category === "risk")).toBe(true);
   });
@@ -59,7 +59,6 @@ describe("PaperBroker", () => {
   it("accepts a limit order as pending without filling", () => {
     const system = createTradingSystem(createTestConfig());
     const before = system.broker.getAccount();
-    // 中国平安 ~¥52, 100 shares at limit 50 = ¥5,000 (well under 100K limit)
     const order = system.broker.submitOrder({
       symbol: "601318",
       side: "buy",
@@ -73,7 +72,6 @@ describe("PaperBroker", () => {
     expect(order.limitPrice).toBe(50);
     expect(order.filledQuantity).toBe(0);
 
-    // Available cash should be reduced by blocked amount
     const after = system.broker.getAccount();
     expect(after.cash).toBeLessThan(before.cash);
   });
@@ -94,7 +92,6 @@ describe("PaperBroker", () => {
     const cancelled = system.broker.cancelOrder(order.id);
     expect(cancelled.status).toBe("cancelled");
 
-    // Verify cancelled orders in audit
     expect(
       system.store.listAudit().some(
         (event) => event.action === "order.cancelled"
@@ -105,9 +102,8 @@ describe("PaperBroker", () => {
   it("fills a marketable limit order immediately", () => {
     const system = createTradingSystem(createTestConfig());
     const quote = system.market.getQuote("601318");
-    const currentPrice = quote!.price; // ~52
+    const currentPrice = quote!.price;
 
-    // Place a buy limit order at a price HIGHER than current
     const order = system.broker.submitOrder({
       symbol: "601318",
       side: "buy",

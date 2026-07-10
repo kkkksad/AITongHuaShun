@@ -1,15 +1,14 @@
 /**
  * 东方财富券商适配器。
  *
- * 实现 BrokerAdapter 契约，对接东方财富交易接口。
+ * 实现 BrokerAdapter 契约的纸面交易演示。
  *
- * 当前版本使用模拟模式（mock 响应），所有交易请求返回模拟结果。
- * 真实连接需配置 EASTMONEY_ACCOUNT / EASTMONEY_TOKEN 环境变量。
+ * 当前版本只维护本地模拟账户，不发送任何外部订单请求。
  *
  * 安全约束：
- * - 默认不允许实盘交易，需显式设置 EASTMONEY_TRADING_ENABLED=true
- * - 所有下单请求经过 RiskEngine 检查
- * - API 调用记录审计日志
+ * - tradingEnabled 或 environment=live 会在构造阶段失败
+ * - 不读取真实账户凭据，不包含真实下单端点
+ * - 仅供研究界面和适配器契约验证使用
  */
 
 import { EventEmitter } from "node:events";
@@ -19,9 +18,6 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
-  OrderSide,
-  OrderStatus,
-  OrderType,
   PositionSnapshot,
 } from "../../../shared/trading";
 import type {
@@ -31,43 +27,29 @@ import type {
 
 /** 东方财富券商特定配置 */
 export interface EastMoneyBrokerConfig extends BrokerAdapterConfig {
-  /** 东方财富账户号 */
+  /** 本地纸面账户展示 ID */
   accountId?: string;
-  /** API 令牌 */
-  token?: string;
-  /** 是否启用真实交易（默认 false） */
+  /** 已废弃；传入 true 会直接拒绝构造。 */
   tradingEnabled?: boolean;
   /** 初始资金（模拟模式） */
   initialCapital?: number;
-}
-
-/** 东方财富订单 API 请求格式 */
-interface EastMoneyOrderRequest {
-  code: string;
-  name: string;
-  price: number;
-  amount: number;
-  tradeType: "B" | "S"; // B=Buy, S=Sell
-  priceType: "0" | "1"; // 0=限价, 1=市价
-  entrustType?: string;
-}
-
-/** 东方财富订单 API 响应 */
-interface EastMoneyOrderResponse {
-  status: number;
-  message: string;
-  data?: {
-    entrustNo: string;
-    dealAmount: number;
-    dealPrice: number;
-  };
 }
 
 export class EastMoneyBrokerAdapter
   extends EventEmitter
   implements BrokerAdapter
 {
-  private readonly config: Required<EastMoneyBrokerConfig>;
+  private readonly config: {
+    brokerId: string;
+    brokerName: string;
+    endpoint: string;
+    environment: "paper" | "sandbox";
+    credentialsRef: string;
+    accountId: string;
+    heartbeatMs: number;
+    timeoutMs: number;
+    initialCapital: number;
+  };
   private connected = false;
   private heartbeatTimer?: NodeJS.Timeout;
   private connectedAt: Date | null = null;
@@ -87,15 +69,19 @@ export class EastMoneyBrokerAdapter
   constructor(config: EastMoneyBrokerConfig) {
     super();
 
+    if (config.tradingEnabled || config.environment === "live") {
+      throw new Error("东方财富真实交易未实现，当前适配器禁止实盘");
+    }
+
     this.config = {
       brokerId: config.brokerId ?? "eastmoney",
       brokerName: config.brokerName ?? "东方财富",
       endpoint: config.endpoint ?? "https://trading.eastmoney.com/api",
-      token: config.token ?? process.env.EASTMONEY_TOKEN ?? "",
-      accountId: config.accountId ?? process.env.EASTMONEY_ACCOUNT ?? "EM000000",
+      environment: config.environment ?? "paper",
+      credentialsRef: config.credentialsRef ?? "",
+      accountId: config.accountId ?? "EM-PAPER",
       heartbeatMs: config.heartbeatMs ?? 30000,
       timeoutMs: config.timeoutMs ?? 10000,
-      tradingEnabled: config.tradingEnabled ?? false,
       initialCapital: config.initialCapital ?? 1_000_000,
     };
 
@@ -109,18 +95,6 @@ export class EastMoneyBrokerAdapter
 
     // 模拟网络延迟
     await this.delay(200);
-
-    if (this.config.tradingEnabled) {
-      // 真实模式：验证凭证
-      if (!this.config.token || !this.config.accountId) {
-        throw new Error(
-          "EastMoney 实盘交易需要配置 token 和 accountId",
-        );
-      }
-
-      // TODO: 实际调用东方财富登录 API
-      // const authResult = await this.callApi('/auth/login', {...});
-    }
 
     this.connected = true;
     this.connectedAt = new Date();
@@ -136,7 +110,7 @@ export class EastMoneyBrokerAdapter
 
     this.emit("connection.status", {
       connected: true,
-      message: `connected to ${this.config.brokerName}${this.config.tradingEnabled ? " [LIVE]" : " [PAPER]"}`,
+      message: `connected to ${this.config.brokerName} [PAPER]`,
     });
   }
 
@@ -160,10 +134,6 @@ export class EastMoneyBrokerAdapter
 
   async submitOrder(request: OrderRequest): Promise<OrderRecord> {
     this.ensureConnected();
-
-    if (this.config.tradingEnabled) {
-      return this.submitRealOrder(request);
-    }
     return this.submitMockOrder(request);
   }
 
@@ -179,10 +149,6 @@ export class EastMoneyBrokerAdapter
       throw new Error(`订单状态 ${order.status} 不允许撤销`);
     }
 
-    if (this.config.tradingEnabled) {
-      await this.callApi("/order/cancel", { entrustNo: orderId });
-    }
-
     const cancelled: OrderRecord = {
       ...order,
       status: "cancelled",
@@ -195,9 +161,6 @@ export class EastMoneyBrokerAdapter
 
   async getOrders(limit = 50): Promise<OrderRecord[]> {
     this.ensureConnected();
-    if (this.config.tradingEnabled) {
-      await this.callApi("/order/list", { limit });
-    }
     const orders = [...this.mockOrders.values()]
       .sort(
         (a, b) =>
@@ -264,7 +227,7 @@ export class EastMoneyBrokerAdapter
 
     return {
       accountId: this.config.accountId,
-      mode: this.config.tradingEnabled ? "live" : "paper",
+      mode: "paper",
       cash: this.mockCash,
       equity,
       marketValue,
@@ -354,100 +317,11 @@ export class EastMoneyBrokerAdapter
     return order;
   }
 
-  private async submitRealOrder(
-    request: OrderRequest,
-  ): Promise<OrderRecord> {
-    const orderId = `EM-LIVE-${++this.orderIdCounter}-${Date.now()}`;
-    const now = new Date().toISOString();
-
-    const eastMoneyReq: EastMoneyOrderRequest = {
-      code: request.symbol,
-      name: request.symbol,
-      price: request.limitPrice ?? 0,
-      amount: request.quantity,
-      tradeType: request.side === "buy" ? "B" : "S",
-      priceType: request.type === "market" ? "1" : "0",
-    };
-
-    try {
-      const response = await this.callApi<EastMoneyOrderResponse>(
-        "/order/submit",
-        eastMoneyReq,
-      );
-
-      if (response?.status !== 0) {
-        throw new Error(response?.message ?? "未知错误");
-      }
-
-      const order: OrderRecord = {
-        id: response.data?.entrustNo ?? orderId,
-        symbol: request.symbol,
-        side: request.side,
-        type: request.type,
-        quantity: request.quantity,
-        limitPrice: request.limitPrice,
-        clientOrderId: request.clientOrderId,
-        status: "accepted",
-        requestedPrice: request.limitPrice ?? 0,
-        filledQuantity: response.data?.dealAmount ?? 0,
-        notional: (response.data?.dealPrice ?? 0) * request.quantity,
-        commission: 0,
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      this.mockOrders.set(order.id, order);
-      this.emit("order.updated", order);
-      return order;
-    } catch (err) {
-      throw new Error(
-        `EastMoney 下单失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
   private ensureConnected(): void {
     if (!this.connected) {
       throw new Error(
         `Broker ${this.config.brokerId} not connected. Call connect() first.`,
       );
-    }
-  }
-
-  private async callApi<T = unknown>(
-    path: string,
-    body?: unknown,
-  ): Promise<T | null> {
-    // 模拟模式：返回 null
-    if (!this.config.tradingEnabled) {
-      return null;
-    }
-
-    const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.config.timeoutMs,
-    );
-
-    try {
-      const response = await fetch(`${this.config.endpoint}${path}`, {
-        method: body ? "POST" : "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.config.token}`,
-          "User-Agent": "EastMoney/1.0",
-        },
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`EastMoney API HTTP ${response.status}`);
-      }
-
-      return (await response.json()) as T;
-    } finally {
-      clearTimeout(timeout);
     }
   }
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 东方财富行情数据提供者。
  *
  * 实现 MarketDataProvider 契约，从东方财富公开 API 获取 A 股实时行情。
@@ -114,9 +114,11 @@ export class EastMoneyMarketProvider
   }
 
   tick(): MarketSnapshot {
-    // 同步 tick：仅返回当前缓存快照，不发起网络请求
+    // 同步 tick：返回当前缓存快照，同时发出事件
     this.sequence++;
-    return this.buildSnapshot();
+    const snapshot = this.buildSnapshot();
+    this.emit("snapshot", snapshot);
+    return snapshot;
   }
 
   getQuote(symbol: string): MarketQuote | undefined {

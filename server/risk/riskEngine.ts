@@ -1,19 +1,44 @@
 import type {
   AccountSnapshot,
+  CircuitBreakerConfig,
   CircuitState,
   EnhancedRiskLimits,
   MarketQuote,
   OrderRequest,
   PositionSnapshot,
   RiskDecision,
+  RiskLimits,
   RiskState,
   TradingMode,
 } from "../../shared/trading";
 
+const DEFAULT_CIRCUIT_BREAKER: CircuitBreakerConfig = {
+  maxConsecutiveLosses: 5,
+  maxDailyDrawdown: 0.08,
+  cooldownMinutes: 15,
+  recoveryMinutes: 5,
+};
+
+function toEnhanced(limits: RiskLimits | EnhancedRiskLimits): EnhancedRiskLimits {
+  const enhanced = limits as EnhancedRiskLimits;
+  return {
+    maxOrderNotional: enhanced.maxOrderNotional,
+    maxPositionWeight: enhanced.maxPositionWeight,
+    maxDailyLoss: enhanced.maxDailyLoss,
+    lotSize: enhanced.lotSize,
+    realTradingEnabled: enhanced.realTradingEnabled,
+    circuitBreaker: enhanced.circuitBreaker ?? { ...DEFAULT_CIRCUIT_BREAKER },
+    dynamicPositionScaling: enhanced.dynamicPositionScaling ?? false,
+    maxDrawdownReductionFactor: enhanced.maxDrawdownReductionFactor ?? 0.25,
+  };
+}
+
 export class RiskEngine {
   private state: RiskState;
+  private readonly limits: EnhancedRiskLimits;
 
-  constructor(private readonly limits: EnhancedRiskLimits) {
+  constructor(limits: RiskLimits | EnhancedRiskLimits) {
+    this.limits = toEnhanced(limits);
     this.state = this.initialState();
   }
 
@@ -27,6 +52,13 @@ export class RiskEngine {
     return { ...this.state };
   }
 
+  /** 设置日内初始权益（应在交易日开始时调用） */
+  setInitialEquity(equity: number): void {
+    if (equity > 0) {
+      this.state.peakDailyEquity = equity;
+    }
+  }
+
   /** 获取当前有效的（可能被动态缩减的）仓位权重上限 */
   getEffectiveMaxPositionWeight(): number {
     if (!this.limits.dynamicPositionScaling) {
@@ -37,9 +69,13 @@ export class RiskEngine {
 
   /** 获取当前有效的单笔订单金额上限 */
   getEffectiveMaxOrderNotional(): number {
-    const weightScale = this.limits.dynamicPositionScaling
-      ? this.calculateDynamicWeight() / this.limits.maxPositionWeight
-      : 1;
+    if (!this.limits.dynamicPositionScaling) {
+      // Dynamic scaling disabled: use full limit
+      return this.limits.maxOrderNotional;
+    }
+
+    const weightScale =
+      this.calculateDynamicWeight() / this.limits.maxPositionWeight;
     return Math.max(
       this.limits.maxOrderNotional * this.limits.maxDrawdownReductionFactor,
       this.limits.maxOrderNotional * weightScale,
@@ -63,10 +99,10 @@ export class RiskEngine {
       this.state.peakDailyEquity = accountEquity;
     }
 
-    // 计算日内回撤
+    // 计算日内回撤（基于峰值权益）
     this.state.dailyDrawdown =
       this.state.peakDailyEquity > 0
-        ? 1 - accountEquity / this.state.peakDailyEquity
+        ? Math.max(0, 1 - accountEquity / this.state.peakDailyEquity)
         : 0;
 
     if (profit < 0) {
@@ -137,18 +173,18 @@ export class RiskEngine {
       );
     }
 
-    // ── 动态限额检查 ──
-    const effectiveMaxNotional = this.getEffectiveMaxOrderNotional();
     const orderPrice =
       request.type === "limit"
         ? (request.limitPrice ?? quote.price)
         : quote.price;
     const notional = orderPrice * request.quantity;
 
+    // ── 单笔订单限额检查（买/卖都适用） ──
+    const effectiveMaxNotional = this.getEffectiveMaxOrderNotional();
     if (notional > effectiveMaxNotional) {
       return this.reject(
         "ORDER_NOTIONAL_LIMIT",
-        `订单金额 ${notional.toFixed(0)} 超过当前限额 ${effectiveMaxNotional.toFixed(0)}`,
+        `订单金额 ${notional.toFixed(0)} 超过单笔限额 ${effectiveMaxNotional.toFixed(0)}`,
       );
     }
 
@@ -173,7 +209,7 @@ export class RiskEngine {
       if (postTradeWeight > effectiveMaxWeight) {
         return this.reject(
           "POSITION_WEIGHT_LIMIT",
-          `成交后仓位权重 ${(postTradeWeight * 100).toFixed(1)}% 超过当前限制 ${(effectiveMaxWeight * 100).toFixed(1)}%`,
+          `成交后仓位权重 ${(postTradeWeight * 100).toFixed(1)}% 将超过单标的上限`,
         );
       }
     }
@@ -187,6 +223,11 @@ export class RiskEngine {
       if (request.quantity > availableQuantity) {
         return this.reject("INSUFFICIENT_POSITION", "可卖持仓不足");
       }
+    }
+
+    // 熔断器警告仍允许交易
+    if (circuitCheck.code === "RISK_WARNING") {
+      return circuitCheck;
     }
 
     return {
@@ -234,9 +275,11 @@ export class RiskEngine {
       }
 
       // 冷却期满但仍在观察期：允许交易但保持 warning
-      if (elapsedMinutes <
+      if (
+        elapsedMinutes <
         this.limits.circuitBreaker.cooldownMinutes +
-          this.limits.circuitBreaker.recoveryMinutes) {
+          this.limits.circuitBreaker.recoveryMinutes
+      ) {
         return {
           allowed: true,
           code: "CIRCUIT_RECOVERING",
@@ -275,7 +318,7 @@ export class RiskEngine {
       return;
     }
 
-    // 检查是否触发预警（连续亏损接近阈值）
+    // 检查是否触发预警（连续亏损接近阈值 60%）
     if (
       this.state.consecutiveLosses >=
       Math.floor(circuitBreaker.maxConsecutiveLosses * 0.6)
@@ -285,7 +328,7 @@ export class RiskEngine {
       return;
     }
 
-    // 检查回撤预警
+    // 检查回撤预警（接近阈值 60%）
     if (
       this.state.dailyDrawdown >=
       circuitBreaker.maxDailyDrawdown * 0.6
@@ -298,26 +341,24 @@ export class RiskEngine {
 
   /** 根据日内回撤动态计算当前仓位权重上限 */
   private calculateDynamicWeight(): number {
-    const { maxPositionWeight, maxDailyDrawdown, maxDrawdownReductionFactor } =
-      this.limits;
+    const { maxPositionWeight, maxDrawdownReductionFactor } = this.limits;
+    const maxDailyDrawdown = this.limits.circuitBreaker.maxDailyDrawdown;
 
-    if (this.state.dailyDrawdown <= 0) {
+    if (this.state.dailyDrawdown <= 0 || Number.isNaN(this.state.dailyDrawdown)) {
       return maxPositionWeight;
     }
 
-    // 线性缩减：回撤从 0 到 maxDailyDrawdown，权重从 maxPositionWeight 缩减到 maxPositionWeight * maxDrawdownReductionFactor
+    // 线性缩减：回撤从 0 到 maxDailyDrawdown，权重缩减到 maxPositionWeight * maxDrawdownReductionFactor
     const drawdownRatio = Math.min(
       1,
       this.state.dailyDrawdown / maxDailyDrawdown,
     );
     const reductionFactor =
       1 - (1 - maxDrawdownReductionFactor) * drawdownRatio;
-    const dynamicWeight = maxPositionWeight * reductionFactor;
 
-    // 不低于原始权重的缩减因子倍
     return Math.max(
       maxPositionWeight * maxDrawdownReductionFactor,
-      dynamicWeight,
+      maxPositionWeight * reductionFactor,
     );
   }
 
