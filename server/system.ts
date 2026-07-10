@@ -6,6 +6,7 @@ import { PaperBroker } from "./broker/paperBroker";
 import { MockMarket } from "./market/mockMarket";
 import { RiskEngine } from "./risk/riskEngine";
 import { InMemoryTradingStore } from "./store/inMemoryTradingStore";
+import { JsonFileTradingStore } from "./store/jsonFileTradingStore";
 
 export interface TradingSystem {
   market: MarketDataProvider;
@@ -13,6 +14,13 @@ export interface TradingSystem {
   risk: RiskEngine;
   broker: PaperBroker;
   limits: RiskLimits;
+}
+
+function createStore(config: ServerConfig): TradingStore {
+  if (config.STORE_BACKEND === "json") {
+    return new JsonFileTradingStore(config.DATA_DIR, config.TRADING_STARTING_CASH);
+  }
+  return new InMemoryTradingStore(config.TRADING_STARTING_CASH);
 }
 
 export function createTradingSystem(config: ServerConfig): TradingSystem {
@@ -28,7 +36,7 @@ export function createTradingSystem(config: ServerConfig): TradingSystem {
     realTradingEnabled: config.REAL_TRADING_ENABLED,
   };
   const market: MarketDataProvider = new MockMarket(config.MARKET_MODE, config.MARKET_TICK_MS);
-  const store: TradingStore = new InMemoryTradingStore(config.TRADING_STARTING_CASH);
+  const store: TradingStore = createStore(config);
   const risk = new RiskEngine(limits);
   const broker = new PaperBroker(market, store, risk, {
     mode: config.MARKET_MODE,

@@ -17,6 +17,8 @@ export function createTestConfig(
     MIN_COMMISSION: 5,
     SLIPPAGE_BPS: 5,
     REAL_TRADING_ENABLED: false,
+    STORE_BACKEND: "memory",
+    DATA_DIR: "./data",
     ...overrides,
   };
 }

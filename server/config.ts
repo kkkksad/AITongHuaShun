@@ -21,6 +21,10 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  /** 交易数据持久化后端: "memory" | "json" */
+  STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
+  /** JSON 存储目录（仅 STORE_BACKEND=json 时生效） */
+  DATA_DIR: z.string().default("./data"),
 });
 
 export type ServerConfig = ReturnType<typeof getConfig>;
