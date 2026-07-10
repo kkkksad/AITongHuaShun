@@ -1,0 +1,159 @@
+version: "3.8"
+
+# ============================================================
+# AI 量化交易工作台 — Docker 部署配置
+# ============================================================
+# 开发环境: docker compose --profile dev up
+# 生产环境: docker compose --profile prod up
+# ============================================================
+
+services:
+  # ==========================================================
+  # 生产环境 — 后端 API 服务
+  # ==========================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: kairos-quant:latest
+    container_name: kairos-backend
+    ports:
+      - "3001:3001"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=3001
+      - WEB_ORIGIN=http://localhost:4173
+      - MARKET_MODE=mock
+      - STORE_BACKEND=memory
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health',r=>{process.exit(r.statusCode===200?0:1)})"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - prod
+
+  # ==========================================================
+  # 生产环境 — 前端静态资源服务 (vite preview)
+  # ==========================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: kairos-quant:latest
+    container_name: kairos-frontend
+    ports:
+      - "4173:4173"
+    environment:
+      - VITE_API_TARGET=http://backend:3001
+    command:
+      - sh
+      - -c
+      - |
+        cat > /app/vite.config.docker.ts << 'VITEEOF'
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        export default defineConfig({
+          plugins: [react()],
+          server: {},
+          preview: {
+            host: "0.0.0.0",
+            port: 4173,
+            strictPort: true,
+            proxy: {
+              "/api": { target: "http://backend:3001", changeOrigin: true },
+              "/ws":  { target: "ws://backend:3001", ws: true }
+            }
+          }
+        });
+        VITEEOF
+        npx vite preview --config /app/vite.config.docker.ts
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - prod
+
+  # ==========================================================
+  # 开发环境 — 后端 API (热重载: tsx watch)
+  # ==========================================================
+  backend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    image: kairos-quant:dev
+    container_name: kairos-backend-dev
+    ports:
+      - "3001:3001"
+    volumes:
+      # 挂载源码目录，支持热重载
+      - ./server:/app/server
+      - ./shared:/app/shared
+      - ./package.json:/app/package.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./tsconfig.server.json:/app/tsconfig.server.json:ro
+      - ./tsconfig.node.json:/app/tsconfig.node.json:ro
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=3001
+      - WEB_ORIGIN=http://localhost:5173
+      - MARKET_MODE=mock
+      - STORE_BACKEND=memory
+    command: ["npx", "tsx", "watch", "server/index.ts"]
+    profiles:
+      - dev
+
+  # ==========================================================
+  # 开发环境 — 前端 Vite (热重载 HMR, 端口 5173)
+  # ==========================================================
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    image: kairos-quant:dev
+    container_name: kairos-frontend-dev
+    ports:
+      - "5173:5173"
+    volumes:
+      # 挂载源码目录，支持 HMR
+      - ./src:/app/src
+      - ./shared:/app/shared
+      - ./index.html:/app/index.html:ro
+      - ./vite.config.ts:/app/vite.config.ts:ro
+      - ./package.json:/app/package.json:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./tsconfig.app.json:/app/tsconfig.app.json:ro
+    environment:
+      - VITE_API_TARGET=http://backend-dev:3001
+    command:
+      - sh
+      - -c
+      - |
+        cat > /app/vite.config.docker.ts << 'VITEEOF'
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        export default defineConfig({
+          plugins: [react()],
+          server: {
+            host: "0.0.0.0",
+            port: 5173,
+            strictPort: true,
+            proxy: {
+              "/api": { target: "http://backend-dev:3001", changeOrigin: true },
+              "/ws":  { target: "ws://backend-dev:3001", ws: true }
+            }
+          }
+        });
+        VITEEOF
+        npx vite --config /app/vite.config.docker.ts
+    depends_on:
+      - backend-dev
+    profiles:
+      - dev
