@@ -39,6 +39,10 @@ export interface DataQualityScore {
   limitUpCount: number;
   /** 跌停数量 */
   limitDownCount: number;
+  /** 疑似复权缺口标的数（前后复权未对齐导致的价格跳空） */
+  adjustmentWarningCount: number;
+  /** 异常价格标的数（超出板块涨跌停限制的非停牌波动） */
+  anomalyPriceCount: number;
   /** 0-100，综合质量 */
   overall: number;
 }
@@ -47,7 +51,7 @@ export interface DataQualityScore {
 export interface DataQualityFlag {
   symbol: string;
   name: string;
-  flag: "suspended" | "limit_up" | "limit_down" | "stale" | "zero_price" | "zero_volume";
+  flag: "suspended" | "limit_up" | "limit_down" | "stale" | "zero_price" | "zero_volume" | "adjustment_gap" | "anomaly_price";
   detail: string;
 }
 

@@ -1,11 +1,12 @@
 import type { BacktestMetrics } from "../../shared/backtest";
-import type { MarketQuote, MarketSnapshot } from "../../shared/trading";
+import type { DataQualityReport, MarketQuote, MarketSnapshot } from "../../shared/trading";
 import {
   builtInFactories,
   estimateGridSearchTrials,
   gridSearch,
 } from "../optimizer";
 import type { ObjectiveFunction, StrategyFactory } from "../optimizer/types";
+import { computeDataQuality } from "../market/dataQuality";
 
 export interface StrategyLeaderboardEntry {
   rank: number;
@@ -24,11 +25,14 @@ export interface StrategyLeaderboardEntry {
     | "winRate"
     | "totalTrades"
   >;
+  qualityGate: "pass" | "caution" | "blocked";
   trialCount: number;
 }
 
 export interface StrategyLeaderboardReport {
   generatedAt: string;
+  /** 随机种子，保证排行榜可复现 */
+  seed: number;
   source: {
     provider: string;
     mode: MarketSnapshot["mode"];
@@ -39,6 +43,11 @@ export interface StrategyLeaderboardReport {
     snapshotSequence: number;
     snapshotTime: string;
   };
+  /** 数据质量评分，用于判断排行榜样本可靠性 */
+  dataQuality: Pick<
+    DataQualityReport,
+    "timestamp" | "score" | "totalSymbols"
+  > & { summary: string };
   objective: { metric: ObjectiveFunction; weight: number }[];
   costModel: {
     initialCapital: number;
@@ -52,8 +61,11 @@ export interface StrategyLeaderboardReport {
   entries: StrategyLeaderboardEntry[];
 }
 
+const DEFAULT_SEED = 42;
+
 const objective: { metric: ObjectiveFunction; weight: number }[] = [
-  { metric: "totalReturn", weight: 2.5 },
+  { metric: "winRate", weight: 2.8 },
+  { metric: "totalReturn", weight: 1.4 },
   { metric: "sharpeRatio", weight: 1.2 },
   { metric: "calmarRatio", weight: 0.8 },
 ];
@@ -131,6 +143,10 @@ const rankedFactories: [string, StrategyFactory][] = [
   ],
 ];
 
+/**
+ * 确定性伪随机数生成器（基于 xorshift 种子）
+ * 使用 murmur3 混合种子确保历史序列可复现
+ */
 function nextRandom(seed: number): [number, number] {
   let value = seed + 0x6d2b79f5;
   value = Math.imul(value ^ (value >>> 15), value | 1);
@@ -139,14 +155,19 @@ function nextRandom(seed: number): [number, number] {
   return [nextSeed, (nextSeed >>> 0) / 4294967296];
 }
 
-function quoteSeed(symbol: string): number {
-  return [...symbol].reduce(
-    (seed, char) => Math.imul(seed ^ char.charCodeAt(0), 16777619),
-    2166136261,
-  );
+function quoteSeed(symbol: string, baseSeed: number): number {
+  let seed = baseSeed;
+  for (const char of symbol) {
+    seed = Math.imul(seed ^ char.charCodeAt(0), 16777619);
+  }
+  return seed;
 }
 
-function createSyntheticHistory(snapshot: MarketSnapshot, bars: number): MarketSnapshot[] {
+function createSyntheticHistory(
+  snapshot: MarketSnapshot,
+  bars: number,
+  seed: number,
+): MarketSnapshot[] {
   const tradableQuotes = snapshot.quotes.filter((quote) => quote.tradable && quote.price > 0);
   if (tradableQuotes.length === 0) {
     throw new Error("当前行情快照没有可交易标的，无法生成研究样本");
@@ -158,7 +179,7 @@ function createSyntheticHistory(snapshot: MarketSnapshot, bars: number): MarketS
   for (const quote of tradableQuotes) {
     states.set(quote.symbol, {
       price: quote.previousClose > 0 ? quote.previousClose : quote.price,
-      seed: quoteSeed(quote.symbol),
+      seed: quoteSeed(quote.symbol, seed),
       volume: Math.max(quote.volume || 0, 1_000_000),
     });
   }
@@ -199,14 +220,79 @@ function createSyntheticHistory(snapshot: MarketSnapshot, bars: number): MarketS
   return history;
 }
 
+/**
+ * 生成数据质量摘要文本
+ */
+function buildQualitySummary(report: DataQualityReport): string {
+  const { score } = report;
+  if (score.overall >= 90) return "优秀：数据质量高，排行榜结果可靠";
+  if (score.overall >= 70) return "良好：数据质量中等，少数标的可能存在停牌或异常";
+  if (score.overall >= 50) return "一般：数据质量偏低，存在较多停牌/复权问题，排行榜仅供参考";
+  return "较差：数据质量严重不足，排行榜结果不可靠，请检查行情源";
+}
+
+function buildQualityGate(metrics: StrategyLeaderboardEntry["metrics"]): StrategyLeaderboardEntry["qualityGate"] {
+  if (metrics.totalTrades < 3 || metrics.totalReturn <= 0 || metrics.maxDrawdownPercent > 0.30) {
+    return "blocked";
+  }
+  if (metrics.totalTrades < 5 || metrics.maxDrawdownPercent > 0.18 || metrics.sharpeRatio < 0) {
+    return "caution";
+  }
+  return "pass";
+}
+
+function compareLeaderboardEntries(
+  a: Omit<StrategyLeaderboardEntry, "rank">,
+  b: Omit<StrategyLeaderboardEntry, "rank">,
+): number {
+  const gateRank = { pass: 0, caution: 1, blocked: 2 } as const;
+  if (gateRank[a.qualityGate] !== gateRank[b.qualityGate]) {
+    return gateRank[a.qualityGate] - gateRank[b.qualityGate];
+  }
+  if (b.metrics.winRate !== a.metrics.winRate) {
+    return b.metrics.winRate - a.metrics.winRate;
+  }
+  if (b.metrics.totalTrades !== a.metrics.totalTrades) {
+    return b.metrics.totalTrades - a.metrics.totalTrades;
+  }
+  if (b.metrics.totalReturn !== a.metrics.totalReturn) {
+    return b.metrics.totalReturn - a.metrics.totalReturn;
+  }
+  if (a.metrics.maxDrawdownPercent !== b.metrics.maxDrawdownPercent) {
+    return a.metrics.maxDrawdownPercent - b.metrics.maxDrawdownPercent;
+  }
+  return b.score - a.score;
+}
+
+/**
+ * 构建策略研究排行榜
+ *
+ * @param snapshot 当前市场快照
+ * @param marketDataProvider 行情数据提供者标识
+ * @param bars 生成的合成历史K线数量（默认90根日K）
+ * @param seed 随机种子（默认42），相同种子+相同快照 → 可复现结果
+ * @param requestedSymbols 请求的标的列表，用于数据质量检测
+ */
 export async function buildStrategyLeaderboard(
   snapshot: MarketSnapshot,
   marketDataProvider: string,
   bars = 90,
+  seed = DEFAULT_SEED,
+  requestedSymbols: string[] = [],
 ): Promise<StrategyLeaderboardReport> {
-  const history = createSyntheticHistory(snapshot, bars);
+  // 1. 先做数据质量评估
+  const qualityReport = computeDataQuality(
+    snapshot,
+    marketDataProvider,
+    requestedSymbols,
+    null,
+  );
+
+  // 2. 生成确定性合成历史
+  const history = createSyntheticHistory(snapshot, bars, seed);
   const entries: Omit<StrategyLeaderboardEntry, "rank">[] = [];
 
+  // 3. 运行各策略的参数搜索
   for (const [strategyKey, factory] of rankedFactories) {
     const estimatedTrials = estimateGridSearchTrials(factory.parameters);
     const report = await gridSearch(history, factory, {
@@ -214,31 +300,30 @@ export async function buildStrategyLeaderboard(
       backtest: costModel,
     });
 
+    const metrics = {
+      totalReturn: report.best.metrics.totalReturn,
+      annualizedReturn: report.best.metrics.annualizedReturn,
+      sharpeRatio: report.best.metrics.sharpeRatio,
+      sortinoRatio: report.best.metrics.sortinoRatio,
+      calmarRatio: report.best.metrics.calmarRatio,
+      maxDrawdownPercent: report.best.metrics.maxDrawdownPercent,
+      winRate: report.best.metrics.winRate,
+      totalTrades: report.best.metrics.totalTrades,
+    };
+
     entries.push({
       strategyKey,
       strategyName: report.strategyName,
       score: Number(report.best.score.toFixed(6)),
       bestParams: report.best.params,
-      metrics: {
-        totalReturn: report.best.metrics.totalReturn,
-        annualizedReturn: report.best.metrics.annualizedReturn,
-        sharpeRatio: report.best.metrics.sharpeRatio,
-        sortinoRatio: report.best.metrics.sortinoRatio,
-        calmarRatio: report.best.metrics.calmarRatio,
-        maxDrawdownPercent: report.best.metrics.maxDrawdownPercent,
-        winRate: report.best.metrics.winRate,
-        totalTrades: report.best.metrics.totalTrades,
-      },
+      metrics,
+      qualityGate: buildQualityGate(metrics),
       trialCount: Math.min(estimatedTrials, report.totalTrials),
     });
   }
 
-  entries.sort((a, b) => {
-    if (b.metrics.totalReturn !== a.metrics.totalReturn) {
-      return b.metrics.totalReturn - a.metrics.totalReturn;
-    }
-    return b.score - a.score;
-  });
+  // 4. 按成功率/胜率排序，并用交易次数、收益和回撤约束过滤“虚高胜率”
+  entries.sort(compareLeaderboardEntries);
 
   const tradableSymbols = snapshot.quotes
     .filter((quote) => quote.tradable && quote.price > 0)
@@ -246,6 +331,7 @@ export async function buildStrategyLeaderboard(
 
   return {
     generatedAt: new Date().toISOString(),
+    seed,
     source: {
       provider: marketDataProvider,
       mode: snapshot.mode,
@@ -256,12 +342,20 @@ export async function buildStrategyLeaderboard(
       snapshotSequence: snapshot.sequence,
       snapshotTime: snapshot.marketTime,
     },
+    dataQuality: {
+      timestamp: qualityReport.timestamp,
+      score: qualityReport.score,
+      totalSymbols: qualityReport.totalSymbols,
+      summary: buildQualitySummary(qualityReport),
+    },
     objective,
     costModel,
     guardrails: [
       "排行榜只用于研究和模拟，不代表真实收益或投资建议。",
       "当前样本由最新快照生成确定性历史序列，尚未替代授权历史行情。",
+      "排序优先考虑胜率/成功率，并用交易次数、正收益和最大回撤约束过滤不稳健结果。",
       "真实订单执行保持关闭，任何券商接入必须经过独立审批和风控网关。",
+      `数据质量评级：${buildQualitySummary(qualityReport)}`,
     ],
     entries: entries.map((entry, index) => ({ rank: index + 1, ...entry })),
   };

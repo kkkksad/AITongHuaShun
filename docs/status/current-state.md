@@ -32,9 +32,10 @@
 - **真实只读行情模式** —— `MARKET_DATA_PROVIDER=akshare` 与 `MARKET_MODE=paper` 可使用 AkShare 个股与主要指数行情驱动本地模拟账户；桥接默认绕过本机代理，并在东方财富个股源不可用时降级到 AkShare 备用 A 股实时源。指数代码使用 `SH000001`、`SZ399001` 等命名空间，避免和个股 `000001` 混用。
 - **东方财富只读行情原型** —— `EastMoneyMarketProvider` 可读取公开行情并拒绝 `live`，当前尚未接入主服务的 `MARKET_DATA_PROVIDER` 选择器。
 - **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
+- **同花顺模拟盘纸面适配器骨架** —— `TongHuaShunPaperAdapter` 只允许 `paper`/`sandbox`，接收行情注入后委托 `PaperBroker + RiskEngine` 完成模拟成交；拒绝 `live` 和 `tradingEnabled=true`，当前未装配到主服务，也不包含同花顺真实下单端点。
 - **认证安全原型** —— `server/auth.ts` 提供显式配置、短期 HMAC 令牌和恒定时间凭据比较，但尚未注册到主 Fastify 服务，不保护当前 API。
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
-- **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示收益率优先排名；结果明确标注为研究/模拟，不代表真实收益。
+- **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示成功率/胜率优先排名；排序同时约束交易次数、正收益和最大回撤，结果明确标注为研究/模拟，不代表真实收益。
 
 ## 可用接口
 
@@ -65,7 +66,7 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
-2026-07-11 指数行情修复聚焦验证
+2026-07-11 真实指数、数据质量、胜率策略榜与同花顺模拟盘聚焦验证
 
 python -m pytest akshare-bridge/test_bridge.py -q
 19 tests passed, 1 warning
@@ -74,10 +75,14 @@ npm run test:server -- server/market/HttpMarketProvider.test.ts server/market/Ak
 2 test files passed
 37 tests passed
 
+npm run test:server -- server/market/dataQuality.test.ts server/app.test.ts server/broker/tonghuashun/tonghuashun.test.ts
+3 test files passed
+86 tests passed
+
 npm run build
 TypeScript checks and Vite production build passed
 
-完整 npm test 未在本次验证中重跑；工作区还有数据质量与策略排行榜相关的未提交改动。
+完整 npm test 未在本次验证中重跑。
 ```
 
 ## 架构进展

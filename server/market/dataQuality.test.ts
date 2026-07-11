@@ -4,8 +4,10 @@ import {
   computeCompleteness,
   computeDataQuality,
   computeFreshness,
+  detectAdjustmentGap,
   detectFlags,
   detectLimitHit,
+  detectPriceAnomaly,
   getBoardLimit,
   isSuspectedSuspended,
 } from "./dataQuality";
@@ -157,6 +159,150 @@ describe("detectLimitHit", () => {
   });
 });
 
+// ── 复权缺口检测 ─────────────────────────────────────────
+
+describe("detectAdjustmentGap", () => {
+  it("主板价格跳空 16% 且未涨停，判定为复权缺口", () => {
+    const q = makeQuote({
+      symbol: "600519",
+      price: 116,
+      previousClose: 100,
+      changePercent: 16.0,
+      volume: 5_000_000,
+    });
+    expect(detectAdjustmentGap(q)).toBe(true);
+  });
+
+  it("主板价格跳空 -15% 且未跌停，判定为复权缺口", () => {
+    const q = makeQuote({
+      symbol: "600519",
+      price: 85,
+      previousClose: 100,
+      changePercent: -15.0,
+      volume: 5_000_000,
+    });
+    expect(detectAdjustmentGap(q)).toBe(true);
+  });
+
+  it("跳空 10%（未达阈值）不判定为复权缺口", () => {
+    const q = makeQuote({
+      symbol: "600519",
+      changePercent: 10.0,
+      volume: 5_000_000,
+    });
+    expect(detectAdjustmentGap(q)).toBe(false);
+  });
+
+  it("涨停（已达板块限制）不判定为复权缺口", () => {
+    const q = makeQuote({
+      symbol: "600519",
+      changePercent: 9.95,
+      volume: 10_000_000,
+    });
+    expect(detectAdjustmentGap(q)).toBe(false);
+  });
+
+  it("零价格不判定为复权缺口", () => {
+    const q = makeQuote({ price: 0, previousClose: 100, changePercent: -100 });
+    expect(detectAdjustmentGap(q)).toBe(false);
+  });
+
+  it("停牌标的不判定为复权缺口", () => {
+    const q = makeQuote({
+      symbol: "600519",
+      price: 100,
+      previousClose: 100,
+      changePercent: 0,
+      volume: 0,
+    });
+    expect(detectAdjustmentGap(q)).toBe(false);
+  });
+
+  it("创业板 25% 跳空同时判定为复权缺口和异常价格", () => {
+    const q = makeQuote({
+      symbol: "300750",
+      price: 125,
+      previousClose: 100,
+      changePercent: 25.0,
+      volume: 5_000_000,
+    });
+    expect(detectAdjustmentGap(q)).toBe(true);
+    expect(detectPriceAnomaly(q)).toBe(true);
+  });
+
+  it("创业板 18% 跳空（超过 15% 且未达 20% 涨停）判定为复权缺口", () => {
+    const q = makeQuote({
+      symbol: "300750",
+      price: 118,
+      previousClose: 100,
+      changePercent: 18.0,
+      volume: 5_000_000,
+    });
+    expect(detectAdjustmentGap(q)).toBe(true);
+  });
+});
+
+// ── 异常价格检测 ─────────────────────────────────────────
+
+describe("detectPriceAnomaly", () => {
+  it("主板涨跌幅 12%（超出 10% 涨停限制），判定异常", () => {
+    const q = makeQuote({
+      symbol: "600519",
+      price: 112,
+      previousClose: 100,
+      changePercent: 12.0,
+      volume: 5_000_000,
+    });
+    expect(detectPriceAnomaly(q)).toBe(true);
+  });
+
+  it("主板涨跌幅 10%（正好在限制内），不判定异常", () => {
+    const q = makeQuote({
+      symbol: "600519",
+      changePercent: 10.0,
+      volume: 5_000_000,
+    });
+    expect(detectPriceAnomaly(q)).toBe(false);
+  });
+
+  it("创业板涨跌幅 22%（超出 20% 限制），判定异常", () => {
+    const q = makeQuote({
+      symbol: "300750",
+      changePercent: 22.0,
+      volume: 5_000_000,
+    });
+    expect(detectPriceAnomaly(q)).toBe(true);
+  });
+
+  it("创业板涨跌幅 20%（正好限制），不判定异常", () => {
+    const q = makeQuote({
+      symbol: "300750",
+      changePercent: 20.0,
+      volume: 5_000_000,
+    });
+    expect(detectPriceAnomaly(q)).toBe(false);
+  });
+
+  it("正常涨跌不判定异常", () => {
+    const q = makeQuote({ symbol: "600519", changePercent: 3.0 });
+    expect(detectPriceAnomaly(q)).toBe(false);
+  });
+
+  it("零价格不判定异常", () => {
+    const q = makeQuote({ price: 0, previousClose: 100, changePercent: 500 });
+    expect(detectPriceAnomaly(q)).toBe(false);
+  });
+
+  it("北交所 35%（超出 30% 限制），判定异常", () => {
+    const q = makeQuote({
+      symbol: "830799",
+      changePercent: 35.0,
+      volume: 5_000_000,
+    });
+    expect(detectPriceAnomaly(q)).toBe(true);
+  });
+});
+
 // ── 新鲜度 ───────────────────────────────────────────────
 
 describe("computeFreshness", () => {
@@ -256,6 +402,30 @@ describe("detectFlags", () => {
     expect(flags.some((f) => f.flag === "stale")).toBe(true);
   });
 
+  it("复权缺口标记", () => {
+    const quotes = [makeQuote({
+      symbol: "600519",
+      price: 116,
+      previousClose: 100,
+      changePercent: 16.0,
+      volume: 5_000_000,
+    })];
+    const flags = detectFlags(quotes);
+    expect(flags.some((f) => f.flag === "adjustment_gap")).toBe(true);
+  });
+
+  it("异常价格标记", () => {
+    const quotes = [makeQuote({
+      symbol: "600519",
+      price: 113,
+      previousClose: 100,
+      changePercent: 13.0,
+      volume: 5_000_000,
+    })];
+    const flags = detectFlags(quotes);
+    expect(flags.some((f) => f.flag === "anomaly_price")).toBe(true);
+  });
+
   it("一个标的可以有多个标记", () => {
     const quotes = [
       makeQuote({
@@ -294,6 +464,8 @@ describe("computeDataQuality", () => {
     expect(report.score.suspensionRate).toBe(0);
     expect(report.score.limitUpCount).toBe(0);
     expect(report.score.limitDownCount).toBe(0);
+    expect(report.score.adjustmentWarningCount).toBe(0);
+    expect(report.score.anomalyPriceCount).toBe(0);
     expect(report.flags).toHaveLength(0);
     expect(report.missingSymbols).toHaveLength(0);
   });
@@ -333,6 +505,34 @@ describe("computeDataQuality", () => {
     expect(report.flags.some((f) => f.flag === "limit_up")).toBe(true);
   });
 
+  it("含复权缺口标的的报告", () => {
+    const quotes = [
+      makeQuote({ symbol: "600519", price: 1500, previousClose: 1490, changePercent: 0.67, volume: 10_000_000 }),
+      makeQuote({ symbol: "000858", price: 175, previousClose: 150, changePercent: 16.67, volume: 5_000_000 }),
+    ];
+    const snapshot = makeSnapshot(quotes);
+    const report = computeDataQuality(snapshot, "akshare");
+
+    expect(report.score.adjustmentWarningCount).toBe(1);
+    expect(report.flags.some((f) => f.flag === "adjustment_gap")).toBe(true);
+    // 50% 复权缺口会降低整体评分
+    expect(report.score.overall).toBeLessThanOrEqual(85);
+  });
+
+  it("含异常价格标的的报告", () => {
+    const quotes = [
+      makeQuote({ symbol: "600519", price: 1500, previousClose: 1490, changePercent: 0.67, volume: 10_000_000 }),
+      makeQuote({ symbol: "000858", price: 200, previousClose: 160, changePercent: 25.0, volume: 5_000_000 }),
+    ];
+    const snapshot = makeSnapshot(quotes);
+    const report = computeDataQuality(snapshot, "akshare");
+
+    expect(report.score.anomalyPriceCount).toBe(1);
+    expect(report.flags.some((f) => f.flag === "anomaly_price")).toBe(true);
+    // 异常价格会显著降低整体评分
+    expect(report.score.overall).toBeLessThanOrEqual(80);
+  });
+
   it("缓存年龄传递到报告", () => {
     const quotes = [makeQuote()];
     const snapshot = makeSnapshot(quotes);
@@ -349,6 +549,8 @@ describe("computeDataQuality", () => {
     expect(report.score.overall).toBe(0);
     expect(report.score.completeness).toBe(0);
     expect(report.score.freshness).toBe(0);
+    expect(report.score.adjustmentWarningCount).toBe(0);
+    expect(report.score.anomalyPriceCount).toBe(0);
   });
 
   it("零价格数据降低综合评分", () => {
@@ -378,5 +580,31 @@ describe("computeDataQuality", () => {
     expect(report.score.freshness).toBe(100);
     // 但过期标记仍会出现
     expect(report.flags.some((f) => f.flag === "stale" && f.symbol === "000858")).toBe(true);
+  });
+
+  it("同时含复权缺口和异常价格的报告", () => {
+    const quotes = [
+      makeQuote({ symbol: "600519", price: 1500, previousClose: 1490, changePercent: 0.67, volume: 10_000_000 }),
+      makeQuote({
+        symbol: "000858",
+        price: 175,
+        previousClose: 150,
+        changePercent: 16.67,
+        volume: 5_000_000,
+      }),
+      makeQuote({
+        symbol: "300750",
+        price: 250,
+        previousClose: 200,
+        changePercent: 25.0,
+        volume: 3_000_000,
+      }),
+    ];
+    const snapshot = makeSnapshot(quotes);
+    const report = computeDataQuality(snapshot, "akshare");
+
+    expect(report.score.adjustmentWarningCount).toBe(2); // 000858: 16.67% gap; 300750: 25% gap
+    expect(report.score.anomalyPriceCount).toBe(1); // 300750: 25% > 20% limit
+    expect(report.score.overall).toBeLessThanOrEqual(60);
   });
 });

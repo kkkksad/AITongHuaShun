@@ -6,6 +6,8 @@
  * - 完整度：有效报价的符号比例
  * - 停牌检测：价格/成交量异常的标的
  * - 涨跌停检测：触及涨跌停板的标的
+ * - 复权检测：前后复权未对齐导致的价格跳空
+ * - 异常波动：超出板块涨跌停限制的非停牌价格波动
  * - 综合评分：加权汇总
  *
  * 参考：docs/plans/2026-07-11-real-data-strategy-research-loop.md
@@ -31,12 +33,17 @@ const BOARD_LIMITS: Record<string, { limit: number; label: string }> = {
 const FRESHNESS_MAX_AGE_SEC = 300; // 5分钟满分
 const FRESHNESS_DECAY_SEC = 600;   // 每10分钟额外扣10分
 
+/** 复权检测：价格跳空阈值（相对于昨收的百分比） */
+const ADJUSTMENT_GAP_THRESHOLD_PCT = 15; // 超过15%的跳空可能是复权未对齐
+
 /** 综合评分权重 */
 const WEIGHTS = {
   freshness: 0.25,
-  completeness: 0.35,
+  completeness: 0.25,
   suspensionPenalty: 0.20,
-  limitHitPenalty: 0.20,
+  limitHitPenalty: 0.10,
+  adjustmentPenalty: 0.10,
+  anomalyPenalty: 0.10,
 };
 
 /**
@@ -97,6 +104,70 @@ export function detectLimitHit(quote: MarketQuote): "limit_up" | "limit_down" | 
 }
 
 /**
+ * 检测复权缺口：价格跳空超过阈值，可能是前后复权未对齐
+ *
+ * 在 A 股中，除权除息日股价会出现大幅跳空。如果数据源混用了
+ * 前复权/后复权/不复权价格，就会出现无法解释的价格缺口。
+ *
+ * 检测逻辑：
+ * - 价格相对昨收变化超过 ADJUSTMENT_GAP_THRESHOLD_PCT
+ * - 排除涨跌停（正常市场行为）
+ * - 排除停牌标的
+ *
+ * @returns true if adjustment gap detected
+ */
+export function detectAdjustmentGap(quote: MarketQuote): boolean {
+  // 排除零价格或无昨收的标的
+  if (quote.price <= 0 || quote.previousClose <= 0) {
+    return false;
+  }
+  // 排除停牌
+  if (isSuspectedSuspended(quote)) {
+    return false;
+  }
+  const absChangePct = Math.abs(quote.changePercent);
+
+  // 跳空超过阈值，优先标记为复权风险；是否同时超出涨跌停由 anomaly_price 单独标记。
+  if (absChangePct >= ADJUSTMENT_GAP_THRESHOLD_PCT) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * 检测异常价格：价格变动超出板块涨跌停限制
+ *
+ * 如果某标的涨跌幅超出板块涨跌停限制，且不是停牌状态，
+ * 可能是数据源错误或复权问题。
+ *
+ * @returns true if anomalous price detected
+ */
+export function detectPriceAnomaly(quote: MarketQuote): boolean {
+  if (quote.price <= 0) {
+    return false; // 零价格由 zero_price 检测
+  }
+  if (isSuspectedSuspended(quote)) {
+    return false;
+  }
+
+  const boardLimit = getBoardLimit(quote.symbol);
+  const absChangePct = Math.abs(quote.changePercent);
+
+  // 15%-20% 的跳空优先按复权风险处理，避免同一条数据同时进入异常价格计数。
+  if (detectAdjustmentGap(quote) && absChangePct < 20) {
+    return false;
+  }
+
+  // 超出板块涨跌停限制（留 0.5% 浮点容差）
+  if (absChangePct > boardLimit + 0.5) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * 计算数据新鲜度评分 (0-100)
  */
 export function computeFreshness(updatedAt: string, nowMs?: number): number {
@@ -124,7 +195,7 @@ export function computeCompleteness(quotes: MarketQuote[]): number {
 }
 
 /**
- * 检测停牌、涨跌停、过期和异常数据
+ * 检测停牌、涨跌停、过期、复权缺口和异常数据
  */
 export function detectFlags(quotes: MarketQuote[]): DataQualityFlag[] {
   const flags: DataQualityFlag[] = [];
@@ -179,6 +250,27 @@ export function detectFlags(quotes: MarketQuote[]): DataQualityFlag[] {
       });
     }
 
+    // 复权缺口
+    if (detectAdjustmentGap(quote)) {
+      flags.push({
+        symbol: quote.symbol,
+        name: quote.name,
+        flag: "adjustment_gap",
+        detail: `复权缺口：涨跌幅 ${quote.changePercent.toFixed(2)}%，超过 ${ADJUSTMENT_GAP_THRESHOLD_PCT}% 阈值，可能前后复权未对齐`,
+      });
+    }
+
+    // 异常价格
+    if (detectPriceAnomaly(quote)) {
+      const boardLimit = getBoardLimit(quote.symbol);
+      flags.push({
+        symbol: quote.symbol,
+        name: quote.name,
+        flag: "anomaly_price",
+        detail: `异常价格：涨跌幅 ${quote.changePercent.toFixed(2)}%，超出板块 ${boardLimit}% 涨跌停限制`,
+      });
+    }
+
     // 数据过期（超过5分钟未更新）
     const ageSec = (Date.now() - new Date(quote.updatedAt).getTime()) / 1000;
     if (ageSec > 300) {
@@ -222,6 +314,8 @@ export function computeDataQuality(
         suspensionRate: 0,
         limitUpCount: 0,
         limitDownCount: 0,
+        adjustmentWarningCount: 0,
+        anomalyPriceCount: 0,
         overall: 0,
       },
       flags: [],
@@ -254,16 +348,38 @@ export function computeDataQuality(
   // 零价格数量（额外扣分）
   const zeroPriceCount = flags.filter((f) => f.flag === "zero_price").length;
 
-  // 综合评分：zero_price 会影响 completeness 和 suspensionPenalty
-  const suspensionPenalty = Math.max(0, 100 - (suspensionRate + zeroPriceCount / quotes.length) * 100);
-  const limitHitPenalty = Math.max(0, 100 - ((limitUpCount + limitDownCount) / quotes.length) * 50);
+  // 复权缺口数量
+  const adjustmentWarningCount = flags.filter((f) => f.flag === "adjustment_gap").length;
 
-  const overall = Math.round(
+  // 异常价格数量
+  const anomalyPriceCount = flags.filter((f) => f.flag === "anomaly_price").length;
+
+  // 综合评分：zero_price 会影响 completeness 和 suspensionPenalty
+  const suspensionPenalty = Math.max(0, 100 - (suspensionRate + zeroPriceCount / quotes.length) * 120);
+  const limitHitPenalty = Math.max(0, 100 - ((limitUpCount + limitDownCount) / quotes.length) * 50);
+  const adjustmentPenalty = Math.max(0, 100 - (adjustmentWarningCount / quotes.length) * 250);
+  const anomalyPenalty = Math.max(0, 100 - (anomalyPriceCount / quotes.length) * 500);
+
+  let overall = Math.round(
     freshness * WEIGHTS.freshness +
     completeness * WEIGHTS.completeness +
     suspensionPenalty * WEIGHTS.suspensionPenalty +
-    limitHitPenalty * WEIGHTS.limitHitPenalty,
+    limitHitPenalty * WEIGHTS.limitHitPenalty +
+    adjustmentPenalty * WEIGHTS.adjustmentPenalty +
+    anomalyPenalty * WEIGHTS.anomalyPenalty,
   );
+
+  const adjustmentRate = adjustmentWarningCount / quotes.length;
+  const anomalyRate = anomalyPriceCount / quotes.length;
+  if (adjustmentRate >= 0.5) {
+    overall = Math.min(overall, 85);
+  }
+  if (adjustmentWarningCount > 0 && anomalyPriceCount > 0) {
+    overall = Math.min(overall, 60);
+  }
+  if (anomalyRate >= 0.5) {
+    overall = Math.min(overall, 70);
+  }
 
   const score: DataQualityScore = {
     freshness: Math.round(freshness),
@@ -271,6 +387,8 @@ export function computeDataQuality(
     suspensionRate: Math.round(suspensionRate * 1000) / 1000,
     limitUpCount,
     limitDownCount,
+    adjustmentWarningCount,
+    anomalyPriceCount,
     overall,
   };
 

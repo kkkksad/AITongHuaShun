@@ -2484,6 +2484,32 @@ select:focus-visible {
   color: var(--brand-mark-color);
 }
 
+.rank-badge.gate-pass,
+.rank-badge.gate-caution,
+.rank-badge.gate-blocked {
+  width: auto;
+  min-width: 44px;
+  padding: 0 8px;
+  gap: 4px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.rank-badge.gate-pass {
+  color: var(--color-success);
+  background: var(--color-success-bg);
+}
+
+.rank-badge.gate-caution {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+
+.rank-badge.gate-blocked {
+  color: var(--color-danger);
+  background: var(--color-danger-bg);
+}
+
 .compare-chart-section {
   margin-top: 4px;
 }

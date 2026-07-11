@@ -73,11 +73,13 @@ export interface StrategyLeaderboardEntry {
     winRate: number;
     totalTrades: number;
   };
+  qualityGate: "pass" | "caution" | "blocked";
   trialCount: number;
 }
 
 export interface StrategyLeaderboardReport {
   generatedAt: string;
+  seed: number;
   source: {
     provider: MarketDataProviderName;
     mode: TradingMode;
@@ -87,6 +89,21 @@ export interface StrategyLeaderboardReport {
     bars: number;
     snapshotSequence: number;
     snapshotTime: string;
+  };
+  dataQuality: {
+    timestamp: string;
+    score: {
+      freshness: number;
+      completeness: number;
+      suspensionRate: number;
+      limitUpCount: number;
+      limitDownCount: number;
+      adjustmentWarningCount: number;
+      anomalyPriceCount: number;
+      overall: number;
+    };
+    totalSymbols: number;
+    summary: string;
   };
   objective: { metric: string; weight: number }[];
   costModel: {
@@ -173,5 +190,9 @@ export function fetchAuditEvents(limit = 100): Promise<AuditEvent[]> {
 
 export function getTradingSocketUrl(): string {
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  if (window.location.port === "4173") {
+    return `${protocol}//${window.location.hostname}:8787/ws`;
+  }
+
   return `${protocol}//${window.location.host}/ws`;
 }
