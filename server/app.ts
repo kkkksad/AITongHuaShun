@@ -35,6 +35,7 @@ import {
 import type { ExportFormat } from "./monitoring/exportUtils";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
+import { buildPaperTradingPlan } from "./research/paperTradingPlan";
 import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
 import { WebSocketHub } from "./realtime/webSocketHub";
@@ -456,6 +457,43 @@ export async function buildTradingApp(
       system.marketDataProvider,
     );
     return researchStore.getLearningState();
+  });
+
+  app.get("/api/research/paper-trading-plan", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取今日纸面交易计划",
+      description:
+        "基于当前行情快照、策略排行榜、今日候选和账户状态生成本地 paper 操作计划。结果只用于模拟观察，不会连接真实券商。",
+    },
+  }, async () => {
+    const snapshot = system.market.getSnapshot();
+    const account = system.broker.getAccount(snapshot);
+    const positions = system.broker.getPositions(snapshot);
+    const [leaderboard, candidates, qualityStocks] = await Promise.all([
+      buildStrategyLeaderboard(snapshot, system.marketDataProvider, 90),
+      buildDailyCandidates(snapshot, system.marketDataProvider, 8),
+      buildDailyQualityStocks(snapshot, system.marketDataProvider, 10),
+    ]);
+
+    researchStore.recordMarketSnapshot(snapshot, system.marketDataProvider);
+    researchStore.recordStrategyLeaderboard(leaderboard);
+    researchStore.recordDailyCandidates(candidates);
+    researchStore.recordDailyQualityStocks(qualityStocks);
+
+    return buildPaperTradingPlan({
+      snapshot,
+      provider: system.marketDataProvider,
+      account,
+      positions,
+      leaderboard,
+      candidates,
+      qualityStocks,
+      initialCapital: options.config.TRADING_STARTING_CASH,
+      lotSize: system.limits.lotSize,
+      maxPositionWeight: system.risk.getEffectiveMaxPositionWeight(),
+      maxSingleOrderNotional: system.risk.getEffectiveMaxOrderNotional(),
+    });
   });
 
   // 账户

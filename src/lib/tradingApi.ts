@@ -260,6 +260,55 @@ export interface LearningState {
   guardrails: string[];
 }
 
+export type PaperTradingOperationAction =
+  | "observe"
+  | "paper-buy-plan"
+  | "paper-sell-plan"
+  | "blocked"
+  | "hold";
+
+export interface PaperTradingOperation {
+  timestamp: string;
+  symbol: string;
+  name: string;
+  action: PaperTradingOperationAction;
+  strategy: string;
+  quantity: number;
+  price: number;
+  estimatedNotional: number;
+  reason: string;
+  ruleChecks: string[];
+}
+
+export interface PaperTradingPlan {
+  generatedAt: string;
+  tradingDate: string;
+  mode: TradingMode;
+  provider: MarketDataProviderName;
+  account: {
+    accountId: string;
+    cash: number;
+    equity: number;
+    marketValue: number;
+  };
+  capitalPlan: {
+    initialCapital: number;
+    maxPositionWeight: number;
+    maxSingleOrderNotional: number;
+    lotSize: number;
+  };
+  rules: string[];
+  topStrategy: {
+    strategyKey: string;
+    strategyName: string;
+    winRate: number;
+    totalTrades: number;
+    qualityGate: string;
+  } | null;
+  operations: PaperTradingOperation[];
+  guardrails: string[];
+}
+
 interface AccountResponse {
   account: AccountSnapshot;
 }
@@ -401,6 +450,10 @@ export function fetchDailyQualityStocks(limit = 10): Promise<DailyQualityStockRe
 
 export function fetchLearningState(): Promise<LearningState> {
   return apiRequest<LearningState>("/api/research/learning-state");
+}
+
+export function fetchPaperTradingPlan(): Promise<PaperTradingPlan> {
+  return apiRequest<PaperTradingPlan>("/api/research/paper-trading-plan");
 }
 
 export function cancelPaperOrder(orderId: string): Promise<OrderSubmission> {

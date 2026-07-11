@@ -77,6 +77,10 @@ export interface PositionSnapshot {
   symbol: string;
   name: string;
   quantity: number;
+  /** A 股 T+1 规则下当前可卖数量；当日买入数量不计入可卖。 */
+  availableQuantity?: number;
+  /** A 股 T+1 规则下当日买入锁定数量。 */
+  t1LockedQuantity?: number;
   averagePrice: number;
   currentPrice: number;
   marketValue: number;

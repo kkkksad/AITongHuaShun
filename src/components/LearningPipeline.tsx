@@ -13,6 +13,7 @@ import { pipelineStages } from "../data/mockData";
 import {
   fetchDailyCandidates,
   fetchLearningState,
+  fetchPaperTradingPlan,
   fetchStrategyLeaderboard,
 } from "../lib/tradingApi";
 
@@ -41,9 +42,16 @@ export default function LearningPipeline() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+  const paperPlanQuery = useQuery({
+    queryKey: ["paper-trading-plan"],
+    queryFn: fetchPaperTradingPlan,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
 
   const topStrategy = leaderboardQuery.data?.entries[0];
   const learningState = learningStateQuery.data;
+  const paperPlan = paperPlanQuery.data;
   const paperBuyCount =
     candidatesQuery.data?.candidates.filter((candidate) => candidate.action === "paper-buy").length ?? 0;
   const researchScore = Math.min(
@@ -133,6 +141,54 @@ export default function LearningPipeline() {
             )}
           </div>
         </section>
+
+        <section className="panel learning-memory-panel">
+          <div className="panel-header">
+            <div>
+              <span className="section-kicker">纸面操作过程</span>
+              <h2>今日 1 万资金计划</h2>
+            </div>
+            <span className="sample-badge">
+              {paperPlan?.operations.length ?? 0} 条记录
+            </span>
+          </div>
+          <div className="learning-memory-grid">
+            <article>
+              <span>交易日</span>
+              <strong>{paperPlan?.tradingDate ?? "等待"}</strong>
+              <small>{paperPlan?.provider ?? "provider"}</small>
+            </article>
+            <article>
+              <span>可用现金</span>
+              <strong>¥{(paperPlan?.account.cash ?? 0).toLocaleString("zh-CN")}</strong>
+              <small>paper-only</small>
+            </article>
+            <article>
+              <span>单票上限</span>
+              <strong>{((paperPlan?.capitalPlan.maxPositionWeight ?? 0) * 100).toFixed(1)}%</strong>
+              <small>一手 {paperPlan?.capitalPlan.lotSize ?? 100} 股</small>
+            </article>
+          </div>
+          <div className="learning-run-list">
+            {(paperPlan?.operations ?? []).slice(0, 8).map((operation) => (
+              <article key={`${operation.timestamp}-${operation.symbol}-${operation.action}`}>
+                <BarChart3 size={15} />
+                <div>
+                  <strong>
+                    {operation.symbol} {operation.name} · {operation.action}
+                  </strong>
+                  <span>
+                    {operation.strategy} · {operation.quantity} 股 · ¥{operation.estimatedNotional.toLocaleString("zh-CN")}
+                  </span>
+                  <span>{operation.reason}</span>
+                </div>
+              </article>
+            ))}
+            {!paperPlan?.operations.length && (
+              <p className="empty-copy">等待后端生成今日纸面计划。</p>
+            )}
+          </div>
+        </section>
       </div>
 
       <aside className="panel governance-panel">
@@ -147,12 +203,14 @@ export default function LearningPipeline() {
             disabled={
               leaderboardQuery.isFetching ||
               candidatesQuery.isFetching ||
-              learningStateQuery.isFetching
+              learningStateQuery.isFetching ||
+              paperPlanQuery.isFetching
             }
             onClick={() => {
               void leaderboardQuery.refetch();
               void candidatesQuery.refetch();
               void learningStateQuery.refetch();
+              void paperPlanQuery.refetch();
             }}
             type="button"
           >
@@ -185,6 +243,10 @@ export default function LearningPipeline() {
           <li className={learningState ? "done" : ""}>
             <Check size={15} />
             研究运行样本开始累计
+          </li>
+          <li className={paperPlan ? "done" : ""}>
+            <Check size={15} />
+            A 股 T+1 纸面计划已生成
           </li>
           <li className="done">
             <Check size={15} />

@@ -46,6 +46,8 @@
 - **A 股链路健康检查** —— `npm run check:a-share` 可验证 Fastify API、AkShare 桥接、Vite 代理、指数行情、个股行情和 KAIROS 行情快照是否处于同一套正在运行的服务。
 - **纸面账户纯现金启动配置** —— `TRADING_STARTING_CASH` 控制新建本地模拟账户初始资金，`TRADING_SEED_PORTFOLIO=false` 可关闭默认演示持仓种子，用于从 10000 元纯现金开始做本地 paper 观察。
 - **大盘指数展示修正** —— 主要指数卡片在 AkShare 模式下显示指数成交额，市场页指数图表改为使用当前后端指数快照，不再把静态模拟分时图伪装成实时大盘走势。
+- **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
+- **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程，研究管线页展示规则检查、候选动作和拦截原因。
 
 ## 可用接口
 
@@ -129,6 +131,19 @@ npm test
 543 tests passed
 
 npm run build
+TypeScript checks and Vite production build passed
+
+2026-07-11 A 股 T+1 与每日纸面操作计划验证
+npm run test:server -- server/broker/paperBroker.test.ts server/app.test.ts server/store/jsonFileTradingStore.test.ts
+3 test files passed
+47 tests passed
+
+npm test
+27 test files passed
+545 tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
 TypeScript checks and Vite production build passed
 ```
 
@@ -220,6 +235,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - A 股强势回踩确认战法是研究候选策略，不是“稳赚”或“实盘收割”承诺；接入授权历史行情、样本外验证和模拟盘观察前，不应作为真实下单依据。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
 - 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 从 10000 元纯现金开始；已有 JSON 状态文件不会被自动覆盖，需要用户明确删除或移走后才会重新初始化。
+- A 股 paper 撮合遵守一手 100 股和 T+1 卖出限制；同日买入的 `t1LockedQuantity` 只会在后续交易日释放为可卖数量。
 - 当前没有事务型数据库或已启用的用户认证，也没有真实账户连接或真实券商执行。
 - 认证原型没有默认账号、默认密码或默认 JWT 密钥；缺少显式安全配置时必须拒绝注册。
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。

@@ -196,6 +196,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/research/daily-candidates");
     expect(response.json().paths).toHaveProperty("/api/research/daily-quality-stocks");
     expect(response.json().paths).toHaveProperty("/api/research/learning-state");
+    expect(response.json().paths).toHaveProperty("/api/research/paper-trading-plan");
   });
 
   it("adds baseline security headers", async () => {
@@ -371,5 +372,26 @@ describe("trading API", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json().error).toBe("INVALID_REQUEST");
+  });
+
+  it("returns a paper trading plan with A-share guardrails", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/paper-trading-plan",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      capitalPlan: {
+        lotSize: 100,
+      },
+      account: {
+        accountId: expect.any(String),
+      },
+    });
+    expect(response.json().rules.join("")).toContain("T+1");
+    expect(response.json().guardrails.join("")).toContain("同花顺");
+    expect(response.json().operations.length).toBeGreaterThan(0);
   });
 });

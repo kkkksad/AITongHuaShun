@@ -141,6 +141,36 @@ describe("PaperBroker", () => {
     expect(second.rejectionReason).toBe("可卖持仓不足");
   });
 
+  it("enforces A-share T+1 by blocking same-day sale after a buy", () => {
+    const system = createTradingSystem(createTestConfig({
+      MAX_ORDER_NOTIONAL: 300_000,
+      MAX_POSITION_WEIGHT: 1,
+      SLIPPAGE_BPS: 0,
+    }));
+
+    const buy = system.broker.submitOrder({
+      symbol: "601318",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      clientOrderId: "t1-buy-1",
+    });
+    const position = system.broker.getPositions().find((p) => p.symbol === "601318");
+    const sell = system.broker.submitOrder({
+      symbol: "601318",
+      side: "sell",
+      type: "market",
+      quantity: 100,
+      clientOrderId: "t1-sell-1",
+    });
+
+    expect(buy.status).toBe("filled");
+    expect(position?.availableQuantity).toBe(0);
+    expect(position?.t1LockedQuantity).toBe(100);
+    expect(sell.status).toBe("rejected");
+    expect(sell.rejectionReason).toContain("T+1");
+  });
+
   it("throws when cancelling a non-existent order", () => {
     const system = createTradingSystem(createTestConfig());
     expect(() => system.broker.cancelOrder("non-existent-id")).toThrow(

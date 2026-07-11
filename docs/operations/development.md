@@ -152,6 +152,14 @@ TRADING_SEED_PORTFOLIO=false
 3. 开盘后只在本地纸面账户观察 `/strategy`、`/learning` 和 `/account`，候选中的 `paper-buy` 只表示可做模拟验证，不代表真实下单建议。
 4. 收盘后导出订单、审计和候选结果，记录是否成交、最大回撤、胜率、盈亏比和数据质量异常；这些结果只能作为下一轮研究输入，不能描述为真实收益。
 
+研究管线页会自动读取 `/api/research/paper-trading-plan`，展示当日纸面操作过程。该计划会合并策略排行榜、强势回踩候选、每日优质股和账户状态，并按 A 股规则检查 100 股一手、T+1、可用现金、单票仓位和 paper-only 边界。计划中的 `paper-buy-plan`、`paper-sell-plan`、`blocked` 或 `hold` 只是本地模拟/观察动作，不会自动连接真实券商或同花顺账户。
+
+如需手动查看计划，可运行：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8787/api/research/paper-trading-plan
+```
+
 ## VS Code 一键启动
 
 仓库提供共享的 `.vscode/launch.json`、`tasks.json` 和 `settings.json`。
@@ -237,6 +245,8 @@ Invoke-RestMethod `
   -ContentType "application/json" `
   -Body $body
 ```
+
+模拟撮合遵守 A 股 T+1：当天买入后，持仓中的 `t1LockedQuantity` 会计入锁定数量，`availableQuantity` 为 0 或不足时，当天卖出请求会被拒绝。该规则只作用于本地 paper 账户，不代表真实券商回报。
 
 ## 最近验证
 

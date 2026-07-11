@@ -231,12 +231,19 @@ export class RiskEngine {
 
     // ── 卖出检查 ──
     if (request.side === "sell") {
+      const heldQuantity = position?.quantity ?? 0;
+      const t1LockedQuantity = position?.t1LockedQuantity ?? 0;
+      const sellableBeforeReservations = position?.availableQuantity ?? heldQuantity;
       const availableQuantity = Math.max(
         0,
-        (position?.quantity ?? 0) - reservedSellQuantity,
+        sellableBeforeReservations - reservedSellQuantity,
       );
       if (request.quantity > availableQuantity) {
-        return this.reject("INSUFFICIENT_POSITION", "可卖持仓不足");
+        const message =
+          t1LockedQuantity > 0 && heldQuantity >= request.quantity
+            ? "可卖持仓不足（A股 T+1：当日买入不可卖）"
+            : "可卖持仓不足";
+        return this.reject("INSUFFICIENT_POSITION", message);
       }
     }
 

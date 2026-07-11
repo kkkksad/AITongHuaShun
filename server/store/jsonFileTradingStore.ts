@@ -16,6 +16,8 @@ interface MutablePosition {
   symbol: string;
   name: string;
   quantity: number;
+  t1LockedQuantity?: number;
+  t1LockedDate?: string;
   averagePrice: number;
   realizedPnl: number;
 }
@@ -63,6 +65,32 @@ function computeSeededCost(): number {
     (total, position) => total + position.quantity * position.averagePrice,
     0,
   );
+}
+
+function getChinaTradeDate(value = new Date()): string {
+  return new Date(value.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function getT1LockedQuantity(position: MutablePosition, tradeDate = getChinaTradeDate()): number {
+  if (position.t1LockedDate !== tradeDate) {
+    return 0;
+  }
+  return Math.min(position.quantity, Math.max(0, position.t1LockedQuantity ?? 0));
+}
+
+function withT1Lock(
+  position: Omit<MutablePosition, "t1LockedDate" | "t1LockedQuantity">,
+  lockedQuantity: number,
+  tradeDate = getChinaTradeDate(),
+): MutablePosition {
+  if (lockedQuantity <= 0) {
+    return position;
+  }
+  return {
+    ...position,
+    t1LockedDate: tradeDate,
+    t1LockedQuantity: Math.min(position.quantity, lockedQuantity),
+  };
 }
 
 /**
@@ -138,6 +166,8 @@ export class JsonFileTradingStore implements TradingStore {
         symbol: position.symbol,
         name: position.name,
         quantity: position.quantity,
+        availableQuantity: position.quantity - getT1LockedQuantity(position),
+        t1LockedQuantity: getT1LockedQuantity(position),
         averagePrice: position.averagePrice,
         currentPrice,
         marketValue,
@@ -319,30 +349,35 @@ export class JsonFileTradingStore implements TradingStore {
     if (stored.side === "buy") {
       const previousQuantity = current?.quantity ?? 0;
       const previousCost = previousQuantity * (current?.averagePrice ?? 0);
+      const currentLocked = current ? getT1LockedQuantity(current) : 0;
       const nextQuantity = previousQuantity + stored.quantity;
 
-      this.positions.set(stored.symbol, {
+      this.positions.set(stored.symbol, withT1Lock({
         symbol: stored.symbol,
         name,
         quantity: nextQuantity,
         averagePrice: (previousCost + notional) / nextQuantity,
         realizedPnl: current?.realizedPnl ?? 0,
-      });
+      }, currentLocked + stored.quantity));
       this.cash -= notional + commission;
     } else if (current) {
+      const currentLocked = getT1LockedQuantity(current);
       const realizedPnl =
         (fillPrice - current.averagePrice) * stored.quantity - commission;
       const nextQuantity = current.quantity - stored.quantity;
+      const nextLocked = Math.min(currentLocked, Math.max(0, nextQuantity));
       this.cash += notional - commission;
 
       if (nextQuantity === 0) {
         this.positions.delete(stored.symbol);
       } else {
-        this.positions.set(stored.symbol, {
-          ...current,
+        this.positions.set(stored.symbol, withT1Lock({
+          symbol: current.symbol,
+          name: current.name,
           quantity: nextQuantity,
+          averagePrice: current.averagePrice,
           realizedPnl: current.realizedPnl + realizedPnl,
-        });
+        }, nextLocked));
       }
     }
 

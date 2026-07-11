@@ -400,7 +400,7 @@ describe("EastMoneyBrokerAdapter", () => {
     expect(positions[0].averagePrice).toBeCloseTo(1500, 0);
   });
 
-  it("sell order reduces position and increases cash", async () => {
+  it("same-day sell is rejected by A-share T+1 rule", async () => {
     adapter = new EastMoneyBrokerAdapter({
       brokerId: "eastmoney",
       brokerName: "东方财富",
@@ -423,15 +423,20 @@ describe("EastMoneyBrokerAdapter", () => {
       symbol: "600519", side: "buy", type: "market", quantity: 200,
     });
 
-    // Then sell
-    await adapter.submitOrder({
+    // Then sell on the same trade date: A-share paper mode must enforce T+1.
+    const sellOrder = await adapter.submitOrder({
       symbol: "600519", side: "sell", type: "market", quantity: 100,
     });
 
-    const positions = await adapter.getPositions();
-    expect(positions[0].quantity).toBe(100);
+    expect(sellOrder.status).toBe("rejected");
+    expect(sellOrder.rejectionReason).toContain("T+1");
 
-    // Cash should be higher after sell (recovered half + no position cost for sold shares)
+    const positions = await adapter.getPositions();
+    expect(positions[0].quantity).toBe(200);
+    expect(positions[0].availableQuantity).toBe(0);
+    expect(positions[0].t1LockedQuantity).toBe(200);
+
+    // Cash should remain non-negative after the rejected sell and filled buy.
     const account = await adapter.getAccount();
     expect(account.cash).toBeGreaterThan(0);
   });
