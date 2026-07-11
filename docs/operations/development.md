@@ -61,6 +61,14 @@ npm run dev
 npm run dev:a-share
 ```
 
+启动后执行健康检查：
+
+```powershell
+npm run check:a-share
+```
+
+该检查会同时验证 Fastify API、AkShare 桥接、Vite `/api` 代理、主要指数行情、个股行情和 KAIROS 行情快照。如果 4173、8787 或 8800 被旧进程占用，检查会明确标出失败项，避免页面看起来能打开但实际连到旧服务。
+
 默认地址：
 
 - 前端：`http://127.0.0.1:4173/`
@@ -79,6 +87,24 @@ Windows 受限目录环境下，`dev:web` 使用 Vite 的 `runner` 配置加载�
 如果控制台提示 `Port 4173 is already in use` 或 `EADDRINUSE 127.0.0.1:8787`，说明前端或 API 已经启动。先直接访问上述地址；需要重启时，应先停止之前运行 `npm run dev` 的终端，再重新执行命令，不要同时启动多套服务。
 
 Vite 将 `/api` 和 `/ws` 代理到本地 Fastify 服务。当前 `MARKET_MODE` 只允许 `mock` 或 `paper`；配置为 `live` 会拒绝启动。
+
+如果前端能打开但页面提示“页面渲染异常”、系统指标为空，或浏览器控制台出现“API 代理未命中”，优先检查是否连到了旧的 Vite 进程：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8787/api/health
+Invoke-WebRequest http://127.0.0.1:4173/api/health -Headers @{ Accept = "application/json" }
+```
+
+第二条命令应该返回 JSON，而不是 `index.html`。如果返回 HTML，说明 4173 当前服务没有使用 `config/vite.app.config.js` 的代理配置；停止旧终端后重新执行 `npm run dev` 或 `npm run dev:a-share`。开发环境下前端会自动注销 PWA Service Worker 并清理当前站点缓存，避免旧 JS/CSS 继续渲染。
+
+只想单独启动前端并连接已有 API 时，可以在未提交的 `.env.local` 中显式指定：
+
+```text
+VITE_API_BASE_URL=http://127.0.0.1:8787
+VITE_WS_URL=ws://127.0.0.1:8787/ws
+```
+
+这两个变量只能保存本地服务地址，不得放入任何账号、Token 或券商凭据。
 
 使用 AkShare 只读行情时，在 `.env.local` 设置：
 
@@ -128,11 +154,13 @@ VS Code 会：
 npm test
 npm run build
 python -m pytest akshare-bridge/test_bridge.py -q
+npm run check:a-share
 ```
 
 - `npm test` 使用 Vitest，覆盖 `src/**/*.test.ts` 与 `server/**/*.test.ts`。
 - `npm run build` 依次检查前端、Node.js 配置和服务端 TypeScript，再执行 Vite 生产构建。
 - Python 测试验证 FastAPI 健康检查、只读接口令牌、参数边界和模型序列化。
+- `npm run check:a-share` 需要三服务已经启动，用于确认本机真实只读行情链路没有连到旧进程或错误代理。
 
 ## API 快速检查
 

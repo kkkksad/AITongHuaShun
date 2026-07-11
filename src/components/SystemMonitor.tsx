@@ -1,5 +1,6 @@
 import { Activity, Cpu, Server, Wifi, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
+import { apiRequest } from "../lib/tradingApi";
 
 interface SystemMetrics {
   ok: boolean;
@@ -26,9 +27,7 @@ export function SystemMonitor() {
 
     const fetchMetrics = async () => {
       try {
-        const res = await fetch("/api/health");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json() as SystemMetrics;
+        const data = await apiRequest<SystemMetrics>("/api/health");
         if (mounted) {
           setMetrics(data);
           setError(null);

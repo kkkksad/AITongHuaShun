@@ -36,6 +36,8 @@
 - **认证安全原型** —— `server/auth.ts` 提供显式配置、短期 HMAC 令牌和恒定时间凭据比较，但尚未注册到主 Fastify 服务，不保护当前 API。
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
 - **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示成功率/胜率优先排名；排序同时约束交易次数、正收益和最大回撤，结果明确标注为研究/模拟，不代表真实收益。
+- **前端稳定性防护** —— 开发环境自动注销 PWA Service Worker 并清理缓存；REST 客户端会识别 API 代理误返回 HTML 的情况，WebSocket 默认支持同源代理和显式 `VITE_WS_URL`。
+- **A 股链路健康检查** —— `npm run check:a-share` 可验证 Fastify API、AkShare 桥接、Vite 代理、指数行情、个股行情和 KAIROS 行情快照是否处于同一套正在运行的服务。
 
 ## 可用接口
 
@@ -83,6 +85,21 @@ npm run build
 TypeScript checks and Vite production build passed
 
 完整 npm test 未在本次验证中重跑。
+
+2026-07-11 前端稳定性、API 代理防护与真实 A 股链路验证
+
+python -m pytest akshare-bridge/test_bridge.py -q
+19 tests passed, 1 warning
+
+npm run test:web
+2 test files passed
+9 tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+npm run check:a-share
+Fastify API、AkShare Bridge、Vite API Proxy、A-share Index Quotes、A-share Stock Quotes、KAIROS Market Snapshot 全部通过；后端模式 paper，行情源 akshare，有效指数 4 个。
 ```
 
 ## 架构进展

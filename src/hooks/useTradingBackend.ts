@@ -48,6 +48,7 @@ const tradingQueryKey = ["trading-bootstrap"] as const;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 const HEARTBEAT_GRACE_MS = 60_000;
+const HEARTBEAT_CHECK_MS = 15_000;
 
 function upsertOrder(orders: OrderRecord[], next: OrderRecord): OrderRecord[] {
   const existingIndex = orders.findIndex((order) => order.id === next.id);
@@ -71,7 +72,6 @@ export function useTradingBackend(): TradingBackend {
     useState<ConnectionState>("connecting");
   const [transportError, setTransportError] = useState<string>();
   const [notice, setNotice] = useState<string>();
-  const mountedRef = useRef(true);
   const reconnectAttemptRef = useRef(0);
 
   const bootstrapQuery = useQuery({
@@ -105,11 +105,11 @@ export function useTradingBackend(): TradingBackend {
   }, [queryClient]);
 
   useEffect(() => {
-    mountedRef.current = true;
     let socket: WebSocket | undefined;
     let reconnectTimer: number | undefined;
     let heartbeatTimer: number | undefined;
     let lastMessageTime = Date.now();
+    let active = true;
 
     const resetReconnectDelay = () => {
       reconnectAttemptRef.current = 0;
@@ -127,15 +127,16 @@ export function useTradingBackend(): TradingBackend {
     };
 
     const scheduleReconnect = () => {
-      if (!mountedRef.current) {
+      if (!active) {
         return;
       }
       setConnectionState("offline");
       const attempt = reconnectAttemptRef.current;
+      const jitter = Math.round(Math.random() * 250);
       const delay = Math.min(
         RECONNECT_BASE_MS * 2 ** attempt,
         RECONNECT_MAX_MS,
-      );
+      ) + jitter;
       reconnectAttemptRef.current = attempt + 1;
       reconnectTimer = window.setTimeout(connect, delay);
     };
@@ -146,14 +147,14 @@ export function useTradingBackend(): TradingBackend {
         window.clearInterval(heartbeatTimer);
       }
       heartbeatTimer = window.setInterval(() => {
-        if (!mountedRef.current) {
+        if (!active) {
           return;
         }
         if (Date.now() - lastMessageTime > HEARTBEAT_GRACE_MS) {
           setTransportError("实时通道心跳超时，正在重连");
           socket?.close();
         }
-      }, 15_000);
+      }, HEARTBEAT_CHECK_MS);
     };
 
     const applyEvent = (event: TradingEvent) => {
@@ -193,17 +194,35 @@ export function useTradingBackend(): TradingBackend {
     };
 
     const connect = () => {
+      if (!active) {
+        return;
+      }
+      if (
+        socket &&
+        (socket.readyState === WebSocket.CONNECTING ||
+          socket.readyState === WebSocket.OPEN)
+      ) {
+        return;
+      }
       setConnectionState("connecting");
-      socket = new WebSocket(getTradingSocketUrl());
+      const currentSocket = new WebSocket(getTradingSocketUrl());
+      socket = currentSocket;
 
-      socket.addEventListener("open", () => {
+      currentSocket.addEventListener("open", () => {
+        if (!active || socket !== currentSocket) {
+          currentSocket.close();
+          return;
+        }
         setConnectionState("connected");
         setTransportError(undefined);
         resetReconnectDelay();
         startHeartbeat();
       });
 
-      socket.addEventListener("message", (message) => {
+      currentSocket.addEventListener("message", (message) => {
+        if (!active || socket !== currentSocket) {
+          return;
+        }
         lastMessageTime = Date.now();
         try {
           applyEvent(JSON.parse(message.data as string) as TradingEvent);
@@ -212,13 +231,17 @@ export function useTradingBackend(): TradingBackend {
         }
       });
 
-      socket.addEventListener("close", () => {
-        if (mountedRef.current) {
+      currentSocket.addEventListener("close", () => {
+        if (active && socket === currentSocket) {
+          socket = undefined;
           scheduleReconnect();
         }
       });
 
-      socket.addEventListener("error", () => {
+      currentSocket.addEventListener("error", () => {
+        if (!active || socket !== currentSocket) {
+          return;
+        }
         setTransportError("实时通道连接失败，正在重试");
       });
     };
@@ -226,9 +249,10 @@ export function useTradingBackend(): TradingBackend {
     connect();
 
     return () => {
-      mountedRef.current = false;
+      active = false;
       clearTimers();
       socket?.close();
+      socket = undefined;
     };
   }, [updateBootstrap]);
 

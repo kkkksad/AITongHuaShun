@@ -97,40 +97,53 @@ INDEX_SYMBOL_MAP = {
 # ── 行情缓存 ──────────────────────────────────────────────
 
 class QuoteCache:
-    """内存行情缓存，定时从 AkShare 刷新全市场数据。"""
+    """In-memory stock quote cache with stale-while-refresh behavior."""
 
     def __init__(self, ttl_sec: float = 3.0):
         self.ttl_sec = ttl_sec
         self._data: dict[str, MarketQuote] = {}
         self._last_update: float = 0
+        self._last_error: str | None = None
         self._lock = asyncio.Lock()
+        self._refresh_task: asyncio.Task | None = None
 
     async def refresh(self) -> None:
-        """从 AkShare 拉取全市场 A 股实时行情。"""
         async with self._lock:
             now = time.time()
             if now - self._last_update < self.ttl_sec:
-                return  # 缓存未过期
-
+                return
             try:
                 loop = asyncio.get_running_loop()
-                df = await loop.run_in_executor(
-                    None, fetch_a_share_spot_dataframe
-                )
+                df = await loop.run_in_executor(None, fetch_a_share_spot_dataframe)
                 self._parse_dataframe(df)
                 self._last_update = now
+                self._last_error = None
                 logger.info(
-                    "行情缓存已刷新，%d 只标的，耗时 %.1fs",
+                    "stock cache refreshed, %d symbols, %.1fs",
                     len(self._data),
                     time.time() - now,
                 )
-            except Exception as e:
-                logger.error("刷新行情失败: %s", e)
+            except Exception as exc:
+                self._last_error = str(exc)
+                logger.error("stock quote refresh failed: %s", exc)
                 if not self._data:
-                    raise  # 首次加载失败则抛出
+                    raise
+
+    def _needs_refresh(self) -> bool:
+        return time.time() - self._last_update >= self.ttl_sec
+
+    def _schedule_refresh(self) -> None:
+        if self._refresh_task and not self._refresh_task.done():
+            return
+        self._refresh_task = asyncio.create_task(self._refresh_safely())
+
+    async def _refresh_safely(self) -> None:
+        try:
+            await self.refresh()
+        except Exception:
+            pass
 
     def _safe_float(self, value, default: float = 0.0) -> float | None:
-        """安全解析浮点数，空值返回 None。"""
         if value is None:
             return None
         try:
@@ -142,7 +155,6 @@ class QuoteCache:
             return None
 
     def _parse_dataframe(self, df) -> None:
-        """解析 AkShare 返回的 DataFrame。"""
         new_data: dict[str, MarketQuote] = {}
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
 
@@ -158,14 +170,6 @@ class QuoteCache:
                 change_pct = float(row.get("涨跌幅", 0) or 0)
                 volume = int(float(row.get("成交量", 0) or 0))
 
-                # 可选质量字段
-                open_price = self._safe_float(row.get("今开"))
-                high_price = self._safe_float(row.get("最高"))
-                low_price = self._safe_float(row.get("最低"))
-                amount_val = self._safe_float(row.get("成交额"))
-                turnover_val = self._safe_float(row.get("换手率"))
-                amplitude_val = self._safe_float(row.get("振幅"))
-
                 new_data[symbol] = MarketQuote(
                     symbol=symbol,
                     name=name,
@@ -175,12 +179,12 @@ class QuoteCache:
                     changePercent=change_pct,
                     volume=volume,
                     updatedAt=now_iso,
-                    open=open_price,
-                    high=high_price,
-                    low=low_price,
-                    amount=amount_val,
-                    turnover=turnover_val,
-                    amplitude=amplitude_val,
+                    open=self._safe_float(row.get("今开")),
+                    high=self._safe_float(row.get("最高")),
+                    low=self._safe_float(row.get("最低")),
+                    amount=self._safe_float(row.get("成交额")),
+                    turnover=self._safe_float(row.get("换手率")),
+                    amplitude=self._safe_float(row.get("振幅")),
                 )
             except (ValueError, TypeError):
                 continue
@@ -188,8 +192,11 @@ class QuoteCache:
         self._data = new_data
 
     async def get_quotes(self, symbols: list[str]) -> list[MarketQuote]:
-        """获取指定标的的行情（先从缓存取，过期则刷新）。"""
-        await self.refresh()
+        if self._data and self._needs_refresh():
+            self._schedule_refresh()
+        elif not self._data:
+            await self.refresh()
+
         results: list[MarketQuote] = []
         for sym in symbols:
             sym = sym.strip()
@@ -207,36 +214,57 @@ class QuoteCache:
             return float("inf")
         return time.time() - self._last_update
 
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
+
 
 class IndexCache:
-    """内存指数行情缓存，和个股行情分开维护，避免 000001 代码冲突。"""
+    """In-memory index quote cache separated from stock quote symbols."""
 
     def __init__(self, ttl_sec: float = 3.0):
         self.ttl_sec = ttl_sec
         self._data: dict[str, MarketQuote] = {}
         self._last_update: float = 0
+        self._last_error: str | None = None
         self._lock = asyncio.Lock()
+        self._refresh_task: asyncio.Task | None = None
 
     async def refresh(self) -> None:
         async with self._lock:
             now = time.time()
             if now - self._last_update < self.ttl_sec:
                 return
-
             try:
                 loop = asyncio.get_running_loop()
                 df = await loop.run_in_executor(None, fetch_a_share_index_dataframe)
                 self._parse_dataframe(df)
                 self._last_update = now
+                self._last_error = None
                 logger.info(
-                    "指数缓存已刷新，%d 个指数，耗时 %.1fs",
+                    "index cache refreshed, %d indices, %.1fs",
                     len(self._data),
                     time.time() - now,
                 )
-            except Exception as e:
-                logger.error("刷新指数行情失败: %s", e)
+            except Exception as exc:
+                self._last_error = str(exc)
+                logger.error("index quote refresh failed: %s", exc)
                 if not self._data:
                     raise
+
+    def _needs_refresh(self) -> bool:
+        return time.time() - self._last_update >= self.ttl_sec
+
+    def _schedule_refresh(self) -> None:
+        if self._refresh_task and not self._refresh_task.done():
+            return
+        self._refresh_task = asyncio.create_task(self._refresh_safely())
+
+    async def _refresh_safely(self) -> None:
+        try:
+            await self.refresh()
+        except Exception:
+            pass
 
     def _safe_float(self, value, default: float = 0.0) -> float | None:
         if value is None:
@@ -286,7 +314,11 @@ class IndexCache:
         self._data = new_data
 
     async def get_indices(self, symbols: list[str]) -> list[MarketQuote]:
-        await self.refresh()
+        if self._data and self._needs_refresh():
+            self._schedule_refresh()
+        elif not self._data:
+            await self.refresh()
+
         results: list[MarketQuote] = []
         for sym in symbols:
             normalized = normalize_index_symbol(sym)
@@ -303,6 +335,10 @@ class IndexCache:
         if self._last_update == 0:
             return float("inf")
         return time.time() - self._last_update
+
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
 
 
 def fetch_a_share_spot_dataframe():
@@ -341,6 +377,7 @@ def fetch_a_share_index_dataframe():
     """Fetch A-share index spot quotes with provider fallback."""
     providers = (
         ("eastmoney-index", ak.stock_zh_index_spot_em),
+        ("sina-index", ak.stock_zh_index_spot_sina),
     )
     last_error: Exception | None = None
 
@@ -452,6 +489,7 @@ async def auth_middleware(request, call_next):
 async def health():
     """健康检查。"""
     cache_age = cache.age_sec
+    index_cache_age = index_cache.age_sec
     return {
         "status": "ok",
         "service": "akshare-market-bridge",
@@ -460,6 +498,11 @@ async def health():
         "cacheAgeSec": None
         if cache_age == float("inf")
         else round(cache_age, 1),
+        "indexCacheAgeSec": None
+        if index_cache_age == float("inf")
+        else round(index_cache_age, 1),
+        "lastStockError": cache.last_error,
+        "lastIndexError": index_cache.last_error,
         "proxyDisabled": DISABLE_PROXY,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }

@@ -29,9 +29,30 @@ const queryClient = new QueryClient({
   },
 });
 
-// Register service worker for PWA offline support
+async function unregisterDevelopmentServiceWorkers(): Promise<void> {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+  if ("caches" in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+  }
+}
+
+// Register service worker for PWA offline support. In dev, unregister it so
+// stale cached JS/CSS cannot mask the current Vite build.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
+    if (import.meta.env.DEV) {
+      unregisterDevelopmentServiceWorkers()
+        .then(() => {
+          console.info("[KAIROS PWA] Service Worker disabled in development.");
+        })
+        .catch((err) => {
+          console.warn("[KAIROS PWA] Service Worker cleanup failed:", err);
+        });
+      return;
+    }
+
     navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .then((reg) => {

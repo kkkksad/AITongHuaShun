@@ -5,6 +5,7 @@ import type {
   WsSubscriptionRequest,
   WsUnsubscribeRequest,
 } from "../../shared/trading";
+import { getTradingSocketUrl } from "../lib/tradingApi";
 
 // ── 类型 ──────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ const MAX_HISTORY = 200;
 // ── Hook ──────────────────────────────────────────────────
 
 export function useTradingSignals(
-  wsUrl: string = `ws://${window.location.hostname}:8787/ws`,
+  wsUrl: string = getTradingSocketUrl(),
   initialSubscription?: SignalSubscription,
 ): TradingSignalsState {
   const [connected, setConnected] = useState(false);
@@ -42,19 +43,31 @@ export function useTradingSignals(
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectAttempts = useRef(0);
-  const mountedRef = useRef(true);
+  const subscriptionRef = useRef(subscription);
+
+  useEffect(() => {
+    subscriptionRef.current = subscription;
+  }, [subscription]);
 
   // 连接 WebSocket
-  const connect = useCallback(() => {
-    if (!mountedRef.current) return;
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+  const connect = useCallback((isActive: () => boolean) => {
+    if (!isActive()) return;
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) {
+      return;
+    }
 
     try {
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        if (!mountedRef.current) return;
+        if (!isActive() || wsRef.current !== ws) {
+          ws.close();
+          return;
+        }
         reconnectAttempts.current = 0;
         setConnected(true);
 
@@ -62,13 +75,13 @@ export function useTradingSignals(
         const subReq: WsSubscriptionRequest = {
           type: "subscribe",
           topic: "signals",
-          filter: subscription,
+          filter: subscriptionRef.current,
         };
         ws.send(JSON.stringify(subReq));
       };
 
       ws.onmessage = (event) => {
-        if (!mountedRef.current) return;
+        if (!isActive() || wsRef.current !== ws) return;
         try {
           const msg = JSON.parse(event.data as string);
 
@@ -110,18 +123,20 @@ export function useTradingSignals(
       };
 
       ws.onclose = () => {
-        if (!mountedRef.current) return;
+        if (!isActive() || wsRef.current !== ws) return;
         setConnected(false);
+        wsRef.current = null;
 
         // 指数退避重连
+        const jitter = Math.round(Math.random() * 250);
         const delay = Math.min(
           1000 * Math.pow(2, reconnectAttempts.current),
           30000,
-        );
+        ) + jitter;
         reconnectAttempts.current += 1;
 
         reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
+          connect(isActive);
         }, delay);
       };
 
@@ -132,20 +147,22 @@ export function useTradingSignals(
     } catch {
       // 连接失败，稍后重试
       reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
+        connect(isActive);
       }, 3000);
     }
-  }, [wsUrl, subscription]);
+  }, [wsUrl]);
 
   // 初始连接
   useEffect(() => {
-    mountedRef.current = true;
-    connect();
+    let active = true;
+    const isActive = () => active;
+    connect(isActive);
 
     return () => {
-      mountedRef.current = false;
+      active = false;
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
       if (wsRef.current) {
         // 取消订阅
@@ -159,6 +176,7 @@ export function useTradingSignals(
           // 忽略
         }
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
   }, [connect]);

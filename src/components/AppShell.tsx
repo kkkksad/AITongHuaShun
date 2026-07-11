@@ -163,7 +163,12 @@ export function AppShell({
           <div className="topbar-actions">
             <label className="search-box">
               <Search size={17} />
-              <input aria-label={locale === "zh" ? "搜索" : "Search"} placeholder={t("search.placeholder")} />
+              <input
+                aria-label={locale === "zh" ? "搜索" : "Search"}
+                id="global-search"
+                name="global-search"
+                placeholder={t("search.placeholder")}
+              />
             </label>
             {/* Language switcher */}
             <button

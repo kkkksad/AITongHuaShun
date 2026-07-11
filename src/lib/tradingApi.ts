@@ -122,42 +122,116 @@ interface AccountResponse {
   account: AccountSnapshot;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  const payload = (await response.json()) as T & {
-    message?: string;
-  };
+const API_PROXY_MISS_HINT =
+  "API 代理未命中：请求返回了前端 HTML。请确认使用 npm run dev 或 npm run dev:a-share 启动，且 4173 端口由 config/vite.app.config.js 提供；如果只启动前端，请设置 VITE_API_BASE_URL=http://127.0.0.1:8787。";
 
-  if (!response.ok) {
-    throw new Error(payload.message ?? `请求失败：${response.status}`);
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+export function getApiBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL;
+  return typeof configured === "string" && configured.trim()
+    ? trimTrailingSlash(configured.trim())
+    : "";
+}
+
+export function getApiUrl(path: string): string {
+  const baseUrl = getApiBaseUrl();
+  if (!baseUrl) {
+    return path;
+  }
+  return `${baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function getPayloadMessage(payload: unknown): string | undefined {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "message" in payload &&
+    typeof (payload as { message?: unknown }).message === "string"
+  ) {
+    return (payload as { message: string }).message;
+  }
+  return undefined;
+}
+
+function formatNonJsonError(path: string, response: Response, body: string): Error {
+  const preview = body.trim().replace(/\s+/g, " ").slice(0, 140);
+  const looksLikeHtml = /^<!doctype html/i.test(preview) || /^<html/i.test(preview);
+  if (looksLikeHtml) {
+    return new Error(API_PROXY_MISS_HINT);
+  }
+  return new Error(
+    `API ${path} 返回了非 JSON 响应（HTTP ${response.status}）：${preview || "空响应"}`,
+  );
+}
+
+export async function apiRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const url = getApiUrl(path);
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "未知网络错误";
+    throw new Error(`无法连接交易 API：${url}（${detail}）`);
   }
 
-  return payload;
+  const text = await response.text();
+  if (!text.trim()) {
+    if (!response.ok) {
+      throw new Error(`请求失败：HTTP ${response.status}`);
+    }
+    return undefined as T;
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw formatNonJsonError(path, response, text);
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(`API ${path} 返回了无法解析的 JSON 响应。`);
+  }
+
+  if (!response.ok) {
+    throw new Error(getPayloadMessage(payload) ?? `请求失败：HTTP ${response.status}`);
+  }
+
+  return payload as T;
 }
 
 export async function fetchTradingBootstrap(): Promise<TradingBootstrap> {
   const [health, capabilities, market, account, positions, orders, limits] =
     await Promise.all([
-      request<HealthSnapshot>("/api/health"),
-      request<CapabilitiesSnapshot>("/api/capabilities"),
-      request<MarketSnapshot>("/api/market/snapshot"),
-      request<AccountSnapshot>("/api/account"),
-      request<PositionSnapshot[]>("/api/positions"),
-      request<OrderRecord[]>("/api/orders?limit=50"),
-      request<RiskLimits>("/api/risk/limits"),
+      apiRequest<HealthSnapshot>("/api/health"),
+      apiRequest<CapabilitiesSnapshot>("/api/capabilities"),
+      apiRequest<MarketSnapshot>("/api/market/snapshot"),
+      apiRequest<AccountSnapshot>("/api/account"),
+      apiRequest<PositionSnapshot[]>("/api/positions"),
+      apiRequest<OrderRecord[]>("/api/orders?limit=50"),
+      apiRequest<RiskLimits>("/api/risk/limits"),
     ]);
 
   return { health, capabilities, market, account, positions, orders, limits };
 }
 
 export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> {
-  return request<OrderSubmission>("/api/orders", {
+  return apiRequest<OrderSubmission>("/api/orders", {
     method: "POST",
     body: JSON.stringify(order),
   });
@@ -166,33 +240,44 @@ export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> 
 export function fetchStrategyLeaderboard(
   bars = 90,
 ): Promise<StrategyLeaderboardReport> {
-  return request<StrategyLeaderboardReport>(
+  return apiRequest<StrategyLeaderboardReport>(
     `/api/research/strategy-leaderboard?bars=${bars}`,
   );
 }
 
 export function cancelPaperOrder(orderId: string): Promise<OrderSubmission> {
-  return request<OrderSubmission>(`/api/orders/${orderId}`, {
+  return apiRequest<OrderSubmission>(`/api/orders/${orderId}`, {
     method: "DELETE",
   });
 }
 
 export function setPaperTradingPaused(paused: boolean): Promise<AccountResponse> {
-  return request<AccountResponse>(
+  return apiRequest<AccountResponse>(
     paused ? "/api/trading/pause" : "/api/trading/resume",
     { method: "POST" },
   );
 }
 
 export function fetchAuditEvents(limit = 100): Promise<AuditEvent[]> {
-  return request<AuditEvent[]>(`/api/audit?limit=${limit}`);
+  return apiRequest<AuditEvent[]>(`/api/audit?limit=${limit}`);
 }
 
 export function getTradingSocketUrl(): string {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  if (window.location.port === "4173") {
-    return `${protocol}//${window.location.hostname}:8787/ws`;
+  const configured = import.meta.env.VITE_WS_URL;
+  if (typeof configured === "string" && configured.trim()) {
+    return configured.trim();
   }
 
+  const apiBaseUrl = getApiBaseUrl();
+  if (apiBaseUrl) {
+    const apiUrl = new URL(apiBaseUrl, window.location.origin);
+    apiUrl.protocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
+    apiUrl.pathname = "/ws";
+    apiUrl.search = "";
+    apiUrl.hash = "";
+    return apiUrl.toString();
+  }
+
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   return `${protocol}//${window.location.host}/ws`;
 }

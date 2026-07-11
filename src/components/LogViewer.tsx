@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
+import { apiRequest } from "../lib/tradingApi";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -104,13 +105,10 @@ export function LogViewer() {
   // 获取可用日期列表
   const fetchDates = useCallback(async () => {
     try {
-      const res = await fetch("/api/logs/dates");
-      if (res.ok) {
-        const data = (await res.json()) as DatesResponse;
-        setDates(data.dates);
-        if (data.dates.length > 0 && !data.dates.includes(currentDate)) {
-          setCurrentDate(data.dates[0]);
-        }
+      const data = await apiRequest<DatesResponse>("/api/logs/dates");
+      setDates(data.dates);
+      if (data.dates.length > 0 && !data.dates.includes(currentDate)) {
+        setCurrentDate(data.dates[0]);
       }
     } catch {
       // 静默失败
@@ -129,12 +127,7 @@ export function LogViewer() {
       if (levelFilter) params.set("level", levelFilter);
       if (moduleFilter.trim()) params.set("module", moduleFilter.trim());
 
-      const res = await fetch("/api/logs?" + params.toString());
-      if (!res.ok) {
-        const errData = (await res.json()) as { message?: string };
-        throw new Error(errData.message ?? "获取日志失败");
-      }
-      const data = (await res.json()) as LogsResponse;
+      const data = await apiRequest<LogsResponse>("/api/logs?" + params.toString());
       setEntries(data.entries);
       setTotal(data.total);
       setFiltered(data.filtered);

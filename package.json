@@ -10,6 +10,7 @@
     "dev:web": "vite --config config/vite.app.config.js --configLoader runner --host 127.0.0.1 --port 4173 --strictPort",
     "dev:api": "tsx watch server/index.ts",
     "dev:debug": "npm run dev",
+    "check:a-share": "powershell -ExecutionPolicy Bypass -File scripts/check-a-share-dev.ps1",
     "start:api": "tsx server/index.ts",
     "build": "tsc -b && vite build --config config/vite.app.config.js --configLoader runner",
     "build:analyze": "vite build --config vite.analyze.config.ts",

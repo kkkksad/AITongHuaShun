@@ -1,19 +1,25 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const apiTarget = process.env.VITE_DEV_API_TARGET ?? "http://127.0.0.1:8787";
+const wsTarget = process.env.VITE_DEV_WS_TARGET ?? apiTarget.replace(/^http/, "ws");
+
 export default defineConfig({
   plugins: [react()],
   server: {
     host: "127.0.0.1",
     port: 4173,
     strictPort: true,
+    headers: {
+      "Cache-Control": "no-store",
+    },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8787",
+        target: apiTarget,
         changeOrigin: true,
       },
       "/ws": {
-        target: "ws://127.0.0.1:8787",
+        target: wsTarget,
         ws: true,
       },
     },

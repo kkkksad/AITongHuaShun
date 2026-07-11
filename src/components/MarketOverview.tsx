@@ -13,20 +13,20 @@ function formatVolume(volume: number): string {
 }
 
 export function MarketOverview({ market, connectionState }: MarketOverviewProps) {
-  const indices = market
-    ? market.quotes
-        .filter((quote) => !quote.tradable)
-        .map((quote) => ({
-          symbol: quote.symbol,
-          name: quote.name,
-          value: quote.price,
-          change: quote.changePercent,
-          turnover: formatVolume(quote.volume),
-        }))
-    : marketIndices;
+  const liveIndices = market?.quotes
+    .filter((quote) => !quote.tradable && quote.price > 0)
+    .map((quote) => ({
+      symbol: quote.symbol,
+      name: quote.name,
+      value: quote.price,
+      change: quote.changePercent,
+      turnover: formatVolume(quote.volume),
+    }));
+  const indices = liveIndices && liveIndices.length > 0 ? liveIndices : marketIndices;
   const asOf = market
     ? new Date(market.marketTime).toLocaleString("zh-CN", { hour12: false })
     : "静态演示快照";
+  const usingFallbackIndices = Boolean(market) && (!liveIndices || liveIndices.length === 0);
 
   return (
     <section className="market-overview">
@@ -37,7 +37,11 @@ export function MarketOverview({ market, connectionState }: MarketOverviewProps)
         </div>
         <div className="as-of">
           <Activity size={15} />
-          {connectionState === "connected" ? asOf : "后端离线 · 静态演示"}
+          {connectionState === "connected"
+            ? usingFallbackIndices
+              ? `${asOf} · 指数等待真实行情`
+              : asOf
+            : "后端离线 · 静态演示"}
         </div>
       </div>
 
