@@ -14,6 +14,12 @@ import type {
   OrderRecord,
   OrderRequest,
 } from "../shared/trading";
+import {
+  createAuthHook,
+  registerAuthRoutes,
+  verifyToken,
+  type AuthConfig,
+} from "./auth";
 import type { ServerConfig } from "./config";
 import {
   getMetricsText,
@@ -85,6 +91,93 @@ const dailyQualityStocksQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
 
+const publicAuthPaths = new Set([
+  "/api/health",
+  "/api/capabilities",
+  "/api/auth/login",
+  "/api/auth/verify",
+  "/api/auth/logout",
+  "/metrics",
+]);
+
+function isPublicPath(url: string): boolean {
+  const pathname = url.split("?")[0] ?? url;
+  return (
+    publicAuthPaths.has(pathname) ||
+    pathname.startsWith("/documentation") ||
+    pathname === "/ws"
+  );
+}
+
+function getAuthConfig(config: ServerConfig): AuthConfig {
+  return {
+    username: config.AUTH_USERNAME,
+    password: config.AUTH_PASSWORD,
+    jwtSecret: config.JWT_SECRET,
+    tokenTtlSeconds: config.AUTH_TOKEN_TTL_SECONDS,
+  };
+}
+
+function buildResearchControlStatus(config: ServerConfig, provider: string) {
+  const estimatedDailyBarMb = Math.round(
+    (config.RESEARCH_MAX_SYMBOLS * config.RESEARCH_HISTORY_DAYS * 96) /
+      1024 /
+      1024,
+  );
+
+  return {
+    generatedAt: new Date().toISOString(),
+    mode: "paper-research",
+    optimizer: {
+      status: "guarded-ready",
+      cadence: "manual-or-scheduled-research-run",
+      currentInputs: [
+        "real-time snapshot",
+        "strategy leaderboard",
+        "daily candidates",
+        "paper trading results",
+      ],
+      nextInputs: [
+        "authorized daily A-share bars",
+        "deduplicated real news metadata",
+        "global market daily return features",
+      ],
+      objective: [
+        "maximize risk-adjusted paper return",
+        "penalize drawdown and turnover",
+        "reject future-data leakage",
+      ],
+    },
+    retention: {
+      backend: "bounded-local-cache",
+      dataDir: config.RESEARCH_DATA_DIR,
+      maxSymbols: config.RESEARCH_MAX_SYMBOLS,
+      historyDays: config.RESEARCH_HISTORY_DAYS,
+      maxCacheMb: config.RESEARCH_MAX_CACHE_MB,
+      storeRawNews: config.RESEARCH_STORE_RAW_NEWS,
+      policy: [
+        "Keep rolling real-time snapshots in memory only.",
+        "Persist compact daily OHLCV/features only for watched symbols.",
+        "Store news IDs, timestamps, sources and short summaries; avoid full raw bodies by default.",
+        "Cap retained research data by symbol count, history window and cache size.",
+      ],
+      estimatedDailyBarMb: Math.min(estimatedDailyBarMb, config.RESEARCH_MAX_CACHE_MB),
+    },
+    dataSources: {
+      marketProvider: provider,
+      historicalBars: "planned-authorized-cache",
+      news: "read-only-metadata",
+      globalMarkets: "read-only-features",
+    },
+    guardrails: [
+      "This optimizer is for paper trading and research only.",
+      "No real broker order execution is enabled.",
+      "A-share paper operations must obey 100-share lots and T+1 sell limits.",
+      "Historical training must use time-bounded samples only; no future data is allowed.",
+    ],
+  };
+}
+
 interface BuildTradingAppOptions {
   config: ServerConfig;
   system?: TradingSystem;
@@ -98,6 +191,9 @@ export async function buildTradingApp(
   const system = options.system ?? createTradingSystem(options.config);
   const hub = new WebSocketHub();
   const researchStore = new InMemoryResearchStore();
+  const authConfig = options.config.AUTH_ENABLED
+    ? getAuthConfig(options.config)
+    : null;
 
   // ── Plugins ──────────────────────────────────────────────
   await app.register(helmet, {
@@ -113,6 +209,15 @@ export async function buildTradingApp(
     methods: ["GET", "POST", "DELETE"],
   });
   await app.register(websocket);
+
+  if (authConfig) {
+    registerAuthRoutes(app, authConfig);
+    const authHook = createAuthHook(authConfig);
+    app.addHook("preHandler", async (request, reply) => {
+      if (isPublicPath(request.url)) return;
+      await authHook(request, reply);
+    });
+  }
 
   // ── Swagger / OpenAPI ───────────────────────────────────
   if (options.config.API_DOCS_ENABLED) {
@@ -254,6 +359,7 @@ export async function buildTradingApp(
             mode: { type: "string" },
             marketDataProvider: { type: "string", enum: ["mock", "akshare"] },
             realTradingEnabled: { type: "boolean" },
+            authEnabled: { type: "boolean" },
             websocketConnections: { type: "number" },
             timestamp: { type: "string" },
           },
@@ -266,6 +372,7 @@ export async function buildTradingApp(
     mode: options.config.MARKET_MODE,
     marketDataProvider: system.marketDataProvider,
     realTradingEnabled: options.config.REAL_TRADING_ENABLED,
+    authEnabled: options.config.AUTH_ENABLED,
     websocketConnections: hub.connectionCount,
     timestamp: new Date().toISOString(),
   }));
@@ -292,6 +399,18 @@ export async function buildTradingApp(
     credentials: {
       browserAllowed: false,
       storage: "server-environment-only",
+    },
+    authentication: {
+      enabled: options.config.AUTH_ENABLED,
+      mode: options.config.AUTH_ENABLED ? "local-jwt" : "local-unprotected",
+      defaultCredentials: false,
+    },
+    researchData: {
+      dataDir: options.config.RESEARCH_DATA_DIR,
+      maxSymbols: options.config.RESEARCH_MAX_SYMBOLS,
+      historyDays: options.config.RESEARCH_HISTORY_DAYS,
+      maxCacheMb: options.config.RESEARCH_MAX_CACHE_MB,
+      storeRawNews: options.config.RESEARCH_STORE_RAW_NEWS,
     },
     openApi: options.config.API_DOCS_ENABLED
       ? "/documentation/json"
@@ -459,6 +578,18 @@ export async function buildTradingApp(
     );
     return researchStore.getLearningState();
   });
+
+  app.get("/api/research/self-optimization", {
+    schema: {
+      tags: ["鐮旂┒"],
+      summary: "获取策略自优化与数据留存控制状态",
+      description:
+        "返回自优化研究循环、历史数据接入计划和本地缓存上限。该接口只用于 paper 研究，不提供真实下单能力。",
+    },
+  }, async () => buildResearchControlStatus(
+    options.config,
+    system.marketDataProvider,
+  ));
 
   app.get("/api/research/paper-trading-plan", {
     schema: {
@@ -899,7 +1030,16 @@ export async function buildTradingApp(
       description: "建立 WebSocket 连接以接收实时行情、账户、持仓和订单推送",
     },
     websocket: true,
-  }, (socket) => {
+  }, (socket, request) => {
+    if (authConfig) {
+      const requestUrl = new URL(request.url, "http://localhost");
+      const token = requestUrl.searchParams.get("token");
+      if (!token || !verifyToken(token, authConfig)) {
+        socket.close(1008, "UNAUTHORIZED");
+        return;
+      }
+    }
+
     hub.add(socket);
     recordWebSocketConnection(1);
     hub.send(socket, {

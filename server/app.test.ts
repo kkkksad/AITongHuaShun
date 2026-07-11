@@ -28,6 +28,7 @@ describe("trading API", () => {
       ok: true,
       mode: "mock",
       realTradingEnabled: false,
+      authEnabled: false,
     });
   });
 
@@ -50,8 +51,76 @@ describe("trading API", () => {
         liveSupported: false,
         humanApprovalRequiredForLive: true,
       },
+      authentication: {
+        enabled: false,
+        mode: "local-unprotected",
+        defaultCredentials: false,
+      },
+      researchData: {
+        dataDir: "./data/research",
+        maxSymbols: 200,
+        historyDays: 756,
+        maxCacheMb: 512,
+        storeRawNews: false,
+      },
     });
     expect(response.json().openApi).toBe("/documentation/json");
+  });
+
+  it("protects API routes when local auth is enabled", async () => {
+    const authApp = await buildTradingApp({
+      config: createTestConfig({
+        AUTH_ENABLED: true,
+        AUTH_USERNAME: "local-admin",
+        AUTH_PASSWORD: "correct-horse-battery-staple",
+        JWT_SECRET: "0123456789abcdef0123456789abcdef",
+      }),
+      startMarket: false,
+    });
+
+    try {
+      const publicCapabilities = await authApp.inject({
+        method: "GET",
+        url: "/api/capabilities",
+      });
+      expect(publicCapabilities.statusCode).toBe(200);
+      expect(publicCapabilities.json().authentication).toMatchObject({
+        enabled: true,
+        mode: "local-jwt",
+      });
+
+      const rejected = await authApp.inject({
+        method: "GET",
+        url: "/api/account",
+      });
+      expect(rejected.statusCode).toBe(401);
+
+      const login = await authApp.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: {
+          username: "local-admin",
+          password: "correct-horse-battery-staple",
+        },
+      });
+      expect(login.statusCode).toBe(200);
+
+      const account = await authApp.inject({
+        method: "GET",
+        url: "/api/account",
+        headers: { authorization: `Bearer ${login.json().token}` },
+      });
+      expect(account.statusCode).toBe(200);
+
+      const orders = await authApp.inject({
+        method: "GET",
+        url: "/api/orders",
+        headers: { authorization: `Bearer ${login.json().token}` },
+      });
+      expect(orders.statusCode).toBe(200);
+    } finally {
+      await authApp.close();
+    }
   });
 
   it("returns a guarded strategy research leaderboard", async () => {
@@ -178,6 +247,30 @@ describe("trading API", () => {
     expect(response.json().guardrails.join("")).toContain("不代表真实收益");
   });
 
+  it("returns self-optimization and bounded research data policy", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/self-optimization",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      mode: "paper-research",
+      optimizer: {
+        status: "guarded-ready",
+      },
+      retention: {
+        backend: "bounded-local-cache",
+        dataDir: "./data/research",
+        maxSymbols: 200,
+        historyDays: 756,
+        maxCacheMb: 512,
+        storeRawNews: false,
+      },
+    });
+    expect(response.json().guardrails.join("")).toContain("paper trading");
+  });
+
   it("publishes an OpenAPI document for the simulation API", async () => {
     const response = await app.inject({
       method: "GET",
@@ -198,6 +291,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/research/learning-state");
     expect(response.json().paths).toHaveProperty("/api/research/paper-trading-plan");
     expect(response.json().paths).toHaveProperty("/api/research/real-data-feed");
+    expect(response.json().paths).toHaveProperty("/api/research/self-optimization");
   });
 
   it("returns explicit real-data feed boundaries when AkShare is disabled", async () => {

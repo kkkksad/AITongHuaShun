@@ -33,7 +33,8 @@
 - **东方财富只读行情原型** —— `EastMoneyMarketProvider` 可读取公开行情并拒绝 `live`，当前尚未接入主服务的 `MARKET_DATA_PROVIDER` 选择器。
 - **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
 - **同花顺模拟盘纸面适配器骨架** —— `TongHuaShunPaperAdapter` 只允许 `paper`/`sandbox`，接收行情注入后委托 `PaperBroker + RiskEngine` 完成模拟成交；拒绝 `live` 和 `tradingEnabled=true`，当前未装配到主服务，也不包含同花顺真实下单端点。
-- **认证安全原型** —— `server/auth.ts` 提供显式配置、短期 HMAC 令牌和恒定时间凭据比较，但尚未注册到主 Fastify 服务，不保护当前 API。
+- **可选本地登录保护** —— `AUTH_ENABLED=true` 时主 Fastify 服务注册 `/api/auth/*`，并用短期 HMAC 令牌保护 API；默认 `AUTH_ENABLED=false`，本地开发仍为未保护模式且没有默认凭据。
+- **自优化与存储控制状态** —— `/api/research/self-optimization` 声明 paper-only 策略自优化输入、目标和有界本地研究缓存策略，默认只计划保存紧凑日线/特征，不保存无上限垃圾数据。
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
 - **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示成功率/胜率优先排名；排序同时约束交易次数、正收益和最大回撤，结果明确标注为研究/模拟，不代表真实收益。
 - **A 股强势回踩确认战法** —— 新增偏高胜率的研究候选策略：中期趋势向上、温和回踩、放量反包确认后入场，并使用固定止盈止损控制单笔风险；已纳入策略研究排行榜，但当前仍基于快照合成样本，不代表真实收益。
@@ -236,7 +237,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 
 - 将真实新闻和全球市场研究流抽象为 NewsProvider / MacroMarketProvider 契约，并补充历史影响验证。
 - 将策略研究排行榜从快照生成样本升级为授权历史行情缓存，并加入样本外验证。
-- 将认证原型装配到 API，并增加账户白名单、角色权限和独立审批服务。
+- 增加账户白名单、角色权限和独立审批服务；当前本地登录只保护工作台 API，不授权真实交易。
 - 前端集成网格交易运行器控制面板。
 - PostgreSQL 替代 JSON 文件持久化。
 - 评估券商官方模拟环境或沙箱，继续禁止连接真实资金。
@@ -253,8 +254,8 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
 - 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 从 10000 元纯现金开始；已有 JSON 状态文件不会被自动覆盖，需要用户明确删除或移走后才会重新初始化。
 - A 股 paper 撮合遵守一手 100 股和 T+1 卖出限制；同日买入的 `t1LockedQuantity` 只会在后续交易日释放为可卖数量。
-- 当前没有事务型数据库或已启用的用户认证，也没有真实账户连接或真实券商执行。
-- 认证原型没有默认账号、默认密码或默认 JWT 密钥；缺少显式安全配置时必须拒绝注册。
+- 当前没有事务型数据库、真实账户连接或真实券商执行。
+- 登录保护默认关闭；开启 `AUTH_ENABLED=true` 时必须显式提供账号、至少 12 位密码和至少 32 位 `JWT_SECRET`，不存在默认账号、默认密码或默认 JWT 密钥。
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。
 - AkShare 模式必须使用 `MARKET_MODE=paper`，真实行情不改变订单执行权限。
 - 当前没有任何真实订单执行代码。

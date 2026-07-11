@@ -29,12 +29,15 @@ export const translations = {
     "eyebrow.learning": "受控学习",
     "eyebrow.settings": "系统配置",
 
-    "brand.subtitle": "量化工作台",
+    "brand.subtitle": "AI A股研究系统",
     "sidebar.note.title": "研究环境",
     "sidebar.note.connected": "行情与账户来自本地模拟后端，真实交易保持关闭。",
     "sidebar.note.offline": "后端未连接，页面保留静态研究数据作为降级展示。",
     "profile.name": "Research Desk",
     "profile.role": "本地工作区",
+    "profile.auth.enabled": "已登录 · 本地保护",
+    "profile.auth.local": "本地未保护模式",
+    "auth.logout": "退出登录",
 
     "search.placeholder": "搜索标的或策略",
     "theme.light": "切换到暗色主题",
@@ -151,7 +154,7 @@ export const translations = {
     "eyebrow.learning": "Controlled Learning",
     "eyebrow.settings": "System Config",
 
-    "brand.subtitle": "Quant Workbench",
+    "brand.subtitle": "AI A-share Research",
     "sidebar.note.title": "Research Environment",
     "sidebar.note.connected":
       "Market data and account from local simulation backend. Live trading is disabled.",
@@ -159,6 +162,9 @@ export const translations = {
       "Backend disconnected. Static research data shown as fallback.",
     "profile.name": "Research Desk",
     "profile.role": "Local Workspace",
+    "profile.auth.enabled": "Signed in · Local protected",
+    "profile.auth.local": "Local unprotected mode",
+    "auth.logout": "Log out",
 
     "search.placeholder": "Search symbols or strategies",
     "theme.light": "Switch to dark theme",

@@ -18,16 +18,17 @@ python -m pip install -r akshare-bridge/requirements.txt
 
 需要修改默认端口或风控参数时，将 `.env.example` 复制为未提交的 `.env.local`。任何供应商 Token 或密钥只能放在 `.env.local`，不得使用 `VITE_*` 暴露给浏览器。
 
-仓库包含尚未注册到主服务的认证原型。未来本地启用前必须在 `.env.local` 显式设置：
+本地登录保护默认关闭。需要启用时，必须在 `.env.local` 显式设置：
 
 ```text
+AUTH_ENABLED=true
 AUTH_USERNAME=<local-user>
 AUTH_PASSWORD=<at-least-12-characters>
 JWT_SECRET=<at-least-32-random-characters>
 AUTH_TOKEN_TTL_SECONDS=3600
 ```
 
-认证原型不存在默认凭据。当前 `buildTradingApp` 没有注册 `/api/auth/*`，因此这些变量不会改变现有开发启动流程，也不代表 API 已受保护。
+认证不存在默认凭据。`AUTH_ENABLED=false` 时现有开发启动流程不需要登录；`AUTH_ENABLED=true` 时前端会显示登录页，API 会要求 `Bearer` 令牌。该登录只保护本地工作台 API，不代表真实券商交易权限。
 
 本地 HTTP 安全配置：
 
@@ -46,6 +47,17 @@ DATA_DIR=./data
 ```
 
 JSON 仓储仅用于本地单进程模拟，不具备数据库事务、多实例锁或合规审计能力。`data/` 已被 Git 忽略。
+研究数据缓存默认受上限控制，避免把大量低价值历史数据堆到本机：
+
+```text
+RESEARCH_DATA_DIR=./data/research
+RESEARCH_MAX_SYMBOLS=200
+RESEARCH_HISTORY_DAYS=756
+RESEARCH_MAX_CACHE_MB=512
+RESEARCH_STORE_RAW_NEWS=false
+```
+
+当前 `/api/research/self-optimization` 只声明 paper-only 自优化和留存策略；后续接入授权历史 K 线时，应只保存紧凑日线/特征、新闻元数据和全球市场特征，不默认保存原始 tick、完整新闻正文或无上限临时数据。
 
 需要把本地纸面账户重置为 10000 元纯现金、并清空默认演示持仓时，在未提交的 `.env.local` 设置：
 

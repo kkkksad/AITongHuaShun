@@ -15,6 +15,7 @@ export interface HealthSnapshot {
   mode: TradingMode;
   marketDataProvider: MarketDataProviderName;
   realTradingEnabled: boolean;
+  authEnabled: boolean;
   websocketConnections: number;
   timestamp: string;
 }
@@ -38,6 +39,18 @@ export interface CapabilitiesSnapshot {
     browserAllowed: false;
     storage: "server-environment-only";
   };
+  authentication: {
+    enabled: boolean;
+    mode: "local-jwt" | "local-unprotected";
+    defaultCredentials: false;
+  };
+  researchData: {
+    dataDir: string;
+    maxSymbols: number;
+    historyDays: number;
+    maxCacheMb: number;
+    storeRawNews: boolean;
+  };
   openApi: string | null;
 }
 
@@ -49,6 +62,11 @@ export interface TradingBootstrap {
   positions: PositionSnapshot[];
   orders: OrderRecord[];
   limits: RiskLimits;
+}
+
+export interface SystemStatus {
+  health: HealthSnapshot;
+  capabilities: CapabilitiesSnapshot;
 }
 
 export interface OrderSubmission {
@@ -367,12 +385,58 @@ export interface RealResearchDataFeed {
   guardrails: string[];
 }
 
+export interface AuthUser {
+  username: string;
+  role: string;
+}
+
+export interface LoginResponse {
+  token: string;
+  expiresIn: number;
+  user: AuthUser;
+}
+
+export interface AuthVerifyResponse {
+  valid: true;
+  user: AuthUser;
+}
+
+export interface SelfOptimizationStatus {
+  generatedAt: string;
+  mode: "paper-research";
+  optimizer: {
+    status: "guarded-ready";
+    cadence: string;
+    currentInputs: string[];
+    nextInputs: string[];
+    objective: string[];
+  };
+  retention: {
+    backend: "bounded-local-cache";
+    dataDir: string;
+    maxSymbols: number;
+    historyDays: number;
+    maxCacheMb: number;
+    storeRawNews: boolean;
+    policy: string[];
+    estimatedDailyBarMb: number;
+  };
+  dataSources: {
+    marketProvider: string;
+    historicalBars: string;
+    news: string;
+    globalMarkets: string;
+  };
+  guardrails: string[];
+}
+
 interface AccountResponse {
   account: AccountSnapshot;
 }
 
 const API_PROXY_MISS_HINT =
   "API 代理未命中：请求返回了前端 HTML。请确认使用 npm run dev 或 npm run dev:a-share 启动，且 4173 端口由 config/vite.app.config.js 提供；如果只启动前端，请设置 VITE_API_BASE_URL=http://127.0.0.1:8787。";
+const AUTH_TOKEN_STORAGE_KEY = "xuanshu.auth.token";
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
@@ -464,23 +528,78 @@ export async function apiRequest<T>(
   return payload as T;
 }
 
+export function getStoredAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+export function setStoredAuthToken(token: string): void {
+  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+}
+
+export function clearStoredAuthToken(): void {
+  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+export async function authApiRequest<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const token = getStoredAuthToken();
+  return apiRequest<T>(path, {
+    ...init,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
+  });
+}
+
+export async function login(username: string, password: string): Promise<LoginResponse> {
+  const response = await apiRequest<LoginResponse>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
+  setStoredAuthToken(response.token);
+  return response;
+}
+
+export function verifyLogin(): Promise<AuthVerifyResponse> {
+  return authApiRequest<AuthVerifyResponse>("/api/auth/verify");
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await authApiRequest<{ message: string }>("/api/auth/logout", { method: "POST" });
+  } finally {
+    clearStoredAuthToken();
+  }
+}
+
+export async function fetchSystemStatus(): Promise<SystemStatus> {
+  const [health, capabilities] = await Promise.all([
+    apiRequest<HealthSnapshot>("/api/health"),
+    apiRequest<CapabilitiesSnapshot>("/api/capabilities"),
+  ]);
+
+  return { health, capabilities };
+}
+
 export async function fetchTradingBootstrap(): Promise<TradingBootstrap> {
-  const [health, capabilities, market, account, positions, orders, limits] =
-    await Promise.all([
-      apiRequest<HealthSnapshot>("/api/health"),
-      apiRequest<CapabilitiesSnapshot>("/api/capabilities"),
-      apiRequest<MarketSnapshot>("/api/market/snapshot"),
-      apiRequest<AccountSnapshot>("/api/account"),
-      apiRequest<PositionSnapshot[]>("/api/positions"),
-      apiRequest<OrderRecord[]>("/api/orders?limit=50"),
-      apiRequest<RiskLimits>("/api/risk/limits"),
-    ]);
+  const { health, capabilities } = await fetchSystemStatus();
+  const [market, account, positions, orders, limits] = await Promise.all([
+    authApiRequest<MarketSnapshot>("/api/market/snapshot"),
+    authApiRequest<AccountSnapshot>("/api/account"),
+    authApiRequest<PositionSnapshot[]>("/api/positions"),
+    authApiRequest<OrderRecord[]>("/api/orders?limit=50"),
+    authApiRequest<RiskLimits>("/api/risk/limits"),
+  ]);
 
   return { health, capabilities, market, account, positions, orders, limits };
 }
 
 export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> {
-  return apiRequest<OrderSubmission>("/api/orders", {
+  return authApiRequest<OrderSubmission>("/api/orders", {
     method: "POST",
     body: JSON.stringify(order),
   });
@@ -489,56 +608,64 @@ export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> 
 export function fetchStrategyLeaderboard(
   bars = 90,
 ): Promise<StrategyLeaderboardReport> {
-  return apiRequest<StrategyLeaderboardReport>(
+  return authApiRequest<StrategyLeaderboardReport>(
     `/api/research/strategy-leaderboard?bars=${bars}`,
   );
 }
 
 export function fetchDailyCandidates(limit = 8): Promise<DailyCandidateReport> {
-  return apiRequest<DailyCandidateReport>(
+  return authApiRequest<DailyCandidateReport>(
     `/api/research/daily-candidates?limit=${limit}`,
   );
 }
 
 export function fetchDailyQualityStocks(limit = 10): Promise<DailyQualityStockReport> {
-  return apiRequest<DailyQualityStockReport>(
+  return authApiRequest<DailyQualityStockReport>(
     `/api/research/daily-quality-stocks?limit=${limit}`,
   );
 }
 
 export function fetchLearningState(): Promise<LearningState> {
-  return apiRequest<LearningState>("/api/research/learning-state");
+  return authApiRequest<LearningState>("/api/research/learning-state");
 }
 
 export function fetchPaperTradingPlan(): Promise<PaperTradingPlan> {
-  return apiRequest<PaperTradingPlan>("/api/research/paper-trading-plan");
+  return authApiRequest<PaperTradingPlan>("/api/research/paper-trading-plan");
 }
 
 export function fetchRealResearchDataFeed(): Promise<RealResearchDataFeed> {
-  return apiRequest<RealResearchDataFeed>("/api/research/real-data-feed");
+  return authApiRequest<RealResearchDataFeed>("/api/research/real-data-feed");
+}
+
+export function fetchSelfOptimizationStatus(): Promise<SelfOptimizationStatus> {
+  return authApiRequest<SelfOptimizationStatus>("/api/research/self-optimization");
 }
 
 export function cancelPaperOrder(orderId: string): Promise<OrderSubmission> {
-  return apiRequest<OrderSubmission>(`/api/orders/${orderId}`, {
+  return authApiRequest<OrderSubmission>(`/api/orders/${orderId}`, {
     method: "DELETE",
   });
 }
 
 export function setPaperTradingPaused(paused: boolean): Promise<AccountResponse> {
-  return apiRequest<AccountResponse>(
+  return authApiRequest<AccountResponse>(
     paused ? "/api/trading/pause" : "/api/trading/resume",
     { method: "POST" },
   );
 }
 
 export function fetchAuditEvents(limit = 100): Promise<AuditEvent[]> {
-  return apiRequest<AuditEvent[]>(`/api/audit?limit=${limit}`);
+  return authApiRequest<AuditEvent[]>(`/api/audit?limit=${limit}`);
 }
 
 export function getTradingSocketUrl(): string {
   const configured = import.meta.env.VITE_WS_URL;
+  const token = getStoredAuthToken();
+
   if (typeof configured === "string" && configured.trim()) {
-    return configured.trim();
+    const explicitUrl = new URL(configured.trim(), window.location.origin);
+    if (token) explicitUrl.searchParams.set("token", token);
+    return explicitUrl.toString();
   }
 
   const apiBaseUrl = getApiBaseUrl();
@@ -548,9 +675,12 @@ export function getTradingSocketUrl(): string {
     apiUrl.pathname = "/ws";
     apiUrl.search = "";
     apiUrl.hash = "";
+    if (token) apiUrl.searchParams.set("token", token);
     return apiUrl.toString();
   }
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/ws`;
+  const socketUrl = new URL(`${protocol}//${window.location.host}/ws`);
+  if (token) socketUrl.searchParams.set("token", token);
+  return socketUrl.toString();
 }

@@ -14,6 +14,7 @@ import {
   fetchDailyCandidates,
   fetchLearningState,
   fetchPaperTradingPlan,
+  fetchSelfOptimizationStatus,
   fetchStrategyLeaderboard,
 } from "../lib/tradingApi";
 
@@ -48,10 +49,17 @@ export default function LearningPipeline() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+  const selfOptimizationQuery = useQuery({
+    queryKey: ["self-optimization-status"],
+    queryFn: fetchSelfOptimizationStatus,
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+  });
 
   const topStrategy = leaderboardQuery.data?.entries[0];
   const learningState = learningStateQuery.data;
   const paperPlan = paperPlanQuery.data;
+  const selfOptimization = selfOptimizationQuery.data;
   const paperBuyCount =
     candidatesQuery.data?.candidates.filter((candidate) => candidate.action === "paper-buy").length ?? 0;
   const researchScore = Math.min(
@@ -189,6 +197,47 @@ export default function LearningPipeline() {
             )}
           </div>
         </section>
+
+        <section className="panel learning-memory-panel">
+          <div className="panel-header">
+            <div>
+              <span className="section-kicker">自动优化</span>
+              <h2>策略训练与本地存储控制</h2>
+            </div>
+            <Database size={19} />
+          </div>
+          <div className="learning-memory-grid">
+            <article>
+              <span>缓存上限</span>
+              <strong>{selfOptimization?.retention.maxCacheMb ?? 512} MB</strong>
+              <small>{selfOptimization?.retention.dataDir ?? "./data/research"}</small>
+            </article>
+            <article>
+              <span>历史窗口</span>
+              <strong>{selfOptimization?.retention.historyDays ?? 756} 天</strong>
+              <small>只保留紧凑日线/特征</small>
+            </article>
+            <article>
+              <span>股票池上限</span>
+              <strong>{selfOptimization?.retention.maxSymbols ?? 200}</strong>
+              <small>默认不存原始新闻正文</small>
+            </article>
+          </div>
+          <div className="learning-run-list">
+            {(selfOptimization?.optimizer.objective ?? []).map((objective) => (
+              <article key={objective}>
+                <Sparkles size={15} />
+                <div>
+                  <strong>{objective}</strong>
+                  <span>paper-only 自优化目标</span>
+                </div>
+              </article>
+            ))}
+            {!selfOptimization && (
+              <p className="empty-copy">等待后端返回自优化与留存策略状态。</p>
+            )}
+          </div>
+        </section>
       </div>
 
       <aside className="panel governance-panel">
@@ -204,13 +253,15 @@ export default function LearningPipeline() {
               leaderboardQuery.isFetching ||
               candidatesQuery.isFetching ||
               learningStateQuery.isFetching ||
-              paperPlanQuery.isFetching
+              paperPlanQuery.isFetching ||
+              selfOptimizationQuery.isFetching
             }
             onClick={() => {
               void leaderboardQuery.refetch();
               void candidatesQuery.refetch();
               void learningStateQuery.refetch();
               void paperPlanQuery.refetch();
+              void selfOptimizationQuery.refetch();
             }}
             type="button"
           >
@@ -254,7 +305,11 @@ export default function LearningPipeline() {
           </li>
           <li>
             <Clock3 size={15} />
-            授权历史行情缓存待接入
+            历史行情缓存受上限控制后再接入
+          </li>
+          <li className={selfOptimization ? "done" : ""}>
+            <Check size={15} />
+            自优化与存储控制策略已声明
           </li>
           <li>
             <LockKeyhole size={15} />
@@ -264,6 +319,11 @@ export default function LearningPipeline() {
         <div className="learning-next-data">
           <strong>下一批数据</strong>
           <p>{learningState?.nextDataNeeds[0] ?? "等待学习状态接口返回。"}</p>
+          <p>
+            缓存策略：最多 {selfOptimization?.retention.maxSymbols ?? 200} 只、
+            {selfOptimization?.retention.historyDays ?? 756} 天、
+            {selfOptimization?.retention.maxCacheMb ?? 512} MB。
+          </p>
         </div>
         <button className="primary-button full-width" type="button">
           查看人工复核清单

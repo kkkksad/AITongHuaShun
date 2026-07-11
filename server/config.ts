@@ -14,6 +14,19 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  AUTH_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  AUTH_USERNAME: z.string().default(""),
+  AUTH_PASSWORD: z.string().default(""),
+  JWT_SECRET: z.string().default(""),
+  AUTH_TOKEN_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(300)
+    .max(86_400)
+    .default(3_600),
   MARKET_MODE: z.enum(["mock", "paper", "live"]).default("mock"),
   MARKET_DATA_PROVIDER: z.enum(["mock", "akshare"]).default("mock"),
   MARKET_TICK_MS: z.coerce.number().int().min(250).default(1000),
@@ -38,30 +51,41 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
-  /** 交易数据持久化后端: "memory" | "json" */
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
-  /** JSON 存储目录（仅 STORE_BACKEND=json 时生效） */
   DATA_DIR: z.string().default("./data"),
-  /** ── 增强风控配置 ── */
-  /** 连续亏损次数触发熔断 */
+  RESEARCH_DATA_DIR: z.string().default("./data/research"),
+  RESEARCH_MAX_SYMBOLS: z.coerce.number().int().min(10).max(5000).default(200),
+  RESEARCH_HISTORY_DAYS: z.coerce.number().int().min(60).max(3650).default(756),
+  RESEARCH_MAX_CACHE_MB: z.coerce.number().int().min(64).max(20_000).default(512),
+  RESEARCH_STORE_RAW_NEWS: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   CIRCUIT_MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().min(1).max(50).default(5),
-  /** 日内最大回撤比例触发熔断 */
   CIRCUIT_MAX_DAILY_DRAWDOWN: z.coerce.number().min(0.01).max(0.5).default(0.08),
-  /** 熔断冷却时间（分钟） */
   CIRCUIT_COOLDOWN_MINUTES: z.coerce.number().int().min(5).max(480).default(15),
-  /** 恢复观察期（分钟） */
   CIRCUIT_RECOVERY_MINUTES: z.coerce.number().int().min(0).max(120).default(5),
-  /** 是否启用动态仓位缩放 */
   DYNAMIC_POSITION_SCALING: z
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
-  /** 最大回撤时仓位缩减至原始权重的比例 */
   MAX_DRAWDOWN_REDUCTION_FACTOR: z.coerce.number().min(0.1).max(1.0).default(0.25),
 });
 
 export type ServerConfig = ReturnType<typeof getConfig>;
 
 export function getConfig() {
-  return envSchema.parse(process.env);
+  const config = envSchema.parse(process.env);
+  if (config.AUTH_ENABLED) {
+    if (!config.AUTH_USERNAME.trim()) {
+      throw new Error("AUTH_ENABLED=true requires AUTH_USERNAME");
+    }
+    if (config.AUTH_PASSWORD.length < 12) {
+      throw new Error("AUTH_ENABLED=true requires AUTH_PASSWORD with at least 12 characters");
+    }
+    if (config.JWT_SECRET.length < 32) {
+      throw new Error("AUTH_ENABLED=true requires JWT_SECRET with at least 32 characters");
+    }
+  }
+  return config;
 }

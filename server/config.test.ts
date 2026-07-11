@@ -22,6 +22,19 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  AUTH_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  AUTH_USERNAME: z.string().default(""),
+  AUTH_PASSWORD: z.string().default(""),
+  JWT_SECRET: z.string().default(""),
+  AUTH_TOKEN_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(300)
+    .max(86_400)
+    .default(3_600),
   MARKET_MODE: z.enum(["mock", "paper", "live"]).default("mock"),
   MARKET_DATA_PROVIDER: z.enum(["mock", "akshare"]).default("mock"),
   MARKET_TICK_MS: z.coerce.number().int().min(250).default(1000),
@@ -48,6 +61,14 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
+  RESEARCH_DATA_DIR: z.string().default("./data/research"),
+  RESEARCH_MAX_SYMBOLS: z.coerce.number().int().min(10).max(5000).default(200),
+  RESEARCH_HISTORY_DAYS: z.coerce.number().int().min(60).max(3650).default(756),
+  RESEARCH_MAX_CACHE_MB: z.coerce.number().int().min(64).max(20_000).default(512),
+  RESEARCH_STORE_RAW_NEWS: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
   CIRCUIT_MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().min(1).max(50).default(5),
   CIRCUIT_MAX_DAILY_DRAWDOWN: z.coerce.number().min(0.01).max(0.5).default(0.08),
   CIRCUIT_COOLDOWN_MINUTES: z.coerce.number().int().min(5).max(480).default(15),
@@ -88,8 +109,15 @@ describe("ServerConfig", () => {
       expect(config.MIN_COMMISSION).toBe(5);
       expect(config.SLIPPAGE_BPS).toBe(5);
       expect(config.REAL_TRADING_ENABLED).toBe(false);
+      expect(config.AUTH_ENABLED).toBe(false);
+      expect(config.AUTH_TOKEN_TTL_SECONDS).toBe(3_600);
       expect(config.STORE_BACKEND).toBe("memory");
       expect(config.DATA_DIR).toBe("./data");
+      expect(config.RESEARCH_DATA_DIR).toBe("./data/research");
+      expect(config.RESEARCH_MAX_SYMBOLS).toBe(200);
+      expect(config.RESEARCH_HISTORY_DAYS).toBe(756);
+      expect(config.RESEARCH_MAX_CACHE_MB).toBe(512);
+      expect(config.RESEARCH_STORE_RAW_NEWS).toBe(false);
     });
 
     it("has default market symbols as comma-separated string", () => {
@@ -234,6 +262,34 @@ describe("ServerConfig", () => {
       const config = parse({ RATE_LIMIT_MAX: "60", RATE_LIMIT_WINDOW_MS: "30000" });
       expect(config.RATE_LIMIT_MAX).toBe(60);
       expect(config.RATE_LIMIT_WINDOW_MS).toBe(30_000);
+    });
+
+    it("respects local auth settings", () => {
+      const config = parse({
+        AUTH_ENABLED: "true",
+        AUTH_USERNAME: "local-admin",
+        AUTH_PASSWORD: "correct-horse-battery-staple",
+        JWT_SECRET: "0123456789abcdef0123456789abcdef",
+        AUTH_TOKEN_TTL_SECONDS: "1800",
+      });
+      expect(config.AUTH_ENABLED).toBe(true);
+      expect(config.AUTH_USERNAME).toBe("local-admin");
+      expect(config.AUTH_TOKEN_TTL_SECONDS).toBe(1_800);
+    });
+
+    it("respects research cache limits", () => {
+      const config = parse({
+        RESEARCH_DATA_DIR: "./tmp/research",
+        RESEARCH_MAX_SYMBOLS: "350",
+        RESEARCH_HISTORY_DAYS: "1000",
+        RESEARCH_MAX_CACHE_MB: "1024",
+        RESEARCH_STORE_RAW_NEWS: "true",
+      });
+      expect(config.RESEARCH_DATA_DIR).toBe("./tmp/research");
+      expect(config.RESEARCH_MAX_SYMBOLS).toBe(350);
+      expect(config.RESEARCH_HISTORY_DAYS).toBe(1000);
+      expect(config.RESEARCH_MAX_CACHE_MB).toBe(1024);
+      expect(config.RESEARCH_STORE_RAW_NEWS).toBe(true);
     });
 
     it("respects AkShare bridge URL and token", () => {

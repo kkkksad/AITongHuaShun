@@ -8,6 +8,7 @@ import {
   FlaskConical,
   Globe,
   LayoutDashboard,
+  LogOut,
   Menu,
   Moon,
   Search,
@@ -32,6 +33,9 @@ interface AppShellProps {
   realtimeState?: ConnectionState;
   mode: TradingMode;
   marketDataProvider?: MarketDataProviderName;
+  authEnabled?: boolean;
+  authUser?: string | null;
+  onLogout?: () => void;
   children: ReactNode;
 }
 
@@ -42,6 +46,9 @@ export function AppShell({
   realtimeState,
   mode,
   marketDataProvider,
+  authEnabled = false,
+  authUser,
+  onLogout,
   children,
 }: AppShellProps) {
   const { theme, toggle: toggleTheme } = useTheme();
@@ -120,7 +127,7 @@ export function AppShell({
             <BarChart3 size={21} />
           </div>
           <div>
-            <strong>KAIROS</strong>
+            <strong>玄枢 Quant</strong>
             <span>{t("brand.subtitle")}</span>
           </div>
         </div>
@@ -154,9 +161,20 @@ export function AppShell({
         <div className="profile">
           <CircleUserRound size={30} />
           <div>
-            <strong>{t("profile.name")}</strong>
-            <span>{t("profile.role")}</span>
+            <strong>{authUser || t("profile.name")}</strong>
+            <span>{authEnabled ? t("profile.auth.enabled") : t("profile.auth.local")}</span>
           </div>
+          {authEnabled && onLogout && (
+            <button
+              aria-label={t("auth.logout")}
+              className="profile-logout"
+              onClick={onLogout}
+              title={t("auth.logout")}
+              type="button"
+            >
+              <LogOut size={15} />
+            </button>
+          )}
         </div>
       </aside>
 

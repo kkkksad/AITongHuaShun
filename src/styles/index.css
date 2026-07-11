@@ -405,6 +405,27 @@ select:focus-visible {
   border-top: 1px solid var(--sidebar-border);
 }
 
+.profile > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.profile-logout {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--sidebar-nav-text);
+  background: transparent;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 6px;
+}
+
+.profile-logout:hover {
+  color: var(--sidebar-text);
+  background: var(--bg-sidebar-hover);
+}
+
 .profile svg {
   color: var(--profile-icon);
 }
@@ -508,6 +529,65 @@ select:focus-visible {
   max-width: 1600px;
   padding: 26px 30px 42px;
   margin: 0 auto;
+}
+
+.login-page {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg-page);
+}
+
+.login-card {
+  display: grid;
+  width: min(440px, 100%);
+  gap: 18px;
+  padding: 28px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+}
+
+.login-brand {
+  padding: 0 0 18px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.login-card h1 {
+  margin: 6px 0 8px;
+  color: var(--text-heading);
+  font-size: 24px;
+}
+
+.login-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.login-card label {
+  display: grid;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.login-card input {
+  height: 40px;
+  padding: 0 12px;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+}
+
+.login-error {
+  color: var(--color-negative) !important;
 }
 
 .page-stack {
