@@ -118,6 +118,48 @@ export interface StrategyLeaderboardReport {
   entries: StrategyLeaderboardEntry[];
 }
 
+export type DailyCandidateAction = "watch" | "paper-buy" | "avoid";
+
+export interface DailyCandidate {
+  rank: number;
+  symbol: string;
+  name: string;
+  price: number;
+  changePercent: number;
+  volume: number;
+  score: number;
+  action: DailyCandidateAction;
+  confidence: number;
+  suggestedPositionWeight: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
+  reasons: string[];
+  riskFlags: string[];
+  updatedAt: string;
+}
+
+export interface DailyCandidateReport {
+  generatedAt: string;
+  strategyKey: "aSharePullback";
+  strategyName: "A股强势回踩确认";
+  mode: TradingMode;
+  source: {
+    provider: MarketDataProviderName;
+    snapshotSequence: number;
+    snapshotTime: string;
+    quoteCount: number;
+    tradableCount: number;
+  };
+  autoUpdate: {
+    marketRefresh: string;
+    researchRefresh: string;
+    execution: "paper-only";
+    nextStep: string;
+  };
+  guardrails: string[];
+  candidates: DailyCandidate[];
+}
+
 interface AccountResponse {
   account: AccountSnapshot;
 }
@@ -242,6 +284,12 @@ export function fetchStrategyLeaderboard(
 ): Promise<StrategyLeaderboardReport> {
   return apiRequest<StrategyLeaderboardReport>(
     `/api/research/strategy-leaderboard?bars=${bars}`,
+  );
+}
+
+export function fetchDailyCandidates(limit = 8): Promise<DailyCandidateReport> {
+  return apiRequest<DailyCandidateReport>(
+    `/api/research/daily-candidates?limit=${limit}`,
   );
 }
 

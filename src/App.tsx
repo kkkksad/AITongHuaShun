@@ -21,8 +21,9 @@ function lazyNamed(importer: () => Promise<any>, name: string): any {
 
 // ── Lazy-loaded heavy components ──────────────────────────────
 const BacktestResults = lazyNamed(() => import("./components/BacktestResults"), "BacktestResults");
+const DailyCandidates = lazyNamed(() => import("./components/DailyCandidates"), "DailyCandidates");
 const FlowPanel = lazyNamed(() => import("./components/FlowPanel"), "FlowPanel");
-const LearningPipeline = lazyNamed(() => import("./components/LearningPipeline"), "LearningPipeline");
+const LearningPipeline = lazy(() => import("./components/LearningPipeline"));
 const LogViewer = lazyNamed(() => import("./components/LogViewer"), "LogViewer");
 const MarketChart = lazyNamed(() => import("./components/MarketChart"), "MarketChart");
 const MarketOverview = lazyNamed(() => import("./components/MarketOverview"), "MarketOverview");
@@ -269,6 +270,9 @@ function App() {
       </Suspense>
       <Suspense fallback={<LazyFallback />}>
         <StrategyLeaderboard />
+      </Suspense>
+      <Suspense fallback={<LazyFallback />}>
+        <DailyCandidates />
       </Suspense>
       <Suspense fallback={<LazyFallback />}>
         <StrategyCompare results={allStrategyResults} />

@@ -33,6 +33,7 @@ import {
   exportOrdersToCsv,
 } from "./monitoring/exportUtils";
 import type { ExportFormat } from "./monitoring/exportUtils";
+import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
@@ -70,6 +71,10 @@ const logsQuerySchema = z.object({
 
 const strategyLeaderboardQuerySchema = z.object({
   bars: z.coerce.number().int().min(30).max(180).default(90),
+});
+
+const dailyCandidatesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(30).default(8),
 });
 
 interface BuildTradingAppOptions {
@@ -365,6 +370,34 @@ export async function buildTradingApp(
       system.market.getSnapshot(),
       system.marketDataProvider,
       bars,
+    );
+  });
+
+  app.get("/api/research/daily-candidates", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取今日策略候选",
+      description:
+        "基于当前行情快照输出 A 股强势回踩确认战法的只读候选清单。结果只用于研究和模拟盘观察。",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 30,
+            default: 8,
+            description: "返回候选数量上限",
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { limit } = dailyCandidatesQuerySchema.parse(request.query);
+    return buildDailyCandidates(
+      system.market.getSnapshot(),
+      system.marketDataProvider,
+      limit,
     );
   });
 

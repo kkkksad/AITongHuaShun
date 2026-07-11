@@ -1,5 +1,7 @@
-import { Check, Clock3, Eye, LockKeyhole, Sparkles } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Check, Clock3, Eye, LockKeyhole, RefreshCw, Sparkles } from "lucide-react";
 import { pipelineStages } from "../data/mockData";
+import { fetchDailyCandidates, fetchStrategyLeaderboard } from "../lib/tradingApi";
 
 const stageIcons = {
   done: Check,
@@ -9,6 +11,30 @@ const stageIcons = {
 };
 
 export default function LearningPipeline() {
+  const leaderboardQuery = useQuery({
+    queryKey: ["strategy-leaderboard", "pipeline", 90],
+    queryFn: () => fetchStrategyLeaderboard(90),
+    staleTime: 60_000,
+  });
+  const candidatesQuery = useQuery({
+    queryKey: ["daily-candidates", "pipeline", 8],
+    queryFn: () => fetchDailyCandidates(8),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+
+  const topStrategy = leaderboardQuery.data?.entries[0];
+  const paperBuyCount =
+    candidatesQuery.data?.candidates.filter((candidate) => candidate.action === "paper-buy").length ?? 0;
+  const researchScore = Math.min(
+    100,
+    Math.round(
+      (leaderboardQuery.data?.dataQuality.score.overall ?? 65) * 0.45 +
+        (topStrategy?.qualityGate === "pass" ? 30 : topStrategy?.qualityGate === "caution" ? 18 : 8) +
+        Math.min(paperBuyCount * 5, 20),
+    ),
+  );
+
   return (
     <div className="learning-layout">
       <section className="panel pipeline-panel">
@@ -17,7 +43,9 @@ export default function LearningPipeline() {
             <span className="section-kicker">\u53D7\u63A7\u7814\u7A76\u6D41\u7A0B</span>
             <h2>\u5019\u9009\u7B56\u7565\u9A8C\u8BC1</h2>
           </div>
-          <span className="sample-badge">7 \u4E2A\u5019\u9009\u5B58\u6D3B</span>
+          <span className="sample-badge">
+            {candidatesQuery.data?.candidates.length ?? 0} 个实时候选
+          </span>
         </div>
 
         <div className="pipeline-list">
@@ -46,44 +74,59 @@ export default function LearningPipeline() {
         <div className="panel-header">
           <div>
             <span className="section-kicker">\u6CBB\u7406\u8FB9\u754C</span>
-            <h2>\u5BA1\u6279\u7B56\u7565</h2>
+            <h2>研究管线状态</h2>
           </div>
-          <LockKeyhole size={20} />
+          <button
+            aria-label="刷新研究管线"
+            className="icon-button"
+            disabled={leaderboardQuery.isFetching || candidatesQuery.isFetching}
+            onClick={() => {
+              void leaderboardQuery.refetch();
+              void candidatesQuery.refetch();
+            }}
+            type="button"
+          >
+            <RefreshCw size={17} />
+          </button>
         </div>
         <div className="governance-score">
           <div className="score-ring">
-            <strong>82</strong>
+            <strong>{researchScore}</strong>
             <span>/ 100</span>
           </div>
           <div>
-            <strong>\u7814\u7A76\u5B8C\u6574\u5EA6</strong>
-            <p>\u4ECD\u9700\u8865\u5145\u4E24\u9879\u98CE\u9669\u8BF4\u660E\u4E66</p>
+            <strong>{topStrategy?.strategyName ?? "等待策略排行榜"}</strong>
+            <p>
+              {topStrategy
+                ? `胜率 ${(topStrategy.metrics.winRate * 100).toFixed(1)}% · ${topStrategy.metrics.totalTrades} 次模拟交易`
+                : "后端启动后自动拉取策略排行榜。"}
+            </p>
           </div>
         </div>
         <ul className="check-list">
-          <li className="done">
+          <li className={leaderboardQuery.data ? "done" : ""}>
             <Check size={15} />
-            \u6570\u636E\u65F6\u95F4\u8FB9\u754C\u5DF2\u9A8C\u8BC1
+            策略排行榜自动刷新已接入
+          </li>
+          <li className={candidatesQuery.data ? "done" : ""}>
+            <Check size={15} />
+            今日候选扫描每 60 秒更新
           </li>
           <li className="done">
             <Check size={15} />
-            \u6837\u672C\u5916\u533A\u95F4\u5DF2\u9694\u79BB
-          </li>
-          <li className="done">
-            <Check size={15} />
-            \u6A21\u62DF\u6210\u672C\u5DF2\u7EB3\u5165
+            订单执行仍保持 paper-only 隔离
           </li>
           <li>
             <Clock3 size={15} />
-            \u6781\u7AEF\u884C\u60C5\u538B\u529B\u6D4B\u8BD5\u5F85\u8865\u5145
+            授权历史行情缓存待接入
           </li>
           <li>
-            <Clock3 size={15} />
-            \u98CE\u9669\u8D1F\u8D23\u4EBA\u7B7E\u5B57\u5F85\u5B8C\u6210
+            <LockKeyhole size={15} />
+            真实下单必须保留人工审批
           </li>
         </ul>
         <button className="primary-button full-width" type="button">
-          \u63D0\u4EA4\u4EBA\u5DE5\u590D\u6838
+          查看人工复核清单
         </button>
       </aside>
     </div>

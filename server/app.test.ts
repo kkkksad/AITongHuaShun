@@ -85,6 +85,30 @@ describe("trading API", () => {
     expect(response.json().guardrails.join("")).toContain("不代表真实收益");
   });
 
+  it("returns daily A-share strategy candidates for paper validation", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/daily-candidates?limit=3",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      strategyKey: "aSharePullback",
+      strategyName: "A股强势回踩确认",
+      autoUpdate: {
+        execution: "paper-only",
+      },
+    });
+    expect(response.json().candidates.length).toBeLessThanOrEqual(3);
+    expect(response.json().candidates[0]).toMatchObject({
+      rank: 1,
+      symbol: expect.any(String),
+      score: expect.any(Number),
+      action: expect.stringMatching(/paper-buy|watch|avoid/),
+    });
+    expect(response.json().guardrails.join("")).toContain("模拟盘观察");
+  });
+
   it("publishes an OpenAPI document for the simulation API", async () => {
     const response = await app.inject({
       method: "GET",
@@ -100,6 +124,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/orders");
     expect(response.json().paths).toHaveProperty("/api/capabilities");
     expect(response.json().paths).toHaveProperty("/api/research/strategy-leaderboard");
+    expect(response.json().paths).toHaveProperty("/api/research/daily-candidates");
   });
 
   it("adds baseline security headers", async () => {

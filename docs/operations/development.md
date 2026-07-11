@@ -174,11 +174,22 @@ Invoke-RestMethod http://127.0.0.1:8787/api/capabilities
 Invoke-RestMethod http://127.0.0.1:8787/api/account
 Invoke-RestMethod http://127.0.0.1:8787/api/market/snapshot
 Invoke-RestMethod http://127.0.0.1:8787/api/research/strategy-leaderboard
+Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-candidates
 ```
 
 OpenAPI 界面位于 `http://127.0.0.1:8787/documentation`。
 
 策略排行榜端点会基于当前行情快照生成确定性研究样本并运行参数搜索。它用于验证研究流程和候选策略排序，不代表真实收益；接入授权历史行情缓存前，不应把它作为实盘策略依据。
+
+今日候选端点会基于当前行情快照输出 A 股强势回踩确认战法的观察清单：
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-candidates?limit=8"
+```
+
+前端策略页和研究管线页会通过 TanStack Query 自动刷新该清单。当前自动更新机制是：AkShare/Mock 行情源按 `MARKET_TICK_MS` 更新后端快照并推送 WebSocket；研究排行榜按页面缓存策略刷新；今日候选扫描每 60 秒刷新一次，也可手动点击刷新。它仍是只读研究与 paper 模拟信号，不会自动真实下单。
+
+本地开发不必须部署到服务器。只有需要无人值守长期运行、远程访问、固定公网/内网地址、监控告警或后续接入模拟盘网关时，才建议部署到服务器。部署前仍必须保持 `MARKET_MODE=paper`、`REAL_TRADING_ENABLED=false`，并把真实账户凭据留在独立服务端密钥系统中。
 
 订单接口只执行模拟撮合。示例：
 
