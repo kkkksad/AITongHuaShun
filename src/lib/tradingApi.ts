@@ -309,6 +309,64 @@ export interface PaperTradingPlan {
   guardrails: string[];
 }
 
+export type RealResearchSourceStatus =
+  | "live-read-only"
+  | "mock-disabled"
+  | "degraded";
+
+export type RealResearchSentiment = "positive" | "neutral" | "negative";
+export type GlobalImpactDirection = "risk-on" | "neutral" | "risk-off";
+
+export interface RealNewsItem {
+  id: string;
+  source: string;
+  title: string;
+  publishedAt: string;
+  fetchedAt: string;
+  url: string | null;
+  symbols: string[];
+  sentiment: RealResearchSentiment;
+  summary: string | null;
+}
+
+export interface GlobalMarketSignal {
+  symbol: string;
+  name: string;
+  region: string;
+  price: number;
+  changePercent: number;
+  updatedAt: string;
+  source: string;
+}
+
+export interface RealResearchDataFeed {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: RealResearchSourceStatus;
+  news: {
+    provider: string;
+    source: string;
+    fetchedAt: string | null;
+    items: RealNewsItem[];
+    warning: string | null;
+  };
+  globalMarkets: {
+    provider: string;
+    fetchedAt: string | null;
+    markets: GlobalMarketSignal[];
+    warning: string | null;
+  };
+  impact: {
+    direction: GlobalImpactDirection;
+    score: number;
+    summary: string;
+    drivers: string[];
+    aShareContext: string[];
+  };
+  guardrails: string[];
+}
+
 interface AccountResponse {
   account: AccountSnapshot;
 }
@@ -454,6 +512,10 @@ export function fetchLearningState(): Promise<LearningState> {
 
 export function fetchPaperTradingPlan(): Promise<PaperTradingPlan> {
   return apiRequest<PaperTradingPlan>("/api/research/paper-trading-plan");
+}
+
+export function fetchRealResearchDataFeed(): Promise<RealResearchDataFeed> {
+  return apiRequest<RealResearchDataFeed>("/api/research/real-data-feed");
 }
 
 export function cancelPaperOrder(orderId: string): Promise<OrderSubmission> {

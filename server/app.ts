@@ -36,6 +36,7 @@ import type { ExportFormat } from "./monitoring/exportUtils";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
 import { buildPaperTradingPlan } from "./research/paperTradingPlan";
+import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
 import { WebSocketHub } from "./realtime/webSocketHub";
@@ -495,6 +496,22 @@ export async function buildTradingApp(
       maxSingleOrderNotional: system.risk.getEffectiveMaxOrderNotional(),
     });
   });
+
+  app.get("/api/research/real-data-feed", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取真实只读研究数据流",
+      description:
+        "从 AkShare 桥接读取真实新闻和全球市场指数，并生成 A 股影响摘要。该接口只读，不包含账户或订单能力。",
+    },
+  }, async () => buildRealResearchDataFeed({
+    bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+    bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+    marketDataProvider: system.marketDataProvider,
+    mode: options.config.MARKET_MODE,
+    snapshot: system.market.getSnapshot(),
+    timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+  }));
 
   // 账户
   app.get("/api/account", {

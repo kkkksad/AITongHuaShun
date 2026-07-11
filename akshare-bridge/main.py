@@ -86,11 +86,58 @@ class QuotesResponse(BaseModel):
     quotes: list[MarketQuote]
 
 
+class NewsItem(BaseModel):
+    id: str
+    source: str
+    title: str
+    publishedAt: str
+    fetchedAt: str
+    url: str | None = None
+    symbols: list[str] = []
+    sentiment: str = "neutral"
+    summary: str | None = None
+
+
+class NewsResponse(BaseModel):
+    provider: str
+    source: str
+    fetchedAt: str
+    items: list[NewsItem]
+    warning: str | None = None
+
+
+class GlobalMarketQuote(BaseModel):
+    symbol: str
+    name: str
+    region: str
+    price: float
+    changePercent: float
+    updatedAt: str
+    source: str
+
+
+class GlobalMarketsResponse(BaseModel):
+    provider: str
+    fetchedAt: str
+    markets: list[GlobalMarketQuote]
+    warning: str | None = None
+
+
 INDEX_SYMBOL_MAP = {
     "000001": "SH000001",  # 上证指数
     "399001": "SZ399001",  # 深证成指
     "399006": "SZ399006",  # 创业板指
     "000300": "SH000300",  # 沪深300
+}
+
+GLOBAL_MARKET_ALIASES = {
+    "道琼斯": ("DJI", "道琼斯指数", "US"),
+    "纳斯达克": ("IXIC", "纳斯达克指数", "US"),
+    "标普500": ("SPX", "标普500", "US"),
+    "恒生指数": ("HSI", "恒生指数", "HK"),
+    "日经225": ("N225", "日经225", "JP"),
+    "英国富时100": ("FTSE", "英国富时100", "EU"),
+    "德国DAX30": ("GDAXI", "德国DAX30", "EU"),
 }
 
 
@@ -400,6 +447,159 @@ def fetch_a_share_index_dataframe():
     raise last_error
 
 
+def fetch_global_market_dataframe():
+    """Fetch major global index quotes with provider fallback."""
+    providers = (
+        ("global-index-em", ak.stock_zh_index_global_spot_em),
+    )
+    last_error: Exception | None = None
+
+    for provider_name, provider in providers:
+        started_at = time.time()
+        try:
+            df = provider()
+            logger.info(
+                "全球指数源 %s 返回 %d 行，耗时 %.1fs",
+                provider_name,
+                len(df),
+                time.time() - started_at,
+            )
+            return df, provider_name
+        except Exception as exc:
+            last_error = exc
+            logger.warning("全球指数源 %s 失败，尝试下一个来源: %s", provider_name, exc)
+
+    assert last_error is not None
+    raise last_error
+
+
+def fetch_financial_news_dataframe():
+    """Fetch public financial news with provider fallback."""
+    providers = (
+        ("eastmoney-financial-news", lambda: ak.stock_news_em()),
+    )
+    last_error: Exception | None = None
+
+    for provider_name, provider in providers:
+        started_at = time.time()
+        try:
+            df = provider()
+            logger.info(
+                "新闻源 %s 返回 %d 行，耗时 %.1fs",
+                provider_name,
+                len(df),
+                time.time() - started_at,
+            )
+            return df, provider_name
+        except Exception as exc:
+            last_error = exc
+            logger.warning("新闻源 %s 失败，尝试下一个来源: %s", provider_name, exc)
+
+    assert last_error is not None
+    raise last_error
+
+
+def first_existing(row, names: tuple[str, ...], default=None):
+    for name in names:
+        value = row.get(name)
+        if value is not None and str(value).strip() and str(value).strip().lower() != "nan":
+            return value
+    return default
+
+
+def parse_float(value, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(str(value).replace("%", "").replace(",", "").strip())
+    except (ValueError, TypeError):
+        return default
+
+
+def normalize_datetime(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    text = text.replace("/", "-")
+    if re.match(r"^\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}", text):
+        return text.replace(" ", "T")[:19] + "+08:00"
+    if re.match(r"^\d{4}-\d{1,2}-\d{1,2}$", text):
+        return text + "T00:00:00+08:00"
+    return text
+
+
+def infer_sentiment(title: str) -> str:
+    positive_words = ("增长", "上调", "突破", "利好", "回升", "上涨", "预增", "创新高")
+    negative_words = ("下调", "风险", "亏损", "处罚", "下跌", "回落", "减持", "预亏")
+    if any(word in title for word in positive_words):
+        return "positive"
+    if any(word in title for word in negative_words):
+        return "negative"
+    return "neutral"
+
+
+def extract_symbols(text: str) -> list[str]:
+    symbols = re.findall(r"(?<!\d)(\d{6})(?!\d)", text)
+    return list(dict.fromkeys(symbols))[:8]
+
+
+def normalize_news_dataframe(df, provider_name: str, limit: int) -> list[NewsItem]:
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    items: list[NewsItem] = []
+
+    for index, row in df.head(limit).iterrows():
+        title = str(first_existing(row, ("新闻标题", "标题", "title", "内容"), "")).strip()
+        if not title:
+            continue
+        source = str(first_existing(row, ("文章来源", "来源", "source"), provider_name)).strip()
+        published = first_existing(row, ("发布时间", "时间", "日期", "datetime", "time"), fetched_at)
+        url = first_existing(row, ("新闻链接", "链接", "url", "地址"), None)
+        summary = first_existing(row, ("新闻内容", "摘要", "summary"), None)
+        text_for_symbols = f"{title} {summary or ''}"
+
+        items.append(NewsItem(
+            id=f"{provider_name}-{index}-{abs(hash(title)) % 1000000}",
+            source=source or provider_name,
+            title=title,
+            publishedAt=normalize_datetime(published),
+            fetchedAt=fetched_at,
+            url=str(url).strip() if url else None,
+            symbols=extract_symbols(text_for_symbols),
+            sentiment=infer_sentiment(title),
+            summary=str(summary).strip()[:240] if summary else None,
+        ))
+
+    return items
+
+
+def normalize_global_market_dataframe(df, provider_name: str, limit: int) -> list[GlobalMarketQuote]:
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    markets: list[GlobalMarketQuote] = []
+
+    for _, row in df.iterrows():
+        raw_name = str(first_existing(row, ("名称", "指数名称", "name"), "")).strip()
+        raw_symbol = str(first_existing(row, ("代码", "symbol"), raw_name)).strip()
+        alias = GLOBAL_MARKET_ALIASES.get(raw_name)
+        symbol, name, region = alias if alias else (raw_symbol or raw_name, raw_name or raw_symbol, "GLOBAL")
+        price = parse_float(first_existing(row, ("最新价", "最新", "price", "收盘"), 0))
+        change_pct = parse_float(first_existing(row, ("涨跌幅", "涨幅", "changePercent"), 0))
+        if not name or price <= 0:
+            continue
+        markets.append(GlobalMarketQuote(
+            symbol=symbol,
+            name=name,
+            region=region,
+            price=price,
+            changePercent=change_pct,
+            updatedAt=fetched_at,
+            source=provider_name,
+        ))
+        if len(markets) >= limit:
+            break
+
+    return markets
+
+
 def normalize_a_share_symbol(value: object) -> str | None:
     """Normalize AkShare symbols like sh600519, sz000001, bj920000 to 6 digits."""
     raw = str(value).strip().lower()
@@ -558,6 +758,56 @@ async def get_indices(
         raise HTTPException(status_code=502, detail=f"指数行情数据获取失败: {e}")
 
     return QuotesResponse(quotes=quotes)
+
+
+@app.get("/api/research/news", response_model=NewsResponse)
+async def get_research_news(
+    limit: int = Query(20, ge=1, le=80, description="返回新闻数量上限"),
+):
+    """获取真实只读财经新闻，保留来源和抓取时间。"""
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        loop = asyncio.get_running_loop()
+        df, provider_name = await loop.run_in_executor(None, fetch_financial_news_dataframe)
+        return NewsResponse(
+            provider="akshare",
+            source=provider_name,
+            fetchedAt=fetched_at,
+            items=normalize_news_dataframe(df, provider_name, limit),
+        )
+    except Exception as e:
+        logger.error("获取财经新闻失败: %s", e)
+        return NewsResponse(
+            provider="akshare",
+            source="unavailable",
+            fetchedAt=fetched_at,
+            items=[],
+            warning=f"真实新闻源暂不可用: {e}",
+        )
+
+
+@app.get("/api/market/global", response_model=GlobalMarketsResponse)
+async def get_global_markets(
+    limit: int = Query(12, ge=1, le=40, description="返回全球指数数量上限"),
+):
+    """获取全球主要指数行情，用于只读跨市场影响研究。"""
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        loop = asyncio.get_running_loop()
+        df, provider_name = await loop.run_in_executor(None, fetch_global_market_dataframe)
+        return GlobalMarketsResponse(
+            provider="akshare",
+            fetchedAt=fetched_at,
+            markets=normalize_global_market_dataframe(df, provider_name, limit),
+        )
+    except Exception as e:
+        logger.error("获取全球市场失败: %s", e)
+        return GlobalMarketsResponse(
+            provider="akshare",
+            fetchedAt=fetched_at,
+            markets=[],
+            warning=f"全球市场源暂不可用: {e}",
+        )
 
 
 # ── 入口 ──────────────────────────────────────────────────

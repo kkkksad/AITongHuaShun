@@ -15,12 +15,20 @@ sys.modules["akshare"] = MagicMock()
 
 from main import (
     app,
+    GlobalMarketsResponse,
+    GlobalMarketQuote,
+    NewsResponse,
+    NewsItem,
     QuotesResponse,
     MarketQuote,
     QuoteCache,
     IndexCache,
     fetch_a_share_spot_dataframe,
     fetch_a_share_index_dataframe,
+    fetch_financial_news_dataframe,
+    fetch_global_market_dataframe,
+    normalize_global_market_dataframe,
+    normalize_news_dataframe,
     normalize_a_share_symbol,
     normalize_index_symbol,
 )
@@ -87,6 +95,41 @@ class TestIndicesEndpoint:
         assert "50" in response.json()["detail"]
 
 
+class TestResearchNewsEndpoint:
+    def test_news_require_server_token_when_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/api/research/news?limit=3")
+        assert response.status_code == 401
+
+    def test_news_endpoint_returns_degraded_payload_when_source_fails(self):
+        with patch("main.fetch_financial_news_dataframe", side_effect=RuntimeError("offline")):
+            response = client.get("/api/research/news?limit=3")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "akshare"
+        assert data["source"] == "unavailable"
+        assert data["items"] == []
+        assert "真实新闻源暂不可用" in data["warning"]
+
+
+class TestGlobalMarketsEndpoint:
+    def test_global_markets_require_server_token_when_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/api/market/global?limit=3")
+        assert response.status_code == 401
+
+    def test_global_markets_endpoint_returns_degraded_payload_when_source_fails(self):
+        with patch("main.fetch_global_market_dataframe", side_effect=RuntimeError("offline")):
+            response = client.get("/api/market/global?limit=3")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "akshare"
+        assert data["markets"] == []
+        assert "全球市场源暂不可用" in data["warning"]
+
+
 class TestQuoteCache:
     def test_cache_starts_empty(self):
         cache = QuoteCache(ttl_sec=3.0)
@@ -133,6 +176,61 @@ class TestQuoteCache:
         assert normalize_index_symbol("000001.SH") == "SH000001"
         assert normalize_index_symbol("399001.SZ") == "SZ399001"
 
+    def test_fetch_global_market_uses_public_source(self):
+        global_df = MagicMock()
+        global_df.__len__.return_value = 3
+        with patch("main.ak.stock_zh_index_global_spot_em", return_value=global_df):
+            df, provider = fetch_global_market_dataframe()
+        assert df is global_df
+        assert provider == "global-index-em"
+
+    def test_fetch_news_uses_public_source(self):
+        news_df = MagicMock()
+        news_df.__len__.return_value = 3
+        with patch("main.ak.stock_news_em", return_value=news_df):
+            df, provider = fetch_financial_news_dataframe()
+        assert df is news_df
+        assert provider == "eastmoney-financial-news"
+
+
+class TestResearchDataNormalization:
+    def test_normalize_news_dataframe_preserves_source_time_and_symbols(self):
+        rows = [
+            {
+                "新闻标题": "600519 公司业绩预增",
+                "文章来源": "东方财富",
+                "发布时间": "2026-07-11 09:30:00",
+                "新闻链接": "https://example.test/news/1",
+                "新闻内容": "贵州茅台 600519 披露增长信息",
+            },
+        ]
+        df = MagicMock()
+        df.head.return_value.iterrows.return_value = enumerate(rows)
+
+        items = normalize_news_dataframe(df, "eastmoney-financial-news", 5)
+
+        assert len(items) == 1
+        assert items[0].source == "东方财富"
+        assert items[0].sentiment == "positive"
+        assert items[0].symbols == ["600519"]
+        assert items[0].publishedAt == "2026-07-11T09:30:00+08:00"
+
+    def test_normalize_global_market_dataframe_maps_core_indices(self):
+        rows = [
+            {"名称": "纳斯达克", "代码": "IXIC", "最新价": "18000", "涨跌幅": "1.2"},
+            {"名称": "恒生指数", "代码": "HSI", "最新价": "19000", "涨跌幅": "-0.5"},
+        ]
+        df = MagicMock()
+        df.iterrows.return_value = enumerate(rows)
+
+        markets = normalize_global_market_dataframe(df, "global-index-em", 10)
+
+        assert len(markets) == 2
+        assert markets[0].symbol == "IXIC"
+        assert markets[0].region == "US"
+        assert markets[1].symbol == "HSI"
+        assert markets[1].region == "HK"
+
 
 class TestMarketQuoteModel:
     def test_model_serialization(self):
@@ -169,6 +267,47 @@ class TestMarketQuoteModel:
         response = QuotesResponse(quotes=quotes)
         data = response.model_dump()
         assert len(data["quotes"]) == 2
+
+    def test_news_response_serialization(self):
+        response = NewsResponse(
+            provider="akshare",
+            source="eastmoney-financial-news",
+            fetchedAt="2026-07-11T00:00:00Z",
+            items=[
+                NewsItem(
+                    id="n1",
+                    source="东方财富",
+                    title="测试新闻",
+                    publishedAt="2026-07-11T09:30:00+08:00",
+                    fetchedAt="2026-07-11T01:30:00Z",
+                    symbols=["600519"],
+                    sentiment="neutral",
+                ),
+            ],
+        )
+        data = response.model_dump()
+        assert data["items"][0]["source"] == "东方财富"
+        assert data["items"][0]["symbols"] == ["600519"]
+
+    def test_global_markets_response_serialization(self):
+        response = GlobalMarketsResponse(
+            provider="akshare",
+            fetchedAt="2026-07-11T00:00:00Z",
+            markets=[
+                GlobalMarketQuote(
+                    symbol="IXIC",
+                    name="纳斯达克指数",
+                    region="US",
+                    price=18000,
+                    changePercent=1.2,
+                    updatedAt="2026-07-11T00:00:00Z",
+                    source="global-index-em",
+                ),
+            ],
+        )
+        data = response.model_dump()
+        assert data["markets"][0]["symbol"] == "IXIC"
+        assert data["markets"][0]["region"] == "US"
 
 
 if __name__ == "__main__":

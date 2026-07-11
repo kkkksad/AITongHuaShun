@@ -48,6 +48,7 @@
 - **大盘指数展示修正** —— 主要指数卡片在 AkShare 模式下显示指数成交额，市场页指数图表改为使用当前后端指数快照，不再把静态模拟分时图伪装成实时大盘走势。
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程，研究管线页展示规则检查、候选动作和拦截原因。
+- **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
 
 ## 可用接口
 
@@ -60,6 +61,7 @@ GET  /api/research/strategy-leaderboard?bars=90
 GET  /api/research/daily-candidates?limit=8
 GET  /api/research/daily-quality-stocks?limit=10
 GET  /api/research/learning-state
+GET  /api/research/real-data-feed
 GET  /api/account
 GET  /api/positions
 GET  /api/orders
@@ -144,6 +146,20 @@ npm test
 
 npm run build
 TypeScript checks and Vite production build passed
+
+2026-07-11 真实新闻与全球市场只读研究流验证
+python -m pytest akshare-bridge/test_bridge.py -q
+29 tests passed, 1 warning
+
+npm test
+27 test files passed
+546 tests passed
+
+npm run test:server -- server/app.test.ts
+1 test file passed
+18 tests passed
+
+npm run build
 TypeScript checks and Vite production build passed
 ```
 
@@ -168,6 +184,7 @@ server/
 │   ├── strategyLeaderboard.ts   # 策略研究排行榜（只读研究端点）
 │   ├── dailyCandidates.ts       # 今日候选扫描器（只读研究端点）
 │   ├── dailyQualityStocks.ts    # 每日优质股筛选器（只读研究端点）
+│   ├── realResearchData.ts      # 真实新闻与全球市场只读研究流
 │   └── researchStore.ts         # 运行期研究样本与学习状态（内存）
 ├── risk/
 │   ├── riskEngine.ts            # 增强型风控引擎（熔断+动态限额）
@@ -217,7 +234,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 
 ## 下一步
 
-- 实现 NewsProvider 契约，抽象新闻数据源。
+- 将真实新闻和全球市场研究流抽象为 NewsProvider / MacroMarketProvider 契约，并补充历史影响验证。
 - 将策略研究排行榜从快照生成样本升级为授权历史行情缓存，并加入样本外验证。
 - 将认证原型装配到 API，并增加账户白名单、角色权限和独立审批服务。
 - 前端集成网格交易运行器控制面板。
@@ -226,11 +243,11 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 
 ## 当前边界
 
-- 默认行情、资金流、新闻、账户与订单数据仍是本地模拟数据；可选 AkShare 个股与主要指数行情是只读外部数据。
+- 默认行情、资金流、账户与订单数据仍是本地模拟数据；可选 AkShare 个股、主要指数、财经新闻和全球指数是只读外部数据。
 - 回测和模拟成交不代表真实策略收益，也不构成投资建议。
 - 策略研究排行榜当前使用确定性合成历史样本，不是授权历史行情或真实收益记录。
 - 今日候选扫描器当前主要基于实时快照特征评分，不是完整历史 K 线确认；`paper-buy` 只表示可进入模拟盘观察，不是实盘下单建议。
-- 每日优质股筛选器当前主要基于实时快照质量评分，不包含同花顺历史海量数据、财务因子或真实新闻；`focus` 只表示优先观察或进入 paper 小仓位验证。
+- 每日优质股筛选器当前主要基于实时快照质量评分，尚未把真实新闻、全球市场、授权历史 K 线或财务因子纳入评分闭环；`focus` 只表示优先观察或进入 paper 小仓位验证。
 - 研究学习状态当前只是运行期内存样本池，不是长期训练库；服务重启会清空，不能用于声称策略已完成自学习或已验证真实胜率。
 - A 股强势回踩确认战法是研究候选策略，不是“稳赚”或“实盘收割”承诺；接入授权历史行情、样本外验证和模拟盘观察前，不应作为真实下单依据。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
@@ -241,6 +258,6 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。
 - AkShare 模式必须使用 `MARKET_MODE=paper`，真实行情不改变订单执行权限。
 - 当前没有任何真实订单执行代码。
-- 新闻和资金流仍使用前端静态模拟数据；主要指数卡片和指数快照图在 AkShare 模式下使用只读指数行情。当前仍未接入真实逐笔或完整分时历史曲线。
+- 新闻面板在 AkShare 模式下优先读取真实只读研究流；若源不可用会显示降级状态，不再用静态模拟新闻冒充真实来源。资金流仍使用前端静态模拟数据；主要指数卡片和指数快照图在 AkShare 模式下使用只读指数行情。当前仍未接入真实逐笔或完整分时历史曲线。
 
 本页只记录可从仓库核实的当前事实。目标设计写入 `architecture/`，产品意图写入 `product/`，实施步骤写入 `plans/`。

@@ -197,6 +197,31 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/research/daily-quality-stocks");
     expect(response.json().paths).toHaveProperty("/api/research/learning-state");
     expect(response.json().paths).toHaveProperty("/api/research/paper-trading-plan");
+    expect(response.json().paths).toHaveProperty("/api/research/real-data-feed");
+  });
+
+  it("returns explicit real-data feed boundaries when AkShare is disabled", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/real-data-feed",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      sourceStatus: "mock-disabled",
+      news: {
+        items: [],
+      },
+      globalMarkets: {
+        markets: [],
+      },
+      impact: {
+        direction: "neutral",
+      },
+    });
+    expect(response.json().news.warning).toContain("不会使用静态模拟数据替代");
+    expect(response.json().guardrails.join("")).toContain("不包含账户、下单或撤单能力");
   });
 
   it("adds baseline security headers", async () => {

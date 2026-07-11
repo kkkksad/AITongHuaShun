@@ -131,6 +131,8 @@ TRADING_SEED_PORTFOLIO=false
 
 然后先运行 `python akshare-bridge/main.py`，或直接使用 `npm run dev:a-share` 同时启动行情桥、API 和前端。真实行情只替换行情提供者，订单仍由本地 `PaperBroker` 模拟执行。AkShare 模式会分别读取个股行情和主要指数行情；指数使用 `SH000001`、`SZ399001`、`SZ399006`、`SH000300`，避免和个股代码冲突。
 
+AkShare 桥接还提供只读财经新闻和全球主要指数接口。Fastify 会通过 `/api/research/real-data-feed` 聚合这些数据，生成真实新闻、全球市场驱动和 A 股影响摘要；前端新闻面板优先展示该接口结果。若新闻或全球指数源暂不可用，页面会明确显示降级状态，不会使用静态模拟新闻冒充真实来源。
+
 `AKSHARE_BRIDGE_DISABLE_PROXY=true` 会让 AkShare 桥接绕过本机系统代理，避免东方财富行情接口被代理连接中断；如需显式走代理，可在 `.env.local` 中设为 `false`。
 
 如果 AkShare 桥接健康检查中出现 `WinError 10013`，或 `/health` 显示 `cachedSymbols: 0`、`cachedIndices: 0`，说明本机 Python 进程可能被防火墙、代理或网络权限拦截。此时不要把页面上的候选或行情视为有效实时数据；先检查 Windows 防火墙/安全软件是否允许当前 Python 解释器访问网络，并在 `AKSHARE_BRIDGE_DISABLE_PROXY=true/false` 之间切换验证，再重新运行 `npm run check:a-share`。
@@ -204,6 +206,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/market/snapshot
 Invoke-RestMethod http://127.0.0.1:8787/api/research/strategy-leaderboard
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-candidates
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-quality-stocks
+Invoke-RestMethod http://127.0.0.1:8787/api/research/real-data-feed
 ```
 
 OpenAPI 界面位于 `http://127.0.0.1:8787/documentation`。
@@ -225,6 +228,14 @@ Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-quality-stocks?limit
 ```
 
 当前评分使用实时行情快照中的价格、成交量/成交额、涨跌幅、振幅、换手率和日内位置。AkShare 模式下实时行情来源可以是真实只读行情，但历史 K 线、新闻、财务因子和同花顺模拟盘订单仍未接入。
+
+真实研究数据流端点用于查看新闻和外围市场输入：
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/real-data-feed"
+```
+
+该端点只读。它不会读取账户、不会提交订单，也不会连接同花顺或中信账户；全球市场对 A 股的影响摘要只是研究信号，需要后续历史样本验证。
 
 本地开发不必须部署到服务器。只有需要无人值守长期运行、远程访问、固定公网/内网地址、监控告警或后续接入模拟盘网关时，才建议部署到服务器。部署前仍必须保持 `MARKET_MODE=paper`、`REAL_TRADING_ENABLED=false`，并把真实账户凭据留在独立服务端密钥系统中。
 
