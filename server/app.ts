@@ -34,6 +34,7 @@ import {
 } from "./monitoring/exportUtils";
 import type { ExportFormat } from "./monitoring/exportUtils";
 import { buildDailyCandidates } from "./research/dailyCandidates";
+import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
@@ -75,6 +76,10 @@ const strategyLeaderboardQuerySchema = z.object({
 
 const dailyCandidatesQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(30).default(8),
+});
+
+const dailyQualityStocksQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).default(10),
 });
 
 interface BuildTradingAppOptions {
@@ -395,6 +400,34 @@ export async function buildTradingApp(
   }, async (request) => {
     const { limit } = dailyCandidatesQuerySchema.parse(request.query);
     return buildDailyCandidates(
+      system.market.getSnapshot(),
+      system.marketDataProvider,
+      limit,
+    );
+  });
+
+  app.get("/api/research/daily-quality-stocks", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取每日优质股",
+      description:
+        "基于当前行情快照输出每日优质股评分清单。当前只用于研究和模拟盘观察，尚未接入授权历史数据。",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 50,
+            default: 10,
+            description: "返回优质股数量上限",
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { limit } = dailyQualityStocksQuerySchema.parse(request.query);
+    return buildDailyQualityStocks(
       system.market.getSnapshot(),
       system.marketDataProvider,
       limit,

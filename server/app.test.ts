@@ -109,6 +109,35 @@ describe("trading API", () => {
     expect(response.json().guardrails.join("")).toContain("模拟盘观察");
   });
 
+  it("returns daily quality stocks for research watchlists", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/daily-quality-stocks?limit=3",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      methodology: {
+        name: "每日优质股评分",
+        dataScope: {
+          historicalBars: false,
+        },
+      },
+      autoUpdate: {
+        execution: "paper-only",
+      },
+    });
+    expect(response.json().stocks.length).toBeLessThanOrEqual(3);
+    expect(response.json().stocks[0]).toMatchObject({
+      rank: 1,
+      symbol: expect.any(String),
+      score: expect.any(Number),
+      grade: expect.stringMatching(/S|A|B|C/),
+      action: expect.stringMatching(/focus|watch|avoid/),
+    });
+    expect(response.json().guardrails.join("")).toContain("每日优质股");
+  });
+
   it("publishes an OpenAPI document for the simulation API", async () => {
     const response = await app.inject({
       method: "GET",
@@ -125,6 +154,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/capabilities");
     expect(response.json().paths).toHaveProperty("/api/research/strategy-leaderboard");
     expect(response.json().paths).toHaveProperty("/api/research/daily-candidates");
+    expect(response.json().paths).toHaveProperty("/api/research/daily-quality-stocks");
   });
 
   it("adds baseline security headers", async () => {

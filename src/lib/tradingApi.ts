@@ -160,6 +160,65 @@ export interface DailyCandidateReport {
   candidates: DailyCandidate[];
 }
 
+export type QualityStockAction = "focus" | "watch" | "avoid";
+export type QualityStockGrade = "S" | "A" | "B" | "C";
+
+export interface DailyQualityStock {
+  rank: number;
+  symbol: string;
+  name: string;
+  price: number;
+  changePercent: number;
+  volume: number;
+  amount: number | null;
+  score: number;
+  grade: QualityStockGrade;
+  action: QualityStockAction;
+  style: "core" | "growth" | "momentum" | "defensive";
+  confidence: number;
+  suggestedPositionWeight: number;
+  factors: {
+    liquidity: number;
+    momentum: number;
+    stability: number;
+    intradayStrength: number;
+    turnover: number;
+  };
+  reasons: string[];
+  riskFlags: string[];
+  updatedAt: string;
+}
+
+export interface DailyQualityStockReport {
+  generatedAt: string;
+  mode: TradingMode;
+  source: {
+    provider: string;
+    snapshotSequence: number;
+    snapshotTime: string;
+    quoteCount: number;
+    tradableCount: number;
+  };
+  methodology: {
+    name: "每日优质股评分";
+    version: string;
+    dataScope: {
+      realtimeQuote: boolean;
+      historicalBars: boolean;
+      news: boolean;
+      fundamentals: boolean;
+    };
+    weights: Record<string, number>;
+  };
+  autoUpdate: {
+    marketRefresh: string;
+    qualityRefresh: string;
+    execution: "paper-only";
+  };
+  guardrails: string[];
+  stocks: DailyQualityStock[];
+}
+
 interface AccountResponse {
   account: AccountSnapshot;
 }
@@ -290,6 +349,12 @@ export function fetchStrategyLeaderboard(
 export function fetchDailyCandidates(limit = 8): Promise<DailyCandidateReport> {
   return apiRequest<DailyCandidateReport>(
     `/api/research/daily-candidates?limit=${limit}`,
+  );
+}
+
+export function fetchDailyQualityStocks(limit = 10): Promise<DailyQualityStockReport> {
+  return apiRequest<DailyQualityStockReport>(
+    `/api/research/daily-quality-stocks?limit=${limit}`,
   );
 }
 

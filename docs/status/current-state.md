@@ -38,6 +38,7 @@
 - **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示成功率/胜率优先排名；排序同时约束交易次数、正收益和最大回撤，结果明确标注为研究/模拟，不代表真实收益。
 - **A 股强势回踩确认战法** —— 新增偏高胜率的研究候选策略：中期趋势向上、温和回踩、放量反包确认后入场，并使用固定止盈止损控制单笔风险；已纳入策略研究排行榜，但当前仍基于快照合成样本，不代表真实收益。
 - **今日候选扫描器** —— `/api/research/daily-candidates` 基于当前行情快照输出 A 股强势回踩确认战法的候选清单、模拟动作、建议 paper 仓位和止盈止损；前端策略页与研究管线页自动刷新，结果只用于研究和模拟盘观察。
+- **每日优质股筛选器** —— `/api/research/daily-quality-stocks` 基于当前行情快照按流动性、涨跌幅健康度、波动稳定性、日内强度和换手率生成优质股观察池；前端策略页自动展示，当前尚未接授权历史 K 线、财务因子或真实新闻。
 - **研究管线实时化** —— 研究管线页已从静态说明升级为读取策略排行榜和今日候选扫描状态，并修复默认导出组件被命名懒加载误用导致的页面渲染异常。
 - **前端稳定性防护** —— 开发环境自动注销 PWA Service Worker 并清理缓存；REST 客户端会识别 API 代理误返回 HTML 的情况，WebSocket 默认支持同源代理和显式 `VITE_WS_URL`。
 - **连接状态诊断** —— 顶栏将 REST 后端连接、运行模式、行情源和 WebSocket 实时通道分开展示，避免 React 开发模式下短暂的 WebSocket 预关闭被误判为后端未连接或行情源回落到 mock。
@@ -52,6 +53,7 @@ GET  /metrics                              (Prometheus 指标)
 GET  /api/market/snapshot
 GET  /api/research/strategy-leaderboard?bars=90
 GET  /api/research/daily-candidates?limit=8
+GET  /api/research/daily-quality-stocks?limit=10
 GET  /api/account
 GET  /api/positions
 GET  /api/orders
@@ -126,7 +128,8 @@ server/
 │   └── optimizer.test.ts       # 22 tests
 ├── research/
 │   ├── strategyLeaderboard.ts   # 策略研究排行榜（只读研究端点）
-│   └── dailyCandidates.ts       # 今日候选扫描器（只读研究端点）
+│   ├── dailyCandidates.ts       # 今日候选扫描器（只读研究端点）
+│   └── dailyQualityStocks.ts    # 每日优质股筛选器（只读研究端点）
 ├── risk/
 │   ├── riskEngine.ts            # 增强型风控引擎（熔断+动态限额）
 │   └── riskEngine.test.ts      # 26 tests
@@ -188,6 +191,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 回测和模拟成交不代表真实策略收益，也不构成投资建议。
 - 策略研究排行榜当前使用确定性合成历史样本，不是授权历史行情或真实收益记录。
 - 今日候选扫描器当前主要基于实时快照特征评分，不是完整历史 K 线确认；`paper-buy` 只表示可进入模拟盘观察，不是实盘下单建议。
+- 每日优质股筛选器当前主要基于实时快照质量评分，不包含同花顺历史海量数据、财务因子或真实新闻；`focus` 只表示优先观察或进入 paper 小仓位验证。
 - A 股强势回踩确认战法是研究候选策略，不是“稳赚”或“实盘收割”承诺；接入授权历史行情、样本外验证和模拟盘观察前，不应作为真实下单依据。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
 - 当前没有事务型数据库或已启用的用户认证，也没有真实账户连接或真实券商执行。
