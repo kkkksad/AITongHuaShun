@@ -55,6 +55,12 @@ JSON 仓储仅用于本地单进程模拟，不具备数据库事务、多实例
 npm run dev
 ```
 
+接入 A 股真实只读行情并继续使用模拟交易时，推荐使用：
+
+```powershell
+npm run dev:a-share
+```
+
 默认地址：
 
 - 前端：`http://127.0.0.1:4173/`
@@ -81,9 +87,12 @@ MARKET_MODE=paper
 MARKET_DATA_PROVIDER=akshare
 AKSHARE_BRIDGE_URL=http://127.0.0.1:8800
 AKSHARE_BRIDGE_TOKEN=
+AKSHARE_BRIDGE_DISABLE_PROXY=true
 ```
 
-然后先运行 `python akshare-bridge/main.py`。真实行情只替换行情提供者，订单仍由本地 `PaperBroker` 模拟执行。
+然后先运行 `python akshare-bridge/main.py`，或直接使用 `npm run dev:a-share` 同时启动行情桥、API 和前端。真实行情只替换行情提供者，订单仍由本地 `PaperBroker` 模拟执行。
+
+`AKSHARE_BRIDGE_DISABLE_PROXY=true` 会让 AkShare 桥接绕过本机系统代理，避免东方财富行情接口被代理连接中断；如需显式走代理，可在 `.env.local` 中设为 `false`。
 
 前端视图可直接访问：
 
@@ -161,7 +170,7 @@ Invoke-RestMethod `
 
 1. `npm test`：25 个测试文件、461 项测试全部通过。
 2. `npm run build`：TypeScript 检查与 Vite 生产构建通过。
-3. `python -m pytest akshare-bridge/test_bridge.py -q`：10 项测试通过。
+3. `python -m pytest akshare-bridge/test_bridge.py -q`：13 项测试通过。
 4. 测试覆盖回测、参数优化、风险、限价单、撤单、契约、JSON 恢复、HTTP/AkShare 行情适配器、监控、导出和 Fastify API。
 5. API 测试验证 Helmet、安全限流、OpenAPI 和能力声明；生产构建无 CSS 语法警告。
 

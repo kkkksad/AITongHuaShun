@@ -5,13 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n API,WEB -c yellow,blue \"npm run dev:api\" \"npm run dev:web\"",
-    "dev:web": "vite --configLoader runner --host 127.0.0.1 --port 4173 --strictPort",
+    "dev:a-share": "concurrently -k -n DATA,API,WEB -c green,yellow,blue \"npm run dev:market\" \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:market": "python akshare-bridge/main.py",
+    "dev:web": "vite --config config/vite.app.config.js --configLoader runner --host 127.0.0.1 --port 4173 --strictPort",
     "dev:api": "tsx watch server/index.ts",
     "dev:debug": "npm run dev",
     "start:api": "tsx server/index.ts",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build --config config/vite.app.config.js --configLoader runner",
     "build:analyze": "vite build --config vite.analyze.config.ts",
-    "test": "vitest run",
+    "test": "npm run test:server && npm run test:web",
+    "test:server": "vitest run --dir server --environment node",
+    "test:web": "vitest run --dir src --environment jsdom",
     "test:watch": "vitest"
   },
   "dependencies": {

@@ -26,13 +26,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          // Framework vendors — stable, cache-friendly
           vendor: ["react", "react-dom", "react-router-dom"],
-          // Query layer
           query: ["@tanstack/react-query"],
-          // Heavy charting library
           charts: ["recharts"],
-          // Icon library
           icons: ["lucide-react"],
         },
       },

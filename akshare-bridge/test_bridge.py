@@ -13,7 +13,14 @@ from fastapi.testclient import TestClient
 # Mock akshare before importing main
 sys.modules["akshare"] = MagicMock()
 
-from main import app, QuotesResponse, MarketQuote, QuoteCache
+from main import (
+    app,
+    QuotesResponse,
+    MarketQuote,
+    QuoteCache,
+    fetch_a_share_spot_dataframe,
+    normalize_a_share_symbol,
+)
 
 client = TestClient(app)
 
@@ -64,6 +71,26 @@ class TestQuoteCache:
         cache = QuoteCache(ttl_sec=3.0)
         assert cache.count == 0
         assert cache.age_sec == float("inf")
+
+    def test_fetch_falls_back_when_eastmoney_source_fails(self):
+        fallback_df = MagicMock()
+        fallback_df.__len__.return_value = 1
+        with patch("main.ak.stock_zh_a_spot_em", side_effect=RuntimeError("blocked")):
+            with patch("main.ak.stock_zh_a_spot", return_value=fallback_df):
+                assert fetch_a_share_spot_dataframe() is fallback_df
+
+    def test_fetch_raises_last_error_when_all_sources_fail(self):
+        with patch("main.ak.stock_zh_a_spot_em", side_effect=RuntimeError("blocked")):
+            with patch("main.ak.stock_zh_a_spot", side_effect=RuntimeError("offline")):
+                with pytest.raises(RuntimeError, match="offline"):
+                    fetch_a_share_spot_dataframe()
+
+    def test_symbol_normalization_accepts_market_prefixes(self):
+        assert normalize_a_share_symbol("sh600519") == "600519"
+        assert normalize_a_share_symbol("sz000001") == "000001"
+        assert normalize_a_share_symbol("bj920000") == "920000"
+        assert normalize_a_share_symbol("600036") == "600036"
+        assert normalize_a_share_symbol("not-a-symbol") is None
 
 
 class TestMarketQuoteModel:

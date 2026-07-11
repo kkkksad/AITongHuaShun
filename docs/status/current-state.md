@@ -29,7 +29,7 @@
 - **审计与交易记录导出** —— 支持 CSV（含 UTF-8 BOM）和 JSON 格式导出审计日志和订单记录。
 - **OpenAPI 契约** —— Swagger UI 位于 `/documentation`，JSON 文档位于 `/documentation/json`。
 - **能力声明** —— `/api/capabilities` 明确返回行情来源、只读属性、纸面执行和凭据边界。
-- **真实只读行情模式** —— `MARKET_DATA_PROVIDER=akshare` 与 `MARKET_MODE=paper` 可使用 AkShare 行情驱动本地模拟账户。
+- **真实只读行情模式** —— `MARKET_DATA_PROVIDER=akshare` 与 `MARKET_MODE=paper` 可使用 AkShare 行情驱动本地模拟账户；桥接默认绕过本机代理，并在东方财富源不可用时降级到 AkShare 备用 A 股实时源。
 - **东方财富只读行情原型** —— `EastMoneyMarketProvider` 可读取公开行情并拒绝 `live`，当前尚未接入主服务的 `MARKET_DATA_PROVIDER` 选择器。
 - **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
 - **认证安全原型** —— `server/auth.ts` 提供显式配置、短期 HMAC 令牌和恒定时间凭据比较，但尚未注册到主 Fastify 服务，不保护当前 API。
@@ -71,7 +71,10 @@ npm run build
 TypeScript checks and Vite production build passed
 
 python -m pytest akshare-bridge/test_bridge.py -q
-10 tests passed
+13 tests passed
+
+AkShare A 股行情源验证
+Parsed 5,529 A-share quotes through bridge fallback
 ```
 
 ## 架构进展

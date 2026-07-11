@@ -29,6 +29,7 @@ AKSHARE_BRIDGE_PORT=8800 python main.py
 | `AKSHARE_BRIDGE_PORT` | `8800` | 监听端口 |
 | `AKSHARE_BRIDGE_CACHE_TTL` | `3.0` | 行情缓存有效期（秒） |
 | `AKSHARE_BRIDGE_TOKEN` | (空) | 服务端 API 认证令牌（不设置则不校验） |
+| `AKSHARE_BRIDGE_DISABLE_PROXY` | `true` | 拉取东方财富行情时默认绕过系统代理，避免本机代理中断行情连接 |
 | `AKSHARE_BRIDGE_ORIGINS` | `http://127.0.0.1:8787` | 允许的来源，多个值使用逗号分隔 |
 
 ### API
@@ -47,6 +48,7 @@ GET /api/health
   "service": "akshare-market-bridge",
   "cachedSymbols": 5200,
   "cacheAgeSec": 1.2,
+  "proxyDisabled": true,
   "timestamp": "2026-07-11T03:00:00Z"
 }
 ```
@@ -96,9 +98,11 @@ const market = new AkShareMarketProvider({
 ### 数据来源
 
 使用 [AkShare](https://github.com/akfamily/akshare) 开源金融数据接口：
-- `ak.stock_zh_a_spot_em()` —— 东方财富沪深京 A 股实时行情
-- 支持全部 A 股（沪深北交所）实时数据
-- 数据延迟约 3-5 秒（取决于东方财富源）
+- 优先使用 `ak.stock_zh_a_spot_em()` —— 东方财富沪深京 A 股实时行情。
+- 当东方财富接口被本机网络或代理中断时，自动降级到 `ak.stock_zh_a_spot()`。
+- 备用源返回的 `sh/sz/bj` 前缀代码会统一归一化为 6 位证券代码。
+- 支持全部 A 股（沪深北交所）实时数据。
+- 数据延迟取决于 AkShare 当前可用来源；备用源通常更慢但在受限网络下更稳定。
 
 ### 性能说明
 
