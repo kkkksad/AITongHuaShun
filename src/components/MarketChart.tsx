@@ -9,15 +9,67 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import type { MarketQuote, MarketSnapshot } from "../../shared/trading";
 import { intradayData } from "../data/mockData";
 
-export function MarketChart() {
+interface MarketChartProps {
+  market?: MarketSnapshot;
+}
+
+function findPrimaryIndex(market?: MarketSnapshot): MarketQuote | undefined {
+  return market?.quotes.find((quote) => quote.symbol === "SH000001")
+    ?? market?.quotes.find((quote) => !quote.tradable && quote.price > 0);
+}
+
+function buildIndexSnapshotData(index?: MarketQuote) {
+  if (!index) {
+    return intradayData;
+  }
+
+  const points = [
+    { time: "昨收", price: index.previousClose, average: index.previousClose, volume: 0 },
+    { time: "今开", price: index.open ?? index.previousClose, average: index.previousClose, volume: 0 },
+    { time: "最低", price: index.low ?? index.price, average: index.previousClose, volume: 0 },
+    { time: "最新", price: index.price, average: index.previousClose, volume: index.amount ? index.amount / 100_000_000 : 0 },
+    { time: "最高", price: index.high ?? index.price, average: index.previousClose, volume: 0 },
+  ];
+
+  return points.filter((point) => Number.isFinite(point.price) && point.price > 0);
+}
+
+function buildPriceDomain(data: Array<{ price: number; average: number }>): [number, number] {
+  const values = data.flatMap((point) => [point.price, point.average]).filter((value) => Number.isFinite(value));
+  if (values.length === 0) {
+    return [3480, 3545];
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const padding = Math.max((max - min) * 0.15, max * 0.003);
+  return [Number((min - padding).toFixed(2)), Number((max + padding).toFixed(2))];
+}
+
+function formatAsOf(value?: string): string {
+  if (!value) {
+    return "静态演示";
+  }
+  return new Date(value).toLocaleString("zh-CN", { hour12: false });
+}
+
+export function MarketChart({ market }: MarketChartProps) {
+  const primaryIndex = findPrimaryIndex(market);
+  const chartData = buildIndexSnapshotData(primaryIndex);
+  const priceDomain = buildPriceDomain(chartData);
+  const title = primaryIndex ? `${primaryIndex.name} 日内快照` : "分时走势与成交量";
+  const kicker = primaryIndex ? primaryIndex.symbol : "静态演示";
+  const asOf = formatAsOf(primaryIndex?.updatedAt ?? market?.marketTime);
+
   return (
     <section className="panel market-chart-panel">
       <div className="panel-header">
         <div>
-          <span className="section-kicker">上证指数</span>
-          <h2>分时走势与成交量</h2>
+          <span className="section-kicker">{kicker} · {asOf}</span>
+          <h2>{title}</h2>
         </div>
         <BarChart3 size={20} />
       </div>
@@ -33,7 +85,7 @@ export function MarketChart() {
             />
             <YAxis
               axisLine={false}
-              domain={[3480, 3545]}
+              domain={priceDomain}
               tick={{ fill: "#7a8190", fontSize: 11 }}
               tickLine={false}
               width={42}
@@ -43,8 +95,8 @@ export function MarketChart() {
             <Tooltip
               contentStyle={{ border: "1px solid #dfe3ea", borderRadius: 6 }}
               formatter={(value: number, name: string) => [
-                name === "volume" ? `${value} 亿` : value.toFixed(2),
-                name === "price" ? "指数" : name === "average" ? "均价" : "成交量",
+                name === "volume" ? `${value.toFixed(2)} 亿元` : value.toFixed(2),
+                name === "price" ? "点位" : name === "average" ? "昨收" : "成交额",
               ]}
             />
             <Bar dataKey="volume" fill="#dce6f5" maxBarSize={22} yAxisId="volume" />

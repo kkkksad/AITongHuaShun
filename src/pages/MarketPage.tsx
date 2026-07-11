@@ -16,7 +16,7 @@ export default function MarketPage({ trading }: MarketPageProps) {
         market={trading.market}
       />
       <div className="two-column wide-left">
-        <MarketChart />
+        <MarketChart market={trading.market} />
         <FlowPanel />
       </div>
       <NewsPanel />

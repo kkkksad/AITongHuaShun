@@ -12,7 +12,18 @@ function formatVolume(volume: number): string {
   return `${(volume / 100_000_000).toFixed(2)} 亿`;
 }
 
+function formatAmount(amount?: number): string {
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) {
+    return "暂无";
+  }
+  return `${(amount / 100_000_000).toFixed(2)} 亿`;
+}
+
 export function MarketOverview({ market, connectionState }: MarketOverviewProps) {
+  const fallbackIndices = marketIndices.map((index) => ({
+    ...index,
+    metricLabel: "成交量",
+  }));
   const liveIndices = market?.quotes
     .filter((quote) => !quote.tradable && quote.price > 0)
     .map((quote) => ({
@@ -20,9 +31,10 @@ export function MarketOverview({ market, connectionState }: MarketOverviewProps)
       name: quote.name,
       value: quote.price,
       change: quote.changePercent,
-      turnover: formatVolume(quote.volume),
+      turnover: quote.amount ? formatAmount(quote.amount) : formatVolume(quote.volume),
+      metricLabel: quote.amount ? "成交额" : "成交量",
     }));
-  const indices = liveIndices && liveIndices.length > 0 ? liveIndices : marketIndices;
+  const indices = liveIndices && liveIndices.length > 0 ? liveIndices : fallbackIndices;
   const asOf = market
     ? new Date(market.marketTime).toLocaleString("zh-CN", { hour12: false })
     : "静态演示快照";
@@ -62,7 +74,7 @@ export function MarketOverview({ market, connectionState }: MarketOverviewProps)
                 )}
                 {index.change.toFixed(2)}%
               </span>
-              <span>成交量 {index.turnover}</span>
+              <span>{index.metricLabel ?? "成交量"} {index.turnover}</span>
             </div>
           </article>
         ))}

@@ -294,7 +294,7 @@ function App() {
       </Suspense>
       <div className="two-column wide-left">
         <Suspense fallback={<LazyFallback />}>
-          <MarketChart />
+          <MarketChart market={trading.market} />
         </Suspense>
         <Suspense fallback={<LazyFallback />}>
           <FlowPanel />
