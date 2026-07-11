@@ -86,6 +86,14 @@ class QuotesResponse(BaseModel):
     quotes: list[MarketQuote]
 
 
+INDEX_SYMBOL_MAP = {
+    "000001": "SH000001",  # 上证指数
+    "399001": "SZ399001",  # 深证成指
+    "399006": "SZ399006",  # 创业板指
+    "000300": "SH000300",  # 沪深300
+}
+
+
 # ── 行情缓存 ──────────────────────────────────────────────
 
 class QuoteCache:
@@ -200,6 +208,103 @@ class QuoteCache:
         return time.time() - self._last_update
 
 
+class IndexCache:
+    """内存指数行情缓存，和个股行情分开维护，避免 000001 代码冲突。"""
+
+    def __init__(self, ttl_sec: float = 3.0):
+        self.ttl_sec = ttl_sec
+        self._data: dict[str, MarketQuote] = {}
+        self._last_update: float = 0
+        self._lock = asyncio.Lock()
+
+    async def refresh(self) -> None:
+        async with self._lock:
+            now = time.time()
+            if now - self._last_update < self.ttl_sec:
+                return
+
+            try:
+                loop = asyncio.get_running_loop()
+                df = await loop.run_in_executor(None, fetch_a_share_index_dataframe)
+                self._parse_dataframe(df)
+                self._last_update = now
+                logger.info(
+                    "指数缓存已刷新，%d 个指数，耗时 %.1fs",
+                    len(self._data),
+                    time.time() - now,
+                )
+            except Exception as e:
+                logger.error("刷新指数行情失败: %s", e)
+                if not self._data:
+                    raise
+
+    def _safe_float(self, value, default: float = 0.0) -> float | None:
+        if value is None:
+            return None
+        try:
+            v = float(value)
+            if v == 0:
+                return None
+            return v
+        except (ValueError, TypeError):
+            return None
+
+    def _parse_dataframe(self, df) -> None:
+        new_data: dict[str, MarketQuote] = {}
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+
+        for _, row in df.iterrows():
+            try:
+                symbol = normalize_index_symbol(row.get("代码", ""))
+                if symbol is None:
+                    continue
+
+                name = str(row.get("名称", symbol))
+                price = float(row.get("最新价", 0) or 0)
+                previous_close = float(row.get("昨收", 0) or 0)
+                change_pct = float(row.get("涨跌幅", 0) or 0)
+                volume = int(float(row.get("成交量", 0) or 0))
+
+                new_data[symbol] = MarketQuote(
+                    symbol=symbol,
+                    name=name,
+                    tradable=False,
+                    price=price,
+                    previousClose=previous_close,
+                    changePercent=change_pct,
+                    volume=volume,
+                    updatedAt=now_iso,
+                    open=self._safe_float(row.get("今开")),
+                    high=self._safe_float(row.get("最高")),
+                    low=self._safe_float(row.get("最低")),
+                    amount=self._safe_float(row.get("成交额")),
+                    amplitude=self._safe_float(row.get("振幅")),
+                )
+            except (ValueError, TypeError):
+                continue
+
+        self._data = new_data
+
+    async def get_indices(self, symbols: list[str]) -> list[MarketQuote]:
+        await self.refresh()
+        results: list[MarketQuote] = []
+        for sym in symbols:
+            normalized = normalize_index_symbol(sym)
+            if normalized in self._data:
+                results.append(self._data[normalized])
+        return results
+
+    @property
+    def count(self) -> int:
+        return len(self._data)
+
+    @property
+    def age_sec(self) -> float:
+        if self._last_update == 0:
+            return float("inf")
+        return time.time() - self._last_update
+
+
 def fetch_a_share_spot_dataframe():
     """Fetch A-share spot quotes with provider fallback.
 
@@ -232,6 +337,32 @@ def fetch_a_share_spot_dataframe():
     raise last_error
 
 
+def fetch_a_share_index_dataframe():
+    """Fetch A-share index spot quotes with provider fallback."""
+    providers = (
+        ("eastmoney-index", ak.stock_zh_index_spot_em),
+    )
+    last_error: Exception | None = None
+
+    for provider_name, provider in providers:
+        started_at = time.time()
+        try:
+            df = provider()
+            logger.info(
+                "指数源 %s 返回 %d 行，耗时 %.1fs",
+                provider_name,
+                len(df),
+                time.time() - started_at,
+            )
+            return df
+        except Exception as exc:
+            last_error = exc
+            logger.warning("指数源 %s 失败，尝试下一个来源: %s", provider_name, exc)
+
+    assert last_error is not None
+    raise last_error
+
+
 def normalize_a_share_symbol(value: object) -> str | None:
     """Normalize AkShare symbols like sh600519, sz000001, bj920000 to 6 digits."""
     raw = str(value).strip().lower()
@@ -241,9 +372,24 @@ def normalize_a_share_symbol(value: object) -> str | None:
     return match.group(1)
 
 
+def normalize_index_symbol(value: object) -> str | None:
+    """Normalize index symbols and namespace them to avoid stock-code collisions."""
+    raw = str(value).strip().upper()
+    match = re.search(r"(\d{6})", raw)
+    if match is None:
+        return None
+    code = match.group(1)
+    if raw.startswith("SH") or raw.endswith(".SH"):
+        return f"SH{code}"
+    if raw.startswith("SZ") or raw.endswith(".SZ"):
+        return f"SZ{code}"
+    return INDEX_SYMBOL_MAP.get(code, code)
+
+
 # ── 应用生命周期 ──────────────────────────────────────────
 
 cache = QuoteCache(ttl_sec=CACHE_TTL_SEC)
+index_cache = IndexCache(ttl_sec=CACHE_TTL_SEC)
 
 
 @asynccontextmanager
@@ -255,6 +401,11 @@ async def lifespan(app: FastAPI):
         logger.info("初始行情加载完成，共 %d 只标的", cache.count)
     except Exception as e:
         logger.error("初始行情加载失败: %s", e)
+    try:
+        await index_cache.refresh()
+        logger.info("初始指数行情加载完成，共 %d 个指数", index_cache.count)
+    except Exception as e:
+        logger.error("初始指数行情加载失败: %s", e)
     yield
     logger.info("服务关闭")
 
@@ -305,6 +456,7 @@ async def health():
         "status": "ok",
         "service": "akshare-market-bridge",
         "cachedSymbols": cache.count,
+        "cachedIndices": index_cache.count,
         "cacheAgeSec": None
         if cache_age == float("inf")
         else round(cache_age, 1),
@@ -337,6 +489,30 @@ async def get_quotes(
     except Exception as e:
         logger.error("获取行情失败: %s", e)
         raise HTTPException(status_code=502, detail=f"行情数据获取失败: {e}")
+
+    return QuotesResponse(quotes=quotes)
+
+
+@app.get("/api/market/indices", response_model=QuotesResponse)
+async def get_indices(
+    symbols: str = Query(
+        "SH000001,SZ399001,SZ399006,SH000300",
+        description="逗号分隔的指数代码，如 SH000001,SZ399001,SZ399006,SH000300",
+    ),
+):
+    """获取主要 A 股指数实时行情，和个股行情接口分开，避免代码冲突。"""
+    symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    if not symbol_list:
+        raise HTTPException(status_code=400, detail="symbols 参数不能为空")
+
+    if len(symbol_list) > 50:
+        raise HTTPException(status_code=400, detail="单次最多查询 50 个指数")
+
+    try:
+        quotes = await index_cache.get_indices(symbol_list)
+    except Exception as e:
+        logger.error("获取指数行情失败: %s", e)
+        raise HTTPException(status_code=502, detail=f"指数行情数据获取失败: {e}")
 
     return QuotesResponse(quotes=quotes)
 

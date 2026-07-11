@@ -10,6 +10,7 @@ export interface HttpMarketConfig {
   tickMs: number;
   mode: TradingMode;
   symbols: string[];
+  indexSymbols?: string[];
   apiKey?: string;
   timeout?: number;
   headers?: Record<string, string>;
@@ -38,7 +39,11 @@ export class HttpMarketProvider
   extends EventEmitter
   implements MarketDataProvider
 {
-  private readonly cfg: HttpMarketConfig & { timeout: number; headers: Record<string, string> };
+  private readonly cfg: HttpMarketConfig & {
+    indexSymbols: string[];
+    timeout: number;
+    headers: Record<string, string>;
+  };
   private readonly quotes = new Map<string, MarketQuote>();
   private sequence = 0;
   private timer?: NodeJS.Timeout;
@@ -50,6 +55,7 @@ export class HttpMarketProvider
     super();
     this.cfg = {
       ...config,
+      indexSymbols: config.indexSymbols ?? [],
       timeout: config.timeout ?? 10_000,
       headers: config.headers ?? {},
     };
@@ -59,6 +65,19 @@ export class HttpMarketProvider
         symbol,
         name: symbol,
         tradable: true,
+        price: 0,
+        previousClose: 0,
+        changePercent: 0,
+        volume: 0,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    for (const symbol of this.cfg.indexSymbols) {
+      this.quotes.set(symbol, {
+        symbol,
+        name: symbol,
+        tradable: false,
         price: 0,
         previousClose: 0,
         changePercent: 0,
@@ -128,8 +147,23 @@ export class HttpMarketProvider
   }
 
   private async fetchQuotes(): Promise<MarketQuote[]> {
-    const symbols = this.cfg.symbols.join(",");
-    const url = `${this.cfg.baseUrl}/api/market/quotes?symbols=${encodeURIComponent(symbols)}`;
+    const [stockQuotes, indexQuotes] = await Promise.all([
+      this.fetchQuoteEndpoint("/api/market/quotes", this.cfg.symbols),
+      this.fetchQuoteEndpoint("/api/market/indices", this.cfg.indexSymbols),
+    ]);
+    return [...stockQuotes, ...indexQuotes];
+  }
+
+  private async fetchQuoteEndpoint(
+    endpoint: string,
+    symbols: string[],
+  ): Promise<MarketQuote[]> {
+    if (symbols.length === 0) {
+      return [];
+    }
+
+    const symbolQuery = symbols.join(",");
+    const url = `${this.cfg.baseUrl}${endpoint}?symbols=${encodeURIComponent(symbolQuery)}`;
 
     const headers: Record<string, string> = {
       "Accept": "application/json",

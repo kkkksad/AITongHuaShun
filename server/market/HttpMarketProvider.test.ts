@@ -23,6 +23,7 @@ function makeConfig(overrides: Partial<HttpMarketConfig> = {}): HttpMarketConfig
     tickMs: 500,
     mode: "paper",
     symbols: ["600519", "000001"],
+    indexSymbols: [],
     ...overrides,
   };
 }
@@ -100,6 +101,17 @@ describe("HttpMarketProvider 构造函数", () => {
     const provider = new HttpMarketProvider(makeConfig({ symbols: [] }));
     const snapshot = provider.getSnapshot();
     expect(snapshot.quotes).toHaveLength(0);
+  });
+
+  it("指数标的以不可交易报价初始化", () => {
+    const provider = new HttpMarketProvider(
+      makeConfig({ symbols: ["600519"], indexSymbols: ["SH000001"] }),
+    );
+
+    const snapshot = provider.getSnapshot();
+    const indexQuote = snapshot.quotes.find((q) => q.symbol === "SH000001");
+    expect(indexQuote).toBeDefined();
+    expect(indexQuote!.tradable).toBe(false);
   });
 });
 
@@ -414,7 +426,7 @@ describe("HttpMarketProvider fetch 响应处理", () => {
     const provider = new HttpMarketProvider(makeConfig());
 
     // tick 触发 fetch
-    provider.tick();
+    provider.start();
 
     // 等待异步 fetch 完成
     await vi.waitFor(
@@ -443,7 +455,7 @@ describe("HttpMarketProvider fetch 响应处理", () => {
     const provider = new HttpMarketProvider(makeConfig({ symbols: ["600519"] }));
     const snapshotBefore = provider.getSnapshot();
 
-    provider.tick();
+    provider.start();
 
     // 快照应不变
     await new Promise((resolve) => setTimeout(resolve, 100));
@@ -465,7 +477,7 @@ describe("HttpMarketProvider fetch 响应处理", () => {
     const provider = new HttpMarketProvider(makeConfig({ symbols: ["600519"] }));
     const snapshotBefore = provider.getSnapshot();
 
-    provider.tick();
+    provider.start();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     // 快照应不变
@@ -484,7 +496,7 @@ describe("HttpMarketProvider fetch 响应处理", () => {
     const provider = new HttpMarketProvider(makeConfig({ symbols: ["600519"] }));
     const snapshotBefore = provider.getSnapshot();
 
-    provider.tick();
+    provider.start();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const snapshotAfter = provider.getSnapshot();
@@ -516,7 +528,7 @@ describe("HttpMarketProvider fetch 响应处理", () => {
       makeConfig({ apiKey, symbols: ["600519"] }),
     );
 
-    provider.tick();
+    provider.start();
     await vi.waitFor(
       () => {
         if (fetchMock.mock.calls.length > 0) {
@@ -557,7 +569,7 @@ describe("HttpMarketProvider fetch 响应处理", () => {
       }),
     );
 
-    provider.tick();
+    provider.start();
     await vi.waitFor(
       () => {
         if (fetchMock.mock.calls.length > 0) {
@@ -572,6 +584,58 @@ describe("HttpMarketProvider fetch 响应处理", () => {
       { timeout: 2000 },
     );
 
+    provider.stop();
+  });
+
+  it("同时请求个股与指数行情并合并快照", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/market/indices")) {
+        return Promise.resolve(
+          mockFetchResponse([
+            {
+              symbol: "SH000001",
+              name: "上证指数",
+              tradable: false,
+              price: 3100,
+              previousClose: 3080,
+              changePercent: 0.65,
+              volume: 12_000_000_000,
+              updatedAt: "2024-06-15T10:00:00Z",
+            },
+          ]),
+        );
+      }
+      return Promise.resolve(
+        mockFetchResponse([
+          {
+            symbol: "600519",
+            name: "MT",
+            tradable: true,
+            price: 1500,
+            previousClose: 1490,
+            changePercent: 0.67,
+            volume: 1_000_000,
+            updatedAt: "2024-06-15T10:00:00Z",
+          },
+        ]),
+      );
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new HttpMarketProvider(
+      makeConfig({ symbols: ["600519"], indexSymbols: ["SH000001"] }),
+    );
+
+    provider.start();
+    await vi.waitFor(
+      () => {
+        expect(provider.getQuote("600519")?.price).toBe(1500);
+        expect(provider.getQuote("SH000001")?.price).toBe(3100);
+        expect(provider.getQuote("SH000001")?.tradable).toBe(false);
+      },
+      { timeout: 2000 },
+    );
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("/api/market/indices"))).toBe(true);
     provider.stop();
   });
 
@@ -590,7 +654,7 @@ describe("HttpMarketProvider fetch 响应处理", () => {
 
     const provider = new HttpMarketProvider(makeConfig({ symbols: ["600519"] }));
 
-    provider.tick();
+    provider.start();
     await vi.waitFor(
       () => {
         const quote = provider.getQuote("600519");

@@ -29,7 +29,7 @@
 - **审计与交易记录导出** —— 支持 CSV（含 UTF-8 BOM）和 JSON 格式导出审计日志和订单记录。
 - **OpenAPI 契约** —— Swagger UI 位于 `/documentation`，JSON 文档位于 `/documentation/json`。
 - **能力声明** —— `/api/capabilities` 明确返回行情来源、只读属性、纸面执行和凭据边界。
-- **真实只读行情模式** —— `MARKET_DATA_PROVIDER=akshare` 与 `MARKET_MODE=paper` 可使用 AkShare 行情驱动本地模拟账户；桥接默认绕过本机代理，并在东方财富源不可用时降级到 AkShare 备用 A 股实时源。
+- **真实只读行情模式** —— `MARKET_DATA_PROVIDER=akshare` 与 `MARKET_MODE=paper` 可使用 AkShare 个股与主要指数行情驱动本地模拟账户；桥接默认绕过本机代理，并在东方财富个股源不可用时降级到 AkShare 备用 A 股实时源。指数代码使用 `SH000001`、`SZ399001` 等命名空间，避免和个股 `000001` 混用。
 - **东方财富只读行情原型** —— `EastMoneyMarketProvider` 可读取公开行情并拒绝 `live`，当前尚未接入主服务的 `MARKET_DATA_PROVIDER` 选择器。
 - **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
 - **认证安全原型** —— `server/auth.ts` 提供显式配置、短期 HMAC 令牌和恒定时间凭据比较，但尚未注册到主 Fastify 服务，不保护当前 API。
@@ -65,18 +65,19 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
-npm test
-25 test files passed
-462 tests passed (0 failures)
+2026-07-11 指数行情修复聚焦验证
+
+python -m pytest akshare-bridge/test_bridge.py -q
+19 tests passed, 1 warning
+
+npm run test:server -- server/market/HttpMarketProvider.test.ts server/market/AkShareProvider.test.ts
+2 test files passed
+37 tests passed
 
 npm run build
 TypeScript checks and Vite production build passed
 
-python -m pytest akshare-bridge/test_bridge.py -q
-13 tests passed
-
-AkShare A 股行情源验证
-Parsed 5,529 A-share quotes through bridge fallback
+完整 npm test 未在本次验证中重跑；工作区还有数据质量与策略排行榜相关的未提交改动。
 ```
 
 ## 架构进展
@@ -155,7 +156,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 
 ## 当前边界
 
-- 默认行情、资金流、新闻、账户与订单数据仍是本地模拟数据；可选 AkShare 行情是只读外部数据。
+- 默认行情、资金流、新闻、账户与订单数据仍是本地模拟数据；可选 AkShare 个股与主要指数行情是只读外部数据。
 - 回测和模拟成交不代表真实策略收益，也不构成投资建议。
 - 策略研究排行榜当前使用确定性合成历史样本，不是授权历史行情或真实收益记录。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
@@ -164,6 +165,6 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。
 - AkShare 模式必须使用 `MARKET_MODE=paper`，真实行情不改变订单执行权限。
 - 当前没有任何真实订单执行代码。
-- 新闻、资金流和分时图仍使用前端静态模拟数据。
+- 新闻、资金流和分时图仍使用前端静态模拟数据；主要指数卡片在 AkShare 模式下使用只读指数行情。
 
 本页只记录可从仓库核实的当前事实。目标设计写入 `architecture/`，产品意图写入 `product/`，实施步骤写入 `plans/`。

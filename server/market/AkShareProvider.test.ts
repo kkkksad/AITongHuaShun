@@ -1,6 +1,7 @@
 ﻿import { describe, expect, it } from "vitest";
 import {
   AkShareMarketProvider,
+  AKSHARE_DEFAULT_INDEX_SYMBOLS,
   AKSHARE_DEFAULT_SYMBOLS,
 } from "./AkShareProvider";
 
@@ -11,13 +12,16 @@ describe("AkShareMarketProvider", () => {
     // 验证默认配置：构造不抛异常
     const snapshot = provider.tick();
     expect(snapshot.mode).toBe("paper");
-    expect(snapshot.quotes.length).toBe(AKSHARE_DEFAULT_SYMBOLS.length);
+    expect(snapshot.quotes.length).toBe(
+      AKSHARE_DEFAULT_SYMBOLS.length + AKSHARE_DEFAULT_INDEX_SYMBOLS.length,
+    );
   });
 
   it("accepts custom baseUrl", () => {
     const provider = new AkShareMarketProvider({
       baseUrl: "http://akshare:8800",
       symbols: ["600519"],
+      indexSymbols: [],
     });
 
     const snapshot = provider.tick();
@@ -28,6 +32,7 @@ describe("AkShareMarketProvider", () => {
   it("accepts custom symbols and mode", () => {
     const provider = new AkShareMarketProvider({
       symbols: ["000001", "000858"],
+      indexSymbols: [],
       mode: "paper",
       tickMs: 10000,
     });
@@ -39,7 +44,7 @@ describe("AkShareMarketProvider", () => {
   });
 
   it("implements MarketDataProvider contract", () => {
-    const provider = new AkShareMarketProvider({ symbols: ["600519"] });
+    const provider = new AkShareMarketProvider({ symbols: ["600519"], indexSymbols: [] });
 
     // 不调用 start() 的 tick 也应返回有效快照
     const snapshot1 = provider.tick();
@@ -60,7 +65,7 @@ describe("AkShareMarketProvider", () => {
   });
 
   it("emits snapshot event on tick", () => {
-    const provider = new AkShareMarketProvider({ symbols: ["600519"] });
+    const provider = new AkShareMarketProvider({ symbols: ["600519"], indexSymbols: [] });
 
     let emitted = false;
     provider.on("snapshot", () => {
@@ -71,18 +76,27 @@ describe("AkShareMarketProvider", () => {
     expect(emitted).toBe(true);
   });
 
-  it("default symbols are all tradable", () => {
+  it("default stock symbols are tradable and index symbols are display-only", () => {
     const provider = new AkShareMarketProvider();
     const snapshot = provider.tick();
 
-    for (const quote of snapshot.quotes) {
-      expect(quote.tradable).toBe(true);
+    for (const symbol of AKSHARE_DEFAULT_SYMBOLS) {
+      expect(provider.getQuote(symbol)?.tradable).toBe(true);
     }
+
+    for (const symbol of AKSHARE_DEFAULT_INDEX_SYMBOLS) {
+      expect(provider.getQuote(symbol)?.tradable).toBe(false);
+    }
+
+    expect(snapshot.quotes.length).toBe(
+      AKSHARE_DEFAULT_SYMBOLS.length + AKSHARE_DEFAULT_INDEX_SYMBOLS.length,
+    );
   });
 
   it("stop after start does not throw", () => {
     const provider = new AkShareMarketProvider({
       symbols: ["600519"],
+      indexSymbols: [],
       tickMs: 60000, // Long interval to avoid actual fetch
     });
 

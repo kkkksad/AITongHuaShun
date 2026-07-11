@@ -18,8 +18,11 @@ from main import (
     QuotesResponse,
     MarketQuote,
     QuoteCache,
+    IndexCache,
     fetch_a_share_spot_dataframe,
+    fetch_a_share_index_dataframe,
     normalize_a_share_symbol,
+    normalize_index_symbol,
 )
 
 client = TestClient(app)
@@ -66,6 +69,24 @@ class TestQuotesEndpoint:
         assert "100" in response.json()["detail"]
 
 
+class TestIndicesEndpoint:
+    def test_indices_require_server_token_when_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/api/market/indices?symbols=SH000001")
+        assert response.status_code == 401
+
+    def test_empty_indices_returns_400(self):
+        response = client.get("/api/market/indices?symbols=")
+        assert response.status_code == 400
+        assert "不能为空" in response.json()["detail"]
+
+    def test_too_many_indices_returns_400(self):
+        symbols = ",".join([f"SH{i:06d}" for i in range(51)])
+        response = client.get(f"/api/market/indices?symbols={symbols}")
+        assert response.status_code == 400
+        assert "50" in response.json()["detail"]
+
+
 class TestQuoteCache:
     def test_cache_starts_empty(self):
         cache = QuoteCache(ttl_sec=3.0)
@@ -91,6 +112,26 @@ class TestQuoteCache:
         assert normalize_a_share_symbol("bj920000") == "920000"
         assert normalize_a_share_symbol("600036") == "600036"
         assert normalize_a_share_symbol("not-a-symbol") is None
+
+    def test_index_cache_starts_empty(self):
+        cache = IndexCache(ttl_sec=3.0)
+        assert cache.count == 0
+        assert cache.age_sec == float("inf")
+
+    def test_fetch_index_uses_eastmoney_source(self):
+        index_df = MagicMock()
+        index_df.__len__.return_value = 4
+        with patch("main.ak.stock_zh_index_spot_em", return_value=index_df):
+            assert fetch_a_share_index_dataframe() is index_df
+
+    def test_index_symbol_normalization_namespaces_indices(self):
+        assert normalize_index_symbol("000001") == "SH000001"
+        assert normalize_index_symbol("399001") == "SZ399001"
+        assert normalize_index_symbol("399006") == "SZ399006"
+        assert normalize_index_symbol("000300") == "SH000300"
+        assert normalize_index_symbol("SH000001") == "SH000001"
+        assert normalize_index_symbol("000001.SH") == "SH000001"
+        assert normalize_index_symbol("399001.SZ") == "SZ399001"
 
 
 class TestMarketQuoteModel:

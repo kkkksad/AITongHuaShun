@@ -19,6 +19,8 @@ export interface AkShareMarketConfig {
   baseUrl?: string;
   /** 监控的股票代码列表 */
   symbols?: string[];
+  /** 监控的指数代码列表，使用命名空间避免和个股代码冲突 */
+  indexSymbols?: string[];
   /** 轮询间隔（毫秒），建议 ≥3000 避免触发反爬 */
   tickMs?: number;
   /** 交易模式 */
@@ -41,6 +43,14 @@ export const AKSHARE_DEFAULT_SYMBOLS = [
   "688981", // 中芯国际
 ];
 
+/** A 股主要指数默认列表，和个股 000001 等代码分开命名 */
+export const AKSHARE_DEFAULT_INDEX_SYMBOLS = [
+  "SH000001", // 上证指数
+  "SZ399001", // 深证成指
+  "SZ399006", // 创业板指
+  "SH000300", // 沪深300
+];
+
 export class AkShareMarketProvider extends HttpMarketProvider {
   constructor(config: AkShareMarketConfig = {}) {
     const httpConfig: HttpMarketConfig = {
@@ -48,6 +58,7 @@ export class AkShareMarketProvider extends HttpMarketProvider {
       tickMs: config.tickMs ?? 5000, // AkShare 有反爬，默认 5s
       mode: config.mode ?? "paper",
       symbols: config.symbols ?? AKSHARE_DEFAULT_SYMBOLS,
+      indexSymbols: config.indexSymbols ?? AKSHARE_DEFAULT_INDEX_SYMBOLS,
       timeout: config.timeout ?? 15_000, // AkShare 可能较慢
       apiKey: config.apiKey || undefined,
     };
