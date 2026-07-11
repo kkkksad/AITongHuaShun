@@ -2,105 +2,18 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "KAIROS：后端 API",
-      "type": "node",
-      "request": "launch",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "--import",
-        "tsx"
-      ],
-      "program": "${workspaceFolder}/server/index.ts",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "skipFiles": [
-        "<node_internals>/**",
-        "${workspaceFolder}/node_modules/**"
-      ]
-    },
-    {
-      "name": "KAIROS：后端纸面交易（AkShare）",
-      "type": "node",
-      "request": "launch",
-      "runtimeExecutable": "node",
-      "runtimeArgs": [
-        "--import",
-        "tsx"
-      ],
-      "program": "${workspaceFolder}/server/index.ts",
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "env": {
-        "MARKET_MODE": "paper",
-        "MARKET_DATA_PROVIDER": "akshare",
-        "AKSHARE_BRIDGE_URL": "http://127.0.0.1:8800",
-        "REAL_TRADING_ENABLED": "false"
-      },
-      "skipFiles": [
-        "<node_internals>/**",
-        "${workspaceFolder}/node_modules/**"
-      ]
-    },
-    {
-      "name": "KAIROS：AkShare 行情桥接",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/akshare-bridge/main.py",
-      "cwd": "${workspaceFolder}/akshare-bridge",
-      "console": "integratedTerminal",
-      "justMyCode": true,
-      "envFile": "${workspaceFolder}/.env.local",
-      "env": {
-        "AKSHARE_BRIDGE_HOST": "127.0.0.1",
-        "AKSHARE_BRIDGE_PORT": "8800"
-      }
-    },
-    {
-      "name": "KAIROS：前端 React（总览）",
-      "type": "msedge",
-      "request": "launch",
-      "url": "http://127.0.0.1:4173",
-      "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "KAIROS：启动前端开发服务器",
-      "sourceMaps": true,
-      "smartStep": true,
-      "skipFiles": [
-        "<node_internals>/**",
-        "${workspaceFolder}/node_modules/**"
-      ]
-    },
-    {
-      "name": "KAIROS：前端 React（策略排行榜）",
+      "name": "▶ KAIROS：一键启动",
       "type": "msedge",
       "request": "launch",
       "url": "http://127.0.0.1:4173/strategy",
       "webRoot": "${workspaceFolder}",
-      "preLaunchTask": "KAIROS：启动前端开发服务器",
+      "preLaunchTask": "KAIROS：启动真实A股行情开发环境",
       "sourceMaps": true,
       "smartStep": true,
       "skipFiles": [
         "<node_internals>/**",
         "${workspaceFolder}/node_modules/**"
       ]
-    }
-  ],
-  "compounds": [
-    {
-      "name": "▶ KAIROS：一键启动真实 A 股行情 + 策略排行榜",
-      "configurations": [
-        "KAIROS：AkShare 行情桥接",
-        "KAIROS：后端纸面交易（AkShare）",
-        "KAIROS：前端 React（策略排行榜）"
-      ],
-      "stopAll": true
-    },
-    {
-      "name": "▶ KAIROS：一键启动模拟行情工作台",
-      "configurations": [
-        "KAIROS：后端 API",
-        "KAIROS：前端 React（总览）"
-      ],
-      "stopAll": true
     }
   ]
 }

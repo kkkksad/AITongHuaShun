@@ -2,47 +2,22 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "KAIROS：启动前端开发服务器",
+      "label": "KAIROS：启动真实A股行情开发环境",
       "type": "npm",
-      "script": "dev:web",
+      "script": "dev:a-share",
       "isBackground": true,
       "problemMatcher": {
-        "owner": "vite",
+        "owner": "kairos-dev",
         "pattern": {
           "regexp": "^(.*)$",
           "message": 1
         },
         "background": {
           "activeOnStart": true,
-          "beginsPattern": "VITE\\s+v",
+          "beginsPattern": ".*",
           "endsPattern": "Local:\\s+http://127\\.0\\.0\\.1:4173/"
         }
       },
-      "presentation": {
-        "reveal": "silent",
-        "panel": "dedicated",
-        "clear": true
-      },
-      "runOptions": {
-        "instanceLimit": 1
-      }
-    },
-    {
-      "label": "KAIROS：启动完整开发环境",
-      "type": "npm",
-      "script": "dev",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
-    },
-    {
-      "label": "KAIROS：启动真实A股行情开发环境",
-      "type": "npm",
-      "script": "dev:a-share",
-      "problemMatcher": [],
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
