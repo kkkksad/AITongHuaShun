@@ -174,6 +174,14 @@ AkShare 桥接还提供只读财经新闻和全球主要指数接口。Fastify �
 Invoke-RestMethod http://127.0.0.1:8787/api/research/paper-trading-plan
 ```
 
+如需把本地 paper 计划转成同花顺 SuperMind 可人工复核的模拟盘输入，可运行：
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:8787/api/integrations/supermind/signal-package"
+```
+
+该接口只输出信号行、CSV 和 SuperMind 云端策略模板示例。它不会登录同花顺、不会读取或保存密码/Cookie/浏览器 Token/短信验证码，也不会自动提交订单；复制到 SuperMind 前必须人工复核标的、数量、T+1、现金和一手 100 股约束。
+
 ## VS Code 一键启动
 
 仓库提供共享的 `.vscode/launch.json`、`tasks.json` 和 `settings.json`。
@@ -218,6 +226,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/market/snapshot
 Invoke-RestMethod http://127.0.0.1:8787/api/research/strategy-leaderboard
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-candidates
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-quality-stocks
+Invoke-RestMethod http://127.0.0.1:8787/api/integrations/supermind/signal-package
 Invoke-RestMethod http://127.0.0.1:8787/api/research/real-data-feed
 ```
 

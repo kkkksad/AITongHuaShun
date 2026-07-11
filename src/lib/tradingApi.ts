@@ -341,6 +341,45 @@ export interface PaperTradingPlan {
   guardrails: string[];
 }
 
+export type SuperMindSignalAction = "buy" | "sell" | "hold";
+
+export interface SuperMindSignalRow {
+  signalId: string;
+  tradingDate: string;
+  symbol: string;
+  name: string;
+  action: SuperMindSignalAction;
+  quantity: number;
+  price: number;
+  notional: number;
+  strategy: string;
+  reason: string;
+  sourceAction: PaperTradingOperationAction;
+  manualApprovalRequired: true;
+}
+
+export interface SuperMindSignalPackage {
+  generatedAt: string;
+  bridge: {
+    provider: "supermind";
+    mode: "signal-file-only";
+    execution: "manual-upload-or-review";
+    liveTradingEnabled: false;
+  };
+  sourcePlan: {
+    generatedAt: string;
+    tradingDate: string;
+    provider: string;
+    planQuality: PaperTradingPlanQualitySummary["planQuality"];
+    operationCount: number;
+  };
+  signals: SuperMindSignalRow[];
+  csv: string;
+  supermindTemplate: string;
+  nextSteps: string[];
+  guardrails: string[];
+}
+
 export type RealResearchSourceStatus =
   | "live-read-only"
   | "mock-disabled"
@@ -645,6 +684,12 @@ export function fetchLearningState(): Promise<LearningState> {
 
 export function fetchPaperTradingPlan(): Promise<PaperTradingPlan> {
   return authApiRequest<PaperTradingPlan>("/api/research/paper-trading-plan");
+}
+
+export function fetchSuperMindSignalPackage(): Promise<SuperMindSignalPackage> {
+  return authApiRequest<SuperMindSignalPackage>(
+    "/api/integrations/supermind/signal-package",
+  );
 }
 
 export function fetchRealResearchDataFeed(): Promise<RealResearchDataFeed> {

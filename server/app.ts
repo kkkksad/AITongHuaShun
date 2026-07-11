@@ -45,6 +45,7 @@ import { buildPaperTradingPlan } from "./research/paperTradingPlan";
 import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
+import { buildSuperMindSignalPackage } from "./research/supermindSignalBridge";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
 
@@ -626,6 +627,40 @@ export async function buildTradingApp(
       maxPositionWeight: system.risk.getEffectiveMaxPositionWeight(),
       maxSingleOrderNotional: system.risk.getEffectiveMaxOrderNotional(),
     });
+  });
+
+  app.get("/api/integrations/supermind/signal-package", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取 SuperMind 模拟盘信号包",
+      description:
+        "将本地 paper 交易计划转换为同花顺 SuperMind 可人工复核的信号 CSV 和云端策略模板。不登录同花顺、不保存凭据、不自动提交订单。",
+    },
+  }, async () => {
+    const snapshot = system.market.getSnapshot();
+    const account = system.broker.getAccount(snapshot);
+    const positions = system.broker.getPositions(snapshot);
+    const [leaderboard, candidates, qualityStocks] = await Promise.all([
+      buildStrategyLeaderboard(snapshot, system.marketDataProvider, 120),
+      buildDailyCandidates(snapshot, system.marketDataProvider, 40),
+      buildDailyQualityStocks(snapshot, system.marketDataProvider, 60),
+    ]);
+
+    const plan = buildPaperTradingPlan({
+      snapshot,
+      provider: system.marketDataProvider,
+      account,
+      positions,
+      leaderboard,
+      candidates,
+      qualityStocks,
+      initialCapital: options.config.TRADING_STARTING_CASH,
+      lotSize: system.limits.lotSize,
+      maxPositionWeight: system.risk.getEffectiveMaxPositionWeight(),
+      maxSingleOrderNotional: system.risk.getEffectiveMaxOrderNotional(),
+    });
+
+    return buildSuperMindSignalPackage(plan);
   });
 
   app.get("/api/research/real-data-feed", {

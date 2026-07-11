@@ -1,4 +1,4 @@
-# 当前状态
+﻿# 当前状态
 
 **核对日期：** 2026-07-11
 
@@ -51,6 +51,7 @@
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
 - **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 新增 `qualitySummary`，返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额和现金使用比例；研究管线页面展示该诊断，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1 或持仓约束保持观望。
+- **SuperMind 模拟盘信号桥** —— `/api/integrations/supermind/signal-package` 将本地 paper 操作计划转换为可人工复核的 SuperMind 信号 CSV 和云端策略模板；该接口不登录同花顺、不保存密码/Cookie/Token，也不会自动提交订单。
 - **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
 
 ## 可用接口
@@ -65,6 +66,7 @@ GET  /api/research/daily-candidates?limit=24
 GET  /api/research/daily-quality-stocks?limit=30
 GET  /api/research/learning-state
 GET  /api/research/paper-trading-plan
+GET  /api/integrations/supermind/signal-package
 GET  /api/research/real-data-feed
 GET  /api/account
 GET  /api/positions
@@ -87,6 +89,20 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-11 SuperMind simulation signal bridge verification
+npm run test:server -- server/app.test.ts
+1 test file passed
+21 tests passed
+
+npm test
+25 server test files passed
+542 server tests passed
+2 web test files passed
+9 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
 2026-07-11 研究学习状态与运行期样本记忆
 
 npm run test:server -- server/app.test.ts
@@ -287,3 +303,4 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 新闻面板在 AkShare 模式下优先读取真实只读研究流；若源不可用会显示降级状态，不再用静态模拟新闻冒充真实来源。资金流仍使用前端静态模拟数据；主要指数卡片和指数快照图在 AkShare 模式下使用只读指数行情。当前仍未接入真实逐笔或完整分时历史曲线。
 
 本页只记录可从仓库核实的当前事实。目标设计写入 `architecture/`，产品意图写入 `product/`，实施步骤写入 `plans/`。
+

@@ -290,6 +290,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/research/daily-quality-stocks");
     expect(response.json().paths).toHaveProperty("/api/research/learning-state");
     expect(response.json().paths).toHaveProperty("/api/research/paper-trading-plan");
+    expect(response.json().paths).toHaveProperty("/api/integrations/supermind/signal-package");
     expect(response.json().paths).toHaveProperty("/api/research/real-data-feed");
     expect(response.json().paths).toHaveProperty("/api/research/self-optimization");
   });
@@ -522,5 +523,32 @@ describe("trading API", () => {
       planQuality: expect.stringMatching(/^(actionable|watch-only|blocked)$/),
     });
     expect(response.json().operations.length).toBeGreaterThan(0);
+  });
+
+  it("returns a SuperMind signal package without credential handling", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/integrations/supermind/signal-package",
+    });
+
+    const payloadText = response.body;
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      bridge: {
+        provider: "supermind",
+        mode: "signal-file-only",
+        execution: "manual-upload-or-review",
+        liveTradingEnabled: false,
+      },
+      sourcePlan: {
+        operationCount: expect.any(Number),
+      },
+    });
+    expect(response.json().csv).toContain("signal_id,trading_date,symbol");
+    expect(response.json().supermindTemplate).toContain("handle_bar");
+    expect(response.json().guardrails.join("")).toContain("Do not paste passwords");
+    expect(payloadText).not.toContain("AUTH_PASSWORD");
+    expect(payloadText).not.toContain("Cookie");
   });
 });
