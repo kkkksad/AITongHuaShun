@@ -83,7 +83,7 @@ export class JsonFileTradingStore implements TradingStore {
   private orderSequence = 0;
   private auditSequence = 0;
 
-  constructor(dataDir: string, startingCash: number) {
+  constructor(dataDir: string, startingCash: number, seed = true) {
     fs.mkdirSync(dataDir, { recursive: true });
     this.filePath = path.join(dataDir, "paper-trading-state.json");
     this.startingEquity = startingCash;
@@ -91,7 +91,7 @@ export class JsonFileTradingStore implements TradingStore {
     if (fs.existsSync(this.filePath)) {
       this.load();
     } else {
-      this.initializeFresh(startingCash);
+      this.initializeFresh(startingCash, seed);
     }
   }
 
@@ -387,21 +387,23 @@ export class JsonFileTradingStore implements TradingStore {
     });
   }
 
-  private initializeFresh(startingCash: number): void {
-    const seededCost = computeSeededCost();
-    if (seededCost >= startingCash) {
+  private initializeFresh(startingCash: number, seed: boolean): void {
+    const seededCost = seed ? computeSeededCost() : 0;
+    if (seed && seededCost >= startingCash) {
       throw new Error("TRADING_STARTING_CASH must exceed the seeded portfolio cost.");
     }
 
     this.cash = startingCash - seededCost;
-    for (const position of SEEDED_POSITIONS) {
-      this.positions.set(position.symbol, { ...position });
+    if (seed) {
+      for (const position of SEEDED_POSITIONS) {
+        this.positions.set(position.symbol, { ...position });
+      }
     }
     this.appendAudit(
       "system",
       "account.created",
       "模拟账户已创建（JSON 持久化）",
-      { startingCash, seededCost },
+      { startingCash, seededCost, seed },
     );
     this.flush();
   }

@@ -52,9 +52,16 @@ function createMarket(config: ServerConfig): MarketDataProvider {
 
 function createStore(config: ServerConfig): TradingStore {
   if (config.STORE_BACKEND === "json") {
-    return new JsonFileTradingStore(config.DATA_DIR, config.TRADING_STARTING_CASH);
+    return new JsonFileTradingStore(
+      config.DATA_DIR,
+      config.TRADING_STARTING_CASH,
+      config.TRADING_SEED_PORTFOLIO,
+    );
   }
-  return new InMemoryTradingStore(config.TRADING_STARTING_CASH);
+  return new InMemoryTradingStore(
+    config.TRADING_STARTING_CASH,
+    config.TRADING_SEED_PORTFOLIO,
+  );
 }
 
 export function createTradingSystem(config: ServerConfig): TradingSystem {

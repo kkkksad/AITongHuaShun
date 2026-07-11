@@ -24,6 +24,10 @@ const envSchema = z.object({
   AKSHARE_BRIDGE_URL: z.string().url().default("http://127.0.0.1:8800"),
   AKSHARE_BRIDGE_TOKEN: z.string().default(""),
   TRADING_STARTING_CASH: z.coerce.number().positive().default(1_000_000),
+  TRADING_SEED_PORTFOLIO: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
   MAX_ORDER_NOTIONAL: z.coerce.number().positive().default(100_000),
   MAX_POSITION_WEIGHT: z.coerce.number().min(0.01).max(1).default(0.25),
   MAX_DAILY_LOSS: z.coerce.number().min(0.001).max(1).default(0.05),

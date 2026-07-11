@@ -32,6 +32,10 @@ const envSchema = z.object({
   AKSHARE_BRIDGE_URL: z.string().url().default("http://127.0.0.1:8800"),
   AKSHARE_BRIDGE_TOKEN: z.string().default(""),
   TRADING_STARTING_CASH: z.coerce.number().positive().default(1_000_000),
+  TRADING_SEED_PORTFOLIO: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
   MAX_ORDER_NOTIONAL: z.coerce.number().positive().default(100_000),
   MAX_POSITION_WEIGHT: z.coerce.number().min(0.01).max(1).default(0.25),
   MAX_DAILY_LOSS: z.coerce.number().min(0.001).max(1).default(0.05),
@@ -76,6 +80,7 @@ describe("ServerConfig", () => {
       expect(config.MARKET_DATA_PROVIDER).toBe("mock");
       expect(config.MARKET_TICK_MS).toBe(1000);
       expect(config.TRADING_STARTING_CASH).toBe(1_000_000);
+      expect(config.TRADING_SEED_PORTFOLIO).toBe(true);
       expect(config.MAX_ORDER_NOTIONAL).toBe(100_000);
       expect(config.MAX_POSITION_WEIGHT).toBe(0.25);
       expect(config.MAX_DAILY_LOSS).toBe(0.05);
@@ -160,6 +165,11 @@ describe("ServerConfig", () => {
     it("respects custom trading cash", () => {
       const config = parse({ TRADING_STARTING_CASH: "500000" });
       expect(config.TRADING_STARTING_CASH).toBe(500_000);
+    });
+
+    it("can disable the seeded demo portfolio", () => {
+      const config = parse({ TRADING_SEED_PORTFOLIO: "false" });
+      expect(config.TRADING_SEED_PORTFOLIO).toBe(false);
     });
 
     it("respects custom commission rate", () => {

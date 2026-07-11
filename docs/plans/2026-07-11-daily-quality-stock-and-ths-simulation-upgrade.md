@@ -38,6 +38,9 @@
 8. **可视化与告警**  
    增加每日榜单、策略退化报警、数据质量异常、行情源断连和模拟盘订单失败告警。
 
+9. **10000 元纸面账户观察日**  
+   已新增 `TRADING_SEED_PORTFOLIO` 配置。下周一（2026-07-13，Asia/Shanghai）做一日观察时，使用 `TRADING_STARTING_CASH=10000` 与 `TRADING_SEED_PORTFOLIO=false` 从纯现金开始；只允许本地 paper 观察、模拟下单和收盘复盘，不连接真实券商账户。
+
 ## 你需要准备什么
 
 - 不要在聊天里发真实账号、密码、Cookie 或 Token。
@@ -52,10 +55,12 @@
 - 研究学习状态当前只保存在服务运行期内存中，重启后清空；它不是长期训练数据集，也不是策略真实收益证明。
 - 当前未接同花顺历史海量数据，也未连接同花顺模拟盘真实订单接口。
 - 当前不允许启用真实交易；`REAL_TRADING_ENABLED=true` 和 `MARKET_MODE=live` 仍必须拒绝启动。
+- AkShare 桥接如果出现 `WinError 10013` 或缓存为 0，应先处理本机防火墙、代理或 Python 网络权限；在 `npm run check:a-share` 通过前，不应把候选结果视为可用实时行情输入。
 
 ## 本次进展
 
 - 新增 `server/research/researchStore.ts`，记录运行期行情快照样本和研究运行摘要。
 - 新增 `/api/research/learning-state`，返回累计样本数、研究运行次数、最近运行摘要、当前能力边界和下一批数据需求。
 - 研究管线页新增“研究记忆”面板，展示行情样本、研究运行、覆盖标的和最近研究记录。
+- 新增 `TRADING_SEED_PORTFOLIO`，允许本地 paper 账户关闭默认演示持仓，并与 `TRADING_STARTING_CASH=10000` 配合形成纯现金观察起点。
 - 验证结果：`npm run test:server -- server/app.test.ts` 通过 16 个测试；`npm run build` 通过。

@@ -47,6 +47,15 @@ DATA_DIR=./data
 
 JSON 仓储仅用于本地单进程模拟，不具备数据库事务、多实例锁或合规审计能力。`data/` 已被 Git 忽略。
 
+需要把本地纸面账户重置为 10000 元纯现金、并清空默认演示持仓时，在未提交的 `.env.local` 设置：
+
+```text
+TRADING_STARTING_CASH=10000
+TRADING_SEED_PORTFOLIO=false
+```
+
+`TRADING_SEED_PORTFOLIO=true` 是默认演示模式，会在新账户中预置样例持仓；用于从下一个交易日开始观察或纸面买卖时，应设为 `false`，再停止旧服务并重新启动。若使用 `STORE_BACKEND=json`，还需要删除或移走 `DATA_DIR` 下已有的 `paper-trading-state.json`，否则系统会恢复旧账户状态而不是重新创建 10000 元纯现金账户。
+
 ## 开发服务器
 
 同时启动 Fastify API 和 Vite：
@@ -116,11 +125,15 @@ MARKET_DATA_PROVIDER=akshare
 AKSHARE_BRIDGE_URL=http://127.0.0.1:8800
 AKSHARE_BRIDGE_TOKEN=
 AKSHARE_BRIDGE_DISABLE_PROXY=true
+TRADING_STARTING_CASH=10000
+TRADING_SEED_PORTFOLIO=false
 ```
 
 然后先运行 `python akshare-bridge/main.py`，或直接使用 `npm run dev:a-share` 同时启动行情桥、API 和前端。真实行情只替换行情提供者，订单仍由本地 `PaperBroker` 模拟执行。AkShare 模式会分别读取个股行情和主要指数行情；指数使用 `SH000001`、`SZ399001`、`SZ399006`、`SH000300`，避免和个股代码冲突。
 
 `AKSHARE_BRIDGE_DISABLE_PROXY=true` 会让 AkShare 桥接绕过本机系统代理，避免东方财富行情接口被代理连接中断；如需显式走代理，可在 `.env.local` 中设为 `false`。
+
+如果 AkShare 桥接健康检查中出现 `WinError 10013`，或 `/health` 显示 `cachedSymbols: 0`、`cachedIndices: 0`，说明本机 Python 进程可能被防火墙、代理或网络权限拦截。此时不要把页面上的候选或行情视为有效实时数据；先检查 Windows 防火墙/安全软件是否允许当前 Python 解释器访问网络，并在 `AKSHARE_BRIDGE_DISABLE_PROXY=true/false` 之间切换验证，再重新运行 `npm run check:a-share`。
 
 前端视图可直接访问：
 
@@ -130,23 +143,30 @@ AKSHARE_BRIDGE_DISABLE_PROXY=true
 - `http://127.0.0.1:4173/account`
 - `http://127.0.0.1:4173/learning`
 
-## VS Code 一键全栈调试
+## 本地纸面观察日流程
+
+2026-07-13（下周一，Asia/Shanghai）开始做本地一日观察时，推荐流程如下：
+
+1. 交易日前确认 `.env.local` 使用 `MARKET_MODE=paper`、`MARKET_DATA_PROVIDER=akshare`、`TRADING_STARTING_CASH=10000`、`TRADING_SEED_PORTFOLIO=false`。
+2. 启动 `npm run dev:a-share`，再运行 `npm run check:a-share`；只有 Fastify API、AkShare Bridge、Vite 代理、指数行情、个股行情和 KAIROS 快照都通过时，才把当天候选视为有效 paper 输入。
+3. 开盘后只在本地纸面账户观察 `/strategy`、`/learning` 和 `/account`，候选中的 `paper-buy` 只表示可做模拟验证，不代表真实下单建议。
+4. 收盘后导出订单、审计和候选结果，记录是否成交、最大回撤、胜率、盈亏比和数据质量异常；这些结果只能作为下一轮研究输入，不能描述为真实收益。
+
+## VS Code 一键启动
 
 仓库提供共享的 `.vscode/launch.json`、`tasks.json` 和 `settings.json`。
 
 1. 使用 VS Code 打开项目根目录。
 2. 首次运行时执行 `npm install`。
 3. 打开左侧“运行和调试”面板。
-4. 模拟行情选择 `▶ KAIROS：一键启动模拟行情工作台`；A 股只读行情选择 `▶ KAIROS：一键启动真实 A 股行情 + 策略排行榜`。
+4. 选择 `▶ KAIROS：一键启动`。
 5. 点击绿色启动按钮或按 `F5`。
 
 VS Code 会：
 
-- 使用 Node.js 调试器启动 `server/index.ts`，可在 `server/**/*.ts` 设置断点。
-- 启动 Vite 前端服务。
-- 使用 Edge 打开前端；真实 A 股组合会直接打开 `/strategy` 策略排行榜页。
-- AkShare 组合会额外使用 Python 调试器启动 `akshare-bridge/main.py`。
-- 停止复合调试时同时关闭前后端调试会话。
+- 通过 `npm run dev:a-share` 启动 AkShare 行情桥接、Fastify API 和 Vite 前端。
+- 使用 Edge 打开 `http://127.0.0.1:4173/strategy`。
+- 默认使用真实 A 股只读行情和 paper-only 模拟交易；不会启用真实下单。
 
 若 4173、8787 或 8800 端口已被占用，请先停止已有进程。服务使用固定端口，避免浏览器或代理连接到错误实例。
 

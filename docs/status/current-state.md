@@ -44,6 +44,7 @@
 - **前端稳定性防护** —— 开发环境自动注销 PWA Service Worker 并清理缓存；REST 客户端会识别 API 代理误返回 HTML 的情况，WebSocket 默认支持同源代理和显式 `VITE_WS_URL`。
 - **连接状态诊断** —— 顶栏将 REST 后端连接、运行模式、行情源和 WebSocket 实时通道分开展示，避免 React 开发模式下短暂的 WebSocket 预关闭被误判为后端未连接或行情源回落到 mock。
 - **A 股链路健康检查** —— `npm run check:a-share` 可验证 Fastify API、AkShare 桥接、Vite 代理、指数行情、个股行情和 KAIROS 行情快照是否处于同一套正在运行的服务。
+- **纸面账户纯现金启动配置** —— `TRADING_STARTING_CASH` 控制新建本地模拟账户初始资金，`TRADING_SEED_PORTFOLIO=false` 可关闭默认演示持仓种子，用于从 10000 元纯现金开始做本地 paper 观察。
 
 ## 可用接口
 
@@ -120,6 +121,14 @@ TypeScript checks and Vite production build passed
 
 npm run check:a-share
 Fastify API、AkShare Bridge、Vite API Proxy、A-share Index Quotes、A-share Stock Quotes、KAIROS Market Snapshot 全部通过；后端模式 paper，行情源 akshare，有效指数 4 个。
+
+2026-07-11 纸面账户纯现金启动配置验证
+npm test
+27 test files passed
+543 tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
 ```
 
 ## 架构进展
@@ -209,6 +218,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 研究学习状态当前只是运行期内存样本池，不是长期训练库；服务重启会清空，不能用于声称策略已完成自学习或已验证真实胜率。
 - A 股强势回踩确认战法是研究候选策略，不是“稳赚”或“实盘收割”承诺；接入授权历史行情、样本外验证和模拟盘观察前，不应作为真实下单依据。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
+- 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 从 10000 元纯现金开始；已有 JSON 状态文件不会被自动覆盖，需要用户明确删除或移走后才会重新初始化。
 - 当前没有事务型数据库或已启用的用户认证，也没有真实账户连接或真实券商执行。
 - 认证原型没有默认账号、默认密码或默认 JWT 密钥；缺少显式安全配置时必须拒绝注册。
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。
