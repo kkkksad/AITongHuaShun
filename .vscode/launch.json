@@ -101,23 +101,6 @@
         "KAIROS：前端 React（总览）"
       ],
       "stopAll": true
-    },
-    {
-      "name": "KAIROS：全栈调试",
-      "configurations": [
-        "KAIROS：后端 API",
-        "KAIROS：前端 React（总览）"
-      ],
-      "stopAll": true
-    },
-    {
-      "name": "KAIROS：真实行情 + 模拟交易调试",
-      "configurations": [
-        "KAIROS：AkShare 行情桥接",
-        "KAIROS：后端纸面交易（AkShare）",
-        "KAIROS：前端 React（策略排行榜）"
-      ],
-      "stopAll": true
     }
   ]
 }
