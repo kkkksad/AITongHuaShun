@@ -219,6 +219,47 @@ export interface DailyQualityStockReport {
   stocks: DailyQualityStock[];
 }
 
+export interface ResearchRunSample {
+  recordedAt: string;
+  kind: "strategy-leaderboard" | "daily-candidates" | "daily-quality-stocks";
+  provider: string;
+  mode: TradingMode;
+  snapshotSequence: number;
+  snapshotTime: string;
+  itemCount: number;
+  topSymbols: string[];
+  summary: string;
+}
+
+export interface LearningState {
+  generatedAt: string;
+  dataMemory: {
+    storage: "in-memory";
+    marketSnapshotSamples: number;
+    researchRuns: number;
+    firstSnapshotTime: string | null;
+    latestSnapshotTime: string | null;
+    providersSeen: string[];
+    symbolsSeen: number;
+    topSymbols: string[];
+  };
+  researchLoop: {
+    strategyLeaderboardRuns: number;
+    dailyCandidateRuns: number;
+    dailyQualityRuns: number;
+    latestRuns: ResearchRunSample[];
+  };
+  currentCapability: {
+    realtimeQuotes: boolean;
+    historicalBars: boolean;
+    paperExecution: boolean;
+    liveExecution: false;
+    statement: string;
+  };
+  nextDataNeeds: string[];
+  guardrails: string[];
+}
+
 interface AccountResponse {
   account: AccountSnapshot;
 }
@@ -356,6 +397,10 @@ export function fetchDailyQualityStocks(limit = 10): Promise<DailyQualityStockRe
   return apiRequest<DailyQualityStockReport>(
     `/api/research/daily-quality-stocks?limit=${limit}`,
   );
+}
+
+export function fetchLearningState(): Promise<LearningState> {
+  return apiRequest<LearningState>("/api/research/learning-state");
 }
 
 export function cancelPaperOrder(orderId: string): Promise<OrderSubmission> {

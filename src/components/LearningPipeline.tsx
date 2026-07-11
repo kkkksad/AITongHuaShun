@@ -1,7 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
-import { Check, Clock3, Eye, LockKeyhole, RefreshCw, Sparkles } from "lucide-react";
+import {
+  BarChart3,
+  Check,
+  Clock3,
+  Database,
+  Eye,
+  LockKeyhole,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { pipelineStages } from "../data/mockData";
-import { fetchDailyCandidates, fetchStrategyLeaderboard } from "../lib/tradingApi";
+import {
+  fetchDailyCandidates,
+  fetchLearningState,
+  fetchStrategyLeaderboard,
+} from "../lib/tradingApi";
 
 const stageIcons = {
   done: Check,
@@ -22,8 +35,15 @@ export default function LearningPipeline() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+  const learningStateQuery = useQuery({
+    queryKey: ["learning-state"],
+    queryFn: fetchLearningState,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
 
   const topStrategy = leaderboardQuery.data?.entries[0];
+  const learningState = learningStateQuery.data;
   const paperBuyCount =
     candidatesQuery.data?.candidates.filter((candidate) => candidate.action === "paper-buy").length ?? 0;
   const researchScore = Math.min(
@@ -37,38 +57,83 @@ export default function LearningPipeline() {
 
   return (
     <div className="learning-layout">
-      <section className="panel pipeline-panel">
-        <div className="panel-header">
-          <div>
-            <span className="section-kicker">\u53D7\u63A7\u7814\u7A76\u6D41\u7A0B</span>
-            <h2>\u5019\u9009\u7B56\u7565\u9A8C\u8BC1</h2>
+      <div className="learning-main-column">
+        <section className="panel pipeline-panel">
+          <div className="panel-header">
+            <div>
+              <span className="section-kicker">\u53D7\u63A7\u7814\u7A76\u6D41\u7A0B</span>
+              <h2>\u5019\u9009\u7B56\u7565\u9A8C\u8BC1</h2>
+            </div>
+            <span className="sample-badge">
+              {candidatesQuery.data?.candidates.length ?? 0} 个实时候选
+            </span>
           </div>
-          <span className="sample-badge">
-            {candidatesQuery.data?.candidates.length ?? 0} 个实时候选
-          </span>
-        </div>
 
-        <div className="pipeline-list">
-          {pipelineStages.map((stage, index) => {
-            const Icon = stageIcons[stage.status];
-            return (
-              <article className={`pipeline-stage ${stage.status}`} key={stage.name}>
-                <div className="stage-marker">
-                  <Icon size={17} />
-                </div>
-                <div className="stage-copy">
-                  <div>
-                    <span>\u9636\u6BB5 {index + 1}</span>
-                    <strong>{stage.name}</strong>
+          <div className="pipeline-list">
+            {pipelineStages.map((stage, index) => {
+              const Icon = stageIcons[stage.status];
+              return (
+                <article className={`pipeline-stage ${stage.status}`} key={stage.name}>
+                  <div className="stage-marker">
+                    <Icon size={17} />
                   </div>
-                  <p>{stage.description}</p>
+                  <div className="stage-copy">
+                    <div>
+                      <span>\u9636\u6BB5 {index + 1}</span>
+                      <strong>{stage.name}</strong>
+                    </div>
+                    <p>{stage.description}</p>
+                  </div>
+                  <span className="stage-detail">{stage.detail}</span>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="panel learning-memory-panel">
+          <div className="panel-header">
+            <div>
+              <span className="section-kicker">研究记忆</span>
+              <h2>样本积累状态</h2>
+            </div>
+            <Database size={19} />
+          </div>
+          <div className="learning-memory-grid">
+            <article>
+              <span>行情样本</span>
+              <strong>{learningState?.dataMemory.marketSnapshotSamples ?? 0}</strong>
+              <small>{learningState?.dataMemory.storage ?? "in-memory"}</small>
+            </article>
+            <article>
+              <span>研究运行</span>
+              <strong>{learningState?.dataMemory.researchRuns ?? 0}</strong>
+              <small>榜单/候选/优质股</small>
+            </article>
+            <article>
+              <span>覆盖标的</span>
+              <strong>{learningState?.dataMemory.symbolsSeen ?? 0}</strong>
+              <small>{learningState?.dataMemory.providersSeen.join(" / ") || "等待采样"}</small>
+            </article>
+          </div>
+          <div className="learning-run-list">
+            {(learningState?.researchLoop.latestRuns ?? []).map((run) => (
+              <article key={`${run.kind}-${run.recordedAt}`}>
+                <BarChart3 size={15} />
+                <div>
+                  <strong>{run.summary}</strong>
+                  <span>
+                    {run.kind} · {run.itemCount} 项 · 快照 {run.snapshotSequence}
+                  </span>
                 </div>
-                <span className="stage-detail">{stage.detail}</span>
               </article>
-            );
-          })}
-        </div>
-      </section>
+            ))}
+            {!learningState?.researchLoop.latestRuns.length && (
+              <p className="empty-copy">调用研究接口后，这里会开始显示累计样本。</p>
+            )}
+          </div>
+        </section>
+      </div>
 
       <aside className="panel governance-panel">
         <div className="panel-header">
@@ -79,10 +144,15 @@ export default function LearningPipeline() {
           <button
             aria-label="刷新研究管线"
             className="icon-button"
-            disabled={leaderboardQuery.isFetching || candidatesQuery.isFetching}
+            disabled={
+              leaderboardQuery.isFetching ||
+              candidatesQuery.isFetching ||
+              learningStateQuery.isFetching
+            }
             onClick={() => {
               void leaderboardQuery.refetch();
               void candidatesQuery.refetch();
+              void learningStateQuery.refetch();
             }}
             type="button"
           >
@@ -112,6 +182,10 @@ export default function LearningPipeline() {
             <Check size={15} />
             今日候选扫描每 60 秒更新
           </li>
+          <li className={learningState ? "done" : ""}>
+            <Check size={15} />
+            研究运行样本开始累计
+          </li>
           <li className="done">
             <Check size={15} />
             订单执行仍保持 paper-only 隔离
@@ -125,6 +199,10 @@ export default function LearningPipeline() {
             真实下单必须保留人工审批
           </li>
         </ul>
+        <div className="learning-next-data">
+          <strong>下一批数据</strong>
+          <p>{learningState?.nextDataNeeds[0] ?? "等待学习状态接口返回。"}</p>
+        </div>
         <button className="primary-button full-width" type="button">
           查看人工复核清单
         </button>

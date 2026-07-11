@@ -1589,6 +1589,13 @@ select:focus-visible {
   gap: 18px;
 }
 
+.learning-main-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
 .pipeline-list {
   position: relative;
 }
@@ -1738,6 +1745,84 @@ select:focus-visible {
 
 .check-list li.done svg {
   color: var(--color-positive);
+}
+
+.learning-memory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.learning-memory-grid article {
+  padding: 13px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+}
+
+.learning-memory-grid span,
+.learning-memory-grid small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.learning-memory-grid strong {
+  display: block;
+  margin: 5px 0;
+  font-size: 22px;
+}
+
+.learning-run-list {
+  display: grid;
+  gap: 10px;
+}
+
+.learning-run-list article {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.learning-run-list article:first-child {
+  border-top: 0;
+}
+
+.learning-run-list svg {
+  margin-top: 2px;
+  color: var(--color-primary);
+}
+
+.learning-run-list strong,
+.learning-run-list span {
+  display: block;
+}
+
+.learning-run-list strong {
+  font-size: 12px;
+}
+
+.learning-run-list span,
+.empty-copy,
+.learning-next-data p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.learning-next-data {
+  padding: 12px;
+  margin-bottom: 16px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+}
+
+.learning-next-data strong {
+  font-size: 11px;
 }
 
 /* ============================================================

@@ -138,6 +138,46 @@ describe("trading API", () => {
     expect(response.json().guardrails.join("")).toContain("每日优质股");
   });
 
+  it("tracks in-memory research learning state", async () => {
+    await app.inject({
+      method: "GET",
+      url: "/api/research/strategy-leaderboard?bars=45",
+    });
+    await app.inject({
+      method: "GET",
+      url: "/api/research/daily-candidates?limit=3",
+    });
+    await app.inject({
+      method: "GET",
+      url: "/api/research/daily-quality-stocks?limit=3",
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/learning-state",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      dataMemory: {
+        storage: "in-memory",
+        marketSnapshotSamples: expect.any(Number),
+        researchRuns: 3,
+      },
+      researchLoop: {
+        strategyLeaderboardRuns: 1,
+        dailyCandidateRuns: 1,
+        dailyQualityRuns: 1,
+      },
+      currentCapability: {
+        paperExecution: true,
+        liveExecution: false,
+      },
+    });
+    expect(response.json().researchLoop.latestRuns).toHaveLength(3);
+    expect(response.json().guardrails.join("")).toContain("不代表真实收益");
+  });
+
   it("publishes an OpenAPI document for the simulation API", async () => {
     const response = await app.inject({
       method: "GET",
@@ -155,6 +195,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/research/strategy-leaderboard");
     expect(response.json().paths).toHaveProperty("/api/research/daily-candidates");
     expect(response.json().paths).toHaveProperty("/api/research/daily-quality-stocks");
+    expect(response.json().paths).toHaveProperty("/api/research/learning-state");
   });
 
   it("adds baseline security headers", async () => {

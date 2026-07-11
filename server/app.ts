@@ -35,6 +35,7 @@ import {
 import type { ExportFormat } from "./monitoring/exportUtils";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
+import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
@@ -94,6 +95,7 @@ export async function buildTradingApp(
   const app = Fastify({ logger: options.startMarket !== false });
   const system = options.system ?? createTradingSystem(options.config);
   const hub = new WebSocketHub();
+  const researchStore = new InMemoryResearchStore();
 
   // ── Plugins ──────────────────────────────────────────────
   await app.register(helmet, {
@@ -188,6 +190,7 @@ export async function buildTradingApp(
   };
 
   system.market.on("snapshot", (snapshot: MarketSnapshot) => {
+    researchStore.recordMarketSnapshot(snapshot, system.marketDataProvider);
     hub.broadcast({ type: "market.snapshot", data: snapshot });
     system.broker.markToMarket(snapshot);
     broadcastPositions(snapshot);
@@ -371,11 +374,13 @@ export async function buildTradingApp(
     },
   }, async (request) => {
     const { bars } = strategyLeaderboardQuerySchema.parse(request.query);
-    return buildStrategyLeaderboard(
+    const report = await buildStrategyLeaderboard(
       system.market.getSnapshot(),
       system.marketDataProvider,
       bars,
     );
+    researchStore.recordStrategyLeaderboard(report);
+    return report;
   });
 
   app.get("/api/research/daily-candidates", {
@@ -399,11 +404,13 @@ export async function buildTradingApp(
     },
   }, async (request) => {
     const { limit } = dailyCandidatesQuerySchema.parse(request.query);
-    return buildDailyCandidates(
+    const report = buildDailyCandidates(
       system.market.getSnapshot(),
       system.marketDataProvider,
       limit,
     );
+    researchStore.recordDailyCandidates(report);
+    return report;
   });
 
   app.get("/api/research/daily-quality-stocks", {
@@ -427,11 +434,28 @@ export async function buildTradingApp(
     },
   }, async (request) => {
     const { limit } = dailyQualityStocksQuerySchema.parse(request.query);
-    return buildDailyQualityStocks(
+    const report = buildDailyQualityStocks(
       system.market.getSnapshot(),
       system.marketDataProvider,
       limit,
     );
+    researchStore.recordDailyQualityStocks(report);
+    return report;
+  });
+
+  app.get("/api/research/learning-state", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取研究学习状态",
+      description:
+        "返回运行期内存中的行情快照样本和研究运行记录。结果仅用于研究观测，不代表真实收益。",
+    },
+  }, async () => {
+    researchStore.recordMarketSnapshot(
+      system.market.getSnapshot(),
+      system.marketDataProvider,
+    );
+    return researchStore.getLearningState();
   });
 
   // 账户
