@@ -411,14 +411,21 @@ select:focus-visible {
 }
 
 .profile-logout {
-  display: grid;
-  width: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 30px;
   height: 30px;
-  place-items: center;
+  padding: 0 9px;
   color: var(--sidebar-nav-text);
   background: transparent;
   border: 1px solid var(--sidebar-border);
   border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .profile-logout:hover {
@@ -428,6 +435,30 @@ select:focus-visible {
 
 .profile svg {
   color: var(--profile-icon);
+}
+
+.topbar-logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.topbar-logout:hover {
+  color: var(--text-primary);
+  background: var(--bg-panel-hover);
+  border-color: var(--text-muted);
 }
 
 .workspace {
@@ -1948,6 +1979,32 @@ select:focus-visible {
   display: block;
   margin: 5px 0;
   font-size: 22px;
+}
+
+.learning-plan-summary {
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.03);
+}
+
+.learning-plan-summary strong,
+.learning-plan-summary span {
+  display: block;
+}
+
+.learning-plan-summary strong {
+  color: var(--text-strong);
+  font-size: 0.86rem;
+}
+
+.learning-plan-summary p,
+.learning-plan-summary span {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
 }
 
 .learning-run-list {

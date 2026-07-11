@@ -80,15 +80,15 @@ const logsQuerySchema = z.object({
 });
 
 const strategyLeaderboardQuerySchema = z.object({
-  bars: z.coerce.number().int().min(30).max(180).default(90),
+  bars: z.coerce.number().int().min(30).max(240).default(120),
 });
 
 const dailyCandidatesQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(30).default(8),
+  limit: z.coerce.number().int().min(1).max(80).default(24),
 });
 
 const dailyQualityStocksQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(50).default(10),
+  limit: z.coerce.number().int().min(1).max(120).default(30),
 });
 
 const publicAuthPaths = new Set([
@@ -486,8 +486,8 @@ export async function buildTradingApp(
           bars: {
             type: "integer",
             minimum: 30,
-            maximum: 180,
-            default: 90,
+            maximum: 240,
+            default: 120,
             description: "生成研究样本的 bar 数量",
           },
         },
@@ -516,8 +516,8 @@ export async function buildTradingApp(
           limit: {
             type: "integer",
             minimum: 1,
-            maximum: 30,
-            default: 8,
+            maximum: 80,
+            default: 24,
             description: "返回候选数量上限",
           },
         },
@@ -546,8 +546,8 @@ export async function buildTradingApp(
           limit: {
             type: "integer",
             minimum: 1,
-            maximum: 50,
-            default: 10,
+            maximum: 120,
+            default: 30,
             description: "返回优质股数量上限",
           },
         },
@@ -603,9 +603,9 @@ export async function buildTradingApp(
     const account = system.broker.getAccount(snapshot);
     const positions = system.broker.getPositions(snapshot);
     const [leaderboard, candidates, qualityStocks] = await Promise.all([
-      buildStrategyLeaderboard(snapshot, system.marketDataProvider, 90),
-      buildDailyCandidates(snapshot, system.marketDataProvider, 8),
-      buildDailyQualityStocks(snapshot, system.marketDataProvider, 10),
+      buildStrategyLeaderboard(snapshot, system.marketDataProvider, 120),
+      buildDailyCandidates(snapshot, system.marketDataProvider, 40),
+      buildDailyQualityStocks(snapshot, system.marketDataProvider, 60),
     ]);
 
     researchStore.recordMarketSnapshot(snapshot, system.marketDataProvider);

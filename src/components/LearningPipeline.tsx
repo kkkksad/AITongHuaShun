@@ -27,13 +27,13 @@ const stageIcons = {
 
 export default function LearningPipeline() {
   const leaderboardQuery = useQuery({
-    queryKey: ["strategy-leaderboard", "pipeline", 90],
-    queryFn: () => fetchStrategyLeaderboard(90),
+    queryKey: ["strategy-leaderboard", "pipeline", 120],
+    queryFn: () => fetchStrategyLeaderboard(120),
     staleTime: 60_000,
   });
   const candidatesQuery = useQuery({
-    queryKey: ["daily-candidates", "pipeline", 8],
-    queryFn: () => fetchDailyCandidates(8),
+    queryKey: ["daily-candidates", "pipeline", 24],
+    queryFn: () => fetchDailyCandidates(24),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -59,6 +59,7 @@ export default function LearningPipeline() {
   const topStrategy = leaderboardQuery.data?.entries[0];
   const learningState = learningStateQuery.data;
   const paperPlan = paperPlanQuery.data;
+  const paperPlanQuality = paperPlan?.qualitySummary;
   const selfOptimization = selfOptimizationQuery.data;
   const paperBuyCount =
     candidatesQuery.data?.candidates.filter((candidate) => candidate.action === "paper-buy").length ?? 0;
@@ -177,6 +178,17 @@ export default function LearningPipeline() {
               <small>一手 {paperPlan?.capitalPlan.lotSize ?? 100} 股</small>
             </article>
           </div>
+          {paperPlanQuality && (
+            <div className="learning-plan-summary">
+              <strong>纸面计划诊断</strong>
+              <p>{paperPlanQuality.summary}</p>
+              <span>
+                可买 {paperPlanQuality.affordableCandidateCount} / 候选 {paperPlanQuality.candidatePoolSize}
+                ，拟投入 {(paperPlanQuality.cashDeploymentPercent * 100).toFixed(1)}%，拦截{" "}
+                {paperPlanQuality.actionCounts.blocked}，持有 {paperPlanQuality.actionCounts.hold}
+              </span>
+            </div>
+          )}
           <div className="learning-run-list">
             {(paperPlan?.operations ?? []).slice(0, 8).map((operation) => (
               <article key={`${operation.timestamp}-${operation.symbol}-${operation.action}`}>

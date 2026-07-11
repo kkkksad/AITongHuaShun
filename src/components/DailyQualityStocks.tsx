@@ -49,8 +49,8 @@ function primaryReason(stock: DailyQualityStock): string {
 
 export function DailyQualityStocks() {
   const qualityQuery = useQuery({
-    queryKey: ["daily-quality-stocks", 10],
-    queryFn: () => fetchDailyQualityStocks(10),
+    queryKey: ["daily-quality-stocks", 30],
+    queryFn: () => fetchDailyQualityStocks(30),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });

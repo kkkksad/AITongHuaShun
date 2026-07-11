@@ -228,18 +228,20 @@ OpenAPI 界面位于 `http://127.0.0.1:8787/documentation`。
 今日候选端点会基于当前行情快照输出 A 股强势回踩确认战法的观察清单：
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-candidates?limit=8"
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-candidates?limit=24"
 ```
 
-前端策略页和研究管线页会通过 TanStack Query 自动刷新该清单。当前自动更新机制是：AkShare/Mock 行情源按 `MARKET_TICK_MS` 更新后端快照并推送 WebSocket；研究排行榜按页面缓存策略刷新；今日候选扫描每 60 秒刷新一次，也可手动点击刷新。它仍是只读研究与 paper 模拟信号，不会自动真实下单。
+前端策略页和研究管线页会通过 TanStack Query 自动刷新该清单。当前自动更新机制是：AkShare/Mock 行情源按 `MARKET_TICK_MS` 更新后端快照并推送 WebSocket；研究排行榜按页面缓存策略刷新；今日候选扫描每 60 秒刷新一次，也可手动点击刷新。后端默认支持更大的候选池，便于 10000 元 paper 账户从更多标的里寻找满足一手约束的观察对象。它仍是只读研究与 paper 模拟信号，不会自动真实下单。
 
 每日优质股端点用于生成更宽口径的观察池：
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-quality-stocks?limit=10"
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-quality-stocks?limit=30"
 ```
 
 当前评分使用实时行情快照中的价格、成交量/成交额、涨跌幅、振幅、换手率和日内位置。AkShare 模式下实时行情来源可以是真实只读行情，但历史 K 线、新闻、财务因子和同花顺模拟盘订单仍未接入。
+
+如果页面大量显示 `blocked`，优先检查两个因素：`MARKET_SYMBOLS` 是否只有少量高价股，以及 10000 元 paper 账户是否无法买满 100 股一手。可以在 `.env.local` 扩大 `MARKET_SYMBOLS` 股票池，但应避免无上限拉取全市场临时数据；研究缓存仍应受 `RESEARCH_MAX_SYMBOLS`、`RESEARCH_HISTORY_DAYS` 和 `RESEARCH_MAX_CACHE_MB` 控制。
 
 真实研究数据流端点用于查看新闻和外围市场输入：
 

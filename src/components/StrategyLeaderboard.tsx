@@ -41,8 +41,8 @@ function qualityColor(score: number): string {
 
 export function StrategyLeaderboard() {
   const leaderboardQuery = useQuery({
-    queryKey: ["strategy-leaderboard", 90],
-    queryFn: () => fetchStrategyLeaderboard(90),
+    queryKey: ["strategy-leaderboard", 120],
+    queryFn: () => fetchStrategyLeaderboard(120),
     staleTime: 60_000,
   });
 

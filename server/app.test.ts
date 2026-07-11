@@ -511,6 +511,16 @@ describe("trading API", () => {
     });
     expect(response.json().rules.join("")).toContain("T+1");
     expect(response.json().guardrails.join("")).toContain("同花顺");
+    expect(response.json().qualitySummary).toMatchObject({
+      candidatePoolSize: expect.any(Number),
+      affordableCandidateCount: expect.any(Number),
+      actionCounts: expect.objectContaining({
+        "paper-buy-plan": expect.any(Number),
+        blocked: expect.any(Number),
+        hold: expect.any(Number),
+      }),
+      planQuality: expect.stringMatching(/^(actionable|watch-only|blocked)$/),
+    });
     expect(response.json().operations.length).toBeGreaterThan(0);
   });
 });

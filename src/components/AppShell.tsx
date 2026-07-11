@@ -173,6 +173,7 @@ export function AppShell({
               type="button"
             >
               <LogOut size={15} />
+              <span>{t("auth.logout")}</span>
             </button>
           )}
         </div>
@@ -225,6 +226,18 @@ export function AppShell({
             >
               {theme === "light" ? <Moon size={17} /> : <Sun size={17} />}
             </button>
+            {authEnabled && onLogout && (
+              <button
+                aria-label={t("auth.logout")}
+                className="topbar-logout"
+                onClick={onLogout}
+                title={t("auth.logout")}
+                type="button"
+              >
+                <LogOut size={17} />
+                <span>{t("auth.logout")}</span>
+              </button>
+            )}
             <div className={`market-state connection-${connectionState}`}>
               <span
                 className={

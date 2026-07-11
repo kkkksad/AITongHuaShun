@@ -28,6 +28,19 @@ export interface PaperTradingOperation {
   ruleChecks: string[];
 }
 
+export interface PaperTradingPlanQualitySummary {
+  candidatePoolSize: number;
+  affordableCandidateCount: number;
+  positionConflictCount: number;
+  actionCounts: Record<PaperTradingOperationAction, number>;
+  blockedReasons: Record<string, number>;
+  plannedBuyNotional: number;
+  plannedSellNotional: number;
+  cashDeploymentPercent: number;
+  planQuality: "actionable" | "watch-only" | "blocked";
+  summary: string;
+}
+
 export interface PaperTradingPlan {
   generatedAt: string;
   tradingDate: string;
@@ -53,6 +66,7 @@ export interface PaperTradingPlan {
     totalTrades: number;
     qualityGate: string;
   } | null;
+  qualitySummary: PaperTradingPlanQualitySummary;
   operations: PaperTradingOperation[];
   guardrails: string[];
 }
@@ -72,6 +86,95 @@ function uniqueBySymbol<T extends { symbol: string }>(items: T[]): T[] {
     seen.add(item.symbol);
     return true;
   });
+}
+
+function candidateQuantity(
+  candidate: { price: number },
+  cash: number,
+  maxSingleOrderNotional: number,
+  lotSize: number,
+): number {
+  return roundLot(
+    Math.min(maxSingleOrderNotional, cash) / Math.max(candidate.price, 1),
+    lotSize,
+  );
+}
+
+function countOperations(
+  operations: PaperTradingOperation[],
+): Record<PaperTradingOperationAction, number> {
+  const counts: Record<PaperTradingOperationAction, number> = {
+    observe: 0,
+    "paper-buy-plan": 0,
+    "paper-sell-plan": 0,
+    blocked: 0,
+    hold: 0,
+  };
+
+  for (const operation of operations) {
+    counts[operation.action] += 1;
+  }
+
+  return counts;
+}
+
+function summarizeBlockedReasons(
+  operations: PaperTradingOperation[],
+): Record<string, number> {
+  const reasons: Record<string, number> = {};
+
+  for (const operation of operations) {
+    if (operation.action !== "blocked") continue;
+    const blockedRule =
+      operation.ruleChecks.find((rule) => rule.includes("blocked")) ?? "blocked";
+    reasons[blockedRule] = (reasons[blockedRule] ?? 0) + 1;
+  }
+
+  return reasons;
+}
+
+function buildQualitySummary(input: {
+  operations: PaperTradingOperation[];
+  candidatePoolSize: number;
+  affordableCandidateCount: number;
+  positionConflictCount: number;
+  cash: number;
+}): PaperTradingPlanQualitySummary {
+  const actionCounts = countOperations(input.operations);
+  const plannedBuyNotional = input.operations
+    .filter((operation) => operation.action === "paper-buy-plan")
+    .reduce((sum, operation) => sum + operation.estimatedNotional, 0);
+  const plannedSellNotional = input.operations
+    .filter((operation) => operation.action === "paper-sell-plan")
+    .reduce((sum, operation) => sum + operation.estimatedNotional, 0);
+  const cashDeploymentPercent =
+    input.cash > 0 ? plannedBuyNotional / input.cash : 0;
+  const planQuality =
+    actionCounts["paper-buy-plan"] > 0 || actionCounts["paper-sell-plan"] > 0
+      ? "actionable"
+      : actionCounts.blocked > 0
+        ? "blocked"
+        : "watch-only";
+
+  const summary =
+    planQuality === "actionable"
+      ? `paper plan has ${actionCounts["paper-buy-plan"]} buy plans, ${actionCounts["paper-sell-plan"]} sell plans, and ${(cashDeploymentPercent * 100).toFixed(1)}% cash deployment.`
+      : planQuality === "blocked"
+        ? `paper plan is blocked by ${actionCounts.blocked} rule checks; keep cash until constraints clear.`
+        : "paper plan stays watch-only; no forced trade under current snapshot.";
+
+  return {
+    candidatePoolSize: input.candidatePoolSize,
+    affordableCandidateCount: input.affordableCandidateCount,
+    positionConflictCount: input.positionConflictCount,
+    actionCounts,
+    blockedReasons: summarizeBlockedReasons(input.operations),
+    plannedBuyNotional: Number(plannedBuyNotional.toFixed(2)),
+    plannedSellNotional: Number(plannedSellNotional.toFixed(2)),
+    cashDeploymentPercent: Number(cashDeploymentPercent.toFixed(4)),
+    planQuality,
+    summary,
+  };
 }
 
 export function buildPaperTradingPlan(input: {
@@ -136,7 +239,7 @@ export function buildPaperTradingPlan(input: {
 
   const candidatePool = uniqueBySymbol([
     ...input.candidates.candidates
-      .filter((candidate) => candidate.action === "paper-buy")
+      .filter((candidate) => candidate.action === "paper-buy" || candidate.action === "watch")
       .map((candidate) => ({
         symbol: candidate.symbol,
         name: candidate.name,
@@ -144,9 +247,10 @@ export function buildPaperTradingPlan(input: {
         score: candidate.score,
         strategy: input.candidates.strategyName,
         reason: candidate.reasons.join("；"),
+        priority: candidate.action === "paper-buy" ? 2 : 1,
       })),
     ...input.qualityStocks.stocks
-      .filter((stock) => stock.action === "focus")
+      .filter((stock) => stock.action === "focus" || stock.action === "watch")
       .map((stock) => ({
         symbol: stock.symbol,
         name: stock.name,
@@ -154,13 +258,50 @@ export function buildPaperTradingPlan(input: {
         score: stock.score,
         strategy: "每日优质股评分",
         reason: stock.reasons.join("；"),
+        priority: stock.action === "focus" ? 2 : 1,
       })),
-  ]).slice(0, 8);
+  ])
+    .sort((a, b) => {
+      const aQuantity = candidateQuantity(
+        a,
+        input.account.cash,
+        maxSingleOrderNotional,
+        input.lotSize,
+      );
+      const bQuantity = candidateQuantity(
+        b,
+        input.account.cash,
+        maxSingleOrderNotional,
+        input.lotSize,
+      );
+      const aAffordable = aQuantity >= input.lotSize ? 1 : 0;
+      const bAffordable = bQuantity >= input.lotSize ? 1 : 0;
+      if (bAffordable !== aAffordable) return bAffordable - aAffordable;
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      if (b.score !== a.score) return b.score - a.score;
+      return a.price - b.price;
+    })
+    .slice(0, 12);
+  const candidatePoolSize = candidatePool.length;
+  const affordableCandidateCount = candidatePool.filter((candidate) => {
+    const quantity = candidateQuantity(
+      candidate,
+      input.account.cash,
+      maxSingleOrderNotional,
+      input.lotSize,
+    );
+    return quantity >= input.lotSize;
+  }).length;
+  const positionConflictCount = candidatePool.filter((candidate) =>
+    positionMap.has(candidate.symbol),
+  ).length;
 
   for (const candidate of candidatePool) {
     const existing = positionMap.get(candidate.symbol);
-    const quantity = roundLot(
-      Math.min(maxSingleOrderNotional, input.account.cash) / Math.max(candidate.price, 1),
+    const quantity = candidateQuantity(
+      candidate,
+      input.account.cash,
+      maxSingleOrderNotional,
       input.lotSize,
     );
     const estimatedNotional = Number((quantity * candidate.price).toFixed(2));
@@ -258,6 +399,13 @@ export function buildPaperTradingPlan(input: {
           qualityGate: topStrategy.qualityGate,
         }
       : null,
+    qualitySummary: buildQualitySummary({
+      operations,
+      candidatePoolSize,
+      affordableCandidateCount,
+      positionConflictCount,
+      cash: input.account.cash,
+    }),
     operations,
     guardrails: [
       "本计划不代表真实收益，也不构成投资建议。",

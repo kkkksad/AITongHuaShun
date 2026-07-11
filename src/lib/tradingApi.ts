@@ -298,6 +298,19 @@ export interface PaperTradingOperation {
   ruleChecks: string[];
 }
 
+export interface PaperTradingPlanQualitySummary {
+  candidatePoolSize: number;
+  affordableCandidateCount: number;
+  positionConflictCount: number;
+  actionCounts: Record<PaperTradingOperationAction, number>;
+  blockedReasons: Record<string, number>;
+  plannedBuyNotional: number;
+  plannedSellNotional: number;
+  cashDeploymentPercent: number;
+  planQuality: "actionable" | "watch-only" | "blocked";
+  summary: string;
+}
+
 export interface PaperTradingPlan {
   generatedAt: string;
   tradingDate: string;
@@ -323,6 +336,7 @@ export interface PaperTradingPlan {
     totalTrades: number;
     qualityGate: string;
   } | null;
+  qualitySummary: PaperTradingPlanQualitySummary;
   operations: PaperTradingOperation[];
   guardrails: string[];
 }

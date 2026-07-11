@@ -39,8 +39,8 @@
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
 - **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示成功率/胜率优先排名；排序同时约束交易次数、正收益和最大回撤，结果明确标注为研究/模拟，不代表真实收益。
 - **A 股强势回踩确认战法** —— 新增偏高胜率的研究候选策略：中期趋势向上、温和回踩、放量反包确认后入场，并使用固定止盈止损控制单笔风险；已纳入策略研究排行榜，但当前仍基于快照合成样本，不代表真实收益。
-- **今日候选扫描器** —— `/api/research/daily-candidates` 基于当前行情快照输出 A 股强势回踩确认战法的候选清单、模拟动作、建议 paper 仓位和止盈止损；前端策略页与研究管线页自动刷新，结果只用于研究和模拟盘观察。
-- **每日优质股筛选器** —— `/api/research/daily-quality-stocks` 基于当前行情快照按流动性、涨跌幅健康度、波动稳定性、日内强度和换手率生成优质股观察池；前端策略页自动展示，当前尚未接授权历史 K 线、财务因子或真实新闻。
+- **今日候选扫描器** —— `/api/research/daily-candidates` 基于当前行情快照输出 A 股强势回踩确认战法的候选清单、模拟动作、建议 paper 仓位和止盈止损；前端默认展示 24 个候选，后端最多支持 80 个，结果只用于研究和模拟盘观察。
+- **每日优质股筛选器** —— `/api/research/daily-quality-stocks` 基于当前行情快照按流动性、涨跌幅健康度、波动稳定性、日内强度和换手率生成优质股观察池；前端默认展示 30 个标的，后端最多支持 120 个，当前尚未接授权历史 K 线、财务因子或真实新闻。
 - **研究学习状态** —— `/api/research/learning-state` 记录运行期内存中的行情快照样本、策略排行榜运行、今日候选扫描和每日优质股运行摘要；研究管线页显示累计样本、研究运行、覆盖标的和下一批数据需求。当前仅为内存观测层，服务重启会清空，尚未升级为授权历史行情缓存或数据库。
 - **研究管线实时化** —— 研究管线页已从静态说明升级为读取策略排行榜、今日候选扫描和学习状态，并修复默认导出组件被命名懒加载误用导致的页面渲染异常。
 - **前端稳定性防护** —— 开发环境自动注销 PWA Service Worker 并清理缓存；REST 客户端会识别 API 代理误返回 HTML 的情况，WebSocket 默认支持同源代理和显式 `VITE_WS_URL`。
@@ -49,7 +49,8 @@
 - **纸面账户纯现金启动配置** —— `TRADING_STARTING_CASH` 控制新建本地模拟账户初始资金，`TRADING_SEED_PORTFOLIO=false` 可关闭默认演示持仓种子，用于从 10000 元纯现金开始做本地 paper 观察。
 - **大盘指数展示修正** —— 主要指数卡片在 AkShare 模式下显示指数成交额，市场页指数图表改为使用当前后端指数快照，不再把静态模拟分时图伪装成实时大盘走势。
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
-- **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程，研究管线页展示规则检查、候选动作和拦截原因。
+- **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
+- **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 新增 `qualitySummary`，返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额和现金使用比例；研究管线页面展示该诊断，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1 或持仓约束保持观望。
 - **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
 
 ## 可用接口
@@ -59,10 +60,11 @@ GET  /api/health
 GET  /api/capabilities
 GET  /metrics                              (Prometheus 指标)
 GET  /api/market/snapshot
-GET  /api/research/strategy-leaderboard?bars=90
-GET  /api/research/daily-candidates?limit=8
-GET  /api/research/daily-quality-stocks?limit=10
+GET  /api/research/strategy-leaderboard?bars=120
+GET  /api/research/daily-candidates?limit=24
+GET  /api/research/daily-quality-stocks?limit=30
 GET  /api/research/learning-state
+GET  /api/research/paper-trading-plan
 GET  /api/research/real-data-feed
 GET  /api/account
 GET  /api/positions
@@ -168,6 +170,20 @@ TypeScript checks and Vite production build passed
 npm test
 27 test files passed
 550 tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+2026-07-11 策略覆盖扩池与纸面计划质量诊断验证
+npm run test:server -- server/app.test.ts
+1 test file passed
+20 tests passed
+
+npm test
+25 server test files passed
+541 server tests passed
+2 web test files passed
+9 web tests passed
 
 npm run build
 TypeScript checks and Vite production build passed

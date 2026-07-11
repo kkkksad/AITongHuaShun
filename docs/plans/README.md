@@ -35,3 +35,4 @@ YYYY-MM-DD-short-task-name.md
 
 - [真实数据与策略研究闭环](2026-07-11-real-data-strategy-research-loop.md)
 - [每日优质股与同花顺模拟盘升级清单](2026-07-11-daily-quality-stock-and-ths-simulation-upgrade.md)
+- [两天策略与系统优化冲刺](2026-07-11-two-day-strategy-system-sprint.md)

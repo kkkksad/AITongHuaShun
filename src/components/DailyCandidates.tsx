@@ -32,8 +32,8 @@ function candidateReason(candidate: DailyCandidate): string {
 
 export function DailyCandidates() {
   const candidatesQuery = useQuery({
-    queryKey: ["daily-candidates", 8],
-    queryFn: () => fetchDailyCandidates(8),
+    queryKey: ["daily-candidates", 24],
+    queryFn: () => fetchDailyCandidates(24),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
