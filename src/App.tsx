@@ -395,8 +395,10 @@ function App() {
       <AppShell
         activeView={activeView}
         connectionState={trading.connectionState}
+        marketDataProvider={trading.marketDataProvider}
         mode={trading.mode}
         onViewChange={(view) => navigate(viewPaths[view])}
+        realtimeState={trading.realtimeState}
       >
         <ErrorBoundary>
           <Routes>

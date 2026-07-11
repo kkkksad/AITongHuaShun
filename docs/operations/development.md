@@ -97,6 +97,8 @@ Invoke-WebRequest http://127.0.0.1:4173/api/health -Headers @{ Accept = "applica
 
 第二条命令应该返回 JSON，而不是 `index.html`。如果返回 HTML，说明 4173 当前服务没有使用 `config/vite.app.config.js` 的代理配置；停止旧终端后重新执行 `npm run dev` 或 `npm run dev:a-share`。开发环境下前端会自动注销 PWA Service Worker 并清理当前站点缓存，避免旧 JS/CSS 继续渲染。
 
+顶栏状态分为 REST 后端连接和 WebSocket 实时通道两层。若浏览器控制台在开发模式下偶发 `WebSocket is closed before the connection is established`，但 `/api/health`、`/api/market/snapshot` 与顶栏 REST 状态正常，通常是 React StrictMode 首次 effect 预演关闭了临时连接，不代表交易后端离线；应以顶栏的“交易后端已连接 · paper · AkShare 真实只读行情”以及 `npm run check:a-share` 为准。
+
 只想单独启动前端并连接已有 API 时，可以在未提交的 `.env.local` 中显式指定：
 
 ```text

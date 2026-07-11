@@ -42,9 +42,14 @@ export const translations = {
     "theme.mode.light": "暗色模式",
     "theme.mode.dark": "亮色模式",
 
-    "connection.connected": "模拟行情实时连接",
+    "connection.connected": "交易后端已连接",
     "connection.connecting": "正在连接交易后端",
-    "connection.offline": "后端离线，静态演示",
+    "connection.offline": "交易后端离线",
+    "connection.provider.akshare": "AkShare 真实只读行情",
+    "connection.provider.mock": "本地模拟行情",
+    "connection.realtime.connected": "实时通道已连接",
+    "connection.realtime.connecting": "实时通道连接中",
+    "connection.realtime.offline": "实时通道重连中",
 
     "menu.open": "打开菜单",
     "menu.close": "关闭菜单",
@@ -161,9 +166,14 @@ export const translations = {
     "theme.mode.light": "Dark Mode",
     "theme.mode.dark": "Light Mode",
 
-    "connection.connected": "Live simulated feed",
+    "connection.connected": "Backend connected",
     "connection.connecting": "Connecting to backend",
-    "connection.offline": "Backend offline, demo",
+    "connection.offline": "Backend offline",
+    "connection.provider.akshare": "AkShare live read-only data",
+    "connection.provider.mock": "Local simulated data",
+    "connection.realtime.connected": "Realtime channel connected",
+    "connection.realtime.connecting": "Realtime channel connecting",
+    "connection.realtime.offline": "Realtime channel reconnecting",
 
     "menu.open": "Open menu",
     "menu.close": "Close menu",

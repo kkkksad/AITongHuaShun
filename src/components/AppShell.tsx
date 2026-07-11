@@ -20,6 +20,7 @@ import type { ConnectionState } from "../hooks/useTradingBackend";
 import { useTheme } from "../hooks/useTheme";
 import { useI18n, type Locale } from "../i18n";
 import type { TradingMode } from "../../shared/trading";
+import type { MarketDataProviderName } from "../lib/tradingApi";
 import { MobileNav } from "./MobileNav";
 
 export type ViewId = "overview" | "strategy" | "market" | "account" | "learning" | "settings";
@@ -28,7 +29,9 @@ interface AppShellProps {
   activeView: ViewId;
   onViewChange: (view: ViewId) => void;
   connectionState: ConnectionState;
+  realtimeState?: ConnectionState;
   mode: TradingMode;
+  marketDataProvider?: MarketDataProviderName;
   children: ReactNode;
 }
 
@@ -36,7 +39,9 @@ export function AppShell({
   activeView,
   onViewChange,
   connectionState,
+  realtimeState,
   mode,
+  marketDataProvider,
   children,
 }: AppShellProps) {
   const { theme, toggle: toggleTheme } = useTheme();
@@ -75,6 +80,18 @@ export function AppShell({
     connecting: t("connection.connecting"),
     offline: t("connection.offline"),
   };
+  const realtimeLabels: Record<ConnectionState, string> = {
+    connected: t("connection.realtime.connected"),
+    connecting: t("connection.realtime.connecting"),
+    offline: t("connection.realtime.offline"),
+  };
+  const providerLabel =
+    marketDataProvider === "akshare"
+      ? t("connection.provider.akshare")
+      : t("connection.provider.mock");
+  const detailLabel = realtimeState
+    ? `${mode} · ${providerLabel} · ${realtimeLabels[realtimeState]}`
+    : `${mode} · ${providerLabel}`;
 
   return (
     <div className="app-shell">
@@ -200,7 +217,9 @@ export function AppShell({
                       : "status-dot red"
                 }
               />
-              <span>{connectionLabels[connectionState]} · {mode}</span>
+              <span>
+                {connectionLabels[connectionState]} · {detailLabel}
+              </span>
             </div>
           </div>
         </header>

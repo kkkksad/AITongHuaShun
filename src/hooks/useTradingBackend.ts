@@ -28,6 +28,7 @@ export type ConnectionState = "connecting" | "connected" | "offline";
 
 export interface TradingBackend {
   connectionState: ConnectionState;
+  realtimeState: ConnectionState;
   mode: TradingMode;
   marketDataProvider: MarketDataProviderName;
   market?: MarketSnapshot;
@@ -68,7 +69,7 @@ function errorMessage(error: unknown, fallback?: string): string | undefined {
 
 export function useTradingBackend(): TradingBackend {
   const queryClient = useQueryClient();
-  const [connectionState, setConnectionState] =
+  const [realtimeState, setRealtimeState] =
     useState<ConnectionState>("connecting");
   const [transportError, setTransportError] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -98,7 +99,7 @@ export function useTradingBackend(): TradingBackend {
       });
       setTransportError(undefined);
     } catch (refreshError) {
-      setConnectionState("offline");
+      setRealtimeState("offline");
       setTransportError(errorMessage(refreshError, "交易后端不可用"));
       throw refreshError;
     }
@@ -130,7 +131,7 @@ export function useTradingBackend(): TradingBackend {
       if (!active) {
         return;
       }
-      setConnectionState("offline");
+      setRealtimeState("offline");
       const attempt = reconnectAttemptRef.current;
       const jitter = Math.round(Math.random() * 250);
       const delay = Math.min(
@@ -204,7 +205,7 @@ export function useTradingBackend(): TradingBackend {
       ) {
         return;
       }
-      setConnectionState("connecting");
+      setRealtimeState("connecting");
       const currentSocket = new WebSocket(getTradingSocketUrl());
       socket = currentSocket;
 
@@ -213,7 +214,7 @@ export function useTradingBackend(): TradingBackend {
           currentSocket.close();
           return;
         }
-        setConnectionState("connected");
+        setRealtimeState("connected");
         setTransportError(undefined);
         resetReconnectDelay();
         startHeartbeat();
@@ -350,9 +351,15 @@ export function useTradingBackend(): TradingBackend {
     submitMutation.isPending ||
     cancelMutation.isPending ||
     pauseMutation.isPending;
+  const connectionState: ConnectionState = bootstrap
+    ? "connected"
+    : bootstrapQuery.isError || realtimeState === "offline"
+      ? "offline"
+      : "connecting";
 
   return {
     connectionState,
+    realtimeState,
     mode: bootstrap?.health.mode ?? bootstrap?.market.mode ?? "mock",
     marketDataProvider:
       bootstrap?.capabilities.marketData.provider ??
