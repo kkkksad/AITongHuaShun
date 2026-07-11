@@ -45,6 +45,7 @@
 - **连接状态诊断** —— 顶栏将 REST 后端连接、运行模式、行情源和 WebSocket 实时通道分开展示，避免 React 开发模式下短暂的 WebSocket 预关闭被误判为后端未连接或行情源回落到 mock。
 - **A 股链路健康检查** —— `npm run check:a-share` 可验证 Fastify API、AkShare 桥接、Vite 代理、指数行情、个股行情和 KAIROS 行情快照是否处于同一套正在运行的服务。
 - **纸面账户纯现金启动配置** —— `TRADING_STARTING_CASH` 控制新建本地模拟账户初始资金，`TRADING_SEED_PORTFOLIO=false` 可关闭默认演示持仓种子，用于从 10000 元纯现金开始做本地 paper 观察。
+- **大盘指数展示修正** —— 主要指数卡片在 AkShare 模式下显示指数成交额，市场页指数图表改为使用当前后端指数快照，不再把静态模拟分时图伪装成实时大盘走势。
 
 ## 可用接口
 
@@ -224,6 +225,6 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。
 - AkShare 模式必须使用 `MARKET_MODE=paper`，真实行情不改变订单执行权限。
 - 当前没有任何真实订单执行代码。
-- 新闻、资金流和分时图仍使用前端静态模拟数据；主要指数卡片在 AkShare 模式下使用只读指数行情。
+- 新闻和资金流仍使用前端静态模拟数据；主要指数卡片和指数快照图在 AkShare 模式下使用只读指数行情。当前仍未接入真实逐笔或完整分时历史曲线。
 
 本页只记录可从仓库核实的当前事实。目标设计写入 `architecture/`，产品意图写入 `product/`，实施步骤写入 `plans/`。
