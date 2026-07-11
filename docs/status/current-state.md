@@ -34,6 +34,7 @@
 - **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
 - **认证安全原型** —— `server/auth.ts` 提供显式配置、短期 HMAC 令牌和恒定时间凭据比较，但尚未注册到主 Fastify 服务，不保护当前 API。
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
+- **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示收益率优先排名；结果明确标注为研究/模拟，不代表真实收益。
 
 ## 可用接口
 
@@ -42,6 +43,7 @@ GET  /api/health
 GET  /api/capabilities
 GET  /metrics                              (Prometheus 指标)
 GET  /api/market/snapshot
+GET  /api/research/strategy-leaderboard?bars=90
 GET  /api/account
 GET  /api/positions
 GET  /api/orders
@@ -65,7 +67,7 @@ GET  /documentation/json                  (OpenAPI JSON)
 ```text
 npm test
 25 test files passed
-461 tests passed (0 failures)
+462 tests passed (0 failures)
 
 npm run build
 TypeScript checks and Vite production build passed
@@ -94,6 +96,8 @@ server/
 │   ├── scoreUtils.ts            # 得分计算
 │   ├── index.ts                 # 统一导出 + 7种策略工厂
 │   └── optimizer.test.ts       # 22 tests
+├── research/
+│   └── strategyLeaderboard.ts   # 策略研究排行榜（只读研究端点）
 ├── risk/
 │   ├── riskEngine.ts            # 增强型风控引擎（熔断+动态限额）
 │   └── riskEngine.test.ts      # 26 tests
@@ -143,6 +147,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 ## 下一步
 
 - 实现 NewsProvider 契约，抽象新闻数据源。
+- 将策略研究排行榜从快照生成样本升级为授权历史行情缓存，并加入样本外验证。
 - 将认证原型装配到 API，并增加账户白名单、角色权限和独立审批服务。
 - 前端集成网格交易运行器控制面板。
 - PostgreSQL 替代 JSON 文件持久化。
@@ -152,6 +157,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 
 - 默认行情、资金流、新闻、账户与订单数据仍是本地模拟数据；可选 AkShare 行情是只读外部数据。
 - 回测和模拟成交不代表真实策略收益，也不构成投资建议。
+- 策略研究排行榜当前使用确定性合成历史样本，不是授权历史行情或真实收益记录。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
 - 当前没有事务型数据库或已启用的用户认证，也没有真实账户连接或真实券商执行。
 - 认证原型没有默认账号、默认密码或默认 JWT 密钥；缺少显式安全配置时必须拒绝注册。

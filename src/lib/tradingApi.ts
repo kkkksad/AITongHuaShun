@@ -57,6 +57,50 @@ export interface OrderSubmission {
   positions: PositionSnapshot[];
 }
 
+export interface StrategyLeaderboardEntry {
+  rank: number;
+  strategyKey: string;
+  strategyName: string;
+  score: number;
+  bestParams: Record<string, number>;
+  metrics: {
+    totalReturn: number;
+    annualizedReturn: number;
+    sharpeRatio: number;
+    sortinoRatio: number;
+    calmarRatio: number;
+    maxDrawdownPercent: number;
+    winRate: number;
+    totalTrades: number;
+  };
+  trialCount: number;
+}
+
+export interface StrategyLeaderboardReport {
+  generatedAt: string;
+  source: {
+    provider: MarketDataProviderName;
+    mode: TradingMode;
+    sampleType: "synthetic-from-current-snapshot";
+    quoteCount: number;
+    tradableSymbols: string[];
+    bars: number;
+    snapshotSequence: number;
+    snapshotTime: string;
+  };
+  objective: { metric: string; weight: number }[];
+  costModel: {
+    initialCapital: number;
+    commissionRate: number;
+    minimumCommission: number;
+    slippageBps: number;
+    maxOrderNotional: number;
+    maxPositionWeight: number;
+  };
+  guardrails: string[];
+  entries: StrategyLeaderboardEntry[];
+}
+
 interface AccountResponse {
   account: AccountSnapshot;
 }
@@ -100,6 +144,14 @@ export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> 
     method: "POST",
     body: JSON.stringify(order),
   });
+}
+
+export function fetchStrategyLeaderboard(
+  bars = 90,
+): Promise<StrategyLeaderboardReport> {
+  return request<StrategyLeaderboardReport>(
+    `/api/research/strategy-leaderboard?bars=${bars}`,
+  );
 }
 
 export function cancelPaperOrder(orderId: string): Promise<OrderSubmission> {

@@ -33,6 +33,7 @@ import {
   exportOrdersToCsv,
 } from "./monitoring/exportUtils";
 import type { ExportFormat } from "./monitoring/exportUtils";
+import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
 
@@ -65,6 +66,10 @@ const logsQuerySchema = z.object({
   level: z.enum(["debug", "info", "warn", "error"]).optional(),
   module: z.string().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+const strategyLeaderboardQuerySchema = z.object({
+  bars: z.coerce.number().int().min(30).max(180).default(90),
 });
 
 interface BuildTradingAppOptions {
@@ -121,6 +126,7 @@ export async function buildTradingApp(
           { name: "导出", description: "审计与交易记录导出" },
           { name: "监控", description: "Prometheus 指标端点" },
           { name: "日志", description: "系统日志查看" },
+          { name: "研究", description: "策略优化与研究排行榜" },
         ],
       },
     });
@@ -300,6 +306,34 @@ export async function buildTradingApp(
       description: "返回当前所有监控标的的实时行情快照",
     },
   }, async () => system.market.getSnapshot());
+
+  app.get("/api/research/strategy-leaderboard", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取策略研究排行榜",
+      description:
+        "基于当前行情快照生成确定性研究样本并运行内置策略参数搜索。结果不代表真实收益。",
+      querystring: {
+        type: "object",
+        properties: {
+          bars: {
+            type: "integer",
+            minimum: 30,
+            maximum: 180,
+            default: 90,
+            description: "生成研究样本的 bar 数量",
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { bars } = strategyLeaderboardQuerySchema.parse(request.query);
+    return buildStrategyLeaderboard(
+      system.market.getSnapshot(),
+      system.marketDataProvider,
+      bars,
+    );
+  });
 
   // 账户
   app.get("/api/account", {

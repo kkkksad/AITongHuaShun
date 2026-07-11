@@ -142,9 +142,12 @@ Invoke-RestMethod http://127.0.0.1:8787/api/health
 Invoke-RestMethod http://127.0.0.1:8787/api/capabilities
 Invoke-RestMethod http://127.0.0.1:8787/api/account
 Invoke-RestMethod http://127.0.0.1:8787/api/market/snapshot
+Invoke-RestMethod http://127.0.0.1:8787/api/research/strategy-leaderboard
 ```
 
 OpenAPI 界面位于 `http://127.0.0.1:8787/documentation`。
+
+策略排行榜端点会基于当前行情快照生成确定性研究样本并运行参数搜索。它用于验证研究流程和候选策略排序，不代表真实收益；接入授权历史行情缓存前，不应把它作为实盘策略依据。
 
 订单接口只执行模拟撮合。示例：
 

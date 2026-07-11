@@ -34,6 +34,7 @@ const RiskPanel = lazyNamed(() => import("./components/RiskPanel"), "RiskPanel")
 const Settings = lazyNamed(() => import("./components/Settings"), "Settings");
 const StrategyCompare = lazyNamed(() => import("./components/StrategyCompare"), "StrategyCompare");
 const StrategyLab = lazyNamed(() => import("./components/StrategyLab"), "StrategyLab");
+const StrategyLeaderboard = lazyNamed(() => import("./components/StrategyLeaderboard"), "StrategyLeaderboard");
 
 type AccountTab = "portfolio" | "trading" | "orders" | "risk" | "strategies" | "monitor" | "logs";
 
@@ -265,6 +266,9 @@ function App() {
       </Suspense>
       <Suspense fallback={<LazyFallback />}>
         <BacktestResults result={result} />
+      </Suspense>
+      <Suspense fallback={<LazyFallback />}>
+        <StrategyLeaderboard />
       </Suspense>
       <Suspense fallback={<LazyFallback />}>
         <StrategyCompare results={allStrategyResults} />

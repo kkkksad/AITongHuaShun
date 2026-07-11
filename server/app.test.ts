@@ -54,6 +54,29 @@ describe("trading API", () => {
     expect(response.json().openApi).toBe("/documentation/json");
   });
 
+  it("returns a guarded strategy research leaderboard", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/strategy-leaderboard?bars=45",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      source: {
+        provider: "mock",
+        sampleType: "synthetic-from-current-snapshot",
+        bars: 45,
+      },
+    });
+    expect(response.json().entries.length).toBeGreaterThan(0);
+    expect(response.json().entries[0]).toMatchObject({
+      rank: 1,
+      bestParams: expect.any(Object),
+      metrics: expect.any(Object),
+    });
+    expect(response.json().guardrails.join("")).toContain("不代表真实收益");
+  });
+
   it("publishes an OpenAPI document for the simulation API", async () => {
     const response = await app.inject({
       method: "GET",
@@ -68,6 +91,7 @@ describe("trading API", () => {
     });
     expect(response.json().paths).toHaveProperty("/api/orders");
     expect(response.json().paths).toHaveProperty("/api/capabilities");
+    expect(response.json().paths).toHaveProperty("/api/research/strategy-leaderboard");
   });
 
   it("adds baseline security headers", async () => {

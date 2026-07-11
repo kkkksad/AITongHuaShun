@@ -2488,6 +2488,119 @@ select:focus-visible {
   margin-top: 4px;
 }
 
+/* ============================================================
+   Research Leaderboard
+   ============================================================ */
+.research-leaderboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--text-secondary);
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.icon-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--bg-panel-hover);
+  border-color: var(--color-primary-border);
+}
+
+.research-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.research-summary-grid article {
+  min-width: 0;
+  padding: 14px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+}
+
+.research-summary-grid span,
+.research-summary-grid small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.research-summary-grid strong {
+  display: block;
+  margin: 7px 0 4px;
+  color: var(--text-heading);
+  font-size: 17px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.research-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 13px;
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  border: 1px solid var(--pipeline-review-border);
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.research-empty {
+  padding: 18px;
+  color: var(--text-muted);
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-light);
+  border-radius: 7px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.research-ranking-table th:first-child,
+.research-ranking-table td:first-child {
+  width: 56px;
+}
+
+.research-params {
+  max-width: 360px;
+  overflow: hidden;
+  color: var(--text-muted) !important;
+  text-overflow: ellipsis;
+}
+
+.research-source-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+@media (max-width: 980px) {
+  .research-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .research-summary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .compare-equity-chart {
   width: 100%;
   height: 340px;
