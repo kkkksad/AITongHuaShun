@@ -45,6 +45,10 @@ export interface TradingBackend {
   setPaused(paused: boolean): Promise<void>;
 }
 
+interface UseTradingBackendOptions {
+  enabled?: boolean;
+}
+
 const tradingQueryKey = ["trading-bootstrap"] as const;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
@@ -67,7 +71,10 @@ function errorMessage(error: unknown, fallback?: string): string | undefined {
   return fallback;
 }
 
-export function useTradingBackend(): TradingBackend {
+export function useTradingBackend(
+  options: UseTradingBackendOptions = {},
+): TradingBackend {
+  const enabled = options.enabled ?? true;
   const queryClient = useQueryClient();
   const [realtimeState, setRealtimeState] =
     useState<ConnectionState>("connecting");
@@ -78,6 +85,7 @@ export function useTradingBackend(): TradingBackend {
   const bootstrapQuery = useQuery({
     queryKey: tradingQueryKey,
     queryFn: fetchTradingBootstrap,
+    enabled,
   });
 
   const updateBootstrap = useCallback(
@@ -91,6 +99,10 @@ export function useTradingBackend(): TradingBackend {
   );
 
   const refresh = useCallback(async () => {
+    if (!enabled) {
+      return;
+    }
+
     try {
       await queryClient.fetchQuery({
         queryKey: tradingQueryKey,
@@ -103,9 +115,16 @@ export function useTradingBackend(): TradingBackend {
       setTransportError(errorMessage(refreshError, "交易后端不可用"));
       throw refreshError;
     }
-  }, [queryClient]);
+  }, [enabled, queryClient]);
 
   useEffect(() => {
+    if (!enabled) {
+      setRealtimeState("offline");
+      setTransportError(undefined);
+      reconnectAttemptRef.current = 0;
+      return;
+    }
+
     let socket: WebSocket | undefined;
     let reconnectTimer: number | undefined;
     let heartbeatTimer: number | undefined;
@@ -255,7 +274,7 @@ export function useTradingBackend(): TradingBackend {
       socket?.close();
       socket = undefined;
     };
-  }, [updateBootstrap]);
+  }, [enabled, updateBootstrap]);
 
   const submitMutation = useMutation({
     mutationFn: submitPaperOrder,
@@ -346,7 +365,10 @@ export function useTradingBackend(): TradingBackend {
     [pauseMutation],
   );
 
-  const bootstrap = bootstrapQuery.data;
+  const bootstrap = enabled ? bootstrapQuery.data : undefined;
+  const backendError = enabled
+    ? transportError ?? errorMessage(bootstrapQuery.error, "交易后端不可用")
+    : undefined;
   const pendingAction =
     submitMutation.isPending ||
     cancelMutation.isPending ||
@@ -370,9 +392,7 @@ export function useTradingBackend(): TradingBackend {
     positions: bootstrap?.positions ?? [],
     orders: bootstrap?.orders ?? [],
     limits: bootstrap?.limits,
-    error:
-      transportError ??
-      errorMessage(bootstrapQuery.error, "交易后端不可用"),
+    error: backendError,
     notice,
     pendingAction,
     refresh,

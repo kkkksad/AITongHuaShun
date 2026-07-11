@@ -34,6 +34,7 @@
 - **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
 - **同花顺模拟盘纸面适配器骨架** —— `TongHuaShunPaperAdapter` 只允许 `paper`/`sandbox`，接收行情注入后委托 `PaperBroker + RiskEngine` 完成模拟成交；拒绝 `live` 和 `tradingEnabled=true`，当前未装配到主服务，也不包含同花顺真实下单端点。
 - **可选本地登录保护** —— `AUTH_ENABLED=true` 时主 Fastify 服务注册 `/api/auth/*`，并用短期 HMAC 令牌保护 API；默认 `AUTH_ENABLED=false`，本地开发仍为未保护模式且没有默认凭据。
+- **认证感知前端连接** —— 前端先确认登录配置和用户状态，只有认证关闭或已登录后才拉取交易 bootstrap 并建立 WebSocket，避免登录页误报后端离线或产生未授权请求。
 - **自优化与存储控制状态** —— `/api/research/self-optimization` 声明 paper-only 策略自优化输入、目标和有界本地研究缓存策略，默认只计划保存紧凑日线/特征，不保存无上限垃圾数据。
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
 - **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示成功率/胜率优先排名；排序同时约束交易次数、正收益和最大回撤，结果明确标注为研究/模拟，不代表真实收益。
@@ -159,6 +160,14 @@ npm test
 npm run test:server -- server/app.test.ts
 1 test file passed
 18 tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+2026-07-11 认证感知前端连接与安全边界文档验证
+npm test
+27 test files passed
+550 tests passed
 
 npm run build
 TypeScript checks and Vite production build passed

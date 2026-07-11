@@ -153,10 +153,12 @@ const pathViews = Object.fromEntries(
 ) as Record<string, ViewId>;
 
 function App() {
-  const trading = useTradingBackend();
   const [authRequired, setAuthRequired] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const trading = useTradingBackend({
+    enabled: authChecked && (!authRequired || Boolean(authUser)),
+  });
   const location = useLocation();
   const navigate = useNavigate();
   const [accountTab, setAccountTab] = useState<AccountTab>("portfolio");
