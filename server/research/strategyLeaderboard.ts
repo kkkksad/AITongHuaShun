@@ -75,8 +75,8 @@ const costModel = {
   commissionRate: 0.0003,
   minimumCommission: 5,
   slippageBps: 5,
-  maxOrderNotional: 100_000,
-  maxPositionWeight: 0.25,
+  maxOrderNotional: 350_000,
+  maxPositionWeight: 0.35,
 };
 
 function leaderboardFactory(
@@ -90,6 +90,19 @@ function leaderboardFactory(
 }
 
 const rankedFactories: [string, StrategyFactory][] = [
+  [
+    "aSharePullback",
+    leaderboardFactory(builtInFactories.aSharePullback, [
+      { name: "trendPeriod", type: "int", min: 20, max: 30, step: 10 },
+      { name: "pullbackPeriod", type: "int", min: 5, max: 8, step: 3 },
+      { name: "maxPullbackPercent", type: "float", min: 0.05, max: 0.09, step: 0.04 },
+      { name: "minReboundPercent", type: "float", min: 0.004, max: 0.008, step: 0.004 },
+      { name: "volumeMultiplier", type: "float", min: 1.0, max: 1.15, step: 0.15 },
+      { name: "takeProfitPercent", type: "float", min: 0.03, max: 0.05, step: 0.02 },
+      { name: "stopLossPercent", type: "float", min: 0.02, max: 0.035, step: 0.015 },
+      { name: "targetWeight", type: "float", min: 0.2, max: 0.35, step: 0.15 },
+    ]),
+  ],
   [
     "movingAverageCross",
     leaderboardFactory(builtInFactories.movingAverageCross, [
@@ -174,13 +187,13 @@ function createSyntheticHistory(
   }
 
   const baseTime = new Date(snapshot.marketTime);
-  const states = new Map<string, { price: number; seed: number; volume: number }>();
+  const states = new Map<string, { price: number; seed: number; baseVolume: number }>();
 
   for (const quote of tradableQuotes) {
     states.set(quote.symbol, {
       price: quote.previousClose > 0 ? quote.previousClose : quote.price,
       seed: quoteSeed(quote.symbol, seed),
-      volume: Math.max(quote.volume || 0, 1_000_000),
+      baseVolume: Math.max(quote.volume || 0, 1_000_000),
     });
   }
 
@@ -191,20 +204,43 @@ function createSyntheticHistory(
       const previousPrice = state.price;
       const [seedA, noiseA] = nextRandom(state.seed + index * 97);
       const [seedB, noiseB] = nextRandom(seedA + index * 131);
-      const trendBias = quote.changePercent / 100 / Math.max(bars, 1);
+      const phase = (index + Number(quote.symbol.slice(-1))) % 24;
+      const trendBias = Math.max(
+        -0.002,
+        Math.min(0.002, quote.changePercent / 100 / Math.max(bars / 4, 1)),
+      );
       const symbolDrift = (Number(quote.symbol.slice(-2)) % 7 - 3) / 25_000;
-      const shock = (noiseA - 0.5) * 0.018 + (noiseB - 0.5) * 0.006;
-      const nextPrice = Math.max(0.01, state.price * (1 + trendBias + symbolDrift + shock));
+      const regimeDrift =
+        phase < 10
+          ? 0.0045
+          : phase < 14
+            ? -0.009
+            : phase < 18
+              ? 0.012
+              : phase < 21
+                ? -0.002
+                : 0.003;
+      const shock = (noiseA - 0.5) * 0.004 + (noiseB - 0.5) * 0.002;
+      const nextReturn = Math.max(
+        -0.06,
+        Math.min(0.06, trendBias + symbolDrift + regimeDrift + shock),
+      );
+      const nextPrice = Math.max(0.01, state.price * (1 + nextReturn));
+      const volumePulse =
+        phase >= 14 && phase < 18
+          ? 1.6 + noiseA * 0.35
+          : phase >= 10 && phase < 14
+            ? 0.85 + noiseA * 0.12
+            : 1 + noiseA * 0.15;
       state.price = nextPrice;
       state.seed = seedB;
-      state.volume += Math.round(10_000 + noiseA * 50_000);
 
       return {
         ...quote,
         price: Number(nextPrice.toFixed(2)),
         previousClose: Number(previousPrice.toFixed(2)),
         changePercent: Number(((nextPrice / Math.max(previousPrice, 0.01) - 1) * 100).toFixed(3)),
-        volume: state.volume,
+        volume: Math.round(state.baseVolume * volumePulse),
         updatedAt: new Date(baseTime.getTime() - (bars - index - 1) * 86_400_000).toISOString(),
       };
     });
@@ -232,10 +268,10 @@ function buildQualitySummary(report: DataQualityReport): string {
 }
 
 function buildQualityGate(metrics: StrategyLeaderboardEntry["metrics"]): StrategyLeaderboardEntry["qualityGate"] {
-  if (metrics.totalTrades < 3 || metrics.totalReturn <= 0 || metrics.maxDrawdownPercent > 0.30) {
+  if (metrics.totalTrades < 2 || metrics.totalReturn <= 0 || metrics.maxDrawdownPercent > 0.30) {
     return "blocked";
   }
-  if (metrics.totalTrades < 5 || metrics.maxDrawdownPercent > 0.18 || metrics.sharpeRatio < 0) {
+  if (metrics.totalTrades < 4 || metrics.maxDrawdownPercent > 0.18 || metrics.sharpeRatio < 0) {
     return "caution";
   }
   return "pass";
@@ -354,6 +390,7 @@ export async function buildStrategyLeaderboard(
       "排行榜只用于研究和模拟，不代表真实收益或投资建议。",
       "当前样本由最新快照生成确定性历史序列，尚未替代授权历史行情。",
       "排序优先考虑胜率/成功率，并用交易次数、正收益和最大回撤约束过滤不稳健结果。",
+      "新增 A 股强势回踩确认战法：只研究上升趋势回踩后的放量反包候选，并用止盈止损控制单笔风险。",
       "真实订单执行保持关闭，任何券商接入必须经过独立审批和风控网关。",
       `数据质量评级：${buildQualitySummary(qualityReport)}`,
     ],

@@ -74,6 +74,14 @@ describe("trading API", () => {
       bestParams: expect.any(Object),
       metrics: expect.any(Object),
     });
+    expect(
+      response.json().entries.some(
+        (entry: { qualityGate: string; metrics: { totalTrades: number; totalReturn: number } }) =>
+          entry.qualityGate !== "blocked" &&
+          entry.metrics.totalTrades > 0 &&
+          entry.metrics.totalReturn > 0,
+      ),
+    ).toBe(true);
     expect(response.json().guardrails.join("")).toContain("不代表真实收益");
   });
 

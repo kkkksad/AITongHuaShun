@@ -362,8 +362,9 @@ describe("builtInFactories", () => {
     }, 30000); // 30s timeout for optimization tests
   }
 
-  it("builtInFactories contains all 8 strategies", () => {
-    expect(Object.keys(builtInFactories)).toHaveLength(8);
+  it("builtInFactories contains all 9 strategies", () => {
+    expect(Object.keys(builtInFactories)).toHaveLength(9);
+    expect(builtInFactories.aSharePullback.name).toBe("A股强势回踩确认");
   });
 });
 

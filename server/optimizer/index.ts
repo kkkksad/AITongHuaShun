@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 回测参数优化器 —— 统一入口。
  *
  * 提供：
@@ -204,6 +204,40 @@ export const dcaFactory: StrategyFactory = {
 };
 
 /**
+ * A 股强势回踩确认策略参数空间
+ *
+ * 偏向高胜率研究：趋势过滤 + 温和回踩 + 放量反包确认 + 固定止盈止损。
+ */
+export const aSharePullbackFactory: StrategyFactory = {
+  name: "A股强势回踩确认",
+  parameters: [
+    { name: "trendPeriod", type: "int", min: 20, max: 40, step: 10 },
+    { name: "pullbackPeriod", type: "int", min: 5, max: 11, step: 3 },
+    { name: "maxPullbackPercent", type: "float", min: 0.05, max: 0.09, step: 0.02 },
+    { name: "minReboundPercent", type: "float", min: 0.004, max: 0.012, step: 0.004 },
+    { name: "volumeMultiplier", type: "float", min: 1.0, max: 1.3, step: 0.15 },
+    { name: "takeProfitPercent", type: "float", min: 0.03, max: 0.07, step: 0.02 },
+    { name: "stopLossPercent", type: "float", min: 0.02, max: 0.05, step: 0.015 },
+    { name: "targetWeight", type: "float", min: 0.2, max: 0.5, step: 0.15 },
+  ],
+  create: async (params) => {
+    const { ASharePullbackConfirmationStrategy } = await import(
+      "../backtest/strategies/ASharePullbackConfirmationStrategy"
+    );
+    return new ASharePullbackConfirmationStrategy(
+      params.trendPeriod,
+      params.pullbackPeriod,
+      params.maxPullbackPercent,
+      params.minReboundPercent,
+      params.volumeMultiplier,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.targetWeight,
+    );
+  },
+};
+
+/**
  * 所有内置策略工厂映射。
  */
 export const builtInFactories: Record<string, StrategyFactory> = {
@@ -215,6 +249,7 @@ export const builtInFactories: Record<string, StrategyFactory> = {
   macd: macdFactory,
   turtle: turtleFactory,
   dca: dcaFactory,
+  aSharePullback: aSharePullbackFactory,
 };
 
 // ═══════════════════════════════════════════════

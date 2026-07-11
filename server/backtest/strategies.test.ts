@@ -13,6 +13,7 @@ import {
   GridTradingStrategy,
   MACDStrategy,
   TurtleStrategy,
+  ASharePullbackConfirmationStrategy,
 } from "./strategies/index";
 
 // ── 辅助函数 ──
@@ -377,6 +378,86 @@ describe("MomentumStrategy", () => {
 
     const report = engine.run();
     expect(report.trades.length).toBe(0);
+  });
+});
+
+// ═══════════════════════════════════════════════
+// ASharePullbackConfirmationStrategy
+// ═══════════════════════════════════════════════
+
+describe("ASharePullbackConfirmationStrategy", () => {
+  it("buys after an uptrend pullback and confirmed rebound", () => {
+    const prices = [
+      ...Array.from({ length: 35 }, (_, i) => 100 + i * 0.65),
+      124,
+      122,
+      120,
+      121.2,
+      123.4,
+      127.8,
+      130,
+    ];
+
+    const snapshots: MarketSnapshot[] = prices.map((price, index) => ({
+      mode: "paper",
+      sequence: index + 1,
+      marketTime: new Date(2024, 0, index + 1).toISOString(),
+      quotes: [
+        {
+          symbol: "600519",
+          name: "GuiZhouMaoTai",
+          tradable: true,
+          price: Number(price.toFixed(2)),
+          previousClose: Number((prices[index - 1] ?? price).toFixed(2)),
+          changePercent:
+            index === 0
+              ? 0
+              : Number(((price / prices[index - 1] - 1) * 100).toFixed(2)),
+          volume: index >= 39 ? 15_000_000 : 10_000_000,
+          updatedAt: new Date(2024, 0, index + 1).toISOString(),
+        },
+      ],
+    }));
+
+    const engine = new BacktestEngine(
+      snapshots,
+      new ASharePullbackConfirmationStrategy(
+        20,
+        8,
+        0.08,
+        0.006,
+        1.05,
+        0.03,
+        0.03,
+        0.35,
+      ),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    validateStrategyReport(report);
+    expect(report.strategyName).toContain("A股强势回踩确认");
+    expect(report.trades.some((trade) => trade.side === "buy")).toBe(true);
+  });
+
+  it("stays idle when the trend filter is not satisfied", () => {
+    const snapshots = generateSnapshots(80, 100, 0.005);
+    const engine = new BacktestEngine(
+      snapshots,
+      new ASharePullbackConfirmationStrategy(30, 8),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    validateStrategyReport(report);
   });
 });
 

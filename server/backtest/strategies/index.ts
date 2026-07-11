@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 策略库 —— 即插即用的回测策略集合。
  *
  * 使用方式：
@@ -16,6 +16,7 @@ export { GridTradingStrategy } from "./GridTradingStrategy";
 export { MACDStrategy } from "./MACDStrategy";
 export { TurtleStrategy } from "./TurtleStrategy";
 export { DCAStrategy } from "./DCAStrategy";
+export { ASharePullbackConfirmationStrategy } from "./ASharePullbackConfirmationStrategy";
 
 // 技术指标也可以导出，方便自定义策略使用
 export {
