@@ -13,6 +13,53 @@ export interface MarketQuote {
   changePercent: number;
   volume: number;
   updatedAt: string;
+  /** 开盘价（可选，来自行情源） */
+  open?: number;
+  /** 最高价（可选） */
+  high?: number;
+  /** 最低价（可选） */
+  low?: number;
+  /** 成交额（可选） */
+  amount?: number;
+  /** 换手率（可选，百分比） */
+  turnover?: number;
+  /** 振幅（可选，百分比） */
+  amplitude?: number;
+}
+
+/** 数据质量评分 */
+export interface DataQualityScore {
+  /** 0-100，数据新鲜度（基于更新时间） */
+  freshness: number;
+  /** 0-100，数据完整度（有报价的符号比例） */
+  completeness: number;
+  /** 0-1，疑似停牌比例 */
+  suspensionRate: number;
+  /** 涨停数量 */
+  limitUpCount: number;
+  /** 跌停数量 */
+  limitDownCount: number;
+  /** 0-100，综合质量 */
+  overall: number;
+}
+
+/** 数据质量标记 */
+export interface DataQualityFlag {
+  symbol: string;
+  name: string;
+  flag: "suspended" | "limit_up" | "limit_down" | "stale" | "zero_price" | "zero_volume";
+  detail: string;
+}
+
+/** 数据质量报告 */
+export interface DataQualityReport {
+  timestamp: string;
+  provider: string;
+  totalSymbols: number;
+  score: DataQualityScore;
+  flags: DataQualityFlag[];
+  missingSymbols: string[];
+  cacheAgeSec: number | null;
 }
 
 export interface MarketSnapshot {

@@ -74,6 +74,12 @@ class MarketQuote(BaseModel):
     changePercent: float
     volume: int
     updatedAt: str
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    amount: float | None = None
+    turnover: float | None = None
+    amplitude: float | None = None
 
 
 class QuotesResponse(BaseModel):
@@ -115,6 +121,18 @@ class QuoteCache:
                 if not self._data:
                     raise  # 首次加载失败则抛出
 
+    def _safe_float(self, value, default: float = 0.0) -> float | None:
+        """安全解析浮点数，空值返回 None。"""
+        if value is None:
+            return None
+        try:
+            v = float(value)
+            if v == 0:
+                return None
+            return v
+        except (ValueError, TypeError):
+            return None
+
     def _parse_dataframe(self, df) -> None:
         """解析 AkShare 返回的 DataFrame。"""
         new_data: dict[str, MarketQuote] = {}
@@ -132,6 +150,14 @@ class QuoteCache:
                 change_pct = float(row.get("涨跌幅", 0) or 0)
                 volume = int(float(row.get("成交量", 0) or 0))
 
+                # 可选质量字段
+                open_price = self._safe_float(row.get("今开"))
+                high_price = self._safe_float(row.get("最高"))
+                low_price = self._safe_float(row.get("最低"))
+                amount_val = self._safe_float(row.get("成交额"))
+                turnover_val = self._safe_float(row.get("换手率"))
+                amplitude_val = self._safe_float(row.get("振幅"))
+
                 new_data[symbol] = MarketQuote(
                     symbol=symbol,
                     name=name,
@@ -141,6 +167,12 @@ class QuoteCache:
                     changePercent=change_pct,
                     volume=volume,
                     updatedAt=now_iso,
+                    open=open_price,
+                    high=high_price,
+                    low=low_price,
+                    amount=amount_val,
+                    turnover=turnover_val,
+                    amplitude=amplitude_val,
                 )
             except (ValueError, TypeError):
                 continue

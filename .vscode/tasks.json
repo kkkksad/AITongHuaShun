@@ -39,6 +39,17 @@
       }
     },
     {
+      "label": "KAIROS：启动真实A股行情开发环境",
+      "type": "npm",
+      "script": "dev:a-share",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    },
+    {
       "label": "KAIROS：运行单元测试",
       "type": "npm",
       "script": "test",

@@ -2,6 +2,7 @@
   "recommendations": [
     "dbaeumer.vscode-eslint",
     "esbenp.prettier-vscode",
+    "ms-edgedevtools.vscode-edge-devtools",
     "ms-python.python",
     "ms-python.debugpy"
   ]

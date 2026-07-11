@@ -307,6 +307,39 @@ export async function buildTradingApp(
     },
   }, async () => system.market.getSnapshot());
 
+
+  app.get("/api/market/quality", {
+    schema: {
+      tags: ["行情"],
+      summary: "获取数据质量报告",
+      description:
+        "返回数据新鲜度、完整度、停牌检测、涨跌停检测等质量评分。结果仅反映数据质量，不构成投资建议。",
+    },
+  }, async () => {
+    const { computeDataQuality } = await import("./market/dataQuality");
+    const snapshot = system.market.getSnapshot();
+
+    let cacheAgeSec: number | null = null;
+    if ("getLastFetchSuccessMs" in system.market) {
+      const lastMs = (system.market as { getLastFetchSuccessMs(): number }).getLastFetchSuccessMs();
+      if (lastMs > 0) {
+        cacheAgeSec = (Date.now() - lastMs) / 1000;
+      }
+    }
+
+    const requestedSymbols = options.config.MARKET_SYMBOLS
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => /^\d{6}$/.test(s));
+
+    return computeDataQuality(
+      snapshot,
+      system.marketDataProvider,
+      requestedSymbols,
+      cacheAgeSec,
+    );
+  });
+
   app.get("/api/research/strategy-leaderboard", {
     schema: {
       tags: ["研究"],

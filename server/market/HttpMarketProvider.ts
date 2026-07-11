@@ -25,6 +25,12 @@ interface QuoteApiResponse {
     changePercent: number;
     volume: number;
     updatedAt: string;
+    open?: number | null;
+    high?: number | null;
+    low?: number | null;
+    amount?: number | null;
+    turnover?: number | null;
+    amplitude?: number | null;
   }>;
 }
 
@@ -37,6 +43,8 @@ export class HttpMarketProvider
   private sequence = 0;
   private timer?: NodeJS.Timeout;
   private running = false;
+  /** 最近一次 fetch 成功的时间戳（毫秒），用于新鲜度评估 */
+  private lastFetchSuccessMs = 0;
 
   constructor(config: HttpMarketConfig) {
     super();
@@ -102,9 +110,15 @@ export class HttpMarketProvider
     };
   }
 
+  /** 返回最近一次成功获取数据的本地时间戳（毫秒），用于质量评分 */
+  getLastFetchSuccessMs(): number {
+    return this.lastFetchSuccessMs;
+  }
+
   private async fetchAndEmit(): Promise<void> {
     const quotes = await this.fetchQuotes();
     if (quotes.length === 0) return;
+    this.lastFetchSuccessMs = Date.now();
     const now = new Date().toISOString();
     for (const quote of quotes) {
       this.quotes.set(quote.symbol, { ...quote, updatedAt: quote.updatedAt || now });
@@ -149,6 +163,12 @@ export class HttpMarketProvider
         changePercent: Number(q.changePercent),
         volume: Number(q.volume),
         updatedAt: q.updatedAt ?? new Date().toISOString(),
+        open: q.open != null ? Number(q.open) : undefined,
+        high: q.high != null ? Number(q.high) : undefined,
+        low: q.low != null ? Number(q.low) : undefined,
+        amount: q.amount != null ? Number(q.amount) : undefined,
+        turnover: q.turnover != null ? Number(q.turnover) : undefined,
+        amplitude: q.amplitude != null ? Number(q.amplitude) : undefined,
       }));
     } catch (err: unknown) {
       if (err instanceof Error && err.name === "AbortError") {

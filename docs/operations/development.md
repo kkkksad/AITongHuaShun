@@ -108,14 +108,15 @@ AKSHARE_BRIDGE_DISABLE_PROXY=true
 
 1. 使用 VS Code 打开项目根目录。
 2. 首次运行时执行 `npm install`。
-3. 模拟行情选择 `KAIROS：全栈调试`；AkShare 行情选择 `KAIROS：真实行情 + 模拟交易调试`。
-4. 按 `F5`。
+3. 打开左侧“运行和调试”面板。
+4. 模拟行情选择 `▶ KAIROS：一键启动模拟行情工作台`；A 股只读行情选择 `▶ KAIROS：一键启动真实 A 股行情 + 策略排行榜`。
+5. 点击绿色启动按钮或按 `F5`。
 
 VS Code 会：
 
 - 使用 Node.js 调试器启动 `server/index.ts`，可在 `server/**/*.ts` 设置断点。
 - 启动 Vite 前端服务。
-- 使用 Edge 打开前端，可在 `src/**/*.tsx` 和 `src/**/*.ts` 设置断点。
+- 使用 Edge 打开前端；真实 A 股组合会直接打开 `/strategy` 策略排行榜页。
 - AkShare 组合会额外使用 Python 调试器启动 `akshare-bridge/main.py`。
 - 停止复合调试时同时关闭前后端调试会话。
 
