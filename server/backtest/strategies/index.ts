@@ -17,6 +17,11 @@ export { MACDStrategy } from "./MACDStrategy";
 export { TurtleStrategy } from "./TurtleStrategy";
 export { DCAStrategy } from "./DCAStrategy";
 export { ASharePullbackConfirmationStrategy } from "./ASharePullbackConfirmationStrategy";
+export {
+  KairosCapitalShieldStrategy,
+  KairosLowVolTrendStrategy,
+  KairosQuietPullbackStrategy,
+} from "./KairosDefensiveStrategies";
 
 // 技术指标也可以导出，方便自定义策略使用
 export {

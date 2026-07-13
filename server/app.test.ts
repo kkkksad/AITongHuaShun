@@ -574,6 +574,10 @@ describe("trading API", () => {
         method: "GET",
         url: "/api/orders",
       });
+      const audit = await paperApp.inject({
+        method: "GET",
+        url: "/api/audit?limit=20",
+      });
 
       expect(response.statusCode).toBe(200);
       expect(response.json().run).toMatchObject({
@@ -589,6 +593,15 @@ describe("trading API", () => {
         "kairos-auto-paper",
       );
       expect(orders.json()[0].clientOrderId).toContain("kairos-auto-paper");
+      expect(audit.json()).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          action: "paper-auto-execution.run",
+          data: expect.objectContaining({
+            trigger: "manual",
+            submittedOrders: 1,
+          }),
+        }),
+      ]));
     } finally {
       await paperApp.close();
     }

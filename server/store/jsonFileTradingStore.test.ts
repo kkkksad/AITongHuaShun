@@ -159,6 +159,104 @@ describe("JsonFileTradingStore", () => {
     expect(reloaded.getAvailableCash()).toBe(store.getAvailableCash());
   });
 
+  it("只保留留存期内的已结束订单和审计，同时保留过期挂单", () => {
+    const retentionDir = path.join(dataDir, "retention");
+    let now = new Date("2026-07-01T04:00:00.000Z");
+    const retentionStore = new JsonFileTradingStore(
+      retentionDir,
+      1_000_000,
+      false,
+      {
+        retentionDays: 7,
+        now: () => now,
+      },
+    );
+
+    const expiredFilledOrder = retentionStore.createOrder(
+      { symbol: "601318", side: "buy", type: "market", quantity: 100 },
+      52.1,
+    );
+    retentionStore.fillOrder(expiredFilledOrder, "中国平安", 52.1, 15.63);
+    const expiredPendingOrder = retentionStore.createOrder(
+      {
+        symbol: "600519",
+        side: "buy",
+        type: "limit",
+        quantity: 100,
+        limitPrice: 1_000,
+      },
+      1_468.2,
+    );
+
+    now = new Date("2026-07-14T04:00:00.000Z");
+    const recentFilledOrder = retentionStore.createOrder(
+      { symbol: "000858", side: "buy", type: "market", quantity: 100 },
+      128.4,
+    );
+    retentionStore.fillOrder(recentFilledOrder, "五粮液", 128.4, 5);
+
+    const orders = retentionStore.listOrders();
+    expect(orders.some((order) => order.id === expiredFilledOrder.id)).toBe(false);
+    expect(orders.some((order) => order.id === expiredPendingOrder.id)).toBe(true);
+    expect(orders.some((order) => order.id === recentFilledOrder.id)).toBe(true);
+    expect(retentionStore.listAudit().every(
+      (event) => Date.parse(event.timestamp) >= Date.parse("2026-07-07T04:00:00.000Z"),
+    )).toBe(true);
+
+    const reloaded = new JsonFileTradingStore(
+      retentionDir,
+      1_000_000,
+      false,
+      {
+        retentionDays: 7,
+        now: () => now,
+      },
+    );
+    expect(reloaded.listOrders().map((order) => order.id)).toEqual(
+      expect.arrayContaining([expiredPendingOrder.id, recentFilledOrder.id]),
+    );
+
+    const persisted = JSON.parse(
+      fs.readFileSync(path.join(retentionDir, "paper-trading-state.json"), "utf-8"),
+    );
+    expect(persisted.orders.some(
+      (order: { id: string }) => order.id === expiredFilledOrder.id,
+    )).toBe(false);
+    expect(persisted.auditEvents.every(
+      (event: { timestamp: string }) => (
+        Date.parse(event.timestamp) >= Date.parse("2026-07-07T04:00:00.000Z")
+      ),
+    )).toBe(true);
+  });
+
+  it("加载状态文件时立即清理过期历史", () => {
+    const retentionDir = path.join(dataDir, "load-retention");
+    let now = new Date("2026-07-01T04:00:00.000Z");
+    const original = new JsonFileTradingStore(retentionDir, 1_000_000, false, {
+      retentionDays: 7,
+      now: () => now,
+    });
+    const expiredOrder = original.createOrder(
+      { symbol: "601318", side: "buy", type: "market", quantity: 100 },
+      52.1,
+    );
+    original.fillOrder(expiredOrder, "中国平安", 52.1, 15.63);
+
+    now = new Date("2026-07-14T04:00:00.000Z");
+    const reloaded = new JsonFileTradingStore(retentionDir, 1_000_000, false, {
+      retentionDays: 7,
+      now: () => now,
+    });
+
+    expect(reloaded.listOrders()).toHaveLength(0);
+    expect(reloaded.listAudit()).toHaveLength(0);
+    const persisted = JSON.parse(
+      fs.readFileSync(path.join(retentionDir, "paper-trading-state.json"), "utf-8"),
+    );
+    expect(persisted.orders).toHaveLength(0);
+    expect(persisted.auditEvents).toHaveLength(0);
+  });
+
   it("空目录首次初始化", () => {
     // 已经通过 beforeEach 验证
     const stateFile = path.join(dataDir, "paper-trading-state.json");

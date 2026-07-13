@@ -1,6 +1,6 @@
 ﻿# 当前状态
 
-**核对日期：** 2026-07-11
+**核对日期：** 2026-07-14
 
 ## 已实现
 
@@ -52,6 +52,9 @@
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
 - **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 新增 `qualitySummary`，返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额和现金使用比例；研究管线页面展示该诊断，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1 或持仓约束保持观望。
 - **本地 paper 自动执行器** —— `PAPER_AUTO_EXECUTION_ENABLED=true` 时，Fastify 会在 A 股交易时段按间隔读取纸面计划，把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`；状态接口为 `/api/trading/auto-paper-execution/status`，手动触发接口为 `/api/trading/auto-paper-execution/run`。该执行器只作用于本地模拟账户，继续受 100 股一手、T+1、现金、仓位、熔断和幂等键限制，不连接真实券商。
+- **自动执行完整留痕** —— 每次本地 paper 自动运行都会追加 `paper-auto-execution.run` 审计，记录交易时段、计划质量、订单状态和跳过原因；即使没有订单或处于盘外，也能在重启后通过 JSON 审计复盘。
+- **七天交易历史留存** —— JSON 仓储默认按 `TRADING_HISTORY_RETENTION_DAYS=7` 清理已结束订单和审计事件，同时永久保留账户现金、当前持仓、暂停状态、序列号和未完成订单，防止本地状态文件无限增长。
+- **KAIROS 防守型策略组** —— 新增低波趋势、安静回踩和资金盾牌三种确定性研究策略，内置优化策略总数增至 12；排行榜与纸面计划更重视最大回撤、Sortino、Sharpe、盈利因子和候选防守分，低分候选会保持观望。结果仍是回测/本地 paper 研究，不是实际收益。
 - **SuperMind 模拟盘信号桥** —— `/api/integrations/supermind/signal-package` 将本地 paper 操作计划转换为可人工复核的 SuperMind 信号 CSV 和云端策略模板；该接口不登录同花顺、不保存密码/Cookie/Token，也不会自动提交订单。
 - **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
 
@@ -92,6 +95,25 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-14 defensive paper strategies, durable audit, and seven-day retention
+npm run test:server -- server/backtest/strategies.test.ts server/optimizer/optimizer.test.ts server/store/jsonFileTradingStore.test.ts server/app.test.ts server/config.test.ts
+5 test files passed
+178 tests passed
+
+npm test
+25 server test files passed
+557 server tests passed
+2 web test files passed
+9 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+npm run check:a-share
+Fastify API、AkShare Bridge、Vite API Proxy、A-share Index Quotes、A-share Stock Quotes、KAIROS Market Snapshot 全部通过；后端模式 paper，行情源 akshare，有效指数 4 个。
+
+运行态检查：AkShare 缓存 5529 只 A 股和 562 个指数；自动执行器在盘前未提交订单，并将 `outside A-share trading session: pre-market` 持久化到 `data/paper-trading-state.json`。
+
 2026-07-13 local paper auto execution verification
 npm run test:server -- server/app.test.ts server/config.test.ts
 2 test files passed
@@ -312,6 +334,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 研究学习状态当前只是运行期内存样本池，不是长期训练库；服务重启会清空，不能用于声称策略已完成自学习或已验证真实胜率。
 - A 股强势回踩确认战法是研究候选策略，不是“稳赚”或“实盘收割”承诺；接入授权历史行情、样本外验证和模拟盘观察前，不应作为真实下单依据。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
+- JSON 交易历史默认只保留最近 7 天，过期清理也会缩短订单幂等查询和审计回看窗口；需要长期研究的汇总结果应另行导出，不应依赖无限增长的运行状态文件。
 - 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 从 10000 元纯现金开始；已有 JSON 状态文件不会被自动覆盖，需要用户明确删除或移走后才会重新初始化。
 - A 股 paper 撮合遵守一手 100 股和 T+1 卖出限制；同日买入的 `t1LockedQuantity` 只会在后续交易日释放为可卖数量。
 - 本地 paper 自动执行器默认关闭；开启后只在 `MARKET_MODE=paper` 与 `REAL_TRADING_ENABLED=false` 下运行，默认限制在 A 股交易时段，并只向本地 `PaperBroker` 提交模拟订单。

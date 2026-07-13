@@ -87,6 +87,12 @@ const envSchema = z.object({
     .default(12),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
+  TRADING_HISTORY_RETENTION_DAYS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(365)
+    .default(7),
   RESEARCH_DATA_DIR: z.string().default("./data/research"),
   RESEARCH_MAX_SYMBOLS: z.coerce.number().int().min(10).max(5000).default(200),
   RESEARCH_HISTORY_DAYS: z.coerce.number().int().min(60).max(3650).default(756),
@@ -144,6 +150,7 @@ describe("ServerConfig", () => {
       expect(config.AUTH_TOKEN_TTL_SECONDS).toBe(3_600);
       expect(config.STORE_BACKEND).toBe("memory");
       expect(config.DATA_DIR).toBe("./data");
+      expect(config.TRADING_HISTORY_RETENTION_DAYS).toBe(7);
       expect(config.RESEARCH_DATA_DIR).toBe("./data/research");
       expect(config.RESEARCH_MAX_SYMBOLS).toBe(200);
       expect(config.RESEARCH_HISTORY_DAYS).toBe(756);
@@ -249,6 +256,11 @@ describe("ServerConfig", () => {
     it("respects DATA_DIR override", () => {
       const config = parse({ DATA_DIR: "/var/data/trading" });
       expect(config.DATA_DIR).toBe("/var/data/trading");
+    });
+
+    it("respects trading history retention override", () => {
+      const config = parse({ TRADING_HISTORY_RETENTION_DAYS: "14" });
+      expect(config.TRADING_HISTORY_RETENTION_DAYS).toBe(14);
     });
 
     it("respects custom circuit breaker config", () => {
@@ -479,6 +491,11 @@ describe("ServerConfig", () => {
 
     it("rejects invalid STORE_BACKEND", () => {
       expect(() => parse({ STORE_BACKEND: "postgres" })).toThrow();
+    });
+
+    it("rejects trading history retention outside 1 to 365 days", () => {
+      expect(() => parse({ TRADING_HISTORY_RETENTION_DAYS: "0" })).toThrow();
+      expect(() => parse({ TRADING_HISTORY_RETENTION_DAYS: "366" })).toThrow();
     });
 
     it("rejects MAX_POSITION_WEIGHT > 1", () => {

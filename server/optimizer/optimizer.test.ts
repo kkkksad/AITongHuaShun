@@ -18,6 +18,9 @@ import {
   gridTradingFactory,
   macdFactory,
   turtleFactory,
+  kairosLowVolTrendFactory,
+  kairosQuietPullbackFactory,
+  kairosCapitalShieldFactory,
   builtInFactories,
   runOptimization,
 } from "./index";
@@ -326,6 +329,9 @@ describe("builtInFactories", () => {
     ["gridTrading", gridTradingFactory],
     ["macd", macdFactory],
     ["turtle", turtleFactory],
+    ["kairosLowVolTrend", kairosLowVolTrendFactory],
+    ["kairosQuietPullback", kairosQuietPullbackFactory],
+    ["kairosCapitalShield", kairosCapitalShieldFactory],
   ];
 
   for (const [key, factory] of factories) {
@@ -362,9 +368,12 @@ describe("builtInFactories", () => {
     }, 30000); // 30s timeout for optimization tests
   }
 
-  it("builtInFactories contains all 9 strategies", () => {
-    expect(Object.keys(builtInFactories)).toHaveLength(9);
+  it("builtInFactories contains all 12 strategies", () => {
+    expect(Object.keys(builtInFactories)).toHaveLength(12);
     expect(builtInFactories.aSharePullback.name).toBe("A股强势回踩确认");
+    expect(builtInFactories.kairosLowVolTrend.name).toBe("KAIROS低波趋势");
+    expect(builtInFactories.kairosQuietPullback.name).toBe("KAIROS缩量回撤反弹");
+    expect(builtInFactories.kairosCapitalShield.name).toBe("KAIROS资金护城河");
   });
 });
 

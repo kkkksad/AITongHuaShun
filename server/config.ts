@@ -79,6 +79,12 @@ const envSchema = z.object({
     .default(12),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
+  TRADING_HISTORY_RETENTION_DAYS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(365)
+    .default(7),
   RESEARCH_DATA_DIR: z.string().default("./data/research"),
   RESEARCH_MAX_SYMBOLS: z.coerce.number().int().min(10).max(5000).default(200),
   RESEARCH_HISTORY_DAYS: z.coerce.number().int().min(60).max(3650).default(756),

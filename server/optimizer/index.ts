@@ -2,7 +2,7 @@
  * 回测参数优化器 —— 统一入口。
  *
  * 提供：
- * - 8 种内置策略的参数空间定义和工厂函数
+ * - 12 种内置策略的参数空间定义和工厂函数
  * - 网格搜索和遗传算法两种优化方法
  * - 便捷的 runOptimization() 高层 API
  */
@@ -238,6 +238,102 @@ export const aSharePullbackFactory: StrategyFactory = {
 };
 
 /**
+ * KAIROS 低波趋势策略参数空间。
+ *
+ * 防守目标：只在趋势向上且波动受控时小仓位参与。
+ */
+export const kairosLowVolTrendFactory: StrategyFactory = {
+  name: "KAIROS低波趋势",
+  parameters: [
+    { name: "trendPeriod", type: "int", min: 20, max: 30, step: 10 },
+    { name: "slowPeriod", type: "int", min: 50, max: 60, step: 10 },
+    { name: "maxVolatility", type: "float", min: 0.018, max: 0.026, step: 0.008 },
+    { name: "takeProfitPercent", type: "float", min: 0.03, max: 0.045, step: 0.015 },
+    { name: "stopLossPercent", type: "float", min: 0.014, max: 0.022, step: 0.008 },
+    { name: "targetWeight", type: "float", min: 0.12, max: 0.2, step: 0.08 },
+  ],
+  create: async (params) => {
+    const { KairosLowVolTrendStrategy } = await import(
+      "../backtest/strategies/KairosDefensiveStrategies"
+    );
+    return new KairosLowVolTrendStrategy(
+      params.trendPeriod,
+      params.slowPeriod,
+      params.maxVolatility,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.targetWeight,
+    );
+  },
+};
+
+/**
+ * KAIROS 缩量回撤反弹策略参数空间。
+ *
+ * 防守目标：趋势未坏、回撤不深、没有恐慌放量时才尝试反弹。
+ */
+export const kairosQuietPullbackFactory: StrategyFactory = {
+  name: "KAIROS缩量回撤反弹",
+  parameters: [
+    { name: "trendPeriod", type: "int", min: 20, max: 30, step: 10 },
+    { name: "pullbackPeriod", type: "int", min: 6, max: 9, step: 3 },
+    { name: "minPullbackPercent", type: "float", min: 0.01, max: 0.018, step: 0.008 },
+    { name: "maxPullbackPercent", type: "float", min: 0.05, max: 0.07, step: 0.02 },
+    { name: "maxVolumeMultiplier", type: "float", min: 1.2, max: 1.4, step: 0.2 },
+    { name: "takeProfitPercent", type: "float", min: 0.028, max: 0.04, step: 0.012 },
+    { name: "stopLossPercent", type: "float", min: 0.014, max: 0.02, step: 0.006 },
+    { name: "targetWeight", type: "float", min: 0.12, max: 0.18, step: 0.06 },
+  ],
+  create: async (params) => {
+    const { KairosQuietPullbackStrategy } = await import(
+      "../backtest/strategies/KairosDefensiveStrategies"
+    );
+    return new KairosQuietPullbackStrategy(
+      params.trendPeriod,
+      params.pullbackPeriod,
+      params.minPullbackPercent,
+      params.maxPullbackPercent,
+      params.maxVolumeMultiplier,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.targetWeight,
+    );
+  },
+};
+
+/**
+ * KAIROS 资金护城河策略参数空间。
+ *
+ * 防守目标：只吃受控突破，失败后冷却，避免连续追错。
+ */
+export const kairosCapitalShieldFactory: StrategyFactory = {
+  name: "KAIROS资金护城河",
+  parameters: [
+    { name: "entryPeriod", type: "int", min: 18, max: 24, step: 6 },
+    { name: "exitPeriod", type: "int", min: 5, max: 8, step: 3 },
+    { name: "maxRecentDrawdown", type: "float", min: 0.045, max: 0.06, step: 0.015 },
+    { name: "takeProfitPercent", type: "float", min: 0.025, max: 0.035, step: 0.01 },
+    { name: "stopLossPercent", type: "float", min: 0.012, max: 0.018, step: 0.006 },
+    { name: "cooldownBars", type: "int", min: 4, max: 6, step: 2 },
+    { name: "targetWeight", type: "float", min: 0.1, max: 0.16, step: 0.06 },
+  ],
+  create: async (params) => {
+    const { KairosCapitalShieldStrategy } = await import(
+      "../backtest/strategies/KairosDefensiveStrategies"
+    );
+    return new KairosCapitalShieldStrategy(
+      params.entryPeriod,
+      params.exitPeriod,
+      params.maxRecentDrawdown,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.cooldownBars,
+      params.targetWeight,
+    );
+  },
+};
+
+/**
  * 所有内置策略工厂映射。
  */
 export const builtInFactories: Record<string, StrategyFactory> = {
@@ -250,6 +346,9 @@ export const builtInFactories: Record<string, StrategyFactory> = {
   turtle: turtleFactory,
   dca: dcaFactory,
   aSharePullback: aSharePullbackFactory,
+  kairosLowVolTrend: kairosLowVolTrendFactory,
+  kairosQuietPullback: kairosQuietPullbackFactory,
+  kairosCapitalShield: kairosCapitalShieldFactory,
 };
 
 // ═══════════════════════════════════════════════

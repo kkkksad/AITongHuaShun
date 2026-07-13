@@ -14,6 +14,9 @@ import {
   MACDStrategy,
   TurtleStrategy,
   ASharePullbackConfirmationStrategy,
+  KairosCapitalShieldStrategy,
+  KairosLowVolTrendStrategy,
+  KairosQuietPullbackStrategy,
 } from "./strategies/index";
 
 // ── 辅助函数 ──
@@ -449,6 +452,108 @@ describe("ASharePullbackConfirmationStrategy", () => {
     const engine = new BacktestEngine(
       snapshots,
       new ASharePullbackConfirmationStrategy(30, 8),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    validateStrategyReport(report);
+  });
+});
+
+describe("KAIROS defensive strategies", () => {
+  it("low-vol trend participates in controlled uptrends", () => {
+    const snapshots: MarketSnapshot[] = [];
+    let price = 100;
+    for (let i = 0; i < 120; i++) {
+      price = price * (1 + 0.003);
+      snapshots.push({
+        mode: "paper",
+        sequence: i + 1,
+        marketTime: new Date(2024, 0, i + 1).toISOString(),
+        quotes: [{
+          symbol: "600519",
+          name: "MaoTai",
+          tradable: true,
+          price: Number(price.toFixed(2)),
+          previousClose: Number((price / 1.003).toFixed(2)),
+          changePercent: 0.3,
+          volume: 10_000_000,
+          updatedAt: new Date(2024, 0, i + 1).toISOString(),
+        }],
+      });
+    }
+
+    const engine = new BacktestEngine(
+      snapshots,
+      new KairosLowVolTrendStrategy(20, 50, 0.02, 0.04, 0.018, 0.18),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    validateStrategyReport(report);
+    expect(report.strategyName).toContain("KAIROS低波趋势");
+    expect(report.trades.some((trade) => trade.side === "buy")).toBe(true);
+  });
+
+  it("quiet pullback buys only after controlled pullback and rebound", () => {
+    const prices = [
+      ...Array.from({ length: 35 }, (_, i) => 100 + i * 0.55),
+      119,
+      117.8,
+      116.7,
+      117.4,
+      118.2,
+      119.6,
+      121,
+    ];
+    const snapshots = prices.map((price, index) => ({
+      mode: "paper" as const,
+      sequence: index + 1,
+      marketTime: new Date(2024, 0, index + 1).toISOString(),
+      quotes: [{
+        symbol: "600519",
+        name: "MaoTai",
+        tradable: true,
+        price: Number(price.toFixed(2)),
+        previousClose: Number((prices[index - 1] ?? price).toFixed(2)),
+        changePercent:
+          index === 0
+            ? 0
+            : Number(((price / prices[index - 1] - 1) * 100).toFixed(2)),
+        volume: index >= 36 && index <= 39 ? 8_000_000 : 10_000_000,
+        updatedAt: new Date(2024, 0, index + 1).toISOString(),
+      }],
+    }));
+
+    const engine = new BacktestEngine(
+      snapshots,
+      new KairosQuietPullbackStrategy(20, 6, 0.01, 0.07, 1.4),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1.0,
+      },
+    );
+
+    const report = engine.run();
+    validateStrategyReport(report);
+    expect(report.strategyName).toContain("KAIROS缩量回撤反弹");
+    expect(report.trades.some((trade) => trade.side === "buy")).toBe(true);
+  });
+
+  it("capital shield handles volatile markets without throwing", () => {
+    const snapshots = generateSnapshots(160, 100, 0.03);
+    const engine = new BacktestEngine(
+      snapshots,
+      new KairosCapitalShieldStrategy(18, 5, 0.06, 0.03, 0.015, 4, 0.12),
       {
         initialCapital: 1_000_000,
         maxOrderNotional: 2_000_000,

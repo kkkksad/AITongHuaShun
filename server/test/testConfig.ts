@@ -38,6 +38,7 @@ export function createTestConfig(
     PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: 12,
     STORE_BACKEND: "memory",
     DATA_DIR: "./data",
+    TRADING_HISTORY_RETENTION_DAYS: 7,
     RESEARCH_DATA_DIR: "./data/research",
     RESEARCH_MAX_SYMBOLS: 200,
     RESEARCH_HISTORY_DAYS: 756,

@@ -44,9 +44,10 @@ RATE_LIMIT_WINDOW_MS=60000
 ```text
 STORE_BACKEND=json
 DATA_DIR=./data
+TRADING_HISTORY_RETENTION_DAYS=7
 ```
 
-JSON 仓储仅用于本地单进程模拟，不具备数据库事务、多实例锁或合规审计能力。`data/` 已被 Git 忽略。
+JSON 仓储仅用于本地单进程模拟，不具备数据库事务、多实例锁或合规审计能力。`data/` 已被 Git 忽略。默认只保留最近 7 天的已成交、已拒绝、已撤销订单和审计事件；账户现金、当前持仓、暂停状态、序列号以及仍处于 `pending`/`accepted` 的订单不会过期。清理会在服务加载状态和每次写盘时执行，因此不会每天生成一批无限增长的交易 JSON 文件。
 研究数据缓存默认受上限控制，避免把大量低价值历史数据堆到本机：
 
 ```text
@@ -195,6 +196,15 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8787/api/trading/auto-paper-exec
 
 手动触发接口仍会拒绝非 paper 模式，并继续通过本地风控检查；重复触发使用 `kairos-auto-paper:*` 幂等键，避免同一纸面动作重复建单。
 
+每次自动运行都会写入 `paper-auto-execution.run` 审计，包括非交易时段、没有合格候选、风控拦截和订单提交结果。可用下面的命令判断“没有交易”究竟是没有机会还是服务没有运行：
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:8787/api/audit?limit=50" |
+  Where-Object { $_.action -eq "paper-auto-execution.run" }
+```
+
+2026-07-13 的旧运行使用内存仓储，日志中没有 `kairos-auto-paper` 订单或 `POST /api/orders`，进程退出后也没有保留自动运行原因，因此只能确认“没有持久化的模拟订单”，不能从现有证据区分没有合格候选与执行器跳过。从 2026-07-14 起，本地配置改用 JSON 仓储并持久化每次运行原因，后续可以准确复盘。
+
 如需把本地 paper 计划转成同花顺 SuperMind 可人工复核的模拟盘输入，可运行：
 
 ```powershell
@@ -306,13 +316,13 @@ Invoke-RestMethod `
 
 ## 最近验证
 
-2026-07-11 的验证结果：
+2026-07-14 的验证结果：
 
-1. `npm test`：25 个测试文件、461 项测试全部通过。
+1. `npm test`：25 个服务端测试文件、557 项服务端测试，以及 2 个前端测试文件、9 项前端测试全部通过。
 2. `npm run build`：TypeScript 检查与 Vite 生产构建通过。
-3. `python -m pytest akshare-bridge/test_bridge.py -q`：13 项测试通过。
-4. 测试覆盖回测、参数优化、风险、限价单、撤单、契约、JSON 恢复、HTTP/AkShare 行情适配器、监控、导出和 Fastify API。
-5. API 测试验证 Helmet、安全限流、OpenAPI 和能力声明；生产构建无 CSS 语法警告。
+3. `npm run check:a-share`：Fastify、AkShare、Vite 代理、指数、股票和 KAIROS 快照全部通过，后端为 `paper + akshare`，有效指数 4 个。
+4. 运行态 AkShare 缓存包含 5529 只 A 股和 562 个指数；盘前自动执行未下单，并把跳过原因写入 JSON 审计。
+5. 本次未重跑 Python 单测；AkShare 桥接通过实际健康检查和只读行情链路检查。
 
 ## 生成文件
 

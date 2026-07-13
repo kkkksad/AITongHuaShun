@@ -56,6 +56,7 @@ function createStore(config: ServerConfig): TradingStore {
       config.DATA_DIR,
       config.TRADING_STARTING_CASH,
       config.TRADING_SEED_PORTFOLIO,
+      { retentionDays: config.TRADING_HISTORY_RETENTION_DAYS },
     );
   }
   return new InMemoryTradingStore(

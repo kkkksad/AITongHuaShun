@@ -286,19 +286,6 @@ export class PaperAutoExecutor {
         );
       }
 
-      this.options.system.store.appendAudit(
-        "system",
-        "paper-auto-execution.run",
-        "paper auto execution run completed",
-        {
-          trigger,
-          tradingDate,
-          submittedOrders: submittedOrders.length,
-          skippedOperations: skippedOperations.length,
-          planQuality: plan.qualitySummary.planQuality,
-        },
-      );
-
       return this.finalizeRun(
         trigger,
         started,
@@ -343,6 +330,32 @@ export class PaperAutoExecutor {
     if (this.runs.length > HISTORY_LIMIT) {
       this.runs.splice(HISTORY_LIMIT);
     }
+    this.options.system.store.appendAudit(
+      "system",
+      "paper-auto-execution.run",
+      "paper auto execution run recorded",
+      {
+        id: run.id,
+        trigger: run.trigger,
+        tradingDate: run.tradingDate,
+        session: run.session,
+        planQuality: run.planQuality,
+        submittedOrders: run.submittedOrders.length,
+        skippedOperations: run.skippedOperations.length,
+        submittedOrderStatuses: run.submittedOrders.map((order) => ({
+          symbol: order.symbol,
+          side: order.side,
+          quantity: order.quantity,
+          status: order.status,
+          rejectionReason: order.rejectionReason,
+        })),
+        skippedReasons: run.skippedOperations.slice(0, 8).map((operation) => ({
+          symbol: operation.symbol,
+          action: operation.action,
+          reason: operation.reason,
+        })),
+      },
+    );
     return run;
   }
 

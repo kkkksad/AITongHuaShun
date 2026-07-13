@@ -1,5 +1,6 @@
 import type {
   AccountSnapshot,
+  MarketQuote,
   MarketSnapshot,
   PositionSnapshot,
   TradingMode,
@@ -71,6 +72,8 @@ export interface PaperTradingPlan {
   guardrails: string[];
 }
 
+const DEFENSIVE_BUY_SCORE_MIN = 58;
+
 function getChinaTradeDate(value = new Date()): string {
   return new Date(value.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
@@ -98,6 +101,68 @@ function candidateQuantity(
     Math.min(maxSingleOrderNotional, cash) / Math.max(candidate.price, 1),
     lotSize,
   );
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function quoteAmount(quote: MarketQuote | undefined, price: number, volume = 0): number {
+  return quote?.amount ?? price * volume;
+}
+
+function quoteAmplitude(quote: MarketQuote | undefined): number {
+  if (quote?.amplitude !== undefined && Number.isFinite(quote.amplitude)) {
+    return quote.amplitude;
+  }
+  return Math.abs(quote?.changePercent ?? 0) * 1.8;
+}
+
+function quoteIntradayPosition(quote: MarketQuote | undefined): number | null {
+  if (!quote?.high || !quote.low || quote.high <= quote.low) return null;
+  return (quote.price - quote.low) / (quote.high - quote.low);
+}
+
+function defensiveCandidateScore(candidate: {
+  price: number;
+  score: number;
+  priority: number;
+}, quote: MarketQuote | undefined): number {
+  if (quote && (!quote.tradable || quote.price <= 0)) return 0;
+
+  const change = quote?.changePercent ?? 0;
+  const volume = quote?.volume ?? 0;
+  const amount = quoteAmount(quote, candidate.price, volume);
+  const amplitude = quoteAmplitude(quote);
+  const turnover = quote?.turnover ?? 0;
+  const intradayPosition = quoteIntradayPosition(quote);
+
+  let score = 42 + candidate.score * 0.42 + candidate.priority * 3;
+
+  if (amount >= 150_000_000 || volume >= 5_000_000) score += 8;
+  else if (amount > 0 || volume > 0) score -= 6;
+
+  if (change >= 0.2 && change <= 3.5) score += 9;
+  else if (change > -1 && change < 0.2) score += 3;
+  else if (change > 5) score -= 24;
+  else if (change > 3.5) score -= 8;
+  else if (change <= -2.2) score -= 18;
+
+  if (amplitude <= 4.8) score += 8;
+  else if (amplitude > 8) score -= 18;
+  else if (amplitude > 6) score -= 8;
+
+  if (turnover > 0 && turnover <= 10) score += 4;
+  else if (turnover > 18) score -= 18;
+  else if (turnover > 12) score -= 8;
+
+  if (intradayPosition !== null) {
+    if (intradayPosition >= 0.45 && intradayPosition <= 0.82) score += 5;
+    else if (intradayPosition < 0.25) score -= 12;
+    else if (intradayPosition > 0.92) score -= 6;
+  }
+
+  return Number(clamp(score, 0, 100).toFixed(2));
 }
 
 function countOperations(
@@ -240,26 +305,46 @@ export function buildPaperTradingPlan(input: {
   const candidatePool = uniqueBySymbol([
     ...input.candidates.candidates
       .filter((candidate) => candidate.action === "paper-buy" || candidate.action === "watch")
-      .map((candidate) => ({
-        symbol: candidate.symbol,
-        name: candidate.name,
-        price: candidate.price,
-        score: candidate.score,
-        strategy: input.candidates.strategyName,
-        reason: candidate.reasons.join("；"),
-        priority: candidate.action === "paper-buy" ? 2 : 1,
-      })),
+      .map((candidate) => {
+        const priority = candidate.action === "paper-buy" ? 2 : 1;
+        const base = {
+          symbol: candidate.symbol,
+          name: candidate.name,
+          price: candidate.price,
+          score: candidate.score,
+          strategy: input.candidates.strategyName,
+          reason: candidate.reasons.join("；"),
+          priority,
+        };
+        return {
+          ...base,
+          defensiveScore: defensiveCandidateScore(
+            base,
+            quoteMap.get(candidate.symbol),
+          ),
+        };
+      }),
     ...input.qualityStocks.stocks
       .filter((stock) => stock.action === "focus" || stock.action === "watch")
-      .map((stock) => ({
-        symbol: stock.symbol,
-        name: stock.name,
-        price: stock.price,
-        score: stock.score,
-        strategy: "每日优质股评分",
-        reason: stock.reasons.join("；"),
-        priority: stock.action === "focus" ? 2 : 1,
-      })),
+      .map((stock) => {
+        const priority = stock.action === "focus" ? 2 : 1;
+        const base = {
+          symbol: stock.symbol,
+          name: stock.name,
+          price: stock.price,
+          score: stock.score,
+          strategy: "每日优质股评分",
+          reason: stock.reasons.join("；"),
+          priority,
+        };
+        return {
+          ...base,
+          defensiveScore: defensiveCandidateScore(
+            base,
+            quoteMap.get(stock.symbol),
+          ),
+        };
+      }),
   ])
     .sort((a, b) => {
       const aQuantity = candidateQuantity(
@@ -277,6 +362,9 @@ export function buildPaperTradingPlan(input: {
       const aAffordable = aQuantity >= input.lotSize ? 1 : 0;
       const bAffordable = bQuantity >= input.lotSize ? 1 : 0;
       if (bAffordable !== aAffordable) return bAffordable - aAffordable;
+      if (b.defensiveScore !== a.defensiveScore) {
+        return b.defensiveScore - a.defensiveScore;
+      }
       if (b.priority !== a.priority) return b.priority - a.priority;
       if (b.score !== a.score) return b.score - a.score;
       return a.price - b.price;
@@ -338,6 +426,26 @@ export function buildPaperTradingPlan(input: {
       continue;
     }
 
+    if (candidate.defensiveScore < DEFENSIVE_BUY_SCORE_MIN) {
+      operations.push({
+        timestamp: now,
+        symbol: candidate.symbol,
+        name: candidate.name,
+        action: "blocked",
+        strategy: candidate.strategy,
+        quantity: 0,
+        price: candidate.price,
+        estimatedNotional: 0,
+        reason: "候选防守分不足，宁愿空仓观察，不强行做本地 paper 买入。",
+        ruleChecks: [
+          `defensive-score: blocked (${candidate.defensiveScore})`,
+          "paper-only",
+          "no-forced-trade",
+        ],
+      });
+      continue;
+    }
+
     operations.push({
       timestamp: now,
       symbol: candidate.symbol,
@@ -348,7 +456,13 @@ export function buildPaperTradingPlan(input: {
       price: candidate.price,
       estimatedNotional,
       reason: candidate.reason || "候选策略与优质股评分同时进入纸面观察。",
-      ruleChecks: ["paper-only", "lot-size: pass", "cash-check: pass", "T+1-after-buy"],
+      ruleChecks: [
+        "paper-only",
+        "lot-size: pass",
+        "cash-check: pass",
+        `defensive-score: pass (${candidate.defensiveScore})`,
+        "T+1-after-buy",
+      ],
     });
   }
 

@@ -64,10 +64,12 @@ export interface StrategyLeaderboardReport {
 const DEFAULT_SEED = 42;
 
 const objective: { metric: ObjectiveFunction; weight: number }[] = [
-  { metric: "winRate", weight: 2.8 },
-  { metric: "totalReturn", weight: 1.4 },
+  { metric: "winRate", weight: 2.6 },
+  { metric: "sortinoRatio", weight: 1.4 },
   { metric: "sharpeRatio", weight: 1.2 },
-  { metric: "calmarRatio", weight: 0.8 },
+  { metric: "calmarRatio", weight: 1.2 },
+  { metric: "totalReturn", weight: 0.8 },
+  { metric: "profitFactor", weight: 0.6 },
 ];
 
 const costModel = {
@@ -90,6 +92,42 @@ function leaderboardFactory(
 }
 
 const rankedFactories: [string, StrategyFactory][] = [
+  [
+    "kairosLowVolTrend",
+    leaderboardFactory(builtInFactories.kairosLowVolTrend, [
+      { name: "trendPeriod", type: "int", min: 20, max: 30, step: 10 },
+      { name: "slowPeriod", type: "int", min: 50, max: 60, step: 10 },
+      { name: "maxVolatility", type: "float", min: 0.018, max: 0.026, step: 0.008 },
+      { name: "takeProfitPercent", type: "float", min: 0.03, max: 0.045, step: 0.015 },
+      { name: "stopLossPercent", type: "float", min: 0.014, max: 0.022, step: 0.008 },
+      { name: "targetWeight", type: "float", min: 0.12, max: 0.2, step: 0.08 },
+    ]),
+  ],
+  [
+    "kairosQuietPullback",
+    leaderboardFactory(builtInFactories.kairosQuietPullback, [
+      { name: "trendPeriod", type: "int", min: 20, max: 30, step: 10 },
+      { name: "pullbackPeriod", type: "int", min: 6, max: 9, step: 3 },
+      { name: "minPullbackPercent", type: "float", min: 0.01, max: 0.018, step: 0.008 },
+      { name: "maxPullbackPercent", type: "float", min: 0.05, max: 0.07, step: 0.02 },
+      { name: "maxVolumeMultiplier", type: "float", min: 1.2, max: 1.4, step: 0.2 },
+      { name: "takeProfitPercent", type: "float", min: 0.028, max: 0.04, step: 0.012 },
+      { name: "stopLossPercent", type: "float", min: 0.014, max: 0.02, step: 0.006 },
+      { name: "targetWeight", type: "float", min: 0.12, max: 0.18, step: 0.06 },
+    ]),
+  ],
+  [
+    "kairosCapitalShield",
+    leaderboardFactory(builtInFactories.kairosCapitalShield, [
+      { name: "entryPeriod", type: "int", min: 18, max: 24, step: 6 },
+      { name: "exitPeriod", type: "int", min: 5, max: 8, step: 3 },
+      { name: "maxRecentDrawdown", type: "float", min: 0.045, max: 0.06, step: 0.015 },
+      { name: "takeProfitPercent", type: "float", min: 0.025, max: 0.035, step: 0.01 },
+      { name: "stopLossPercent", type: "float", min: 0.012, max: 0.018, step: 0.006 },
+      { name: "cooldownBars", type: "int", min: 4, max: 6, step: 2 },
+      { name: "targetWeight", type: "float", min: 0.1, max: 0.16, step: 0.06 },
+    ]),
+  ],
   [
     "aSharePullback",
     leaderboardFactory(builtInFactories.aSharePullback, [
@@ -268,10 +306,15 @@ function buildQualitySummary(report: DataQualityReport): string {
 }
 
 function buildQualityGate(metrics: StrategyLeaderboardEntry["metrics"]): StrategyLeaderboardEntry["qualityGate"] {
-  if (metrics.totalTrades < 2 || metrics.totalReturn <= 0 || metrics.maxDrawdownPercent > 0.30) {
+  if (metrics.totalTrades < 2 || metrics.totalReturn <= 0 || metrics.maxDrawdownPercent > 0.22) {
     return "blocked";
   }
-  if (metrics.totalTrades < 4 || metrics.maxDrawdownPercent > 0.18 || metrics.sharpeRatio < 0) {
+  if (
+    metrics.totalTrades < 4 ||
+    metrics.maxDrawdownPercent > 0.12 ||
+    metrics.sharpeRatio < 0 ||
+    metrics.sortinoRatio < 0
+  ) {
     return "caution";
   }
   return "pass";
@@ -284,6 +327,9 @@ function compareLeaderboardEntries(
   const gateRank = { pass: 0, caution: 1, blocked: 2 } as const;
   if (gateRank[a.qualityGate] !== gateRank[b.qualityGate]) {
     return gateRank[a.qualityGate] - gateRank[b.qualityGate];
+  }
+  if (Math.abs(a.metrics.maxDrawdownPercent - b.metrics.maxDrawdownPercent) > 0.005) {
+    return a.metrics.maxDrawdownPercent - b.metrics.maxDrawdownPercent;
   }
   if (b.metrics.winRate !== a.metrics.winRate) {
     return b.metrics.winRate - a.metrics.winRate;

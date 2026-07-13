@@ -36,6 +36,13 @@ interface PersistedState {
   auditSequence: number;
 }
 
+interface JsonFileTradingStoreOptions {
+  retentionDays?: number;
+  now?: () => Date;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 const SEEDED_POSITIONS: MutablePosition[] = [
   {
     symbol: "600519",
@@ -101,6 +108,8 @@ function withT1Lock(
 export class JsonFileTradingStore implements TradingStore {
   private readonly filePath: string;
   private readonly accountId = "PAPER-CN-01";
+  private readonly retentionMs: number;
+  private readonly now: () => Date;
   private startingEquity: number;
   private cash = 0;
   private blockedCash = 0;
@@ -111,7 +120,18 @@ export class JsonFileTradingStore implements TradingStore {
   private orderSequence = 0;
   private auditSequence = 0;
 
-  constructor(dataDir: string, startingCash: number, seed = true) {
+  constructor(
+    dataDir: string,
+    startingCash: number,
+    seed = true,
+    options: JsonFileTradingStoreOptions = {},
+  ) {
+    const retentionDays = options.retentionDays ?? 7;
+    if (!Number.isInteger(retentionDays) || retentionDays < 1) {
+      throw new Error("JSON trading history retention must be a positive integer.");
+    }
+    this.retentionMs = retentionDays * DAY_MS;
+    this.now = options.now ?? (() => new Date());
     fs.mkdirSync(dataDir, { recursive: true });
     this.filePath = path.join(dataDir, "paper-trading-state.json");
     this.startingEquity = startingCash;
@@ -227,7 +247,7 @@ export class JsonFileTradingStore implements TradingStore {
       dailyPnlPercent: dailyPnl / baseline,
       riskUtilization: Math.min(1, Math.max(exposureRatio, lossRatio)),
       paused: this.paused,
-      updatedAt: new Date().toISOString(),
+      updatedAt: this.now().toISOString(),
     };
   }
 
@@ -247,11 +267,12 @@ export class JsonFileTradingStore implements TradingStore {
 
   createOrder(request: OrderRequest, requestedPrice: number): OrderRecord {
     this.orderSequence += 1;
-    const now = new Date().toISOString();
+    const timestamp = this.now();
+    const now = timestamp.toISOString();
     const isLimitOrder = request.type === "limit";
     const order: OrderRecord = {
       ...request,
-      id: `PO-${Date.now()}-${String(this.orderSequence).padStart(4, "0")}`,
+      id: `PO-${timestamp.getTime()}-${String(this.orderSequence).padStart(4, "0")}`,
       status: isLimitOrder ? "pending" : "accepted",
       requestedPrice,
       filledQuantity: 0,
@@ -291,7 +312,7 @@ export class JsonFileTradingStore implements TradingStore {
     const stored = this.requireStoredOrder(order.id);
     stored.status = "rejected";
     stored.rejectionReason = reason;
-    stored.updatedAt = new Date().toISOString();
+    stored.updatedAt = this.now().toISOString();
     this.releaseBuyLimitCash(stored);
     this.appendAudit("risk", code, reason, { orderId: stored.id });
     this.flush();
@@ -305,7 +326,7 @@ export class JsonFileTradingStore implements TradingStore {
     }
 
     stored.status = "cancelled";
-    stored.updatedAt = new Date().toISOString();
+    stored.updatedAt = this.now().toISOString();
     this.releaseBuyLimitCash(stored);
     this.appendAudit("order", "order.cancelled", "限价单已撤销", {
       orderId: stored.id,
@@ -386,7 +407,7 @@ export class JsonFileTradingStore implements TradingStore {
     stored.filledQuantity = stored.quantity;
     stored.notional = notional;
     stored.commission = commission;
-    stored.updatedAt = new Date().toISOString();
+    stored.updatedAt = this.now().toISOString();
     this.appendAudit(
       "order",
       "order.filled",
@@ -412,14 +433,16 @@ export class JsonFileTradingStore implements TradingStore {
     data?: Record<string, unknown>,
   ): void {
     this.auditSequence += 1;
+    const timestamp = this.now();
     this.auditEvents.unshift({
-      id: `AE-${Date.now()}-${String(this.auditSequence).padStart(4, "0")}`,
+      id: `AE-${timestamp.getTime()}-${String(this.auditSequence).padStart(4, "0")}`,
       category,
       action,
       message,
-      timestamp: new Date().toISOString(),
+      timestamp: timestamp.toISOString(),
       data,
     });
+    this.flush();
   }
 
   private initializeFresh(startingCash: number, seed: boolean): void {
@@ -458,6 +481,7 @@ export class JsonFileTradingStore implements TradingStore {
     this.auditSequence = state.auditSequence;
     this.orders = state.orders.map((order) => ({ ...order }));
     this.auditEvents = state.auditEvents.map((event) => ({ ...event }));
+    const prunedHistory = this.pruneExpiredHistory();
     this.blockedCash = this.orders
       .filter(
         (order) =>
@@ -475,9 +499,13 @@ export class JsonFileTradingStore implements TradingStore {
     for (const position of state.positions) {
       this.positions.set(position.symbol, { ...position });
     }
+    if (prunedHistory) {
+      this.flush();
+    }
   }
 
   private flush(): void {
+    this.pruneExpiredHistory();
     const state: PersistedState = {
       version: 1,
       accountId: this.accountId,
@@ -494,6 +522,26 @@ export class JsonFileTradingStore implements TradingStore {
     const temporaryPath = `${this.filePath}.tmp`;
     fs.writeFileSync(temporaryPath, JSON.stringify(state, null, 2), "utf-8");
     fs.renameSync(temporaryPath, this.filePath);
+  }
+
+  private pruneExpiredHistory(): boolean {
+    const cutoff = this.now().getTime() - this.retentionMs;
+    const orderCount = this.orders.length;
+    const auditCount = this.auditEvents.length;
+
+    this.orders = this.orders.filter((order) => {
+      if (order.status === "pending" || order.status === "accepted") {
+        return true;
+      }
+      const timestamp = Date.parse(order.updatedAt || order.createdAt);
+      return !Number.isFinite(timestamp) || timestamp >= cutoff;
+    });
+    this.auditEvents = this.auditEvents.filter((event) => {
+      const timestamp = Date.parse(event.timestamp);
+      return !Number.isFinite(timestamp) || timestamp >= cutoff;
+    });
+
+    return orderCount !== this.orders.length || auditCount !== this.auditEvents.length;
   }
 
   private requireStoredOrder(id: string): OrderRecord {
