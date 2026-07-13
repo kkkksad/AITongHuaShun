@@ -51,6 +51,11 @@ describe("trading API", () => {
         liveSupported: false,
         humanApprovalRequiredForLive: true,
       },
+      autoPaperExecution: {
+        enabled: false,
+        mode: "local-paper-broker-only",
+        liveTradingEnabled: false,
+      },
       authentication: {
         enabled: false,
         mode: "local-unprotected",
@@ -291,6 +296,8 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/research/learning-state");
     expect(response.json().paths).toHaveProperty("/api/research/paper-trading-plan");
     expect(response.json().paths).toHaveProperty("/api/integrations/supermind/signal-package");
+    expect(response.json().paths).toHaveProperty("/api/trading/auto-paper-execution/status");
+    expect(response.json().paths).toHaveProperty("/api/trading/auto-paper-execution/run");
     expect(response.json().paths).toHaveProperty("/api/research/real-data-feed");
     expect(response.json().paths).toHaveProperty("/api/research/self-optimization");
   });
@@ -523,6 +530,68 @@ describe("trading API", () => {
       planQuality: expect.stringMatching(/^(actionable|watch-only|blocked)$/),
     });
     expect(response.json().operations.length).toBeGreaterThan(0);
+  });
+
+  it("returns safe paper auto execution status by default", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/trading/auto-paper-execution/status",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      enabled: false,
+      mode: "paper-auto",
+      execution: "local-paper-broker-only",
+      liveTradingEnabled: false,
+      tradeWindowOnly: true,
+    });
+    expect(response.json().guardrails.join("")).toContain("PaperBroker");
+  });
+
+  it("can manually run paper auto execution in local paper mode", async () => {
+    const paperApp = await buildTradingApp({
+      config: createTestConfig({
+        MARKET_MODE: "paper",
+        TRADING_STARTING_CASH: 10_000,
+        TRADING_SEED_PORTFOLIO: false,
+        MAX_ORDER_NOTIONAL: 6_000,
+        MAX_POSITION_WEIGHT: 1,
+        PAPER_AUTO_EXECUTION_ENABLED: true,
+        PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: false,
+        PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: 1,
+        PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: 2,
+      }),
+      startMarket: false,
+    });
+
+    try {
+      const response = await paperApp.inject({
+        method: "POST",
+        url: "/api/trading/auto-paper-execution/run",
+      });
+      const orders = await paperApp.inject({
+        method: "GET",
+        url: "/api/orders",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().run).toMatchObject({
+        trigger: "manual",
+        planQuality: "actionable",
+      });
+      expect(response.json().run.submittedOrders).toHaveLength(1);
+      expect(response.json().run.submittedOrders[0]).toMatchObject({
+        side: "buy",
+        status: "filled",
+      });
+      expect(response.json().run.submittedOrders[0].clientOrderId).toContain(
+        "kairos-auto-paper",
+      );
+      expect(orders.json()[0].clientOrderId).toContain("kairos-auto-paper");
+    } finally {
+      await paperApp.close();
+    }
   });
 
   it("returns a SuperMind signal package without credential handling", async () => {

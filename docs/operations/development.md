@@ -66,6 +66,18 @@ TRADING_STARTING_CASH=10000
 TRADING_SEED_PORTFOLIO=false
 ```
 
+需要让项目在盘中自动执行本地 paper 计划时，再加：
+
+```text
+PAPER_AUTO_EXECUTION_ENABLED=true
+PAPER_AUTO_EXECUTION_INTERVAL_MS=60000
+PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY=true
+PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN=2
+PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS=12
+```
+
+该自动执行器只会把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`，不会连接同花顺、中信、SuperMind 或任何真实券商。盘外启动时会保持等待，直到 A 股交易时段才自动运行。
+
 `TRADING_SEED_PORTFOLIO=true` 是默认演示模式，会在新账户中预置样例持仓；用于从下一个交易日开始观察或纸面买卖时，应设为 `false`，再停止旧服务并重新启动。若使用 `STORE_BACKEND=json`，还需要删除或移走 `DATA_DIR` 下已有的 `paper-trading-state.json`，否则系统会恢复旧账户状态而不是重新创建 10000 元纯现金账户。
 
 ## 开发服务器
@@ -161,9 +173,9 @@ AkShare 桥接还提供只读财经新闻和全球主要指数接口。Fastify �
 
 2026-07-13（下周一，Asia/Shanghai）开始做本地一日观察时，推荐流程如下：
 
-1. 交易日前确认 `.env.local` 使用 `MARKET_MODE=paper`、`MARKET_DATA_PROVIDER=akshare`、`TRADING_STARTING_CASH=10000`、`TRADING_SEED_PORTFOLIO=false`。
+1. 交易日前确认 `.env.local` 使用 `MARKET_MODE=paper`、`MARKET_DATA_PROVIDER=akshare`、`TRADING_STARTING_CASH=10000`、`TRADING_SEED_PORTFOLIO=false`；如需自动本地 paper 执行，再打开 `PAPER_AUTO_EXECUTION_ENABLED=true`。
 2. 启动 `npm run dev:a-share`，再运行 `npm run check:a-share`；只有 Fastify API、AkShare Bridge、Vite 代理、指数行情、个股行情和 KAIROS 快照都通过时，才把当天候选视为有效 paper 输入。
-3. 开盘后只在本地纸面账户观察 `/strategy`、`/learning` 和 `/account`，候选中的 `paper-buy` 只表示可做模拟验证，不代表真实下单建议。
+3. 开盘后在本地纸面账户观察 `/strategy`、`/learning`、`/account` 和 `/api/trading/auto-paper-execution/status`；自动执行器只提交本地模拟订单，不代表真实下单建议。
 4. 收盘后导出订单、审计和候选结果，记录是否成交、最大回撤、胜率、盈亏比和数据质量异常；这些结果只能作为下一轮研究输入，不能描述为真实收益。
 
 研究管线页会自动读取 `/api/research/paper-trading-plan`，展示当日纸面操作过程。该计划会合并策略排行榜、强势回踩候选、每日优质股和账户状态，并按 A 股规则检查 100 股一手、T+1、可用现金、单票仓位和 paper-only 边界。计划中的 `paper-buy-plan`、`paper-sell-plan`、`blocked` 或 `hold` 只是本地模拟/观察动作，不会自动连接真实券商或同花顺账户。
@@ -173,6 +185,15 @@ AkShare 桥接还提供只读财经新闻和全球主要指数接口。Fastify �
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/api/research/paper-trading-plan
 ```
+
+如需查看自动执行器状态或手动触发一次本地 paper 执行，可运行：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status
+Invoke-RestMethod -Method Post http://127.0.0.1:8787/api/trading/auto-paper-execution/run
+```
+
+手动触发接口仍会拒绝非 paper 模式，并继续通过本地风控检查；重复触发使用 `kairos-auto-paper:*` 幂等键，避免同一纸面动作重复建单。
 
 如需把本地 paper 计划转成同花顺 SuperMind 可人工复核的模拟盘输入，可运行：
 
@@ -227,6 +248,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/research/strategy-leaderboard
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-candidates
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-quality-stocks
 Invoke-RestMethod http://127.0.0.1:8787/api/integrations/supermind/signal-package
+Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status
 Invoke-RestMethod http://127.0.0.1:8787/api/research/real-data-feed
 ```
 

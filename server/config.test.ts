@@ -59,6 +59,32 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  PAPER_AUTO_EXECUTION_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  PAPER_AUTO_EXECUTION_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(10_000)
+    .max(3_600_000)
+    .default(60_000),
+  PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(2),
+  PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(12),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
   RESEARCH_DATA_DIR: z.string().default("./data/research"),
@@ -109,6 +135,11 @@ describe("ServerConfig", () => {
       expect(config.MIN_COMMISSION).toBe(5);
       expect(config.SLIPPAGE_BPS).toBe(5);
       expect(config.REAL_TRADING_ENABLED).toBe(false);
+      expect(config.PAPER_AUTO_EXECUTION_ENABLED).toBe(false);
+      expect(config.PAPER_AUTO_EXECUTION_INTERVAL_MS).toBe(60_000);
+      expect(config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY).toBe(true);
+      expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(2);
+      expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(12);
       expect(config.AUTH_ENABLED).toBe(false);
       expect(config.AUTH_TOKEN_TTL_SECONDS).toBe(3_600);
       expect(config.STORE_BACKEND).toBe("memory");
@@ -305,6 +336,21 @@ describe("ServerConfig", () => {
       const config = parse({ API_DOCS_ENABLED: "false" });
       expect(config.API_DOCS_ENABLED).toBe(false);
     });
+
+    it("respects paper auto execution settings", () => {
+      const config = parse({
+        PAPER_AUTO_EXECUTION_ENABLED: "true",
+        PAPER_AUTO_EXECUTION_INTERVAL_MS: "30000",
+        PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: "false",
+        PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: "4",
+        PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "20",
+      });
+      expect(config.PAPER_AUTO_EXECUTION_ENABLED).toBe(true);
+      expect(config.PAPER_AUTO_EXECUTION_INTERVAL_MS).toBe(30_000);
+      expect(config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY).toBe(false);
+      expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(4);
+      expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(20);
+    });
   });
 
   describe("real trading guard", () => {
@@ -405,6 +451,13 @@ describe("ServerConfig", () => {
     it("accepts zero min commission", () => {
       expect(parse({ MIN_COMMISSION: "0" }).MIN_COMMISSION).toBe(0);
     });
+
+    it("accepts paper auto execution boundaries", () => {
+      expect(parse({ PAPER_AUTO_EXECUTION_INTERVAL_MS: "10000" }).PAPER_AUTO_EXECUTION_INTERVAL_MS).toBe(10_000);
+      expect(parse({ PAPER_AUTO_EXECUTION_INTERVAL_MS: "3600000" }).PAPER_AUTO_EXECUTION_INTERVAL_MS).toBe(3_600_000);
+      expect(parse({ PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: "20" }).PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(20);
+      expect(parse({ PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "100" }).PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(100);
+    });
   });
 
   describe("validation errors", () => {
@@ -486,6 +539,12 @@ describe("ServerConfig", () => {
 
     it("rejects invalid AKSHARE_BRIDGE_URL", () => {
       expect(() => parse({ AKSHARE_BRIDGE_URL: "not-a-url" })).toThrow();
+    });
+
+    it("rejects invalid paper auto execution settings", () => {
+      expect(() => parse({ PAPER_AUTO_EXECUTION_INTERVAL_MS: "9999" })).toThrow();
+      expect(() => parse({ PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: "0" })).toThrow();
+      expect(() => parse({ PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "101" })).toThrow();
     });
   });
 

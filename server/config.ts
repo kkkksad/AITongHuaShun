@@ -51,6 +51,32 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  PAPER_AUTO_EXECUTION_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  PAPER_AUTO_EXECUTION_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(10_000)
+    .max(3_600_000)
+    .default(60_000),
+  PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(2),
+  PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(12),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
   RESEARCH_DATA_DIR: z.string().default("./data/research"),

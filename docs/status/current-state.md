@@ -51,6 +51,7 @@
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
 - **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 新增 `qualitySummary`，返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额和现金使用比例；研究管线页面展示该诊断，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1 或持仓约束保持观望。
+- **本地 paper 自动执行器** —— `PAPER_AUTO_EXECUTION_ENABLED=true` 时，Fastify 会在 A 股交易时段按间隔读取纸面计划，把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`；状态接口为 `/api/trading/auto-paper-execution/status`，手动触发接口为 `/api/trading/auto-paper-execution/run`。该执行器只作用于本地模拟账户，继续受 100 股一手、T+1、现金、仓位、熔断和幂等键限制，不连接真实券商。
 - **SuperMind 模拟盘信号桥** —— `/api/integrations/supermind/signal-package` 将本地 paper 操作计划转换为可人工复核的 SuperMind 信号 CSV 和云端策略模板；该接口不登录同花顺、不保存密码/Cookie/Token，也不会自动提交订单。
 - **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
 
@@ -68,6 +69,7 @@ GET  /api/research/learning-state
 GET  /api/research/paper-trading-plan
 GET  /api/integrations/supermind/signal-package
 GET  /api/research/real-data-feed
+GET  /api/trading/auto-paper-execution/status
 GET  /api/account
 GET  /api/positions
 GET  /api/orders
@@ -78,6 +80,7 @@ POST /api/risk/reset
 GET  /api/audit
 GET  /api/audit/export?format=csv|json     (审计日志导出)
 POST /api/orders
+POST /api/trading/auto-paper-execution/run
 POST /api/trading/pause
 POST /api/trading/resume
 DELETE /api/orders/:orderId
@@ -89,6 +92,20 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-13 local paper auto execution verification
+npm run test:server -- server/app.test.ts server/config.test.ts
+2 test files passed
+97 tests passed
+
+npm test
+25 server test files passed
+547 server tests passed
+2 web test files passed
+9 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
 2026-07-11 SuperMind simulation signal bridge verification
 npm run test:server -- server/app.test.ts
 1 test file passed
@@ -234,6 +251,8 @@ server/
 ├── broker/
 │   ├── GridTradingRunner.ts     # 实时网格交易运行器
 │   └── GridTradingRunner.test.ts # 网格运行器测试
+├── trading/
+│   └── paperAutoExecutor.ts     # 本地 paper 自动执行器（只提交到 PaperBroker）
 ├── monitoring/
 │   ├── exportUtils.ts           # 审计/交易记录导出工具
 │   └── exportUtils.test.ts     # 导出工具测试
@@ -295,6 +314,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
 - 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 从 10000 元纯现金开始；已有 JSON 状态文件不会被自动覆盖，需要用户明确删除或移走后才会重新初始化。
 - A 股 paper 撮合遵守一手 100 股和 T+1 卖出限制；同日买入的 `t1LockedQuantity` 只会在后续交易日释放为可卖数量。
+- 本地 paper 自动执行器默认关闭；开启后只在 `MARKET_MODE=paper` 与 `REAL_TRADING_ENABLED=false` 下运行，默认限制在 A 股交易时段，并只向本地 `PaperBroker` 提交模拟订单。
 - 当前没有事务型数据库、真实账户连接或真实券商执行。
 - 登录保护默认关闭；开启 `AUTH_ENABLED=true` 时必须显式提供账号、至少 12 位密码和至少 32 位 `JWT_SECRET`，不存在默认账号、默认密码或默认 JWT 密钥。
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。

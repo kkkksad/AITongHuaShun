@@ -35,6 +35,15 @@ export interface CapabilitiesSnapshot {
     liveSupported: false;
     humanApprovalRequiredForLive: true;
   };
+  autoPaperExecution: {
+    enabled: boolean;
+    mode: "local-paper-broker-only";
+    tradeWindowOnly: boolean;
+    intervalMs: number;
+    maxOrdersPerRun: number;
+    maxDailyOrders: number;
+    liveTradingEnabled: false;
+  };
   credentials: {
     browserAllowed: false;
     storage: "server-environment-only";
@@ -380,6 +389,69 @@ export interface SuperMindSignalPackage {
   guardrails: string[];
 }
 
+export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
+export type PaperAutoExecutionSession =
+  | "open"
+  | "pre-market"
+  | "lunch-break"
+  | "after-hours"
+  | "weekend";
+
+export interface PaperAutoExecutionOrder {
+  symbol: string;
+  side: "buy" | "sell";
+  quantity: number;
+  clientOrderId: string;
+  status: OrderRecord["status"];
+  orderId: string;
+  rejectionReason?: string;
+}
+
+export interface PaperAutoExecutionSkip {
+  symbol: string;
+  action: PaperTradingOperationAction;
+  reason: string;
+}
+
+export interface PaperAutoExecutionRun {
+  id: string;
+  trigger: PaperAutoExecutionTrigger;
+  startedAt: string;
+  finishedAt: string;
+  tradingDate: string;
+  session: PaperAutoExecutionSession;
+  planQuality: PaperTradingPlanQualitySummary["planQuality"] | "not-run";
+  submittedOrders: PaperAutoExecutionOrder[];
+  skippedOperations: PaperAutoExecutionSkip[];
+  guardrails: string[];
+}
+
+export interface PaperAutoExecutionStatus {
+  enabled: boolean;
+  running: boolean;
+  mode: "paper-auto";
+  execution: "local-paper-broker-only";
+  liveTradingEnabled: false;
+  intervalMs: number;
+  tradeWindowOnly: boolean;
+  maxOrdersPerRun: number;
+  maxDailyOrders: number;
+  todaySubmittedOrders: number;
+  currentSession: PaperAutoExecutionSession;
+  startedAt: string | null;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  latestRun: PaperAutoExecutionRun | null;
+  recentRuns: PaperAutoExecutionRun[];
+  guardrails: string[];
+}
+
+export interface PaperAutoExecutionRunResponse {
+  run: PaperAutoExecutionRun;
+  account: AccountSnapshot;
+  positions: PositionSnapshot[];
+}
+
 export type RealResearchSourceStatus =
   | "live-read-only"
   | "mock-disabled"
@@ -689,6 +761,19 @@ export function fetchPaperTradingPlan(): Promise<PaperTradingPlan> {
 export function fetchSuperMindSignalPackage(): Promise<SuperMindSignalPackage> {
   return authApiRequest<SuperMindSignalPackage>(
     "/api/integrations/supermind/signal-package",
+  );
+}
+
+export function fetchPaperAutoExecutionStatus(): Promise<PaperAutoExecutionStatus> {
+  return authApiRequest<PaperAutoExecutionStatus>(
+    "/api/trading/auto-paper-execution/status",
+  );
+}
+
+export function runPaperAutoExecutionOnce(): Promise<PaperAutoExecutionRunResponse> {
+  return authApiRequest<PaperAutoExecutionRunResponse>(
+    "/api/trading/auto-paper-execution/run",
+    { method: "POST" },
   );
 }
 

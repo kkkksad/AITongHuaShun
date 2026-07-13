@@ -12,6 +12,7 @@ Fastify + TypeScript :8787
         ├─ MarketDataProvider
         │   ├─ MockMarket               确定性模拟行情
         │   └─ AkShareMarketProvider    只读外部行情
+        ├─ PaperAutoExecutor  本地 paper 计划自动执行
         ├─ RiskEngine       下单前风险检查
         ├─ PaperBroker      模拟撮合与账户更新
         └─ TradingStore     内存或本地 JSON 状态
@@ -38,6 +39,8 @@ src/
 server/
   broker/        PaperBroker 模拟撮合、受控纸面适配器与只读行情原型
   market/        MockMarket、HTTP 与 AkShare 只读行情适配器
+  research/      策略排行、候选池、纸面计划与 SuperMind 信号包
+  trading/       本地 paper 自动执行器
   realtime/      WebSocket 连接与广播
   risk/          风险规则
   store/         内存与本地 JSON 交易状态
@@ -56,6 +59,7 @@ shared/
 - React 组件只能通过 `tradingApi` 和 `useTradingBackend` 访问服务端，不直接依赖存储或券商实现。
 - React Router 只负责视图 URL；TanStack Query 保存 REST 快照，WebSocket 和交易 mutation 增量更新同一缓存。
 - `PaperBroker` 依赖行情、风险和仓储，不依赖 HTTP、WebSocket 或 React。
+- `PaperAutoExecutor` 只读取纸面计划并向 `PaperBroker` 提交本地模拟订单；它不能调用真实券商、同花顺、SuperMind 或浏览器自动化能力。
 - `RiskEngine` 只依赖共享领域数据，不产生网络或存储副作用。
 - `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都不是未来数据库模型的替代品。
 - `shared/` 只保存跨进程契约，不包含浏览器或 Node.js 运行时副作用。
@@ -67,7 +71,7 @@ shared/
 1. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
 2. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
 3. Fastify 将行情通过 `/ws` 广播给 React。
-4. React 通过 `POST /api/orders` 提交带客户端幂等键的模拟订单。
+4. React 通过 `POST /api/orders` 提交带客户端幂等键的模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
 5. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
 6. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
 7. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。

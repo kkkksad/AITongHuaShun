@@ -41,13 +41,14 @@ import {
 import type { ExportFormat } from "./monitoring/exportUtils";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
-import { buildPaperTradingPlan } from "./research/paperTradingPlan";
+import { buildCurrentPaperTradingPlan } from "./research/paperTradingPlanService";
 import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
 import { buildSuperMindSignalPackage } from "./research/supermindSignalBridge";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
+import { PaperAutoExecutor } from "./trading/paperAutoExecutor";
 
 const orderRequestSchema = z.object({
   symbol: z.string().trim().regex(/^\d{6}$/, "标的代码必须是 6 位数字"),
@@ -314,6 +315,20 @@ export async function buildTradingApp(
     hub.broadcast({ type: "order.updated", data: order });
   });
 
+  const paperAutoExecutor = new PaperAutoExecutor({
+    system,
+    config: options.config,
+    enabled: options.config.PAPER_AUTO_EXECUTION_ENABLED,
+    intervalMs: options.config.PAPER_AUTO_EXECUTION_INTERVAL_MS,
+    tradeWindowOnly: options.config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY,
+    maxOrdersPerRun: options.config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN,
+    maxDailyOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
+    onOrder: (order, request) => {
+      recordOrder(request.side, order.status);
+      broadcastPositions(system.market.getSnapshot());
+    },
+  });
+
   // ── Error handler ───────────────────────────────────────
 
   app.setErrorHandler((error, _request, reply) => {
@@ -396,6 +411,15 @@ export async function buildTradingApp(
       mode: "paper",
       liveSupported: false,
       humanApprovalRequiredForLive: true,
+    },
+    autoPaperExecution: {
+      enabled: options.config.PAPER_AUTO_EXECUTION_ENABLED,
+      mode: "local-paper-broker-only",
+      tradeWindowOnly: options.config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY,
+      intervalMs: options.config.PAPER_AUTO_EXECUTION_INTERVAL_MS,
+      maxOrdersPerRun: options.config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN,
+      maxDailyOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
+      liveTradingEnabled: false,
     },
     credentials: {
       browserAllowed: false,
@@ -600,33 +624,12 @@ export async function buildTradingApp(
         "基于当前行情快照、策略排行榜、今日候选和账户状态生成本地 paper 操作计划。结果只用于模拟观察，不会连接真实券商。",
     },
   }, async () => {
-    const snapshot = system.market.getSnapshot();
-    const account = system.broker.getAccount(snapshot);
-    const positions = system.broker.getPositions(snapshot);
-    const [leaderboard, candidates, qualityStocks] = await Promise.all([
-      buildStrategyLeaderboard(snapshot, system.marketDataProvider, 120),
-      buildDailyCandidates(snapshot, system.marketDataProvider, 40),
-      buildDailyQualityStocks(snapshot, system.marketDataProvider, 60),
-    ]);
-
-    researchStore.recordMarketSnapshot(snapshot, system.marketDataProvider);
-    researchStore.recordStrategyLeaderboard(leaderboard);
-    researchStore.recordDailyCandidates(candidates);
-    researchStore.recordDailyQualityStocks(qualityStocks);
-
-    return buildPaperTradingPlan({
-      snapshot,
-      provider: system.marketDataProvider,
-      account,
-      positions,
-      leaderboard,
-      candidates,
-      qualityStocks,
-      initialCapital: options.config.TRADING_STARTING_CASH,
-      lotSize: system.limits.lotSize,
-      maxPositionWeight: system.risk.getEffectiveMaxPositionWeight(),
-      maxSingleOrderNotional: system.risk.getEffectiveMaxOrderNotional(),
+    const { plan } = await buildCurrentPaperTradingPlan({
+      system,
+      config: options.config,
+      researchStore,
     });
+    return plan;
   });
 
   app.get("/api/integrations/supermind/signal-package", {
@@ -637,27 +640,9 @@ export async function buildTradingApp(
         "将本地 paper 交易计划转换为同花顺 SuperMind 可人工复核的信号 CSV 和云端策略模板。不登录同花顺、不保存凭据、不自动提交订单。",
     },
   }, async () => {
-    const snapshot = system.market.getSnapshot();
-    const account = system.broker.getAccount(snapshot);
-    const positions = system.broker.getPositions(snapshot);
-    const [leaderboard, candidates, qualityStocks] = await Promise.all([
-      buildStrategyLeaderboard(snapshot, system.marketDataProvider, 120),
-      buildDailyCandidates(snapshot, system.marketDataProvider, 40),
-      buildDailyQualityStocks(snapshot, system.marketDataProvider, 60),
-    ]);
-
-    const plan = buildPaperTradingPlan({
-      snapshot,
-      provider: system.marketDataProvider,
-      account,
-      positions,
-      leaderboard,
-      candidates,
-      qualityStocks,
-      initialCapital: options.config.TRADING_STARTING_CASH,
-      lotSize: system.limits.lotSize,
-      maxPositionWeight: system.risk.getEffectiveMaxPositionWeight(),
-      maxSingleOrderNotional: system.risk.getEffectiveMaxOrderNotional(),
+    const { plan } = await buildCurrentPaperTradingPlan({
+      system,
+      config: options.config,
     });
 
     return buildSuperMindSignalPackage(plan);
@@ -1037,6 +1022,33 @@ export async function buildTradingApp(
   });
 
   // 交易控制
+  app.get("/api/trading/auto-paper-execution/status", {
+    schema: {
+      tags: ["交易"],
+      summary: "获取本地 paper 自动执行状态",
+      description:
+        "返回 paper-only 自动执行器状态。该执行器只向本地 PaperBroker 提交模拟订单，不连接真实券商或同花顺账户。",
+    },
+  }, async () => paperAutoExecutor.getStatus());
+
+  app.post("/api/trading/auto-paper-execution/run", {
+    schema: {
+      tags: ["交易"],
+      summary: "手动触发一次本地 paper 自动执行",
+      description:
+        "立即读取当前纸面计划并把可执行动作提交到本地 PaperBroker。仍受 paper 模式、A 股规则、现金、仓位和风控限制约束。",
+    },
+  }, async () => {
+    const run = await paperAutoExecutor.runOnce("manual");
+    const snapshot = system.market.getSnapshot();
+    broadcastPositions(snapshot);
+    return {
+      run,
+      account: system.broker.getAccount(snapshot),
+      positions: system.broker.getPositions(snapshot),
+    };
+  });
+
   app.post("/api/trading/pause", {
     schema: {
       tags: ["交易"],
@@ -1102,11 +1114,13 @@ export async function buildTradingApp(
   // ── Lifecycle ───────────────────────────────────────────
 
   app.addHook("onClose", async () => {
+    paperAutoExecutor.stop();
     system.market.stop();
   });
 
   if (options.startMarket !== false) {
     system.market.start();
+    paperAutoExecutor.start();
   }
 
   return app;
