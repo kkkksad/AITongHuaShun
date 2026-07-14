@@ -34,6 +34,10 @@ const FlowPanel = lazyNamed(() => import("./components/FlowPanel"), "FlowPanel")
 const LearningPipeline = lazy(() => import("./components/LearningPipeline"));
 const LogViewer = lazyNamed(() => import("./components/LogViewer"), "LogViewer");
 const MarketChart = lazyNamed(() => import("./components/MarketChart"), "MarketChart");
+const MarketRegimePanel = lazyNamed(
+  () => import("./components/MarketRegimePanel"),
+  "MarketRegimePanel",
+);
 const MarketOverview = lazyNamed(() => import("./components/MarketOverview"), "MarketOverview");
 const NewsPanel = lazyNamed(() => import("./components/NewsPanel"), "NewsPanel");
 const OrderHistory = lazyNamed(() => import("./components/OrderHistory"), "OrderHistory");
@@ -357,6 +361,9 @@ function App() {
           <FlowPanel />
         </Suspense>
       </div>
+      <Suspense fallback={<LazyFallback />}>
+        <MarketRegimePanel />
+      </Suspense>
       <Suspense fallback={<LazyFallback />}>
         <NewsPanel />
       </Suspense>

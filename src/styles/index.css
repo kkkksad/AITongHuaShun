@@ -2025,6 +2025,123 @@ select:focus-visible {
   font-size: 11px;
 }
 
+.market-regime-panel {
+  min-width: 0;
+}
+
+.market-regime-header {
+  align-items: center;
+}
+
+.regime-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin: 2px 0 14px;
+  padding: 3px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+}
+
+.regime-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  gap: 6px;
+  padding: 6px 11px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.regime-tabs button.active {
+  color: var(--text-body);
+  background: var(--bg-panel);
+  box-shadow: 0 1px 2px rgb(15 23 42 / 8%);
+}
+
+.regime-meta-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 12px;
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.regime-meta-strip > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border-right: 1px solid var(--border-light);
+}
+
+.regime-meta-strip > div:last-child {
+  border-right: 0;
+}
+
+.regime-meta-strip span,
+.regime-meta-strip strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.regime-meta-strip span {
+  margin-bottom: 3px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.regime-meta-strip strong {
+  color: var(--text-body);
+  font-size: 13px;
+}
+
+.regime-warning,
+.regime-source-ok {
+  margin-bottom: 10px;
+}
+
+.regime-table-wrap {
+  width: 100%;
+  min-height: 220px;
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+}
+
+.regime-table {
+  min-width: 980px;
+}
+
+.regime-table th,
+.regime-table td {
+  vertical-align: top;
+}
+
+.regime-table .rank-badge {
+  white-space: nowrap;
+}
+
+.regime-reason-cell {
+  width: 280px;
+  min-width: 220px;
+  line-height: 1.45;
+}
+
+.spin {
+  animation: regime-spin 900ms linear infinite;
+}
+
+@keyframes regime-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* ============================================================
    Portfolio Panel
    ============================================================ */
@@ -5745,6 +5862,39 @@ select:focus-visible {
 @media (min-width: 981px) {
   .mobile-nav {
     display: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .regime-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .regime-tabs button {
+    width: 100%;
+  }
+
+  .regime-meta-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .regime-meta-strip > div {
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  .regime-meta-strip > div:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .regime-meta-strip > div:last-child {
+    grid-column: 1 / -1;
+    border-bottom: 0;
+  }
+
+  .regime-table-wrap {
+    margin-right: -4px;
   }
 }
 

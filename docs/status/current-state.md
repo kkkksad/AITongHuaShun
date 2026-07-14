@@ -21,7 +21,7 @@
 - **BrokerAdapter 契约** —— 当前仅用于模拟网络连接；所有订单仍委托 PaperBroker，不包含真实券商执行。
 - PaperBroker 通过契约接口依赖注入，不绑定具体实现。
 - 契约一致性测试，确保任意实现类符合契约约定。
-- **回测参数优化器** —— 网格搜索 + 遗传算法，支持 9 种策略的参数优化、多目标加权评分、收敛曲线追踪。
+- **回测参数优化器** —— 网格搜索 + 遗传算法，支持 14 种策略的参数优化、多目标加权评分、收敛曲线追踪。
 - **增强型风控引擎** —— 熔断器（连续亏损/日内回撤触发自动暂停）、动态限额调整（根据回撤缩减仓位权重）、风控状态追踪与手动重置。
 - **网格交易运行器** —— 实时纸面交易环境中自动执行网格策略，监听行情快照，价格穿过网格线时自动提交市价单。
 - **Prometheus 指标导出** —— `/metrics` 端点提供 HTTP 请求、WebSocket 连接、账户权益、订单统计、熔断器状态等指标。
@@ -60,6 +60,20 @@
 - **每日盘面与交易复盘** —— `/api/research/daily-review` 聚合观察池涨跌家数、主要指数、账户权益、持仓、订单、手续费和逐笔理由，并在研究管线页展示策略优点、问题和下一步改进。
 - **SuperMind 模拟盘信号桥** —— `/api/integrations/supermind/signal-package` 将本地 paper 操作计划转换为可人工复核的 SuperMind 信号 CSV 和云端策略模板；该接口不登录同花顺、不保存密码/Cookie/Token，也不会自动提交订单。
 - **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
+- **真实板块与历史日线桥接** —— AkShare 桥接新增真实行业板块、行业日线和个股前复权日线接口；行业快照优先东方财富并回退到同花顺行业一览，行业历史优先东方财富并回退到同花顺行业指数，个股历史依次尝试东方财富、腾讯和新浪。请求限制为最多 20 个板块、12 只股票和 60 至 500 个交易日，返回实际来源、抓取时间、复权语义与部分失败警告。
+- **板块 3/5 日展望与滚动验证** —— `/api/research/market-regime` 使用真实板块日线、当前板块涨跌/广度/资金流计算启发式增长评分，并逐日滚动比较之后 3/5 个交易日结果，返回样本数、方向命中率和平均前瞻收益。板块快照读取 80 个行业后等距抽取强、中、弱样本，降低只研究当日领涨行业的选择偏差。评分不是校准概率，也不代表确定收益。
+- **洗盘候选与趋势恶化识别** —— 同一研究接口使用 180 日个股前复权日线，基于 20/60 日收益、均线斜率、回撤深度和量能变化区分“缩量洗盘候选、趋势恶化、健康趋势、信号不清、数据不足”；洗盘只作为待确认解释，不做必然拉升断言。
+- **KAIROS 形态策略与回测日期修复** —— 新增“洗盘恢复”和“趋势健康”两种确定性研究策略，内置优化策略增至 14，并纳入合成样本排行榜候选。回测仓储改用当前历史 bar 的市场日期执行 A 股 T+1，不再把所有历史 bar 错当成电脑当天而永久拦截卖出。
+- **真实板块研究前端** —— 市场页新增“板块展望 / 形态识别”模块；旧 `FlowPanel` 不再读取静态 `sectorFlows`，上游不可用时显示降级原因。桌面与手机宽表格将横向滚动限制在模块内部。
+
+## 仍为静态或合成的数据
+
+- 浏览器端策略实验室的 `src/lib/backtest.ts` 仍使用固定种子合成价格；策略排行榜也仍从当前快照生成确定性合成历史，二者不能当成真实历史回测。
+- `MarketChart` 的盘中折线仍由当前指数快照和静态时间点生成，只能视为快照可视化，不是真实逐分钟历史。
+- `TradingStrategies`、`PositionPlan` 中的分批建仓、网格和定投计划仍是演示配置，未接账户策略持久化。
+- `LearningPipeline` 的流程阶段说明以及通知中心样例仍有静态展示；订单、持仓、账户、审计和自动 paper 执行状态来自后端。
+- `src/data/mockData.ts` 仍保存策略目录和离线降级样例。真实板块模块、真实新闻模块和在线账户不再使用其中的板块资金、新闻、持仓或订单样例。
+- 财务因子、估值、公告结构化数据、Level-2 资金流、逐笔成交、授权券商历史和真实账户数据尚未接入。
 
 ## 可用接口
 
@@ -79,6 +93,7 @@ GET  /api/research/paper-trading-plan
 GET  /api/research/daily-review
 GET  /api/integrations/supermind/signal-package
 GET  /api/research/real-data-feed
+GET  /api/research/market-regime?sectorLimit=10&stockLimit=8&days=180
 GET  /api/trading/auto-paper-execution/status
 GET  /api/account
 GET  /api/positions
@@ -102,6 +117,21 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-14 real sector outlook and market-regime research
+python -m pytest akshare-bridge/test_bridge.py -q
+46 bridge tests passed
+
+npm test
+28 server test files passed
+578 server tests passed
+3 web test files passed
+13 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+Runtime: paper + akshare. /api/research/market-regime returned live-read-only with 10 sector outlooks and 8 stock regimes, using ths-industry-summary, ths-industry-history, and tencent-stock-history without warnings. /api/research/real-data-feed returned live-read-only with 10 EastMoney news items and 5 Sina global indices without warnings. Browser checks showed the authenticated market page with the 180-day real-history panel and no console errors.
+
 2026-07-14 required login and server session security
 npm test
 27 server test files passed
@@ -297,13 +327,14 @@ server/
 │   ├── gridSearch.ts            # 网格搜索
 │   ├── geneticAlgorithm.ts      # 遗传算法
 │   ├── scoreUtils.ts            # 得分计算
-│   ├── index.ts                 # 统一导出 + 9种策略工厂
-│   └── optimizer.test.ts       # 22 tests
+│   ├── index.ts                 # 统一导出 + 14 种策略工厂
+│   └── optimizer.test.ts       # 27 tests
 ├── research/
 │   ├── strategyLeaderboard.ts   # 策略研究排行榜（只读研究端点）
 │   ├── dailyCandidates.ts       # 今日候选扫描器（只读研究端点）
 │   ├── dailyQualityStocks.ts    # 每日优质股筛选器（只读研究端点）
 │   ├── realResearchData.ts      # 真实新闻与全球市场只读研究流
+│   ├── marketRegimeResearch.ts  # 真实板块展望、滚动验证与个股形态识别
 │   └── researchStore.ts         # 运行期研究样本与学习状态（内存）
 ├── risk/
 │   ├── riskEngine.ts            # 增强型风控引擎（熔断+动态限额）
@@ -381,7 +412,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。
 - AkShare 模式必须使用 `MARKET_MODE=paper`，真实行情不改变订单执行权限。
 - 当前没有任何真实订单执行代码。
-- 新闻面板在 AkShare 模式下优先读取真实只读研究流；若源不可用会显示降级状态，不再用静态模拟新闻冒充真实来源。资金流仍使用前端静态模拟数据；主要指数卡片和指数快照图在 AkShare 模式下使用只读指数行情。当前仍未接入真实逐笔或完整分时历史曲线。
+- 新闻面板在 AkShare 模式下优先读取真实只读研究流；若源不可用会显示降级状态，不再用静态模拟新闻冒充真实来源。活跃板块面板使用公开行业快照及可用的公开主力净流入字段，但不属于授权 Level-2 资金流；主要指数卡片和指数快照图使用只读指数行情。当前仍未接入真实逐笔或完整分时历史曲线。
 
 本页只记录可从仓库核实的当前事实。目标设计写入 `architecture/`，产品意图写入 `product/`，实施步骤写入 `plans/`。
 

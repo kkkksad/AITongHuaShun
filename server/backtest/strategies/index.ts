@@ -22,6 +22,10 @@ export {
   KairosLowVolTrendStrategy,
   KairosQuietPullbackStrategy,
 } from "./KairosDefensiveStrategies";
+export {
+  KairosTrendHealthStrategy,
+  KairosWashoutRecoveryStrategy,
+} from "./KairosRegimeStrategies";
 
 // 技术指标也可以导出，方便自定义策略使用
 export {

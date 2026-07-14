@@ -44,6 +44,7 @@ import type { ExportFormat } from "./monitoring/exportUtils";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
+import { buildMarketRegimeResearch } from "./research/marketRegimeResearch";
 import { buildCurrentPaperTradingPlan } from "./research/paperTradingPlanService";
 import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
@@ -96,6 +97,12 @@ const dailyQualityStocksQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(120).default(30),
 });
 
+const marketRegimeQuerySchema = z.object({
+  sectorLimit: z.coerce.number().int().min(1).max(20).default(10),
+  stockLimit: z.coerce.number().int().min(1).max(12).default(8),
+  days: z.coerce.number().int().min(60).max(500).default(180),
+});
+
 const publicAuthPaths = new Set([
   "/api/health",
   "/api/auth/login",
@@ -136,12 +143,13 @@ function buildResearchControlStatus(config: ServerConfig, provider: string) {
       cadence: "manual-or-scheduled-research-run",
       currentInputs: [
         "real-time snapshot",
+        "bounded public sector and stock daily bars",
         "strategy leaderboard",
         "daily candidates",
         "paper trading results",
       ],
       nextInputs: [
-        "authorized daily A-share bars",
+        "versioned authorized daily A-share dataset",
         "deduplicated real news metadata",
         "global market daily return features",
       ],
@@ -168,7 +176,8 @@ function buildResearchControlStatus(config: ServerConfig, provider: string) {
     },
     dataSources: {
       marketProvider: provider,
-      historicalBars: "planned-authorized-cache",
+      historicalBars:
+        provider === "akshare" ? "bounded-public-read-only-bridge" : "disabled",
       news: "read-only-metadata",
       globalMarkets: "read-only-features",
     },
@@ -609,6 +618,53 @@ export async function buildTradingApp(
     );
     researchStore.recordDailyQualityStocks(report);
     return report;
+  });
+
+  app.get("/api/research/market-regime", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取真实板块展望与个股形态识别",
+      description:
+        "读取 AkShare 行业板块、板块日线和个股前复权日线，生成 3/5 日研究评分、滚动历史验证及洗盘候选/趋势恶化识别。结果只读且不代表确定收益。",
+      querystring: {
+        type: "object",
+        properties: {
+          sectorLimit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 20,
+            default: 10,
+          },
+          stockLimit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 12,
+            default: 8,
+          },
+          days: {
+            type: "integer",
+            minimum: 60,
+            maximum: 500,
+            default: 180,
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { sectorLimit, stockLimit, days } = marketRegimeQuerySchema.parse(
+      request.query,
+    );
+    return buildMarketRegimeResearch({
+      bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
+      snapshot: system.market.getSnapshot(),
+      sectorLimit,
+      stockLimit,
+      days,
+      timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+    });
   });
 
   app.get("/api/research/learning-state", {

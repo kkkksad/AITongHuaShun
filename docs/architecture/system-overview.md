@@ -18,7 +18,9 @@ Fastify + TypeScript :8787
         └─ TradingStore     内存或本地 JSON 状态
 
 FastAPI + AkShare :8800
-        └─ 只读行情桥接，无账户和订单接口
+        ├─ 实时个股与指数快照
+        ├─ 新闻与全球指数
+        └─ 行业板块、行业日线与个股日线（只读，无账户和订单接口）
 ```
 
 前后端共享 `shared/trading.ts` 中的行情、账户、持仓、订单、风险和实时事件契约。
@@ -39,7 +41,7 @@ src/
 server/
   broker/        PaperBroker 模拟撮合、受控纸面适配器与只读行情原型
   market/        MockMarket、HTTP 与 AkShare 只读行情适配器
-  research/      策略排行、候选池、纸面计划与 SuperMind 信号包
+  research/      策略排行、候选池、板块/形态研究、纸面计划与 SuperMind 信号包
   trading/       本地 paper 自动执行器
   realtime/      WebSocket 连接与广播
   risk/          风险规则
@@ -71,12 +73,13 @@ shared/
 1. React 启动时验证服务端会话；未登录时只渲染登录页，不启动业务 REST 或 WebSocket。
 2. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
 3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
-4. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
-5. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
-6. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
-7. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
-8. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
-9. 新账户、持仓和订单状态再次通过已认证 WebSocket 推送。
+4. `/api/research/market-regime` 通过桥接读取有界行业/个股历史日线，在 Fastify 内执行时间安全评分与滚动验证；该路径不接触账户或订单。
+5. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
+6. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
+7. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
+8. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
+9. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
+10. 新账户、持仓和订单状态再次通过已认证 WebSocket 推送。
 
 Fastify 使用 Helmet 设置基础安全响应头，并使用 Rate Limit 对 HTTP 请求进行全局限流。统一错误处理必须保留插件产生的 4xx 状态，不能把 429 改写为 500。
 Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabilities` 声明只读行情与纸面执行边界。
@@ -86,6 +89,8 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 ### `MarketDataProvider`
 
 当前可使用 MockMarket 或 AkShare 桥接。外部行情必须保留来源、授权、时间戳、交易日历、时区和复权语义；上层逻辑不得直接绑定单一供应商返回格式。
+
+历史研究接口按请求即时读取并在 Python 进程内短期缓存，不会把无上限原始日线写入本地磁盘。行业日线明确为不复权，个股日线明确为前复权；单次请求受板块数、股票数和交易日数限制。多个公开源只用于可用性回退，每条历史序列保留实际命中的来源。
 
 ### `NewsProvider`
 

@@ -17,6 +17,8 @@ import {
   KairosCapitalShieldStrategy,
   KairosLowVolTrendStrategy,
   KairosQuietPullbackStrategy,
+  KairosTrendHealthStrategy,
+  KairosWashoutRecoveryStrategy,
 } from "./strategies/index";
 
 // ── 辅助函数 ──
@@ -68,6 +70,28 @@ function generateSnapshots(
   }
 
   return snapshots;
+}
+
+function snapshotsFromPrices(
+  prices: number[],
+  volumeAt: (index: number) => number,
+): MarketSnapshot[] {
+  return prices.map((price, index) => ({
+    mode: "paper",
+    sequence: index + 1,
+    marketTime: new Date(2024, 0, index + 1).toISOString(),
+    quotes: [{
+      symbol: "600519",
+      name: "TestStock",
+      tradable: true,
+      price: Number(price.toFixed(2)),
+      previousClose: Number((prices[index - 1] ?? price).toFixed(2)),
+      changePercent:
+        index === 0 ? 0 : Number(((price / prices[index - 1] - 1) * 100).toFixed(2)),
+      volume: volumeAt(index),
+      updatedAt: new Date(2024, 0, index + 1).toISOString(),
+    }],
+  }));
 }
 
 /** Validate basic report structure for any strategy */
@@ -858,6 +882,78 @@ describe("TurtleStrategy", () => {
     );
 
     expect(() => engine.run()).not.toThrow();
+  });
+});
+
+// ═══════════════════════════════════════════════
+// KAIROS regime-aware defensive strategies
+// ═══════════════════════════════════════════════
+
+describe("KairosWashoutRecoveryStrategy", () => {
+  it("enters only after an intact uptrend contracts in volume and stabilizes", () => {
+    const trend = Array.from({ length: 70 }, (_, index) => 80 + index * 0.58);
+    const prices = [...trend, 120.5, 119.2, 117.5, 116.8, 117.4, 118.3, 121];
+    const snapshots = snapshotsFromPrices(prices, (index) =>
+      index >= 70 && index <= 75 ? 3_500_000 : 10_000_000,
+    );
+    const engine = new BacktestEngine(
+      snapshots,
+      new KairosWashoutRecoveryStrategy(60, 20, 0.02, 0.12, 0.8, 0.004, 0.06, 0.025, 0.16),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1,
+      },
+    );
+
+    const report = engine.run();
+
+    validateStrategyReport(report);
+    expect(report.strategyName).toContain("洗盘恢复");
+    expect(report.trades.some((trade) => trade.side === "buy")).toBe(true);
+  });
+
+  it("does not buy a high-volume breakdown", () => {
+    const trend = Array.from({ length: 70 }, (_, index) => 80 + index * 0.58);
+    const prices = [...trend, 120, 117, 113, 109, 108, 107];
+    const snapshots = snapshotsFromPrices(prices, (index) =>
+      index >= 70 ? 24_000_000 : 10_000_000,
+    );
+    const report = new BacktestEngine(
+      snapshots,
+      new KairosWashoutRecoveryStrategy(),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1,
+      },
+    ).run();
+
+    expect(report.trades).toHaveLength(0);
+  });
+});
+
+describe("KairosTrendHealthStrategy", () => {
+  it("exits a position on high-volume moving-average deterioration", () => {
+    const trend = Array.from({ length: 75 }, (_, index) => 90 + index * 0.45);
+    const prices = [...trend, 122, 119, 114, 108, 105, 106, 107];
+    const snapshots = snapshotsFromPrices(prices, (index) =>
+      index >= 75 ? 25_000_000 : 9_000_000,
+    );
+    const report = new BacktestEngine(
+      snapshots,
+      new KairosTrendHealthStrategy(20, 60, 1.25, 0.5, 0.2, 5, 0.18),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1,
+      },
+    ).run();
+
+    const sides = report.trades.map((trade) => trade.side);
+    expect(sides).toContain("buy");
+    expect(sides).toContain("sell");
+    expect(sides.filter((side) => side === "buy")).toHaveLength(1);
   });
 });
 

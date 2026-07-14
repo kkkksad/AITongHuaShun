@@ -129,6 +129,32 @@ const rankedFactories: [string, StrategyFactory][] = [
     ]),
   ],
   [
+    "kairosWashoutRecovery",
+    leaderboardFactory(builtInFactories.kairosWashoutRecovery, [
+      { name: "trendPeriod", type: "int", min: 50, max: 60, step: 10 },
+      { name: "pullbackPeriod", type: "int", min: 15, max: 20, step: 5 },
+      { name: "minPullbackPercent", type: "float", min: 0.025, max: 0.025, step: 0.01 },
+      { name: "maxPullbackPercent", type: "float", min: 0.1, max: 0.1, step: 0.02 },
+      { name: "maxVolumeRatio", type: "float", min: 0.75, max: 0.85, step: 0.1 },
+      { name: "minReboundPercent", type: "float", min: 0.003, max: 0.005, step: 0.002 },
+      { name: "takeProfitPercent", type: "float", min: 0.055, max: 0.055, step: 0.01 },
+      { name: "stopLossPercent", type: "float", min: 0.025, max: 0.025, step: 0.01 },
+      { name: "targetWeight", type: "float", min: 0.16, max: 0.16, step: 0.04 },
+    ]),
+  ],
+  [
+    "kairosTrendHealth",
+    leaderboardFactory(builtInFactories.kairosTrendHealth, [
+      { name: "fastPeriod", type: "int", min: 15, max: 20, step: 5 },
+      { name: "slowPeriod", type: "int", min: 50, max: 60, step: 10 },
+      { name: "breakdownVolumeRatio", type: "float", min: 1.2, max: 1.4, step: 0.2 },
+      { name: "takeProfitPercent", type: "float", min: 0.07, max: 0.07, step: 0.01 },
+      { name: "stopLossPercent", type: "float", min: 0.03, max: 0.03, step: 0.01 },
+      { name: "cooldownBars", type: "int", min: 4, max: 6, step: 2 },
+      { name: "targetWeight", type: "float", min: 0.16, max: 0.16, step: 0.04 },
+    ]),
+  ],
+  [
     "aSharePullback",
     leaderboardFactory(builtInFactories.aSharePullback, [
       { name: "trendPeriod", type: "int", min: 20, max: 30, step: 10 },

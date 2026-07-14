@@ -60,6 +60,14 @@ RESEARCH_STORE_RAW_NEWS=false
 
 当前 `/api/research/self-optimization` 只声明 paper-only 自优化和留存策略；后续接入授权历史 K 线时，应只保存紧凑日线/特征、新闻元数据和全球市场特征，不默认保存原始 tick、完整新闻正文或无上限临时数据。
 
+AkShare 桥接的板块与历史日线只保存在进程内短期缓存，默认 15 分钟：
+
+```text
+AKSHARE_BRIDGE_RESEARCH_CACHE_TTL=900
+```
+
+单次历史研究请求最多读取 20 个行业板块、12 只股票和 60 至 500 个交易日。行业日线为不复权，个股日线为前复权；该缓存不会在 `data/` 中长期堆积原始日线。
+
 需要把本地纸面账户重置为 10000 元纯现金、并清空默认演示持仓时，在未提交的 `.env.local` 设置：
 
 ```text
@@ -309,7 +317,10 @@ Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-quality-stocks?limit
 
 ```powershell
 Invoke-RestMethod "http://127.0.0.1:8787/api/research/real-data-feed" -WebSession $KairosSession
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/market-regime?sectorLimit=10&stockLimit=8&days=180" -WebSession $KairosSession
 ```
+
+板块与形态研究接口会返回 `sourceStatus`、实际数据源、复权方式、滚动验证样本数和警告。`growthProbability3d/5d` 是启发式 0-100 研究评分，不是经过校准的获利概率；当 `sourceStatus=degraded` 时，应先处理 `warnings`，不得用旧静态数据补位。
 
 该端点只读。它不会读取账户、不会提交订单，也不会连接同花顺或中信账户；全球市场对 A 股的影响摘要只是研究信号，需要后续历史样本验证。
 
@@ -341,12 +352,15 @@ Invoke-RestMethod `
 
 2026-07-14 的验证结果：
 
-1. `npm test`：27 个服务端测试文件、564 项服务端测试，以及 3 个前端测试文件、12 项前端测试全部通过。
+1. `npm test`：28 个服务端测试文件、578 项服务端测试，以及 3 个前端测试文件、13 项前端测试全部通过。
 2. `npm run build`：TypeScript 检查与 Vite 生产构建通过。
-3. 登录运行态为 `paper + akshare`、`authEnabled=true`；匿名健康检查为 200，能力、账户、复盘、指标和 OpenAPI 均为 401。
-4. 浏览器验证错误密码、成功登录、刷新保持、认证 WebSocket、安全登出和 390 x 844 手机布局均通过。
-5. `npm run check:a-share` 通过会话登录后完成 6 项检查，后端为 `paper + akshare`，有效指数 4 个。
-6. 本机未安装 Docker CLI，因此容器构建需要在部署服务器继续验证；本次未重跑 Python 单测。
+3. `python -m pytest akshare-bridge/test_bridge.py -q`：46 项桥接测试通过；覆盖板块/个股历史边界、并发限制、空响应不缓存和新浪全球指数回退。
+4. 登录运行态为 `paper + akshare`、`authEnabled=true`；匿名健康检查为 200，能力、账户、复盘、指标和 OpenAPI 均为 401。
+5. 浏览器验证错误密码、成功登录、刷新保持、认证 WebSocket、安全登出、市场研究页和 390 x 844 手机布局均通过；最终市场页无控制台错误。
+6. `/api/research/market-regime` 返回 `live-read-only`，包含 10 个板块、8 只个股、180 日历史且无警告；实际来源为同花顺行业快照/历史与腾讯个股历史回退。
+7. `/api/research/real-data-feed` 返回 `live-read-only`，包含 10 条东方财富财经新闻和 5 个新浪全球指数且无警告。
+8. `npm run check:a-share` 通过会话登录后完成 6 项检查，后端为 `paper + akshare`，有效指数 4 个。
+9. 本机未安装 Docker CLI，因此容器构建需要在部署服务器继续验证。
 
 ## 生成文件
 

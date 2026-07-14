@@ -2,7 +2,7 @@
  * 回测参数优化器 —— 统一入口。
  *
  * 提供：
- * - 12 种内置策略的参数空间定义和工厂函数
+ * - 14 种内置策略的参数空间定义和工厂函数
  * - 网格搜索和遗传算法两种优化方法
  * - 便捷的 runOptimization() 高层 API
  */
@@ -333,6 +333,66 @@ export const kairosCapitalShieldFactory: StrategyFactory = {
   },
 };
 
+/** KAIROS 洗盘恢复研究策略参数空间。 */
+export const kairosWashoutRecoveryFactory: StrategyFactory = {
+  name: "KAIROS洗盘恢复",
+  parameters: [
+    { name: "trendPeriod", type: "int", min: 50, max: 70, step: 20 },
+    { name: "pullbackPeriod", type: "int", min: 15, max: 25, step: 10 },
+    { name: "minPullbackPercent", type: "float", min: 0.02, max: 0.04, step: 0.02 },
+    { name: "maxPullbackPercent", type: "float", min: 0.09, max: 0.12, step: 0.03 },
+    { name: "maxVolumeRatio", type: "float", min: 0.7, max: 0.9, step: 0.2 },
+    { name: "minReboundPercent", type: "float", min: 0.003, max: 0.007, step: 0.004 },
+    { name: "takeProfitPercent", type: "float", min: 0.04, max: 0.07, step: 0.03 },
+    { name: "stopLossPercent", type: "float", min: 0.02, max: 0.035, step: 0.015 },
+    { name: "targetWeight", type: "float", min: 0.12, max: 0.2, step: 0.08 },
+  ],
+  create: async (params) => {
+    const { KairosWashoutRecoveryStrategy } = await import(
+      "../backtest/strategies/KairosRegimeStrategies"
+    );
+    return new KairosWashoutRecoveryStrategy(
+      params.trendPeriod,
+      params.pullbackPeriod,
+      params.minPullbackPercent,
+      params.maxPullbackPercent,
+      params.maxVolumeRatio,
+      params.minReboundPercent,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.targetWeight,
+    );
+  },
+};
+
+/** KAIROS 趋势健康研究策略参数空间。 */
+export const kairosTrendHealthFactory: StrategyFactory = {
+  name: "KAIROS趋势健康",
+  parameters: [
+    { name: "fastPeriod", type: "int", min: 15, max: 25, step: 10 },
+    { name: "slowPeriod", type: "int", min: 50, max: 70, step: 20 },
+    { name: "breakdownVolumeRatio", type: "float", min: 1.2, max: 1.5, step: 0.3 },
+    { name: "takeProfitPercent", type: "float", min: 0.05, max: 0.08, step: 0.03 },
+    { name: "stopLossPercent", type: "float", min: 0.025, max: 0.04, step: 0.015 },
+    { name: "cooldownBars", type: "int", min: 4, max: 8, step: 4 },
+    { name: "targetWeight", type: "float", min: 0.12, max: 0.2, step: 0.08 },
+  ],
+  create: async (params) => {
+    const { KairosTrendHealthStrategy } = await import(
+      "../backtest/strategies/KairosRegimeStrategies"
+    );
+    return new KairosTrendHealthStrategy(
+      params.fastPeriod,
+      params.slowPeriod,
+      params.breakdownVolumeRatio,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.cooldownBars,
+      params.targetWeight,
+    );
+  },
+};
+
 /**
  * 所有内置策略工厂映射。
  */
@@ -349,6 +409,8 @@ export const builtInFactories: Record<string, StrategyFactory> = {
   kairosLowVolTrend: kairosLowVolTrendFactory,
   kairosQuietPullback: kairosQuietPullbackFactory,
   kairosCapitalShield: kairosCapitalShieldFactory,
+  kairosWashoutRecovery: kairosWashoutRecoveryFactory,
+  kairosTrendHealth: kairosTrendHealthFactory,
 };
 
 // ═══════════════════════════════════════════════

@@ -1,6 +1,7 @@
 import { FlowPanel } from "../components/FlowPanel";
 import { MarketChart } from "../components/MarketChart";
 import { MarketOverview } from "../components/MarketOverview";
+import { MarketRegimePanel } from "../components/MarketRegimePanel";
 import { NewsPanel } from "../components/NewsPanel";
 import type { TradingBackend } from "../hooks/useTradingBackend";
 
@@ -19,6 +20,7 @@ export default function MarketPage({ trading }: MarketPageProps) {
         <MarketChart market={trading.market} />
         <FlowPanel />
       </div>
+      <MarketRegimePanel />
       <NewsPanel />
     </div>
   );

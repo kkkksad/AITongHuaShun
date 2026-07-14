@@ -88,7 +88,11 @@ export class BacktestEngine {
   }
 
   private resetRuntime(): void {
-    this.store = new InMemoryTradingStore(this.config.initialCapital, false);
+    this.store = new InMemoryTradingStore(
+      this.config.initialCapital,
+      false,
+      () => new Date(this.provider.getSnapshot().marketTime),
+    );
     this.risk = new RiskEngine(this.limits);
     this.broker = new PaperBroker(this.provider, this.store, this.risk, {
       mode: "paper",

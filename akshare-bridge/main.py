@@ -16,16 +16,21 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+import pandas as pd
+from pydantic import BaseModel, Field
 
 # ── 配置 ──────────────────────────────────────────────────
 
 HOST = os.getenv("AKSHARE_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.getenv("AKSHARE_BRIDGE_PORT", "8800"))
 CACHE_TTL_SEC = float(os.getenv("AKSHARE_BRIDGE_CACHE_TTL", "3.0"))
+RESEARCH_CACHE_TTL_SEC = float(
+    os.getenv("AKSHARE_BRIDGE_RESEARCH_CACHE_TTL", "900.0")
+)
 AUTH_TOKEN = os.getenv("AKSHARE_BRIDGE_TOKEN", "")
 DISABLE_PROXY = os.getenv("AKSHARE_BRIDGE_DISABLE_PROXY", "true").strip().lower() not in {
     "0",
@@ -123,6 +128,57 @@ class GlobalMarketsResponse(BaseModel):
     warning: str | None = None
 
 
+class SectorSnapshot(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    changePercent: float
+    updatedAt: str
+    amount: float | None = None
+    turnover: float | None = None
+    advancers: int | None = None
+    decliners: int | None = None
+    leaderName: str | None = None
+    leaderChangePercent: float | None = None
+    mainNetInflow: float | None = None
+
+
+class SectorSnapshotResponse(BaseModel):
+    provider: str
+    source: str
+    fetchedAt: str
+    sectors: list[SectorSnapshot] = Field(default_factory=list)
+    warning: str | None = None
+
+
+class HistoricalBar(BaseModel):
+    date: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    amount: float | None = None
+    changePercent: float | None = None
+    turnover: float | None = None
+
+
+class HistoricalSeries(BaseModel):
+    symbol: str
+    name: str
+    source: str
+    adjustment: str
+    bars: list[HistoricalBar] = Field(default_factory=list)
+
+
+class HistoricalBarsResponse(BaseModel):
+    provider: str
+    source: str
+    fetchedAt: str
+    series: list[HistoricalSeries] = Field(default_factory=list)
+    warning: str | None = None
+
+
 INDEX_SYMBOL_MAP = {
     "000001": "SH000001",  # 上证指数
     "399001": "SZ399001",  # 深证成指
@@ -138,6 +194,8 @@ GLOBAL_MARKET_ALIASES = {
     "日经225": ("N225", "日经225", "JP"),
     "英国富时100": ("FTSE", "英国富时100", "EU"),
     "德国DAX30": ("GDAXI", "德国DAX30", "EU"),
+    "法国CAC40": ("FCHI", "法国CAC40", "EU"),
+    "欧洲Stoxx50": ("SX5E", "欧洲Stoxx50", "EU"),
 }
 
 
@@ -449,9 +507,16 @@ def fetch_a_share_index_dataframe():
 
 def fetch_global_market_dataframe():
     """Fetch major global index quotes with provider fallback."""
-    providers = (
-        ("global-index-em", ak.stock_zh_index_global_spot_em),
-    )
+    providers = []
+    current_provider = getattr(ak, "index_global_spot_em", None)
+    legacy_provider = getattr(ak, "stock_zh_index_global_spot_em", None)
+    if callable(current_provider):
+        providers.append(("global-index-em", current_provider))
+    if callable(legacy_provider):
+        providers.append(("global-index-em-legacy", legacy_provider))
+    providers.append(("sina-global-history-latest", fetch_global_market_sina_snapshot_dataframe))
+    if not providers:
+        raise RuntimeError("当前 AkShare 版本没有可用的全球指数实时接口")
     last_error: Exception | None = None
 
     for provider_name, provider in providers:
@@ -471,6 +536,43 @@ def fetch_global_market_dataframe():
 
     assert last_error is not None
     raise last_error
+
+
+def fetch_global_market_sina_snapshot_dataframe():
+    """Build a small real global snapshot from Sina's latest two daily bars."""
+    symbols = (
+        ("日经225指数", "NKY", "日经225"),
+        ("英国富时100指数", "UKX", "英国富时100"),
+        ("德国DAX 30种股价指数", "DAX", "德国DAX30"),
+        ("法CAC40指数", "CAC", "法国CAC40"),
+        ("欧洲Stoxx50指数", "SX5E", "欧洲Stoxx50"),
+    )
+    rows: list[dict[str, object]] = []
+    errors: list[str] = []
+    for query_name, symbol, name in symbols:
+        try:
+            df = ak.index_global_hist_sina(symbol=query_name)
+            if len(df) < 2:
+                errors.append(f"{symbol}: 历史不足")
+                continue
+            latest = df.iloc[-1]
+            previous = df.iloc[-2]
+            close = parse_float(latest.get("close"), 0)
+            previous_close = parse_float(previous.get("close"), 0)
+            if close <= 0 or previous_close <= 0:
+                errors.append(f"{symbol}: 收盘价无效")
+                continue
+            rows.append({
+                "代码": symbol,
+                "名称": name,
+                "最新价": close,
+                "涨跌幅": (close / previous_close - 1) * 100,
+            })
+        except Exception as exc:
+            errors.append(f"{symbol}: {exc}")
+    if not rows:
+        raise RuntimeError("新浪全球指数回退不可用: " + "; ".join(errors[:5]))
+    return pd.DataFrame(rows)
 
 
 def fetch_financial_news_dataframe():
@@ -499,6 +601,126 @@ def fetch_financial_news_dataframe():
     raise last_error
 
 
+def fetch_sector_snapshot_dataframe():
+    """Fetch the current industry-board snapshot with a THS fallback."""
+    providers = (
+        ("eastmoney-industry-board", ak.stock_board_industry_name_em),
+        ("ths-industry-summary", ak.stock_board_industry_summary_ths),
+    )
+    last_error: Exception | None = None
+    for provider_name, provider in providers:
+        try:
+            return provider(), provider_name
+        except Exception as exc:
+            last_error = exc
+            logger.warning("行业板块源 %s 失败，尝试下一个来源: %s", provider_name, exc)
+    assert last_error is not None
+    raise last_error
+
+
+def fetch_sector_fund_flow_dataframe():
+    """Fetch current industry main-fund flow; callers may degrade without it."""
+    return ak.stock_sector_fund_flow_rank(
+        indicator="今日",
+        sector_type="行业资金流",
+    )
+
+
+def fetch_sector_history_dataframe(
+    sector: str,
+    start_date: str,
+    end_date: str,
+):
+    """Fetch unadjusted industry-board daily bars with a THS fallback."""
+    providers = (
+        (
+            "eastmoney-industry-history",
+            lambda: ak.stock_board_industry_hist_em(
+                symbol=sector,
+                start_date=start_date,
+                end_date=end_date,
+                period="日k",
+                adjust="",
+            ),
+        ),
+        (
+            "ths-industry-history",
+            lambda: ak.stock_board_industry_index_ths(
+                symbol=sector,
+                start_date=start_date,
+                end_date=end_date,
+            ),
+        ),
+    )
+    last_error: Exception | None = None
+    for provider_name, provider in providers:
+        try:
+            return provider(), provider_name
+        except Exception as exc:
+            last_error = exc
+            logger.warning("板块历史源 %s 失败，尝试下一个来源: %s", provider_name, exc)
+    assert last_error is not None
+    raise last_error
+
+
+def a_share_market_symbol(symbol: str) -> str:
+    if symbol.startswith(("4", "8", "9")):
+        return f"bj{symbol}"
+    if symbol.startswith(("5", "6", "7")):
+        return f"sh{symbol}"
+    return f"sz{symbol}"
+
+
+def fetch_stock_history_dataframe(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+):
+    """Fetch forward-adjusted A-share daily bars with public fallbacks."""
+    market_symbol = a_share_market_symbol(symbol)
+    providers = (
+        (
+            "eastmoney-stock-history",
+            lambda: ak.stock_zh_a_hist(
+                symbol=symbol,
+                period="daily",
+                start_date=start_date,
+                end_date=end_date,
+                adjust="qfq",
+                timeout=12,
+            ),
+        ),
+        (
+            "tencent-stock-history",
+            lambda: ak.stock_zh_a_hist_tx(
+                symbol=market_symbol,
+                start_date=start_date,
+                end_date=end_date,
+                adjust="qfq",
+                timeout=12,
+            ),
+        ),
+        (
+            "sina-stock-history",
+            lambda: ak.stock_zh_a_daily(
+                symbol=market_symbol,
+                start_date=start_date,
+                end_date=end_date,
+                adjust="qfq",
+            ),
+        ),
+    )
+    last_error: Exception | None = None
+    for provider_name, provider in providers:
+        try:
+            return provider(), provider_name
+        except Exception as exc:
+            last_error = exc
+            logger.warning("股票历史源 %s 失败，尝试下一个来源: %s", provider_name, exc)
+    assert last_error is not None
+    raise last_error
+
+
 def first_existing(row, names: tuple[str, ...], default=None):
     for name in names:
         value = row.get(name)
@@ -514,6 +736,18 @@ def parse_float(value, default: float = 0.0) -> float:
         return float(str(value).replace("%", "").replace(",", "").strip())
     except (ValueError, TypeError):
         return default
+
+
+def parse_optional_float(value) -> float | None:
+    if value is None or str(value).strip().lower() in {"", "nan", "none", "-"}:
+        return None
+    parsed = parse_float(value, float("nan"))
+    return parsed if parsed == parsed else None
+
+
+def parse_optional_int(value) -> int | None:
+    parsed = parse_optional_float(value)
+    return int(parsed) if parsed is not None else None
 
 
 def normalize_datetime(value: object) -> str:
@@ -600,6 +834,109 @@ def normalize_global_market_dataframe(df, provider_name: str, limit: int) -> lis
     return markets
 
 
+def normalize_sector_snapshot_dataframes(
+    sector_df,
+    flow_df,
+    limit: int,
+) -> list[SectorSnapshot]:
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    flow_by_name: dict[str, float] = {}
+
+    if flow_df is not None:
+        for _, row in flow_df.iterrows():
+            name = str(first_existing(row, ("名称", "板块名称"), "")).strip()
+            net_flow = parse_optional_float(first_existing(
+                row,
+                (
+                    "今日主力净流入-净额",
+                    "主力净流入-净额",
+                    "今日主力净流入净额",
+                    "主力净流入净额",
+                ),
+                None,
+            ))
+            if name and net_flow is not None:
+                flow_by_name[name] = net_flow
+
+    sectors: list[SectorSnapshot] = []
+    for _, row in sector_df.iterrows():
+        is_ths_summary = first_existing(row, ("板块",), None) is not None
+        name = str(first_existing(row, ("板块名称", "名称", "板块"), "")).strip()
+        symbol = str(first_existing(row, ("板块代码", "代码"), name)).strip()
+        price = parse_float(first_existing(row, ("最新价", "最新", "收盘", "均价"), 0))
+        if not name or price <= 0:
+            continue
+
+        leader_name = first_existing(row, ("领涨股票", "领涨股"), None)
+        amount = parse_optional_float(first_existing(row, ("成交额", "总成交额"), None))
+        row_flow = parse_optional_float(first_existing(row, ("净流入",), None))
+        if is_ths_summary:
+            amount = amount * 100_000_000 if amount is not None else None
+            row_flow = row_flow * 100_000_000 if row_flow is not None else None
+        sectors.append(SectorSnapshot(
+            symbol=symbol or name,
+            name=name,
+            price=price,
+            changePercent=parse_float(first_existing(row, ("涨跌幅", "涨幅"), 0)),
+            updatedAt=fetched_at,
+            amount=amount,
+            turnover=parse_optional_float(first_existing(row, ("换手率",), None)),
+            advancers=parse_optional_int(first_existing(row, ("上涨家数",), None)),
+            decliners=parse_optional_int(first_existing(row, ("下跌家数",), None)),
+            leaderName=str(leader_name).strip() if leader_name else None,
+            leaderChangePercent=parse_optional_float(first_existing(
+                row,
+                ("领涨股票-涨跌幅", "领涨股-涨跌幅"),
+                None,
+            )),
+            mainNetInflow=flow_by_name.get(name, row_flow),
+        ))
+        if len(sectors) >= limit:
+            break
+
+    return sectors
+
+
+def normalize_history_dataframe(
+    df,
+    symbol: str,
+    name: str,
+    source: str,
+    adjustment: str,
+    limit: int,
+) -> HistoricalSeries:
+    bars: list[HistoricalBar] = []
+    for _, row in df.iterrows():
+        date = str(first_existing(row, ("日期", "date", "时间"), "")).strip()[:10]
+        open_price = parse_float(first_existing(row, ("开盘", "开盘价", "open"), 0))
+        high = parse_float(first_existing(row, ("最高", "最高价", "high"), 0))
+        low = parse_float(first_existing(row, ("最低", "最低价", "low"), 0))
+        close = parse_float(first_existing(row, ("收盘", "收盘价", "close"), 0))
+        if not date or min(open_price, high, low, close) <= 0:
+            continue
+
+        bars.append(HistoricalBar(
+            date=date,
+            open=open_price,
+            high=high,
+            low=low,
+            close=close,
+            volume=max(0, parse_float(first_existing(row, ("成交量", "volume", "amount"), 0))),
+            amount=parse_optional_float(first_existing(row, ("成交额", "amount"), None)),
+            changePercent=parse_optional_float(first_existing(row, ("涨跌幅",), None)),
+            turnover=parse_optional_float(first_existing(row, ("换手率",), None)),
+        ))
+
+    bars.sort(key=lambda bar: bar.date)
+    return HistoricalSeries(
+        symbol=symbol,
+        name=name,
+        source=source,
+        adjustment=adjustment,
+        bars=bars[-limit:],
+    )
+
+
 def normalize_a_share_symbol(value: object) -> str | None:
     """Normalize AkShare symbols like sh600519, sz000001, bj920000 to 6 digits."""
     raw = str(value).strip().lower()
@@ -627,6 +964,97 @@ def normalize_index_symbol(value: object) -> str | None:
 
 cache = QuoteCache(ttl_sec=CACHE_TTL_SEC)
 index_cache = IndexCache(ttl_sec=CACHE_TTL_SEC)
+research_cache: dict[str, tuple[float, BaseModel]] = {}
+
+
+def get_cached_research(key: str):
+    cached = research_cache.get(key)
+    if cached is None:
+        return None
+    cached_at, value = cached
+    if time.time() - cached_at >= RESEARCH_CACHE_TTL_SEC:
+        research_cache.pop(key, None)
+        return None
+    return value
+
+
+def set_cached_research(key: str, value: BaseModel):
+    research_cache[key] = (time.time(), value)
+    return value
+
+
+def parse_query_values(value: str) -> list[str]:
+    return list(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
+
+
+def history_date_range(days: int) -> tuple[str, str]:
+    end = datetime.now().date()
+    start = end - timedelta(days=days * 2 + 30)
+    return start.strftime("%Y%m%d"), end.strftime("%Y%m%d")
+
+
+async def build_history_response(
+    identifiers: list[str],
+    days: int,
+    source: str,
+    adjustment: str,
+    fetcher,
+) -> HistoricalBarsResponse:
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    start_date, end_date = history_date_range(days)
+    loop = asyncio.get_running_loop()
+    request_semaphore = asyncio.Semaphore(2)
+
+    async def fetch_one(identifier: str):
+        async with request_semaphore:
+            return await loop.run_in_executor(
+                None,
+                fetcher,
+                identifier,
+                start_date,
+                end_date,
+            )
+
+    results = await asyncio.gather(*[
+        fetch_one(identifier)
+        for identifier in identifiers
+    ], return_exceptions=True)
+
+    series: list[HistoricalSeries] = []
+    errors: list[str] = []
+    actual_sources: list[str] = []
+    for identifier, result in zip(identifiers, results):
+        if isinstance(result, BaseException):
+            errors.append(f"{identifier}: {result}")
+            continue
+        dataframe = result
+        item_source = source
+        if isinstance(result, tuple) and len(result) == 2:
+            dataframe, item_source = result
+        normalized = normalize_history_dataframe(
+            dataframe,
+            symbol=identifier,
+            name=identifier,
+            source=str(item_source),
+            adjustment=adjustment,
+            limit=days,
+        )
+        if normalized.bars:
+            series.append(normalized)
+            actual_sources.append(str(item_source))
+        else:
+            errors.append(f"{identifier}: 无有效日线")
+
+    warning = None
+    if errors:
+        warning = "部分历史数据暂不可用: " + "; ".join(errors[:8])
+    return HistoricalBarsResponse(
+        provider="akshare",
+        source="+".join(dict.fromkeys(actual_sources)) if actual_sources else source,
+        fetchedAt=fetched_at,
+        series=series,
+        warning=warning,
+    )
 
 
 @asynccontextmanager
@@ -758,6 +1186,112 @@ async def get_indices(
         raise HTTPException(status_code=502, detail=f"指数行情数据获取失败: {e}")
 
     return QuotesResponse(quotes=quotes)
+
+
+@app.get("/api/market/sectors", response_model=SectorSnapshotResponse)
+async def get_sectors(
+    limit: int = Query(20, ge=1, le=100, description="返回行业板块数量上限"),
+):
+    """获取真实行业板块快照，并尽力合并当日主力净流入。"""
+    cache_key = f"sectors:{limit}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    loop = asyncio.get_running_loop()
+    try:
+        sector_result = await loop.run_in_executor(None, fetch_sector_snapshot_dataframe)
+    except Exception as e:
+        logger.error("获取行业板块失败: %s", e)
+        return SectorSnapshotResponse(
+            provider="akshare",
+            source="unavailable",
+            fetchedAt=fetched_at,
+            sectors=[],
+            warning=f"行业板块源暂不可用: {e}",
+        )
+
+    sector_df = sector_result
+    sector_source = "eastmoney-industry-board"
+    if isinstance(sector_result, tuple) and len(sector_result) == 2:
+        sector_df, sector_source = sector_result
+
+    flow_df = None
+    warning = None
+    source = str(sector_source)
+    if sector_source == "eastmoney-industry-board":
+        try:
+            flow_df = await loop.run_in_executor(None, fetch_sector_fund_flow_dataframe)
+            source += "+eastmoney-sector-fund-flow"
+        except Exception as e:
+            warning = f"行业资金流暂不可用，板块涨跌仍为真实数据: {e}"
+            logger.warning("获取行业资金流失败: %s", e)
+
+    response = SectorSnapshotResponse(
+        provider="akshare",
+        source=source,
+        fetchedAt=fetched_at,
+        sectors=normalize_sector_snapshot_dataframes(sector_df, flow_df, limit),
+        warning=warning,
+    )
+    return set_cached_research(cache_key, response)
+
+
+@app.get("/api/market/sector-history", response_model=HistoricalBarsResponse)
+async def get_sector_history(
+    sectors: str = Query(..., description="逗号分隔的行业板块名称"),
+    days: int = Query(180, ge=60, le=500, description="交易日数量上限"),
+):
+    """按行业板块名称获取真实、未复权日线。"""
+    sector_list = parse_query_values(sectors)
+    if not sector_list:
+        raise HTTPException(status_code=400, detail="sectors 参数不能为空")
+    if len(sector_list) > 20:
+        raise HTTPException(status_code=400, detail="单次最多查询 20 个行业板块")
+    if any(len(sector) > 40 for sector in sector_list):
+        raise HTTPException(status_code=400, detail="行业板块名称过长")
+
+    cache_key = f"sector-history:{days}:{','.join(sector_list)}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+    response = await build_history_response(
+        identifiers=sector_list,
+        days=days,
+        source="eastmoney-industry-history",
+        adjustment="none",
+        fetcher=fetch_sector_history_dataframe,
+    )
+    return set_cached_research(cache_key, response) if response.series else response
+
+
+@app.get("/api/market/stock-history", response_model=HistoricalBarsResponse)
+async def get_stock_history(
+    symbols: str = Query(..., description="逗号分隔的 6 位 A 股代码"),
+    days: int = Query(180, ge=60, le=500, description="交易日数量上限"),
+):
+    """获取真实 A 股前复权日线，仅用于研究。"""
+    symbol_list = parse_query_values(symbols)
+    if not symbol_list:
+        raise HTTPException(status_code=400, detail="symbols 参数不能为空")
+    if len(symbol_list) > 12:
+        raise HTTPException(status_code=400, detail="单次最多查询 12 只股票")
+    if any(re.fullmatch(r"\d{6}", symbol) is None for symbol in symbol_list):
+        raise HTTPException(status_code=400, detail="symbols 必须是 6 位 A 股代码")
+
+    cache_key = f"stock-history:{days}:{','.join(symbol_list)}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+    response = await build_history_response(
+        identifiers=symbol_list,
+        days=days,
+        source="eastmoney-stock-history",
+        adjustment="qfq",
+        fetcher=fetch_stock_history_dataframe,
+    )
+    return set_cached_research(cache_key, response) if response.series else response
 
 
 @app.get("/api/research/news", response_model=NewsResponse)

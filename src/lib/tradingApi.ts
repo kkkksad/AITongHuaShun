@@ -598,6 +598,119 @@ export interface RealResearchDataFeed {
   guardrails: string[];
 }
 
+export type MarketRegimeSourceStatus =
+  | "live-read-only"
+  | "degraded"
+  | "mock-disabled";
+export type SectorOutlookDirection = "constructive" | "neutral" | "cautious";
+export type StockRegime =
+  | "washout-candidate"
+  | "trend-deterioration"
+  | "healthy-trend"
+  | "unclear"
+  | "insufficient-data";
+
+export interface DirectionalValidation {
+  horizon: 3 | 5;
+  samples: number;
+  directionalHitRate: number | null;
+  averageForwardReturn: number | null;
+  lastSignalDate: string | null;
+  lastOutcomeDate: string | null;
+}
+
+export interface SectorOutlook {
+  rank: number;
+  symbol: string;
+  name: string;
+  latestDate: string;
+  barCount: number;
+  direction: SectorOutlookDirection;
+  score: number;
+  confidence: number;
+  growthProbability3d: number;
+  growthProbability5d: number;
+  current: {
+    changePercent: number;
+    mainNetInflow: number | null;
+    advancers: number | null;
+    decliners: number | null;
+    leaderName: string | null;
+  };
+  factors: {
+    return5d: number;
+    return20d: number;
+    return60d: number;
+    ma20Slope5d: number;
+    annualizedVolatility20d: number;
+    volumeRatio5d: number;
+    breadthRatio: number | null;
+  };
+  validation: {
+    horizon3: DirectionalValidation;
+    horizon5: DirectionalValidation;
+  };
+  evidence: string[];
+  riskFlags: string[];
+}
+
+export interface StockRegimeResult {
+  rank: number;
+  symbol: string;
+  name: string;
+  latestDate: string | null;
+  barCount: number;
+  regime: StockRegime;
+  confidence: number;
+  features: {
+    return5d: number;
+    return20d: number;
+    return60d: number;
+    pullbackFrom20DayHigh: number;
+    distanceFromMa20: number;
+    distanceFromMa60: number;
+    ma20Slope5d: number;
+    ma60Slope5d: number;
+    volumeRatio: number;
+  };
+  validation: {
+    samples: number;
+    hitRate5d: number | null;
+    averageForwardReturn5d: number | null;
+  };
+  evidence: string[];
+  riskFlags: string[];
+}
+
+export interface MarketRegimeResearchReport {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: MarketRegimeSourceStatus;
+  source: {
+    sectorSource: string;
+    sectorHistorySource: string;
+    stockHistorySource: string;
+    fetchedAt: string | null;
+    days: number;
+    sectorAdjustment: "none";
+    stockAdjustment: "qfq";
+    sectorCount: number;
+    stockCount: number;
+  };
+  methodology: {
+    version: string;
+    horizons: [3, 5];
+    minimumBars: number;
+    walkForward: true;
+    probabilityMeaning: string;
+  };
+  sectorOutlooks: SectorOutlook[];
+  stockRegimes: StockRegimeResult[];
+  warnings: string[];
+  guardrails: string[];
+}
+
 export interface AuthUser {
   username: string;
   role: string;
@@ -881,6 +994,22 @@ export function runPaperAutoExecutionOnce(): Promise<PaperAutoExecutionRunRespon
 
 export function fetchRealResearchDataFeed(): Promise<RealResearchDataFeed> {
   return authApiRequest<RealResearchDataFeed>("/api/research/real-data-feed");
+}
+
+export function fetchMarketRegimeResearch(
+  sectorLimit = 10,
+  stockLimit = 8,
+  days = 180,
+): Promise<MarketRegimeResearchReport> {
+  const boundedSectorLimit = Math.min(20, Math.max(1, Math.round(sectorLimit)));
+  const boundedStockLimit = Math.min(12, Math.max(1, Math.round(stockLimit)));
+  const boundedDays = Math.min(500, Math.max(60, Math.round(days)));
+  return authApiRequest<MarketRegimeResearchReport>(
+    "/api/research/market-regime" +
+      `?sectorLimit=${boundedSectorLimit}` +
+      `&stockLimit=${boundedStockLimit}` +
+      `&days=${boundedDays}`,
+  );
 }
 
 export function fetchSelfOptimizationStatus(): Promise<SelfOptimizationStatus> {

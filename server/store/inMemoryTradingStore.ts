@@ -86,7 +86,11 @@ export class InMemoryTradingStore implements TradingStore {
    * @param startingCash 初始总资金
    * @param seed 是否使用预设种子持仓（默认 true，向后兼容；false 用于回测从纯现金开始）
    */
-  constructor(startingCash: number, seed = true) {
+  constructor(
+    startingCash: number,
+    seed = true,
+    private readonly now: () => Date = () => new Date(),
+  ) {
     let seededCost = 0;
 
     if (seed) {
@@ -144,6 +148,7 @@ export class InMemoryTradingStore implements TradingStore {
 
   getPositions(snapshot: MarketSnapshot): PositionSnapshot[] {
     const quoteMap = new Map(snapshot.quotes.map((quote) => [quote.symbol, quote]));
+    const tradeDate = getChinaTradeDate(this.now());
     const raw = [...this.positions.values()].map((position) => {
       const quote = quoteMap.get(position.symbol);
       const currentPrice = quote?.price ?? position.averagePrice;
@@ -153,8 +158,8 @@ export class InMemoryTradingStore implements TradingStore {
         symbol: position.symbol,
         name: position.name,
         quantity: position.quantity,
-        availableQuantity: position.quantity - getT1LockedQuantity(position),
-        t1LockedQuantity: getT1LockedQuantity(position),
+        availableQuantity: position.quantity - getT1LockedQuantity(position, tradeDate),
+        t1LockedQuantity: getT1LockedQuantity(position, tradeDate),
         averagePrice: position.averagePrice,
         currentPrice,
         marketValue,
@@ -207,7 +212,7 @@ export class InMemoryTradingStore implements TradingStore {
       dailyPnlPercent: dailyPnl / baseline,
       riskUtilization: Math.min(1, Math.max(exposureRatio, lossRatio)),
       paused: this.paused,
-      updatedAt: new Date().toISOString(),
+      updatedAt: this.now().toISOString(),
     };
   }
 
@@ -225,12 +230,12 @@ export class InMemoryTradingStore implements TradingStore {
 
   createOrder(request: OrderRequest, requestedPrice: number): OrderRecord {
     this.orderSequence += 1;
-    const now = new Date().toISOString();
+    const now = this.now().toISOString();
     const isLimitOrder = request.type === "limit";
 
     const order: OrderRecord = {
       ...request,
-      id: `PO-${Date.now()}-${String(this.orderSequence).padStart(4, "0")}`,
+      id: `PO-${this.now().getTime()}-${String(this.orderSequence).padStart(4, "0")}`,
       status: isLimitOrder ? "pending" : "accepted",
       requestedPrice,
       filledQuantity: 0,
@@ -261,7 +266,7 @@ export class InMemoryTradingStore implements TradingStore {
   rejectOrder(order: OrderRecord, reason: string, code: string): OrderRecord {
     order.status = "rejected";
     order.rejectionReason = reason;
-    order.updatedAt = new Date().toISOString();
+    order.updatedAt = this.now().toISOString();
 
     if (order.type === "limit" && order.limitPrice !== undefined) {
       this.blockedCash -= order.limitPrice * order.quantity;
@@ -277,7 +282,7 @@ export class InMemoryTradingStore implements TradingStore {
     }
 
     order.status = "cancelled";
-    order.updatedAt = new Date().toISOString();
+    order.updatedAt = this.now().toISOString();
 
     if (order.limitPrice !== undefined) {
       this.blockedCash -= order.limitPrice * order.quantity;
@@ -322,7 +327,8 @@ export class InMemoryTradingStore implements TradingStore {
     if (order.side === "buy") {
       const previousQuantity = current?.quantity ?? 0;
       const previousCost = previousQuantity * (current?.averagePrice ?? 0);
-      const currentLocked = current ? getT1LockedQuantity(current) : 0;
+      const tradeDate = getChinaTradeDate(this.now());
+      const currentLocked = current ? getT1LockedQuantity(current, tradeDate) : 0;
       const nextQuantity = previousQuantity + order.quantity;
 
       this.positions.set(order.symbol, withT1Lock({
@@ -331,10 +337,11 @@ export class InMemoryTradingStore implements TradingStore {
         quantity: nextQuantity,
         averagePrice: (previousCost + notional) / nextQuantity,
         realizedPnl: current?.realizedPnl ?? 0,
-      }, currentLocked + order.quantity));
+      }, currentLocked + order.quantity, tradeDate));
       this.cash -= notional + commission;
     } else if (current) {
-      const currentLocked = getT1LockedQuantity(current);
+      const tradeDate = getChinaTradeDate(this.now());
+      const currentLocked = getT1LockedQuantity(current, tradeDate);
       const realizedPnl = (fillPrice - current.averagePrice) * order.quantity - commission;
       const nextQuantity = current.quantity - order.quantity;
       const nextLocked = Math.min(currentLocked, Math.max(0, nextQuantity));
@@ -349,7 +356,7 @@ export class InMemoryTradingStore implements TradingStore {
           quantity: nextQuantity,
           averagePrice: current.averagePrice,
           realizedPnl: current.realizedPnl + realizedPnl,
-        }, nextLocked));
+        }, nextLocked, tradeDate));
       }
     }
 
@@ -358,7 +365,7 @@ export class InMemoryTradingStore implements TradingStore {
     order.filledQuantity = order.quantity;
     order.notional = notional;
     order.commission = commission;
-    order.updatedAt = new Date().toISOString();
+    order.updatedAt = this.now().toISOString();
     this.appendAudit("order", "order.filled", wasPending ? "限价单已成交" : "模拟订单已成交", {
       orderId: order.id,
       fillPrice,
@@ -384,11 +391,11 @@ export class InMemoryTradingStore implements TradingStore {
   ): void {
     this.auditSequence += 1;
     this.auditEvents.unshift({
-      id: `AE-${Date.now()}-${String(this.auditSequence).padStart(4, "0")}`,
+      id: `AE-${this.now().getTime()}-${String(this.auditSequence).padStart(4, "0")}`,
       category,
       action,
       message,
-      timestamp: new Date().toISOString(),
+      timestamp: this.now().toISOString(),
       data,
     });
   }

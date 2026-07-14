@@ -89,6 +89,7 @@ describe("trading API", () => {
         "/api/capabilities",
         "/api/account",
         "/api/research/daily-review",
+        "/api/research/market-regime",
         "/metrics",
         "/documentation/json",
       ]) {
@@ -205,6 +206,9 @@ describe("trading API", () => {
       },
     });
     expect(response.json().entries.length).toBeGreaterThan(0);
+    expect(
+      response.json().entries.map((entry: { strategyKey: string }) => entry.strategyKey),
+    ).toEqual(expect.arrayContaining(["kairosWashoutRecovery", "kairosTrendHealth"]));
     expect(response.json().entries[0]).toMatchObject({
       rank: 1,
       bestParams: expect.any(Object),
@@ -361,6 +365,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/trading/auto-paper-execution/status");
     expect(response.json().paths).toHaveProperty("/api/trading/auto-paper-execution/run");
     expect(response.json().paths).toHaveProperty("/api/research/real-data-feed");
+    expect(response.json().paths).toHaveProperty("/api/research/market-regime");
     expect(response.json().paths).toHaveProperty("/api/research/self-optimization");
   });
 
@@ -386,6 +391,31 @@ describe("trading API", () => {
     });
     expect(response.json().news.warning).toContain("不会使用静态模拟数据替代");
     expect(response.json().guardrails.join("")).toContain("不包含账户、下单或撤单能力");
+  });
+
+  it("does not replace unavailable market-regime history with static data", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/market-regime?sectorLimit=5&stockLimit=4&days=180",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      sourceStatus: "mock-disabled",
+      source: {
+        days: 180,
+        sectorAdjustment: "none",
+        stockAdjustment: "qfq",
+      },
+      sectorOutlooks: [],
+      stockRegimes: [],
+      methodology: {
+        horizons: [3, 5],
+        walkForward: true,
+      },
+    });
+    expect(response.json().guardrails.join(" ")).toContain("不会使用静态板块数据替代");
   });
 
   it("adds baseline security headers", async () => {

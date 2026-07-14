@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTH_EXPIRED_EVENT,
   fetchAuditEvents,
+  fetchMarketRegimeResearch,
   getTradingSocketUrl,
   login,
   notifyAuthExpired,
@@ -82,5 +83,25 @@ describe("session-aware trading API", () => {
 
     await expect(fetchAuditEvents()).rejects.toThrow("登录已失效");
     expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("requests bounded real market-regime research with the session cookie", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        sourceStatus: "degraded",
+        sectorOutlooks: [],
+        stockRegimes: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchMarketRegimeResearch(99, 0, 999);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/api\/research\/market-regime\?sectorLimit=20&stockLimit=1&days=500$/,
+      ),
+      expect.objectContaining({ credentials: "include" }),
+    );
   });
 });

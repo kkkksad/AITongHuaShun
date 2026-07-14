@@ -7,6 +7,7 @@ AkShare 桥接微服务单元测试
 import sys
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,16 +18,27 @@ from main import (
     app,
     GlobalMarketsResponse,
     GlobalMarketQuote,
+    HistoricalBar,
+    HistoricalBarsResponse,
+    HistoricalSeries,
     NewsResponse,
     NewsItem,
     QuotesResponse,
     MarketQuote,
     QuoteCache,
     IndexCache,
+    SectorSnapshot,
+    SectorSnapshotResponse,
     fetch_a_share_spot_dataframe,
     fetch_a_share_index_dataframe,
     fetch_financial_news_dataframe,
     fetch_global_market_dataframe,
+    fetch_global_market_sina_snapshot_dataframe,
+    fetch_sector_history_dataframe,
+    fetch_sector_snapshot_dataframe,
+    fetch_stock_history_dataframe,
+    normalize_history_dataframe,
+    normalize_sector_snapshot_dataframes,
     normalize_global_market_dataframe,
     normalize_news_dataframe,
     normalize_a_share_symbol,
@@ -130,6 +142,112 @@ class TestGlobalMarketsEndpoint:
         assert "全球市场源暂不可用" in data["warning"]
 
 
+class TestSectorAndHistoryEndpoints:
+    def test_sectors_require_server_token_when_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/api/market/sectors?limit=3")
+        assert response.status_code == 401
+
+    def test_sector_history_rejects_too_many_sectors(self):
+        sectors = ",".join([f"行业{i}" for i in range(21)])
+        response = client.get(
+            "/api/market/sector-history",
+            params={"sectors": sectors, "days": 180},
+        )
+        assert response.status_code == 400
+        assert "20" in response.json()["detail"]
+
+    def test_stock_history_rejects_too_many_symbols(self):
+        symbols = ",".join([f"{i:06d}" for i in range(13)])
+        response = client.get(
+            "/api/market/stock-history",
+            params={"symbols": symbols, "days": 180},
+        )
+        assert response.status_code == 400
+        assert "12" in response.json()["detail"]
+
+    def test_history_days_are_bounded(self):
+        response = client.get(
+            "/api/market/stock-history?symbols=600519&days=30",
+        )
+        assert response.status_code == 422
+
+    def test_sectors_return_degraded_payload_when_primary_source_fails(self):
+        with patch(
+            "main.fetch_sector_snapshot_dataframe",
+            side_effect=RuntimeError("offline"),
+        ):
+            response = client.get("/api/market/sectors?limit=3")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "akshare"
+        assert data["sectors"] == []
+        assert "行业板块源暂不可用" in data["warning"]
+
+    def test_stock_history_preserves_partial_results_and_warning(self):
+        rows = [
+            {
+                "日期": "2026-07-10",
+                "开盘": 10,
+                "最高": 11,
+                "最低": 9.8,
+                "收盘": 10.8,
+                "成交量": 1000,
+                "成交额": 10800,
+                "涨跌幅": 2.1,
+                "换手率": 1.2,
+            },
+        ]
+        df = MagicMock()
+        df.iterrows.return_value = enumerate(rows)
+
+        def fetch(symbol, _start, _end):
+            if symbol == "000001":
+                raise RuntimeError("symbol unavailable")
+            return df
+
+        with patch("main.fetch_stock_history_dataframe", side_effect=fetch):
+            response = client.get(
+                "/api/market/stock-history?symbols=600519,000001&days=180",
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert [item["symbol"] for item in data["series"]] == ["600519"]
+        assert "000001" in data["warning"]
+
+    def test_empty_stock_history_response_is_not_cached(self):
+        recovered_df = pd.DataFrame([
+            {
+                "date": "2026-07-10",
+                "open": 10,
+                "high": 11,
+                "low": 9.8,
+                "close": 10.8,
+                "volume": 1000,
+            },
+        ])
+
+        with patch.dict("main.research_cache", {}, clear=True):
+            with patch(
+                "main.fetch_stock_history_dataframe",
+                side_effect=[pd.DataFrame(), recovered_df],
+            ) as fetch:
+                first = client.get(
+                    "/api/market/stock-history?symbols=999999&days=180",
+                )
+                second = client.get(
+                    "/api/market/stock-history?symbols=999999&days=180",
+                )
+
+        assert first.status_code == 200
+        assert first.json()["series"] == []
+        assert second.status_code == 200
+        assert [item["symbol"] for item in second.json()["series"]] == ["999999"]
+        assert fetch.call_count == 2
+
+
 class TestQuoteCache:
     def test_cache_starts_empty(self):
         cache = QuoteCache(ttl_sec=3.0)
@@ -179,10 +297,65 @@ class TestQuoteCache:
     def test_fetch_global_market_uses_public_source(self):
         global_df = MagicMock()
         global_df.__len__.return_value = 3
-        with patch("main.ak.stock_zh_index_global_spot_em", return_value=global_df):
+        with patch("main.ak.index_global_spot_em", return_value=global_df):
             df, provider = fetch_global_market_dataframe()
         assert df is global_df
         assert provider == "global-index-em"
+
+    def test_fetch_global_market_supports_legacy_akshare_name(self):
+        global_df = MagicMock()
+        with patch("main.ak.index_global_spot_em", side_effect=RuntimeError("new source failed")):
+            with patch(
+                "main.ak.stock_zh_index_global_spot_em",
+                return_value=global_df,
+                create=True,
+            ):
+                df, provider = fetch_global_market_dataframe()
+        assert df is global_df
+        assert provider == "global-index-em-legacy"
+
+    def test_fetch_global_market_falls_back_to_sina_history(self):
+        global_df = MagicMock()
+        with patch(
+            "main.ak.index_global_spot_em",
+            side_effect=RuntimeError("new source failed"),
+        ):
+            with patch(
+                "main.ak.stock_zh_index_global_spot_em",
+                side_effect=RuntimeError("legacy source failed"),
+                create=True,
+            ):
+                with patch(
+                    "main.fetch_global_market_sina_snapshot_dataframe",
+                    return_value=global_df,
+                ):
+                    df, provider = fetch_global_market_dataframe()
+
+        assert df is global_df
+        assert provider == "sina-global-history-latest"
+
+    def test_sina_global_snapshot_uses_supported_index_names(self):
+        requested_names = []
+
+        def fetch_history(*, symbol):
+            requested_names.append(symbol)
+            return pd.DataFrame([
+                {"close": 100.0},
+                {"close": 102.0},
+            ])
+
+        with patch("main.ak.index_global_hist_sina", side_effect=fetch_history):
+            df = fetch_global_market_sina_snapshot_dataframe()
+
+        assert requested_names == [
+            "日经225指数",
+            "英国富时100指数",
+            "德国DAX 30种股价指数",
+            "法CAC40指数",
+            "欧洲Stoxx50指数",
+        ]
+        assert df["代码"].tolist() == ["NKY", "UKX", "DAX", "CAC", "SX5E"]
+        assert df["涨跌幅"].tolist() == pytest.approx([2.0] * 5)
 
     def test_fetch_news_uses_public_source(self):
         news_df = MagicMock()
@@ -191,6 +364,57 @@ class TestQuoteCache:
             df, provider = fetch_financial_news_dataframe()
         assert df is news_df
         assert provider == "eastmoney-financial-news"
+
+    def test_sector_snapshot_falls_back_to_ths(self):
+        fallback_df = MagicMock()
+        with patch(
+            "main.ak.stock_board_industry_name_em",
+            side_effect=RuntimeError("eastmoney offline"),
+        ):
+            with patch(
+                "main.ak.stock_board_industry_summary_ths",
+                return_value=fallback_df,
+            ):
+                df, provider = fetch_sector_snapshot_dataframe()
+
+        assert df is fallback_df
+        assert provider == "ths-industry-summary"
+
+    def test_sector_history_falls_back_to_ths(self):
+        fallback_df = MagicMock()
+        with patch(
+            "main.ak.stock_board_industry_hist_em",
+            side_effect=RuntimeError("eastmoney offline"),
+        ):
+            with patch(
+                "main.ak.stock_board_industry_index_ths",
+                return_value=fallback_df,
+            ):
+                df, provider = fetch_sector_history_dataframe(
+                    "半导体",
+                    "20250101",
+                    "20260714",
+                )
+
+        assert df is fallback_df
+        assert provider == "ths-industry-history"
+
+    def test_stock_history_falls_back_to_tencent_with_market_prefix(self):
+        fallback_df = MagicMock()
+        with patch(
+            "main.ak.stock_zh_a_hist",
+            side_effect=RuntimeError("eastmoney offline"),
+        ):
+            with patch("main.ak.stock_zh_a_hist_tx", return_value=fallback_df) as tx:
+                df, provider = fetch_stock_history_dataframe(
+                    "600519",
+                    "20250101",
+                    "20260714",
+                )
+
+        assert df is fallback_df
+        assert provider == "tencent-stock-history"
+        assert tx.call_args.kwargs["symbol"] == "sh600519"
 
 
 class TestResearchDataNormalization:
@@ -219,17 +443,121 @@ class TestResearchDataNormalization:
         rows = [
             {"名称": "纳斯达克", "代码": "IXIC", "最新价": "18000", "涨跌幅": "1.2"},
             {"名称": "恒生指数", "代码": "HSI", "最新价": "19000", "涨跌幅": "-0.5"},
+            {"名称": "法国CAC40", "代码": "CAC", "最新价": "8200", "涨跌幅": "0.3"},
+            {"名称": "欧洲Stoxx50", "代码": "SX5E", "最新价": "6200", "涨跌幅": "0.2"},
         ]
         df = MagicMock()
         df.iterrows.return_value = enumerate(rows)
 
         markets = normalize_global_market_dataframe(df, "global-index-em", 10)
 
-        assert len(markets) == 2
+        assert len(markets) == 4
         assert markets[0].symbol == "IXIC"
         assert markets[0].region == "US"
         assert markets[1].symbol == "HSI"
         assert markets[1].region == "HK"
+        assert markets[2].symbol == "FCHI"
+        assert markets[2].region == "EU"
+        assert markets[3].symbol == "SX5E"
+        assert markets[3].region == "EU"
+
+    def test_normalize_sector_snapshot_merges_real_fund_flow(self):
+        sector_rows = [
+            {
+                "板块代码": "BK1036",
+                "板块名称": "半导体",
+                "最新价": "1288.4",
+                "涨跌幅": "2.31",
+                "成交额": "45600000000",
+                "换手率": "3.2",
+                "上涨家数": "88",
+                "下跌家数": "21",
+                "领涨股票": "测试股份",
+                "领涨股票-涨跌幅": "8.6",
+            },
+        ]
+        flow_rows = [
+            {
+                "名称": "半导体",
+                "今日主力净流入-净额": "2840000000",
+            },
+        ]
+        sector_df = MagicMock()
+        sector_df.iterrows.return_value = enumerate(sector_rows)
+        flow_df = MagicMock()
+        flow_df.iterrows.return_value = enumerate(flow_rows)
+
+        sectors = normalize_sector_snapshot_dataframes(sector_df, flow_df, 10)
+
+        assert len(sectors) == 1
+        assert sectors[0].symbol == "BK1036"
+        assert sectors[0].name == "半导体"
+        assert sectors[0].changePercent == 2.31
+        assert sectors[0].mainNetInflow == 2840000000
+        assert sectors[0].advancers == 88
+
+    def test_normalize_ths_sector_snapshot_converts_yi_units(self):
+        rows = [{
+            "板块": "半导体",
+            "涨跌幅": "1.8",
+            "总成交额": "456.2",
+            "净流入": "28.4",
+            "上涨家数": "80",
+            "下跌家数": "20",
+            "均价": "1288.4",
+            "领涨股": "测试股份",
+            "领涨股-涨跌幅": "6.2",
+        }]
+        sector_df = MagicMock()
+        sector_df.iterrows.return_value = enumerate(rows)
+
+        sectors = normalize_sector_snapshot_dataframes(sector_df, None, 10)
+
+        assert sectors[0].amount == 45620000000
+        assert sectors[0].mainNetInflow == 2840000000
+
+    def test_normalize_history_dataframe_sorts_and_limits_rows(self):
+        rows = [
+            {
+                "日期": "2026-07-11",
+                "开盘": "10.5",
+                "最高": "11",
+                "最低": "10.2",
+                "收盘": "10.8",
+                "成交量": "1200",
+                "成交额": "12960",
+                "涨跌幅": "2.86",
+                "换手率": "1.5",
+            },
+            {
+                "日期": "2026-07-10",
+                "开盘": "10",
+                "最高": "10.6",
+                "最低": "9.9",
+                "收盘": "10.5",
+                "成交量": "1000",
+                "成交额": "10500",
+                "涨跌幅": "1.94",
+                "换手率": "1.2",
+            },
+        ]
+        df = MagicMock()
+        df.iterrows.return_value = enumerate(rows)
+
+        series = normalize_history_dataframe(
+            df,
+            symbol="600519",
+            name="600519",
+            source="stock-zh-a-hist",
+            adjustment="qfq",
+            limit=1,
+        )
+
+        assert series.symbol == "600519"
+        assert series.adjustment == "qfq"
+        assert len(series.bars) == 1
+        assert series.bars[0].date == "2026-07-11"
+        assert series.bars[0].close == 10.8
 
 
 class TestMarketQuoteModel:
@@ -308,6 +636,49 @@ class TestMarketQuoteModel:
         data = response.model_dump()
         assert data["markets"][0]["symbol"] == "IXIC"
         assert data["markets"][0]["region"] == "US"
+
+    def test_sector_and_history_models_serialize_source_metadata(self):
+        sector_response = SectorSnapshotResponse(
+            provider="akshare",
+            source="eastmoney-industry-board+eastmoney-sector-fund-flow",
+            fetchedAt="2026-07-11T00:00:00Z",
+            sectors=[
+                SectorSnapshot(
+                    symbol="BK1036",
+                    name="半导体",
+                    price=1288.4,
+                    changePercent=2.31,
+                    updatedAt="2026-07-11T00:00:00Z",
+                    mainNetInflow=2840000000,
+                ),
+            ],
+        )
+        history_response = HistoricalBarsResponse(
+            provider="akshare",
+            source="stock-zh-a-hist",
+            fetchedAt="2026-07-11T00:00:00Z",
+            series=[
+                HistoricalSeries(
+                    symbol="600519",
+                    name="600519",
+                    source="stock-zh-a-hist",
+                    adjustment="qfq",
+                    bars=[
+                        HistoricalBar(
+                            date="2026-07-10",
+                            open=10,
+                            high=11,
+                            low=9.8,
+                            close=10.8,
+                            volume=1000,
+                        ),
+                    ],
+                ),
+            ],
+        )
+
+        assert sector_response.model_dump()["sectors"][0]["mainNetInflow"] == 2840000000
+        assert history_response.model_dump()["series"][0]["adjustment"] == "qfq"
 
 
 if __name__ == "__main__":
