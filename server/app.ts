@@ -40,6 +40,7 @@ import {
 } from "./monitoring/exportUtils";
 import type { ExportFormat } from "./monitoring/exportUtils";
 import { buildDailyCandidates } from "./research/dailyCandidates";
+import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
 import { buildCurrentPaperTradingPlan } from "./research/paperTradingPlanService";
 import { buildRealResearchDataFeed } from "./research/realResearchData";
@@ -630,6 +631,25 @@ export async function buildTradingApp(
       researchStore,
     });
     return plan;
+  });
+
+  app.get("/api/research/daily-review", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取每日盘面与 paper 交易复盘",
+      description:
+        "基于当前行情快照、本地账户、订单和审计生成每日复盘。结果只代表本地 paper 模拟，不构成真实收益或投资建议。",
+    },
+  }, async () => {
+    const snapshot = system.market.getSnapshot();
+    return buildDailyMarketReview({
+      snapshot,
+      provider: system.marketDataProvider,
+      account: system.broker.getAccount(snapshot),
+      positions: system.broker.getPositions(snapshot),
+      orders: system.broker.getOrders(10_000),
+      auditEvents: system.store.listAudit(10_000),
+    });
   });
 
   app.get("/api/integrations/supermind/signal-package", {

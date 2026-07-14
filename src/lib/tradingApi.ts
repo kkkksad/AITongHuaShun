@@ -314,8 +314,11 @@ export interface PaperTradingPlanQualitySummary {
   actionCounts: Record<PaperTradingOperationAction, number>;
   blockedReasons: Record<string, number>;
   plannedBuyNotional: number;
+  plannedBuyFees: number;
+  plannedCashRequired: number;
   plannedSellNotional: number;
   cashDeploymentPercent: number;
+  remainingCashAfterPlan: number;
   planQuality: "actionable" | "watch-only" | "blocked";
   summary: string;
 }
@@ -336,6 +339,8 @@ export interface PaperTradingPlan {
     maxPositionWeight: number;
     maxSingleOrderNotional: number;
     lotSize: number;
+    cashReserveRatio: number;
+    cashReserveAmount: number;
   };
   rules: string[];
   topStrategy: {
@@ -405,6 +410,10 @@ export interface PaperAutoExecutionOrder {
   status: OrderRecord["status"];
   orderId: string;
   rejectionReason?: string;
+  strategy: string;
+  reason: string;
+  ruleChecks: string[];
+  estimatedNotional: number;
 }
 
 export interface PaperAutoExecutionSkip {
@@ -450,6 +459,85 @@ export interface PaperAutoExecutionRunResponse {
   run: PaperAutoExecutionRun;
   account: AccountSnapshot;
   positions: PositionSnapshot[];
+}
+
+export type DailyMarketTone =
+  | "risk-on"
+  | "balanced"
+  | "risk-off"
+  | "insufficient-data";
+
+export interface DailyMarketReview {
+  generatedAt: string;
+  tradingDate: string;
+  mode: TradingMode;
+  provider: string;
+  market: {
+    snapshotTime: string;
+    tone: DailyMarketTone;
+    summary: string;
+    breadth: {
+      total: number;
+      advancers: number;
+      decliners: number;
+      flat: number;
+      averageChangePercent: number;
+      advanceDeclineRatio: number;
+    };
+    indices: Array<{
+      symbol: string;
+      name: string;
+      price: number;
+      changePercent: number;
+      updatedAt: string;
+    }>;
+  };
+  account: {
+    equity: number;
+    cash: number;
+    marketValue: number;
+    dailyPnl: number;
+    dailyPnlPercent: number;
+    cashRatio: number;
+    capitalDeployedPercent: number;
+    positionCount: number;
+    t1LockedPositions: number;
+  };
+  trades: {
+    submitted: number;
+    filled: number;
+    rejected: number;
+    filledBuys: number;
+    filledSells: number;
+    filledBuyNotional: number;
+    filledSellNotional: number;
+    commission: number;
+    items: Array<{
+      orderId: string;
+      symbol: string;
+      name: string;
+      side: "buy" | "sell";
+      status: OrderRecord["status"];
+      quantity: number;
+      price: number;
+      notional: number;
+      commission: number;
+      rejectionReason: string | null;
+      createdAt: string;
+      strategy: string;
+      reason: string;
+      reasonSource: "decision-audit" | "historical-fallback";
+      ruleChecks: string[];
+    }>;
+  };
+  strategyReview: {
+    grade: "disciplined" | "watch" | "needs-improvement";
+    summary: string;
+    strengths: string[];
+    issues: string[];
+    nextActions: string[];
+  };
+  guardrails: string[];
 }
 
 export type RealResearchSourceStatus =
@@ -756,6 +844,10 @@ export function fetchLearningState(): Promise<LearningState> {
 
 export function fetchPaperTradingPlan(): Promise<PaperTradingPlan> {
   return authApiRequest<PaperTradingPlan>("/api/research/paper-trading-plan");
+}
+
+export function fetchDailyMarketReview(): Promise<DailyMarketReview> {
+  return authApiRequest<DailyMarketReview>("/api/research/daily-review");
 }
 
 export function fetchSuperMindSignalPackage(): Promise<SuperMindSignalPackage> {

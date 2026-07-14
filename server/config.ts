@@ -70,13 +70,18 @@ const envSchema = z.object({
     .int()
     .min(1)
     .max(20)
-    .default(2),
+    .default(1),
   PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: z.coerce
     .number()
     .int()
     .min(1)
     .max(100)
-    .default(12),
+    .default(4),
+  PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: z.coerce
+    .number()
+    .min(0)
+    .max(0.5)
+    .default(0.1),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
   TRADING_HISTORY_RETENTION_DAYS: z.coerce

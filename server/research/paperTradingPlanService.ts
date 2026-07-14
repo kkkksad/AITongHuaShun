@@ -63,6 +63,9 @@ export async function buildCurrentPaperTradingPlan(input: {
     lotSize: input.system.limits.lotSize,
     maxPositionWeight: input.system.risk.getEffectiveMaxPositionWeight(),
     maxSingleOrderNotional: input.system.risk.getEffectiveMaxOrderNotional(),
+    commissionRate: input.config.COMMISSION_RATE,
+    minimumCommission: input.config.MIN_COMMISSION,
+    cashReserveRatio: input.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
   });
 
   return {

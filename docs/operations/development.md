@@ -73,11 +73,12 @@ TRADING_SEED_PORTFOLIO=false
 PAPER_AUTO_EXECUTION_ENABLED=true
 PAPER_AUTO_EXECUTION_INTERVAL_MS=60000
 PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY=true
-PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN=2
-PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS=12
+PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN=1
+PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS=4
+PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO=0.10
 ```
 
-该自动执行器只会把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`，不会连接同花顺、中信、SuperMind 或任何真实券商。盘外启动时会保持等待，直到 A 股交易时段才自动运行。
+该自动执行器只会把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`，不会连接同花顺、中信、SuperMind 或任何真实券商。盘外启动时会保持等待，直到 A 股交易时段才自动运行。默认每轮最多 1 笔、每天最多 4 笔，当日笔数从持久化自动订单统计，服务重启不会重置上限；买入计划会累计预留成交额、滑点和手续费，并保留当前 paper 权益的 10% 作为现金缓冲。最新现金不足时会直接跳过，不创建 rejected 订单。
 
 `TRADING_SEED_PORTFOLIO=true` 是默认演示模式，会在新账户中预置样例持仓；用于从下一个交易日开始观察或纸面买卖时，应设为 `false`，再停止旧服务并重新启动。若使用 `STORE_BACKEND=json`，还需要删除或移走 `DATA_DIR` 下已有的 `paper-trading-state.json`，否则系统会恢复旧账户状态而不是重新创建 10000 元纯现金账户。
 
@@ -192,6 +193,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/research/paper-trading-plan
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status
 Invoke-RestMethod -Method Post http://127.0.0.1:8787/api/trading/auto-paper-execution/run
+Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-review
 ```
 
 手动触发接口仍会拒绝非 paper 模式，并继续通过本地风控检查；重复触发使用 `kairos-auto-paper:*` 幂等键，避免同一纸面动作重复建单。
@@ -204,6 +206,8 @@ Invoke-RestMethod "http://127.0.0.1:8787/api/audit?limit=50" |
 ```
 
 2026-07-13 的旧运行使用内存仓储，日志中没有 `kairos-auto-paper` 订单或 `POST /api/orders`，进程退出后也没有保留自动运行原因，因此只能确认“没有持久化的模拟订单”，不能从现有证据区分没有合格候选与执行器跳过。从 2026-07-14 起，本地配置改用 JSON 仓储并持久化每次运行原因，后续可以准确复盘。
+
+2026-07-14 盘中曾在同一轮先成交包钢股份 400 股，再尝试中国银行 100 股；两笔计划分别使用了生成计划时的原始现金，第一笔成交后第二笔因只剩 412 元而被风控拒绝。修复后，同一批买单按顺序扣减预计成交额和手续费，自动执行前还会使用最新报价二次检查。每日复盘接口会明确显示该历史问题，但不会为修复前未保存的五笔成交虚构买入理由。
 
 如需把本地 paper 计划转成同花顺 SuperMind 可人工复核的模拟盘输入，可运行：
 

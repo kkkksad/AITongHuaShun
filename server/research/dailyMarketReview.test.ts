@@ -1,0 +1,172 @@
+import { describe, expect, it } from "vitest";
+import type {
+  AccountSnapshot,
+  AuditEvent,
+  MarketSnapshot,
+  OrderRecord,
+  PositionSnapshot,
+} from "../../shared/trading";
+import { buildDailyMarketReview } from "./dailyMarketReview";
+
+const snapshot: MarketSnapshot = {
+  mode: "paper",
+  sequence: 10,
+  marketTime: "2026-07-14T07:00:00.000Z",
+  quotes: [
+    {
+      symbol: "600010",
+      name: "包钢股份",
+      tradable: true,
+      price: 2.15,
+      previousClose: 2.1,
+      changePercent: 2.38,
+      volume: 20_000_000,
+      updatedAt: "2026-07-14T07:00:00.000Z",
+    },
+    {
+      symbol: "601988",
+      name: "中国银行",
+      tradable: true,
+      price: 5.8,
+      previousClose: 5.84,
+      changePercent: -0.68,
+      volume: 20_000_000,
+      updatedAt: "2026-07-14T07:00:00.000Z",
+    },
+    {
+      symbol: "SH000001",
+      name: "上证指数",
+      tradable: false,
+      price: 3_500,
+      previousClose: 3_480,
+      changePercent: 0.57,
+      volume: 0,
+      updatedAt: "2026-07-14T07:00:00.000Z",
+    },
+  ],
+};
+
+const account: AccountSnapshot = {
+  accountId: "PAPER-CN-01",
+  mode: "paper",
+  cash: 412,
+  equity: 9_900,
+  marketValue: 9_488,
+  unrealizedPnl: -63,
+  realizedPnl: 0,
+  dailyPnl: -100,
+  dailyPnlPercent: -0.01,
+  riskUtilization: 0.96,
+  paused: false,
+  updatedAt: "2026-07-14T07:00:00.000Z",
+};
+
+const positions: PositionSnapshot[] = [{
+  symbol: "600010",
+  name: "包钢股份",
+  quantity: 400,
+  availableQuantity: 0,
+  t1LockedQuantity: 400,
+  averagePrice: 2.12,
+  currentPrice: 2.15,
+  marketValue: 860,
+  unrealizedPnl: 12,
+  realizedPnl: 0,
+  weight: 0.087,
+}];
+
+const orders: OrderRecord[] = [
+  {
+    id: "filled-order",
+    symbol: "600010",
+    side: "buy",
+    type: "market",
+    quantity: 400,
+    status: "filled",
+    requestedPrice: 2.12,
+    filledPrice: 2.12,
+    filledQuantity: 400,
+    notional: 848,
+    commission: 5,
+    clientOrderId: "kairos-auto-paper:2026-07-14:600010:paper-buy-plan:400",
+    createdAt: "2026-07-14T01:33:06.403Z",
+    updatedAt: "2026-07-14T01:33:06.420Z",
+  },
+  {
+    id: "rejected-order",
+    symbol: "601988",
+    side: "buy",
+    type: "market",
+    quantity: 100,
+    status: "rejected",
+    requestedPrice: 5.88,
+    filledQuantity: 0,
+    notional: 0,
+    commission: 0,
+    rejectionReason: "可用资金不足",
+    clientOrderId: "kairos-auto-paper:2026-07-14:601988:paper-buy-plan:100",
+    createdAt: "2026-07-14T01:33:06.445Z",
+    updatedAt: "2026-07-14T01:33:06.466Z",
+  },
+];
+
+const auditEvents: AuditEvent[] = [{
+  id: "decision-1",
+  category: "system",
+  action: "paper-auto-execution.decision",
+  message: "paper auto execution decision recorded",
+  timestamp: "2026-07-14T01:33:06.420Z",
+  data: {
+    orderId: "filled-order",
+    strategy: "每日优质股评分",
+    reason: "流动性充足；波动受控",
+    ruleChecks: ["cash-reservation: pass"],
+  },
+}];
+
+describe("buildDailyMarketReview", () => {
+  it("summarizes market breadth, trades, reasons, and strategy issues", () => {
+    const report = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account,
+      positions,
+      orders,
+      auditEvents,
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+
+    expect(report.market.breadth).toMatchObject({
+      total: 2,
+      advancers: 1,
+      decliners: 1,
+    });
+    expect(report.market.indices[0]).toMatchObject({ symbol: "SH000001" });
+    expect(report.trades.items.find((item) => item.orderId === "filled-order")).toMatchObject({
+      strategy: "每日优质股评分",
+      reason: "流动性充足；波动受控",
+      reasonSource: "decision-audit",
+    });
+    expect(report.trades.items.find((item) => item.orderId === "rejected-order")?.reason)
+      .toContain("资金不足");
+    expect(report.strategyReview.issues.join(" ")).toContain("资金不足");
+    expect(report.strategyReview.issues.join(" ")).toContain("开盘");
+  });
+
+  it("does not invent reasons for historical orders without decision audit", () => {
+    const report = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account,
+      positions,
+      orders: [orders[0]],
+      auditEvents: [],
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+
+    expect(report.trades.items[0]).toMatchObject({
+      reasonSource: "historical-fallback",
+    });
+    expect(report.trades.items[0].reason).toContain("历史版本未持久化逐笔策略理由");
+  });
+});

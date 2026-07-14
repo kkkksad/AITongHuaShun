@@ -36,8 +36,11 @@ export interface PaperTradingPlanQualitySummary {
   actionCounts: Record<PaperTradingOperationAction, number>;
   blockedReasons: Record<string, number>;
   plannedBuyNotional: number;
+  plannedBuyFees: number;
+  plannedCashRequired: number;
   plannedSellNotional: number;
   cashDeploymentPercent: number;
+  remainingCashAfterPlan: number;
   planQuality: "actionable" | "watch-only" | "blocked";
   summary: string;
 }
@@ -58,6 +61,8 @@ export interface PaperTradingPlan {
     maxPositionWeight: number;
     maxSingleOrderNotional: number;
     lotSize: number;
+    cashReserveRatio: number;
+    cashReserveAmount: number;
   };
   rules: string[];
   topStrategy: {
@@ -96,11 +101,30 @@ function candidateQuantity(
   cash: number,
   maxSingleOrderNotional: number,
   lotSize: number,
+  commissionRate: number,
+  minimumCommission: number,
 ): number {
-  return roundLot(
-    Math.min(maxSingleOrderNotional, cash) / Math.max(candidate.price, 1),
+  const price = Math.max(candidate.price, 1);
+  let quantity = roundLot(
+    Math.min(maxSingleOrderNotional, Math.max(0, cash - minimumCommission)) / price,
     lotSize,
   );
+  while (quantity >= lotSize) {
+    const notional = quantity * price;
+    const commission = Math.max(minimumCommission, notional * commissionRate);
+    if (notional + commission <= cash) return quantity;
+    quantity -= lotSize;
+  }
+  return 0;
+}
+
+function estimatedCommission(
+  notional: number,
+  commissionRate: number,
+  minimumCommission: number,
+): number {
+  if (notional <= 0) return 0;
+  return Number(Math.max(minimumCommission, notional * commissionRate).toFixed(2));
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -204,6 +228,8 @@ function buildQualitySummary(input: {
   affordableCandidateCount: number;
   positionConflictCount: number;
   cash: number;
+  commissionRate: number;
+  minimumCommission: number;
 }): PaperTradingPlanQualitySummary {
   const actionCounts = countOperations(input.operations);
   const plannedBuyNotional = input.operations
@@ -212,8 +238,20 @@ function buildQualitySummary(input: {
   const plannedSellNotional = input.operations
     .filter((operation) => operation.action === "paper-sell-plan")
     .reduce((sum, operation) => sum + operation.estimatedNotional, 0);
+  const plannedBuyFees = input.operations
+    .filter((operation) => operation.action === "paper-buy-plan")
+    .reduce(
+      (sum, operation) => sum + estimatedCommission(
+        operation.estimatedNotional,
+        input.commissionRate,
+        input.minimumCommission,
+      ),
+      0,
+    );
+  const plannedCashRequired = plannedBuyNotional + plannedBuyFees;
+  const remainingCashAfterPlan = Math.max(0, input.cash - plannedCashRequired);
   const cashDeploymentPercent =
-    input.cash > 0 ? plannedBuyNotional / input.cash : 0;
+    input.cash > 0 ? plannedCashRequired / input.cash : 0;
   const planQuality =
     actionCounts["paper-buy-plan"] > 0 || actionCounts["paper-sell-plan"] > 0
       ? "actionable"
@@ -235,8 +273,11 @@ function buildQualitySummary(input: {
     actionCounts,
     blockedReasons: summarizeBlockedReasons(input.operations),
     plannedBuyNotional: Number(plannedBuyNotional.toFixed(2)),
+    plannedBuyFees: Number(plannedBuyFees.toFixed(2)),
+    plannedCashRequired: Number(plannedCashRequired.toFixed(2)),
     plannedSellNotional: Number(plannedSellNotional.toFixed(2)),
     cashDeploymentPercent: Number(cashDeploymentPercent.toFixed(4)),
+    remainingCashAfterPlan: Number(remainingCashAfterPlan.toFixed(2)),
     planQuality,
     summary,
   };
@@ -254,15 +295,23 @@ export function buildPaperTradingPlan(input: {
   lotSize: number;
   maxPositionWeight: number;
   maxSingleOrderNotional: number;
+  commissionRate: number;
+  minimumCommission: number;
+  cashReserveRatio: number;
 }): PaperTradingPlan {
   const now = new Date().toISOString();
   const quoteMap = new Map(input.snapshot.quotes.map((quote) => [quote.symbol, quote]));
   const positionMap = new Map(input.positions.map((position) => [position.symbol, position]));
   const topStrategy = input.leaderboard.entries[0] ?? null;
+  const cashReserveAmount = Math.min(
+    input.account.cash,
+    Math.max(0, input.account.equity * input.cashReserveRatio),
+  );
+  const plannedCashBudget = Math.max(0, input.account.cash - cashReserveAmount);
   const maxSingleOrderNotional = Math.min(
     input.maxSingleOrderNotional,
     Math.max(0, input.account.equity * input.maxPositionWeight),
-    Math.max(0, input.account.cash * 0.8),
+    plannedCashBudget,
   );
 
   const operations: PaperTradingOperation[] = [];
@@ -349,15 +398,19 @@ export function buildPaperTradingPlan(input: {
     .sort((a, b) => {
       const aQuantity = candidateQuantity(
         a,
-        input.account.cash,
+        plannedCashBudget,
         maxSingleOrderNotional,
         input.lotSize,
+        input.commissionRate,
+        input.minimumCommission,
       );
       const bQuantity = candidateQuantity(
         b,
-        input.account.cash,
+        plannedCashBudget,
         maxSingleOrderNotional,
         input.lotSize,
+        input.commissionRate,
+        input.minimumCommission,
       );
       const aAffordable = aQuantity >= input.lotSize ? 1 : 0;
       const bAffordable = bQuantity >= input.lotSize ? 1 : 0;
@@ -374,9 +427,11 @@ export function buildPaperTradingPlan(input: {
   const affordableCandidateCount = candidatePool.filter((candidate) => {
     const quantity = candidateQuantity(
       candidate,
-      input.account.cash,
+      plannedCashBudget,
       maxSingleOrderNotional,
       input.lotSize,
+      input.commissionRate,
+      input.minimumCommission,
     );
     return quantity >= input.lotSize;
   }).length;
@@ -384,15 +439,24 @@ export function buildPaperTradingPlan(input: {
     positionMap.has(candidate.symbol),
   ).length;
 
+  let remainingPlannedCash = plannedCashBudget;
   for (const candidate of candidatePool) {
     const existing = positionMap.get(candidate.symbol);
     const quantity = candidateQuantity(
       candidate,
-      input.account.cash,
+      remainingPlannedCash,
       maxSingleOrderNotional,
       input.lotSize,
+      input.commissionRate,
+      input.minimumCommission,
     );
     const estimatedNotional = Number((quantity * candidate.price).toFixed(2));
+    const estimatedFee = estimatedCommission(
+      estimatedNotional,
+      input.commissionRate,
+      input.minimumCommission,
+    );
+    const estimatedCashRequired = estimatedNotional + estimatedFee;
 
     if (existing) {
       operations.push({
@@ -420,8 +484,14 @@ export function buildPaperTradingPlan(input: {
         quantity: 0,
         price: candidate.price,
         estimatedNotional: 0,
-        reason: "1 万元纸面账户资金或单票仓位约束不足，无法满足 A 股 100 股一手。",
-        ruleChecks: ["lot-size: blocked", "cash-check: blocked", "paper-only"],
+        reason: "当前批次剩余可用现金不足，已计入前序计划、预计手续费和现金缓冲，不再创建模拟订单。",
+        ruleChecks: [
+          "lot-size: blocked",
+          "cash-check: blocked",
+          "cash-reservation: blocked",
+          `remaining-planned-cash: ${remainingPlannedCash.toFixed(2)}`,
+          "paper-only",
+        ],
       });
       continue;
     }
@@ -460,10 +530,15 @@ export function buildPaperTradingPlan(input: {
         "paper-only",
         "lot-size: pass",
         "cash-check: pass",
+        `cash-reservation: pass (${estimatedCashRequired.toFixed(2)})`,
         `defensive-score: pass (${candidate.defensiveScore})`,
         "T+1-after-buy",
       ],
     });
+    remainingPlannedCash = Math.max(
+      0,
+      remainingPlannedCash - estimatedCashRequired,
+    );
   }
 
   if (operations.length === 0) {
@@ -497,6 +572,8 @@ export function buildPaperTradingPlan(input: {
       maxPositionWeight: input.maxPositionWeight,
       maxSingleOrderNotional,
       lotSize: input.lotSize,
+      cashReserveRatio: input.cashReserveRatio,
+      cashReserveAmount: Number(cashReserveAmount.toFixed(2)),
     },
     rules: [
       "A 股一手 100 股。",
@@ -519,6 +596,8 @@ export function buildPaperTradingPlan(input: {
       affordableCandidateCount,
       positionConflictCount,
       cash: input.account.cash,
+      commissionRate: input.commissionRate,
+      minimumCommission: input.minimumCommission,
     }),
     operations,
     guardrails: [

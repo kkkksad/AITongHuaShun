@@ -532,6 +532,40 @@ describe("trading API", () => {
     expect(response.json().operations.length).toBeGreaterThan(0);
   });
 
+  it("returns a daily market and paper trading review", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/daily-review",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      mode: "mock",
+      provider: "mock",
+      market: {
+        tone: expect.stringMatching(/^(risk-on|balanced|risk-off|insufficient-data)$/),
+        breadth: {
+          total: expect.any(Number),
+          advancers: expect.any(Number),
+          decliners: expect.any(Number),
+        },
+      },
+      account: {
+        equity: expect.any(Number),
+        capitalDeployedPercent: expect.any(Number),
+      },
+      trades: {
+        submitted: expect.any(Number),
+        items: expect.any(Array),
+      },
+      strategyReview: {
+        grade: expect.stringMatching(/^(disciplined|watch|needs-improvement)$/),
+        nextActions: expect.any(Array),
+      },
+    });
+    expect(response.json().guardrails.join(" ")).toContain("paper");
+  });
+
   it("returns safe paper auto execution status by default", async () => {
     const response = await app.inject({
       method: "GET",
@@ -578,6 +612,10 @@ describe("trading API", () => {
         method: "GET",
         url: "/api/audit?limit=20",
       });
+      const status = await paperApp.inject({
+        method: "GET",
+        url: "/api/trading/auto-paper-execution/status",
+      });
 
       expect(response.statusCode).toBe(200);
       expect(response.json().run).toMatchObject({
@@ -593,12 +631,21 @@ describe("trading API", () => {
         "kairos-auto-paper",
       );
       expect(orders.json()[0].clientOrderId).toContain("kairos-auto-paper");
+      expect(status.json().todaySubmittedOrders).toBe(1);
       expect(audit.json()).toEqual(expect.arrayContaining([
         expect.objectContaining({
           action: "paper-auto-execution.run",
           data: expect.objectContaining({
             trigger: "manual",
             submittedOrders: 1,
+          }),
+        }),
+        expect.objectContaining({
+          action: "paper-auto-execution.decision",
+          data: expect.objectContaining({
+            strategy: expect.any(String),
+            reason: expect.any(String),
+            ruleChecks: expect.any(Array),
           }),
         }),
       ]));

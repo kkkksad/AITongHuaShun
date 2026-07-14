@@ -78,13 +78,18 @@ const envSchema = z.object({
     .int()
     .min(1)
     .max(20)
-    .default(2),
+    .default(1),
   PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: z.coerce
     .number()
     .int()
     .min(1)
     .max(100)
-    .default(12),
+    .default(4),
+  PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: z.coerce
+    .number()
+    .min(0)
+    .max(0.5)
+    .default(0.1),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
   TRADING_HISTORY_RETENTION_DAYS: z.coerce
@@ -144,8 +149,9 @@ describe("ServerConfig", () => {
       expect(config.PAPER_AUTO_EXECUTION_ENABLED).toBe(false);
       expect(config.PAPER_AUTO_EXECUTION_INTERVAL_MS).toBe(60_000);
       expect(config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY).toBe(true);
-      expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(2);
-      expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(12);
+      expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(1);
+      expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(4);
+      expect(config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0.1);
       expect(config.AUTH_ENABLED).toBe(false);
       expect(config.AUTH_TOKEN_TTL_SECONDS).toBe(3_600);
       expect(config.STORE_BACKEND).toBe("memory");
@@ -356,12 +362,14 @@ describe("ServerConfig", () => {
         PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: "false",
         PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: "4",
         PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "20",
+        PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: "0.2",
       });
       expect(config.PAPER_AUTO_EXECUTION_ENABLED).toBe(true);
       expect(config.PAPER_AUTO_EXECUTION_INTERVAL_MS).toBe(30_000);
       expect(config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY).toBe(false);
       expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(4);
       expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(20);
+      expect(config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0.2);
     });
   });
 
@@ -562,6 +570,7 @@ describe("ServerConfig", () => {
       expect(() => parse({ PAPER_AUTO_EXECUTION_INTERVAL_MS: "9999" })).toThrow();
       expect(() => parse({ PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: "0" })).toThrow();
       expect(() => parse({ PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "101" })).toThrow();
+      expect(() => parse({ PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: "0.51" })).toThrow();
     });
   });
 

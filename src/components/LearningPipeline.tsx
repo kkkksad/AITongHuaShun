@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
   Check,
+  ClipboardCheck,
   Clock3,
   Database,
   Eye,
@@ -12,6 +13,7 @@ import {
 import { pipelineStages } from "../data/mockData";
 import {
   fetchDailyCandidates,
+  fetchDailyMarketReview,
   fetchLearningState,
   fetchPaperTradingPlan,
   fetchSelfOptimizationStatus,
@@ -49,6 +51,12 @@ export default function LearningPipeline() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
+  const dailyReviewQuery = useQuery({
+    queryKey: ["daily-market-review"],
+    queryFn: fetchDailyMarketReview,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
   const selfOptimizationQuery = useQuery({
     queryKey: ["self-optimization-status"],
     queryFn: fetchSelfOptimizationStatus,
@@ -60,6 +68,7 @@ export default function LearningPipeline() {
   const learningState = learningStateQuery.data;
   const paperPlan = paperPlanQuery.data;
   const paperPlanQuality = paperPlan?.qualitySummary;
+  const dailyReview = dailyReviewQuery.data;
   const selfOptimization = selfOptimizationQuery.data;
   const paperBuyCount =
     candidatesQuery.data?.candidates.filter((candidate) => candidate.action === "paper-buy").length ?? 0;
@@ -78,8 +87,8 @@ export default function LearningPipeline() {
         <section className="panel pipeline-panel">
           <div className="panel-header">
             <div>
-              <span className="section-kicker">\u53D7\u63A7\u7814\u7A76\u6D41\u7A0B</span>
-              <h2>\u5019\u9009\u7B56\u7565\u9A8C\u8BC1</h2>
+              <span className="section-kicker">受控研究流程</span>
+              <h2>候选策略验证</h2>
             </div>
             <span className="sample-badge">
               {candidatesQuery.data?.candidates.length ?? 0} 个实时候选
@@ -96,7 +105,7 @@ export default function LearningPipeline() {
                   </div>
                   <div className="stage-copy">
                     <div>
-                      <span>\u9636\u6BB5 {index + 1}</span>
+                      <span>阶段 {index + 1}</span>
                       <strong>{stage.name}</strong>
                     </div>
                     <p>{stage.description}</p>
@@ -149,6 +158,100 @@ export default function LearningPipeline() {
               <p className="empty-copy">调用研究接口后，这里会开始显示累计样本。</p>
             )}
           </div>
+        </section>
+
+        <section className="panel learning-memory-panel">
+          <div className="panel-header">
+            <div>
+              <span className="section-kicker">每日复盘</span>
+              <h2>盘面与 Paper 交易</h2>
+            </div>
+            <span className="sample-badge">
+              {dailyReview?.tradingDate ?? "等待收盘"}
+            </span>
+          </div>
+          <div className="learning-memory-grid">
+            <article>
+              <span>盘面状态</span>
+              <strong>
+                {dailyReview?.market.tone === "risk-on"
+                  ? "偏强"
+                  : dailyReview?.market.tone === "risk-off"
+                    ? "偏弱"
+                    : dailyReview?.market.tone === "balanced"
+                      ? "分化"
+                      : "待确认"}
+              </strong>
+              <small>
+                涨 {dailyReview?.market.breadth.advancers ?? 0} / 跌 {dailyReview?.market.breadth.decliners ?? 0}
+              </small>
+            </article>
+            <article>
+              <span>账户权益</span>
+              <strong>¥{(dailyReview?.account.equity ?? 0).toLocaleString("zh-CN")}</strong>
+              <small>
+                当日 paper {dailyReview?.account.dailyPnlPercent !== undefined
+                  ? `${(dailyReview.account.dailyPnlPercent * 100).toFixed(2)}%`
+                  : "--"}
+              </small>
+            </article>
+            <article>
+              <span>资金使用</span>
+              <strong>{((dailyReview?.account.capitalDeployedPercent ?? 0) * 100).toFixed(1)}%</strong>
+              <small>
+                成交 {dailyReview?.trades.filled ?? 0} / 拒绝 {dailyReview?.trades.rejected ?? 0}
+              </small>
+            </article>
+          </div>
+          {dailyReview && (
+            <div className="learning-plan-summary">
+              <strong>{dailyReview.strategyReview.summary}</strong>
+              <p>{dailyReview.market.summary}</p>
+              <span>
+                手续费 ¥{dailyReview.trades.commission.toFixed(2)} · 现金比例 {(dailyReview.account.cashRatio * 100).toFixed(1)}% · T+1 锁定 {dailyReview.account.t1LockedPositions} 只
+              </span>
+            </div>
+          )}
+          <div className="learning-run-list">
+            {(dailyReview?.trades.items ?? []).map((trade) => (
+              <article key={trade.orderId}>
+                <ClipboardCheck size={15} />
+                <div>
+                  <strong>
+                    {trade.symbol} {trade.name} · {trade.side === "buy" ? "买入" : "卖出"} · {trade.status}
+                  </strong>
+                  <span>
+                    {trade.strategy} · {trade.quantity} 股 · ¥{trade.notional.toLocaleString("zh-CN")}
+                  </span>
+                  <span>{trade.reason}</span>
+                </div>
+              </article>
+            ))}
+            {!dailyReview?.trades.items.length && (
+              <p className="empty-copy">今日尚无本地 paper 订单。</p>
+            )}
+          </div>
+          {dailyReview && (
+            <div className="daily-review-findings">
+              <div>
+                <strong>发现问题</strong>
+                <ul>
+                  {dailyReview.strategyReview.issues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                  {!dailyReview.strategyReview.issues.length && <li>未发现明显执行纪律问题。</li>}
+                </ul>
+              </div>
+              <div>
+                <strong>下一步改进</strong>
+                <ul>
+                  {dailyReview.strategyReview.nextActions.map((action) => (
+                    <li key={action}>{action}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="panel learning-memory-panel">
@@ -255,7 +358,7 @@ export default function LearningPipeline() {
       <aside className="panel governance-panel">
         <div className="panel-header">
           <div>
-            <span className="section-kicker">\u6CBB\u7406\u8FB9\u754C</span>
+            <span className="section-kicker">治理边界</span>
             <h2>研究管线状态</h2>
           </div>
           <button
@@ -266,6 +369,7 @@ export default function LearningPipeline() {
               candidatesQuery.isFetching ||
               learningStateQuery.isFetching ||
               paperPlanQuery.isFetching ||
+              dailyReviewQuery.isFetching ||
               selfOptimizationQuery.isFetching
             }
             onClick={() => {
@@ -273,6 +377,7 @@ export default function LearningPipeline() {
               void candidatesQuery.refetch();
               void learningStateQuery.refetch();
               void paperPlanQuery.refetch();
+              void dailyReviewQuery.refetch();
               void selfOptimizationQuery.refetch();
             }}
             type="button"
@@ -310,6 +415,10 @@ export default function LearningPipeline() {
           <li className={paperPlan ? "done" : ""}>
             <Check size={15} />
             A 股 T+1 纸面计划已生成
+          </li>
+          <li className={dailyReview ? "done" : ""}>
+            <Check size={15} />
+            每日盘面与交易复盘已生成
           </li>
           <li className="done">
             <Check size={15} />

@@ -2046,6 +2046,32 @@ select:focus-visible {
   font-size: 10px;
 }
 
+.daily-review-findings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  padding-top: 16px;
+  margin-top: 14px;
+  border-top: 1px solid var(--border-light);
+}
+
+.daily-review-findings strong {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+
+.daily-review-findings ul {
+  padding-left: 18px;
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.daily-review-findings li + li {
+  margin-top: 5px;
+}
+
 .learning-next-data {
   padding: 12px;
   margin-bottom: 16px;
@@ -3180,6 +3206,10 @@ select:focus-visible {
 
   .stage-detail {
     grid-column: 2;
+  }
+
+  .daily-review-findings {
+    grid-template-columns: 1fr;
   }
 }
 

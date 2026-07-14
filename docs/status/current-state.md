@@ -55,6 +55,9 @@
 - **自动执行完整留痕** —— 每次本地 paper 自动运行都会追加 `paper-auto-execution.run` 审计，记录交易时段、计划质量、订单状态和跳过原因；即使没有订单或处于盘外，也能在重启后通过 JSON 审计复盘。
 - **七天交易历史留存** —— JSON 仓储默认按 `TRADING_HISTORY_RETENTION_DAYS=7` 清理已结束订单和审计事件，同时永久保留账户现金、当前持仓、暂停状态、序列号和未完成订单，防止本地状态文件无限增长。
 - **KAIROS 防守型策略组** —— 新增低波趋势、安静回踩和资金盾牌三种确定性研究策略，内置优化策略总数增至 12；排行榜与纸面计划更重视最大回撤、Sortino、Sharpe、盈利因子和候选防守分，低分候选会保持观望。结果仍是回测/本地 paper 研究，不是实际收益。
+- **累计资金预留与保守执行节奏** —— 同一批 paper 买单会按顺序扣减预计成交额和手续费，默认保留权益的 10% 现金，并将自动执行收紧为每轮最多 1 笔、每天最多 4 笔；当日笔数从持久化订单统计，服务重启不会重置日限额。提交前再按最新报价、滑点和佣金复核，资金不足时只记录跳过原因，不创建订单。
+- **逐笔交易理由审计** —— 新自动订单会写入 `paper-auto-execution.decision`，保留策略名称、买卖理由、规则检查、预计金额和最终状态；修复前缺失的历史理由明确标注缺失，不做事后推测。
+- **每日盘面与交易复盘** —— `/api/research/daily-review` 聚合观察池涨跌家数、主要指数、账户权益、持仓、订单、手续费和逐笔理由，并在研究管线页展示策略优点、问题和下一步改进。
 - **SuperMind 模拟盘信号桥** —— `/api/integrations/supermind/signal-package` 将本地 paper 操作计划转换为可人工复核的 SuperMind 信号 CSV 和云端策略模板；该接口不登录同花顺、不保存密码/Cookie/Token，也不会自动提交订单。
 - **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
 
@@ -70,6 +73,7 @@ GET  /api/research/daily-candidates?limit=24
 GET  /api/research/daily-quality-stocks?limit=30
 GET  /api/research/learning-state
 GET  /api/research/paper-trading-plan
+GET  /api/research/daily-review
 GET  /api/integrations/supermind/signal-package
 GET  /api/research/real-data-feed
 GET  /api/trading/auto-paper-execution/status
@@ -95,6 +99,22 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-14 cumulative cash reservation and daily paper review
+npm run test:server -- server/research/paperTradingPlan.test.ts server/research/dailyMarketReview.test.ts server/app.test.ts server/config.test.ts
+4 test files passed
+103 tests passed
+
+npm test
+27 server test files passed
+561 server tests passed
+2 web test files passed
+9 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+Runtime review: paper equity 10242, daily paper PnL 242 (2.42%), 5 filled buys, 1 historical insufficient-cash rejection, 25 commission, 4.0% cash ratio. Desktop and 390px mobile review layouts had no horizontal overflow.
+
 2026-07-14 defensive paper strategies, durable audit, and seven-day retention
 npm run test:server -- server/backtest/strategies.test.ts server/optimizer/optimizer.test.ts server/store/jsonFileTradingStore.test.ts server/app.test.ts server/config.test.ts
 5 test files passed

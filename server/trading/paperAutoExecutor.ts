@@ -23,6 +23,10 @@ export interface PaperAutoExecutionOrder {
   status: OrderRecord["status"];
   orderId: string;
   rejectionReason?: string;
+  strategy: string;
+  reason: string;
+  ruleChecks: string[];
+  estimatedNotional: number;
 }
 
 export interface PaperAutoExecutionSkip {
@@ -110,7 +114,6 @@ export class PaperAutoExecutor {
   private running = false;
   private sequence = 0;
   private readonly runs: PaperAutoExecutionRun[] = [];
-  private readonly dailySubmittedOrders = new Map<string, number>();
 
   constructor(private readonly options: PaperAutoExecutorOptions) {}
 
@@ -144,7 +147,7 @@ export class PaperAutoExecutor {
       tradeWindowOnly: this.options.tradeWindowOnly,
       maxOrdersPerRun: this.options.maxOrdersPerRun,
       maxDailyOrders: this.options.maxDailyOrders,
-      todaySubmittedOrders: this.dailySubmittedOrders.get(getChinaTradeDate(this.now())) ?? 0,
+      todaySubmittedOrders: this.countSubmittedOrders(getChinaTradeDate(this.now())),
       currentSession: getAshareSession(this.now()),
       startedAt: this.startedAt,
       lastRunAt: this.lastRunAt,
@@ -217,7 +220,7 @@ export class PaperAutoExecutor {
         config: this.options.config,
       });
 
-      const todaySubmitted = this.dailySubmittedOrders.get(tradingDate) ?? 0;
+      const todaySubmitted = this.countSubmittedOrders(tradingDate);
       let remainingDailyOrders = Math.max(0, this.options.maxDailyOrders - todaySubmitted);
       let remainingRunOrders = this.options.maxOrdersPerRun;
 
@@ -259,6 +262,41 @@ export class PaperAutoExecutor {
           continue;
         }
 
+        if (side === "buy") {
+          const quote = this.options.system.market.getQuote(operation.symbol);
+          if (!quote) {
+            skippedOperations.push({
+              symbol: operation.symbol,
+              action: operation.action,
+              reason: "最新行情不可用，未创建本地 paper 买单",
+            });
+            continue;
+          }
+
+          const fillPrice = Number((
+            quote.price * (1 + this.options.config.SLIPPAGE_BPS / 10_000)
+          ).toFixed(2));
+          const notional = fillPrice * operation.quantity;
+          const commission = Math.max(
+            this.options.config.MIN_COMMISSION,
+            notional * this.options.config.COMMISSION_RATE,
+          );
+          const requiredCash = notional + commission;
+          const account = this.options.system.broker.getAccount();
+          const cashReserve = account.equity *
+            this.options.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO;
+          const spendableCash = Math.max(0, account.cash - cashReserve);
+
+          if (requiredCash > spendableCash + 0.001) {
+            skippedOperations.push({
+              symbol: operation.symbol,
+              action: operation.action,
+              reason: `累计订单后可用资金不足，需 ${requiredCash.toFixed(2)} 元，可用于新买单 ${spendableCash.toFixed(2)} 元；未创建订单`,
+            });
+            continue;
+          }
+        }
+
         const request: OrderRequest = {
           symbol: operation.symbol,
           side,
@@ -276,14 +314,33 @@ export class PaperAutoExecutor {
           status: order.status,
           orderId: order.id,
           rejectionReason: order.rejectionReason,
+          strategy: operation.strategy,
+          reason: operation.reason,
+          ruleChecks: [...operation.ruleChecks],
+          estimatedNotional: operation.estimatedNotional,
         });
+        this.options.system.store.appendAudit(
+          "system",
+          "paper-auto-execution.decision",
+          "paper auto execution decision recorded",
+          {
+            tradingDate: plan.tradingDate,
+            orderId: order.id,
+            clientOrderId: request.clientOrderId,
+            symbol: operation.symbol,
+            side,
+            quantity: operation.quantity,
+            strategy: operation.strategy,
+            reason: operation.reason,
+            ruleChecks: operation.ruleChecks,
+            estimatedNotional: operation.estimatedNotional,
+            status: order.status,
+            rejectionReason: order.rejectionReason,
+          },
+        );
 
         remainingRunOrders -= 1;
         remainingDailyOrders -= 1;
-        this.dailySubmittedOrders.set(
-          tradingDate,
-          (this.dailySubmittedOrders.get(tradingDate) ?? 0) + 1,
-        );
       }
 
       return this.finalizeRun(
@@ -348,6 +405,8 @@ export class PaperAutoExecutor {
           quantity: order.quantity,
           status: order.status,
           rejectionReason: order.rejectionReason,
+          strategy: order.strategy,
+          reason: order.reason,
         })),
         skippedReasons: run.skippedOperations.slice(0, 8).map((operation) => ({
           symbol: operation.symbol,
@@ -365,6 +424,14 @@ export class PaperAutoExecutor {
       return;
     }
     this.nextRunAt = new Date(this.now().getTime() + this.options.intervalMs).toISOString();
+  }
+
+  private countSubmittedOrders(tradingDate: string): number {
+    const prefix = `kairos-auto-paper:${tradingDate}:`;
+    return this.options.system.store
+      .listOrders(10_000)
+      .filter((order) => order.clientOrderId?.startsWith(prefix))
+      .length;
   }
 
   private nextRunId(tradingDate: string): string {
