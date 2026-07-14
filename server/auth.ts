@@ -1,49 +1,67 @@
-/**
- * KAIROS 认证原型。
- *
- * 当前模块尚未注册到主 Fastify 服务。未来启用前必须显式提供账号、
- * 密码和至少 32 字符的 JWT 密钥；缺少配置时默认拒绝启动认证路由。
- */
 import crypto from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
+export const AUTH_COOKIE_NAME = "kairos_session";
+const SCRYPT_N = 16_384;
+const SCRYPT_R = 8;
+const SCRYPT_P = 1;
+const SCRYPT_KEY_LENGTH = 64;
+const SCRYPT_MAX_MEMORY = 64 * 1024 * 1024;
+const PASSWORD_HASH_PATTERN =
+  /^scrypt\$16384\$8\$1\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{86}$/;
+
 const authEnvironmentSchema = z.object({
-  AUTH_USERNAME: z.string().trim().min(1, "AUTH_USERNAME 不能为空"),
-  AUTH_PASSWORD: z.string().min(12, "AUTH_PASSWORD 至少需要 12 个字符"),
-  JWT_SECRET: z.string().min(32, "JWT_SECRET 至少需要 32 个字符"),
-  AUTH_TOKEN_TTL_SECONDS: z.coerce
+  AUTH_USERNAME: z.string().trim().min(1, "AUTH_USERNAME 不能为空").max(128),
+  AUTH_PASSWORD_HASH: z
+    .string()
+    .regex(PASSWORD_HASH_PATTERN, "AUTH_PASSWORD_HASH 必须是 KAIROS scrypt 散列"),
+  AUTH_SESSION_TTL_SECONDS: z.coerce
     .number()
     .int()
     .min(300)
     .max(86_400)
-    .default(3_600),
-});
-
-const jwtHeaderSchema = z.object({
-  alg: z.literal("HS256"),
-  typ: z.literal("JWT"),
-});
-
-const jwtPayloadSchema = z.object({
-  sub: z.string().min(1),
-  role: z.string().min(1),
-  iat: z.number().int().nonnegative(),
-  exp: z.number().int().positive(),
+    .default(28_800),
+  AUTH_COOKIE_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  AUTH_MAX_SESSIONS: z.coerce.number().int().min(1).max(20).default(3),
+  AUTH_LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(20).default(5),
 });
 
 export interface AuthConfig {
   username: string;
-  password: string;
-  jwtSecret: string;
-  tokenTtlSeconds: number;
+  passwordHash: string;
+  sessionTtlSeconds: number;
+  cookieSecure: boolean;
+  maxSessions: number;
+  loginRateLimitMax: number;
 }
 
-export interface JwtPayload {
-  sub: string;
+export interface AuthUser {
+  username: string;
   role: string;
-  iat: number;
-  exp: number;
+}
+
+export interface SessionRecord extends AuthUser {
+  csrfToken: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface CreatedSession extends SessionRecord {
+  token: string;
+}
+
+interface StoredSession extends SessionRecord {
+  tokenHash: string;
+}
+
+export interface SessionStoreOptions {
+  ttlSeconds: number;
+  maxSessions: number;
+  now?: () => number;
 }
 
 export function parseAuthConfig(
@@ -52,22 +70,71 @@ export function parseAuthConfig(
   const parsed = authEnvironmentSchema.parse(environment);
   return {
     username: parsed.AUTH_USERNAME,
-    password: parsed.AUTH_PASSWORD,
-    jwtSecret: parsed.JWT_SECRET,
-    tokenTtlSeconds: parsed.AUTH_TOKEN_TTL_SECONDS,
+    passwordHash: parsed.AUTH_PASSWORD_HASH,
+    sessionTtlSeconds: parsed.AUTH_SESSION_TTL_SECONDS,
+    cookieSecure: parsed.AUTH_COOKIE_SECURE,
+    maxSessions: parsed.AUTH_MAX_SESSIONS,
+    loginRateLimitMax: parsed.AUTH_LOGIN_RATE_LIMIT_MAX,
   };
 }
 
-function base64urlEncode(data: string): string {
-  return Buffer.from(data).toString("base64url");
+function derivePasswordKey(password: string, salt: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(
+      password,
+      salt,
+      SCRYPT_KEY_LENGTH,
+      {
+        N: SCRYPT_N,
+        r: SCRYPT_R,
+        p: SCRYPT_P,
+        maxmem: SCRYPT_MAX_MEMORY,
+      },
+      (error, derivedKey) => {
+        if (error) reject(error);
+        else resolve(derivedKey);
+      },
+    );
+  });
 }
 
-function base64urlDecode(data: string): string {
-  return Buffer.from(data, "base64url").toString("utf8");
+export async function hashPassword(password: string): Promise<string> {
+  if (password.length < 12 || password.length > 256) {
+    throw new Error("密码长度必须在 12 到 256 个字符之间");
+  }
+  const salt = crypto.randomBytes(16);
+  const derivedKey = await derivePasswordKey(password, salt);
+  return [
+    "scrypt",
+    SCRYPT_N,
+    SCRYPT_R,
+    SCRYPT_P,
+    salt.toString("base64url"),
+    derivedKey.toString("base64url"),
+  ].join("$");
 }
 
-function hmacSign(data: string, secret: string): string {
-  return crypto.createHmac("sha256", secret).update(data).digest("base64url");
+export async function verifyPassword(
+  password: string,
+  encodedHash: string,
+): Promise<boolean> {
+  if (!PASSWORD_HASH_PATTERN.test(encodedHash) || password.length > 256) {
+    return false;
+  }
+
+  try {
+    const [, , , , saltText, digestText] = encodedHash.split("$");
+    const salt = Buffer.from(saltText, "base64url");
+    const expected = Buffer.from(digestText, "base64url");
+    const actual = await derivePasswordKey(password, salt);
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
+  } catch {
+    return false;
+  }
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("base64url");
 }
 
 function timingSafeStringEqual(left: string, right: string): boolean {
@@ -76,179 +143,211 @@ function timingSafeStringEqual(left: string, right: string): boolean {
   return crypto.timingSafeEqual(leftDigest, rightDigest);
 }
 
-export function verifyCredentials(
-  username: string,
-  password: string,
-  config: AuthConfig,
-): boolean {
-  const usernameMatches = timingSafeStringEqual(username, config.username);
-  const passwordMatches = timingSafeStringEqual(password, config.password);
-  return usernameMatches && passwordMatches;
-}
+export class SessionStore {
+  private readonly sessions = new Map<string, StoredSession>();
+  private readonly ttlMs: number;
+  private readonly maxSessions: number;
+  private readonly now: () => number;
 
-export function signToken(
-  payload: { sub: string; role: string },
-  config: Pick<AuthConfig, "jwtSecret" | "tokenTtlSeconds">,
-  nowSeconds = Math.floor(Date.now() / 1000),
-): string {
-  const header = base64urlEncode(
-    JSON.stringify({ alg: "HS256", typ: "JWT" }),
-  );
-  const body = base64urlEncode(
-    JSON.stringify({
-      sub: payload.sub,
-      role: payload.role,
-      iat: nowSeconds,
-      exp: nowSeconds + config.tokenTtlSeconds,
-    }),
-  );
-  const signature = hmacSign(`${header}.${body}`, config.jwtSecret);
-  return `${header}.${body}.${signature}`;
-}
+  constructor(options: SessionStoreOptions) {
+    this.ttlMs = options.ttlSeconds * 1_000;
+    this.maxSessions = options.maxSessions;
+    this.now = options.now ?? Date.now;
+  }
 
-export function verifyToken(
-  token: string,
-  config: Pick<AuthConfig, "jwtSecret">,
-  nowSeconds = Math.floor(Date.now() / 1000),
-): JwtPayload | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
+  create(username: string, role: string): CreatedSession {
+    this.prune();
+    const existing = [...this.sessions.values()]
+      .filter((session) => session.username === username)
+      .sort((left, right) => left.createdAt - right.createdAt);
+    while (existing.length >= this.maxSessions) {
+      const oldest = existing.shift();
+      if (oldest) this.sessions.delete(oldest.tokenHash);
+    }
 
-    const [headerB64, bodyB64, signature] = parts;
-    const expectedSignature = hmacSign(
-      `${headerB64}.${bodyB64}`,
-      config.jwtSecret,
-    );
-    if (!timingSafeStringEqual(signature, expectedSignature)) return null;
+    const now = this.now();
+    const token = crypto.randomBytes(32).toString("base64url");
+    const session: StoredSession = {
+      tokenHash: hashToken(token),
+      username,
+      role,
+      csrfToken: crypto.randomBytes(24).toString("base64url"),
+      createdAt: now,
+      expiresAt: now + this.ttlMs,
+    };
+    this.sessions.set(session.tokenHash, session);
+    return { ...session, token };
+  }
 
-    const headerResult = jwtHeaderSchema.safeParse(
-      JSON.parse(base64urlDecode(headerB64)),
-    );
-    if (!headerResult.success) return null;
+  verify(token: string): SessionRecord | null {
+    if (!token || token.length > 256) return null;
+    const tokenHash = hashToken(token);
+    const session = this.sessions.get(tokenHash);
+    if (!session) return null;
+    if (session.expiresAt <= this.now()) {
+      this.sessions.delete(tokenHash);
+      return null;
+    }
+    const { tokenHash: _tokenHash, ...record } = session;
+    return record;
+  }
 
-    const payloadResult = jwtPayloadSchema.safeParse(
-      JSON.parse(base64urlDecode(bodyB64)),
-    );
-    if (!payloadResult.success) return null;
+  revoke(token: string): void {
+    if (token && token.length <= 256) this.sessions.delete(hashToken(token));
+  }
 
-    const payload = payloadResult.data;
-    if (payload.exp <= nowSeconds) return null;
-    if (payload.iat > nowSeconds + 60) return null;
-    if (payload.exp <= payload.iat) return null;
-    return payload;
-  } catch {
-    return null;
+  clear(): void {
+    this.sessions.clear();
+  }
+
+  private prune(): void {
+    const now = this.now();
+    for (const [tokenHash, session] of this.sessions) {
+      if (session.expiresAt <= now) this.sessions.delete(tokenHash);
+    }
   }
 }
 
-export function extractToken(request: FastifyRequest): string | null {
-  const authHeader = request.headers.authorization;
-  if (!authHeader) return null;
-
-  const [scheme, token] = authHeader.split(" ");
-  if (scheme?.toLowerCase() !== "bearer" || !token) return null;
-  return token;
+export function extractSessionToken(request: FastifyRequest): string | null {
+  return request.cookies?.[AUTH_COOKIE_NAME] ?? null;
 }
 
 export const loginSchema = z.object({
-  username: z.string().trim().min(1, "用户名不能为空"),
-  password: z.string().min(1, "密码不能为空"),
+  username: z.string().trim().min(1, "用户名不能为空").max(128),
+  password: z.string().min(1, "密码不能为空").max(256),
 });
-
-export type LoginRequest = z.infer<typeof loginSchema>;
 
 declare module "fastify" {
   interface FastifyRequest {
-    user?: JwtPayload;
+    authUser?: AuthUser;
+    authSession?: SessionRecord;
   }
 }
 
-export function createAuthHook(config: AuthConfig) {
+function sendUnauthorized(reply: FastifyReply) {
+  return reply.status(401).send({
+    error: "UNAUTHORIZED",
+    message: "登录已失效，请重新登录",
+  });
+}
+
+function hasValidCsrf(request: FastifyRequest, session: SessionRecord): boolean {
+  const value = request.headers["x-csrf-token"];
+  return (
+    typeof value === "string" &&
+    value.length <= 256 &&
+    timingSafeStringEqual(value, session.csrfToken)
+  );
+}
+
+export function createAuthHook(sessions: SessionStore) {
   return async function authHook(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<void> {
-    const token = extractToken(request);
-    if (!token) {
-      await reply.status(401).send({
-        error: "UNAUTHORIZED",
-        message: "缺少认证令牌，请先登录",
-      });
+    const token = extractSessionToken(request);
+    const session = token ? sessions.verify(token) : null;
+    if (!session) {
+      await sendUnauthorized(reply);
       return;
     }
 
-    const payload = verifyToken(token, config);
-    if (!payload) {
-      await reply.status(401).send({
-        error: "UNAUTHORIZED",
-        message: "认证令牌无效或已过期",
+    request.authUser = { username: session.username, role: session.role };
+    request.authSession = session;
+    if (!["GET", "HEAD", "OPTIONS"].includes(request.method) && !hasValidCsrf(request, session)) {
+      await reply.status(403).send({
+        error: "CSRF_VALIDATION_FAILED",
+        message: "安全校验失败，请刷新页面后重试",
       });
-      return;
     }
-
-    request.user = payload;
   };
 }
 
-/**
- * 注册尚未接入主服务的认证路由。
- *
- * 未传入 config 时从环境变量读取；缺少安全配置会直接抛出异常。
- */
+function cookieOptions(config: AuthConfig) {
+  return {
+    path: "/",
+    httpOnly: true,
+    secure: config.cookieSecure,
+    sameSite: "strict" as const,
+    maxAge: config.sessionTtlSeconds,
+  };
+}
+
 export function registerAuthRoutes(
   app: FastifyInstance,
   config: AuthConfig = parseAuthConfig(),
+  sessions = new SessionStore({
+    ttlSeconds: config.sessionTtlSeconds,
+    maxSessions: config.maxSessions,
+  }),
 ): void {
   app.post("/api/auth/login", {
+    config: {
+      rateLimit: {
+        max: config.loginRateLimitMax,
+        timeWindow: 60_000,
+      },
+    },
     schema: {
       tags: ["认证"],
       summary: "用户登录",
-      description: "使用显式配置的本地凭据登录，返回短期 JWT 访问令牌",
+      description: "验证服务端 scrypt 密码散列并建立可撤销的 HttpOnly Cookie 会话",
       body: {
         type: "object",
+        additionalProperties: false,
         required: ["username", "password"],
         properties: {
-          username: { type: "string" },
-          password: { type: "string" },
+          username: { type: "string", minLength: 1, maxLength: 128 },
+          password: { type: "string", minLength: 1, maxLength: 256 },
         },
       },
     },
   }, async (request, reply) => {
-    const { username, password } = loginSchema.parse(request.body);
-    if (!verifyCredentials(username, password, config)) {
+    reply.header("Cache-Control", "no-store");
+    const result = loginSchema.safeParse(request.body);
+    if (!result.success) {
+      return reply.status(400).send({
+        error: "INVALID_LOGIN_REQUEST",
+        message: "请输入有效的用户名和密码",
+      });
+    }
+
+    const usernameMatches = timingSafeStringEqual(result.data.username, config.username);
+    const passwordMatches = await verifyPassword(result.data.password, config.passwordHash);
+    if (!usernameMatches || !passwordMatches) {
+      request.log.warn({ ip: request.ip }, "authentication failed");
       return reply.status(401).send({
         error: "INVALID_CREDENTIALS",
         message: "用户名或密码错误",
       });
     }
 
-    const token = signToken({ sub: username, role: "admin" }, config);
+    const session = sessions.create(config.username, "admin");
+    reply.setCookie(AUTH_COOKIE_NAME, session.token, cookieOptions(config));
     return reply.send({
-      token,
-      expiresIn: config.tokenTtlSeconds,
-      user: { username, role: "admin" },
+      authenticated: true,
+      expiresIn: config.sessionTtlSeconds,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+      csrfToken: session.csrfToken,
+      user: { username: session.username, role: session.role },
     });
   });
 
-  app.get("/api/auth/verify", {
+  app.get("/api/auth/session", {
     schema: {
       tags: ["认证"],
-      summary: "验证令牌",
+      summary: "读取当前会话",
     },
   }, async (request, reply) => {
-    const token = extractToken(request);
-    const payload = token ? verifyToken(token, config) : null;
-    if (!payload) {
-      return reply.status(401).send({
-        error: "UNAUTHORIZED",
-        message: "认证令牌无效、缺失或已过期",
-      });
-    }
-
+    reply.header("Cache-Control", "no-store");
+    const token = extractSessionToken(request);
+    const session = token ? sessions.verify(token) : null;
+    if (!session) return sendUnauthorized(reply);
     return reply.send({
-      valid: true,
-      user: { username: payload.sub, role: payload.role },
+      authenticated: true,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+      csrfToken: session.csrfToken,
+      user: { username: session.username, role: session.role },
     });
   });
 
@@ -256,9 +355,22 @@ export function registerAuthRoutes(
     schema: {
       tags: ["认证"],
       summary: "用户登出",
-      description: "客户端丢弃令牌；服务端不维护会话。",
+      description: "撤销服务端会话并删除浏览器 Cookie",
     },
-  }, async () => ({
-    message: "已登出，请丢弃本地令牌",
-  }));
+  }, async (request, reply) => {
+    reply.header("Cache-Control", "no-store");
+    const token = extractSessionToken(request);
+    const session = token ? sessions.verify(token) : null;
+    if (!token || !session) return sendUnauthorized(reply);
+    if (!hasValidCsrf(request, session)) {
+      return reply.status(403).send({
+        error: "CSRF_VALIDATION_FAILED",
+        message: "安全校验失败，请刷新页面后重试",
+      });
+    }
+
+    sessions.revoke(token);
+    reply.clearCookie(AUTH_COOKIE_NAME, cookieOptions(config));
+    return reply.send({ message: "已安全退出" });
+  });
 }

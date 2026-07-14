@@ -1,0 +1,86 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  AUTH_EXPIRED_EVENT,
+  fetchAuditEvents,
+  getTradingSocketUrl,
+  login,
+  notifyAuthExpired,
+  runPaperAutoExecutionOnce,
+} from "./tradingApi";
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+describe("session-aware trading API", () => {
+  beforeEach(() => {
+    notifyAuthExpired();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses cookies and sends the in-memory CSRF token for mutations", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          authenticated: true,
+          expiresIn: 3_600,
+          expiresAt: "2026-07-14T13:00:00.000Z",
+          csrfToken: "csrf-token",
+          user: { username: "admin", role: "admin" },
+        }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ status: "completed" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await login("admin", "correct-horse-battery-staple");
+    await runPaperAutoExecutionOnce();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      expect.stringMatching(/\/api\/auth\/login$/),
+      expect.objectContaining({ credentials: "include" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(/\/api\/trading\/auto-paper-execution\/run$/),
+      expect.objectContaining({
+        credentials: "include",
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-token" }),
+      }),
+    );
+    expect(window.localStorage.length).toBe(0);
+  });
+
+  it("never puts authentication material in the WebSocket URL", () => {
+    window.localStorage.setItem("xuanshu.auth.token", "legacy-sensitive-token");
+    const url = getTradingSocketUrl();
+    expect(url).not.toContain("token");
+    expect(url).not.toContain("legacy-sensitive-token");
+    expect(new URL(url).pathname).toBe("/ws");
+  });
+
+  it("notifies the application when a protected request returns 401", async () => {
+    const handler = vi.fn();
+    window.addEventListener(AUTH_EXPIRED_EVENT, handler, { once: true });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(
+          { error: "UNAUTHORIZED", message: "登录已失效，请重新登录" },
+          401,
+        ),
+      ),
+    );
+
+    await expect(fetchAuditEvents()).rejects.toThrow("登录已失效");
+    expect(handler).toHaveBeenCalledOnce();
+  });
+});

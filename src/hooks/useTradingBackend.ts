@@ -18,6 +18,7 @@ import {
   cancelPaperOrder,
   fetchTradingBootstrap,
   getTradingSocketUrl,
+  notifyAuthExpired,
   setPaperTradingPaused,
   submitPaperOrder,
   type MarketDataProviderName,
@@ -251,7 +252,11 @@ export function useTradingBackend(
         }
       });
 
-      currentSocket.addEventListener("close", () => {
+      currentSocket.addEventListener("close", (event) => {
+        if (event.code === 1008) {
+          notifyAuthExpired();
+          return;
+        }
         if (active && socket === currentSocket) {
           socket = undefined;
           scheduleReconnect();

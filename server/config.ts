@@ -14,19 +14,28 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
-  AUTH_ENABLED: z
+  TRUST_PROXY: z
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  AUTH_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
   AUTH_USERNAME: z.string().default(""),
-  AUTH_PASSWORD: z.string().default(""),
-  JWT_SECRET: z.string().default(""),
-  AUTH_TOKEN_TTL_SECONDS: z.coerce
+  AUTH_PASSWORD_HASH: z.string().default(""),
+  AUTH_SESSION_TTL_SECONDS: z.coerce
     .number()
     .int()
     .min(300)
     .max(86_400)
-    .default(3_600),
+    .default(28_800),
+  AUTH_COOKIE_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  AUTH_MAX_SESSIONS: z.coerce.number().int().min(1).max(20).default(3),
+  AUTH_LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(20).default(5),
   MARKET_MODE: z.enum(["mock", "paper", "live"]).default("mock"),
   MARKET_DATA_PROVIDER: z.enum(["mock", "akshare"]).default("mock"),
   MARKET_TICK_MS: z.coerce.number().int().min(250).default(1000),
@@ -111,18 +120,25 @@ const envSchema = z.object({
 
 export type ServerConfig = ReturnType<typeof getConfig>;
 
-export function getConfig() {
-  const config = envSchema.parse(process.env);
+export function parseServerConfig(environment: NodeJS.ProcessEnv) {
+  const config = envSchema.parse(environment);
+  if (!config.AUTH_ENABLED && environment.NODE_ENV !== "test") {
+    throw new Error("AUTH_ENABLED=false is only allowed when NODE_ENV=test");
+  }
   if (config.AUTH_ENABLED) {
     if (!config.AUTH_USERNAME.trim()) {
-      throw new Error("AUTH_ENABLED=true requires AUTH_USERNAME");
+      throw new Error("Required authentication needs AUTH_USERNAME");
     }
-    if (config.AUTH_PASSWORD.length < 12) {
-      throw new Error("AUTH_ENABLED=true requires AUTH_PASSWORD with at least 12 characters");
+    if (!/^scrypt\$16384\$8\$1\$[A-Za-z0-9_-]{22}\$[A-Za-z0-9_-]{86}$/.test(config.AUTH_PASSWORD_HASH)) {
+      throw new Error("Required authentication needs a valid AUTH_PASSWORD_HASH");
     }
-    if (config.JWT_SECRET.length < 32) {
-      throw new Error("AUTH_ENABLED=true requires JWT_SECRET with at least 32 characters");
+    if (environment.NODE_ENV === "production" && !config.AUTH_COOKIE_SECURE) {
+      throw new Error("Production authentication requires AUTH_COOKIE_SECURE=true and HTTPS");
     }
   }
   return config;
+}
+
+export function getConfig() {
+  return parseServerConfig(process.env);
 }

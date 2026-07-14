@@ -18,26 +18,26 @@ python -m pip install -r akshare-bridge/requirements.txt
 
 需要修改默认端口或风控参数时，将 `.env.example` 复制为未提交的 `.env.local`。任何供应商 Token 或密钥只能放在 `.env.local`，不得使用 `VITE_*` 暴露给浏览器。
 
-本地登录保护默认关闭。需要启用时，必须在 `.env.local` 显式设置：
+登录保护默认强制启用。首次启动前运行：
 
-```text
-AUTH_ENABLED=true
-AUTH_USERNAME=<local-user>
-AUTH_PASSWORD=<at-least-12-characters>
-JWT_SECRET=<at-least-32-random-characters>
-AUTH_TOKEN_TTL_SECONDS=3600
+```powershell
+npm run auth:setup -- --username kjq
 ```
 
-认证不存在默认凭据。`AUTH_ENABLED=false` 时现有开发启动流程不需要登录；`AUTH_ENABLED=true` 时前端会显示登录页，API 会要求 `Bearer` 令牌。该登录只保护本地工作台 API，不代表真实券商交易权限。
+命令生成随机初始密码并只显示一次；`.env.local` 只保存 `scrypt` 密码散列，不保存明文密码。忘记密码时重新运行该命令会撤销旧密码；服务重启会清空现有会话，用户需要重新登录。认证不存在默认账号或默认密码，`AUTH_ENABLED=false` 只允许 `NODE_ENV=test` 的自动化测试构造器使用。
 
-本地 HTTP 安全配置：
+本地 HTTP 使用以下安全配置：
 
 ```text
 RATE_LIMIT_MAX=120
 RATE_LIMIT_WINDOW_MS=60000
+AUTH_SESSION_TTL_SECONDS=28800
+AUTH_COOKIE_SECURE=false
+AUTH_MAX_SESSIONS=3
+AUTH_LOGIN_RATE_LIMIT_MAX=5
 ```
 
-这两个值控制 Fastify 全局限流。生产环境还需要由反向代理或 API 网关实施独立限流，不能只依赖应用进程内计数。
+`AUTH_COOKIE_SECURE=false` 只允许本机 `http://127.0.0.1` 开发。生产环境必须使用 HTTPS 并设置 `AUTH_COOKIE_SECURE=true`；否则 `NODE_ENV=production` 会拒绝启动。全局与登录限流都在应用进程内，公网部署还需要反向代理或 API 网关的独立限流。
 
 交易状态默认使用内存仓储。需要在本地重启后保留模拟账户时，可在 `.env.local` 设置：
 
@@ -102,6 +102,8 @@ npm run dev:a-share
 npm run check:a-share
 ```
 
+检查脚本会读取 `.env.local` 中的 `AUTH_USERNAME`，并在终端安全提示输入密码；也可为一次性非交互检查临时设置 `KAIROS_AUTH_USERNAME` 与 `KAIROS_AUTH_PASSWORD`，运行后立即删除这两个进程环境变量。密码不会写入脚本或日志。
+
 该检查会同时验证 Fastify API、AkShare 桥接、Vite `/api` 代理、主要指数行情、个股行情和 KAIROS 行情快照。如果 4173、8787 或 8800 被旧进程占用，检查会明确标出失败项，避免页面看起来能打开但实际连到旧服务。
 
 默认地址：
@@ -122,6 +124,21 @@ Windows 受限目录环境下，`dev:web` 使用 Vite 的 `runner` 配置加载�
 如果控制台提示 `Port 4173 is already in use` 或 `EADDRINUSE 127.0.0.1:8787`，说明前端或 API 已经启动。先直接访问上述地址；需要重启时，应先停止之前运行 `npm run dev` 的终端，再重新执行命令，不要同时启动多套服务。
 
 Vite 将 `/api` 和 `/ws` 代理到本地 Fastify 服务。当前 `MARKET_MODE` 只允许 `mock` 或 `paper`；配置为 `live` 会拒绝启动。
+
+浏览器会显示登录页。需要从 PowerShell 调试受保护 API 时，先建立 Cookie 会话并保留 CSRF 值：
+
+```powershell
+$loginBody = @{ username = "kjq"; password = "<initial-password>" } | ConvertTo-Json
+$auth = Invoke-RestMethod `
+  -Method Post `
+  -Uri http://127.0.0.1:8787/api/auth/login `
+  -ContentType "application/json" `
+  -Body $loginBody `
+  -SessionVariable KairosSession
+$KairosHeaders = @{ "X-CSRF-Token" = $auth.csrfToken }
+```
+
+后续 GET 请求传入 `-WebSession $KairosSession`；POST/DELETE 请求还要传入 `-Headers $KairosHeaders`。Cookie 为 `HttpOnly`，不会写入 `localStorage` 或 WebSocket URL。
 
 如果前端能打开但页面提示“页面渲染异常”、系统指标为空，或浏览器控制台出现“API 代理未命中”，优先检查是否连到了旧的 Vite 进程：
 
@@ -185,15 +202,15 @@ AkShare 桥接还提供只读财经新闻和全球主要指数接口。Fastify �
 如需手动查看计划，可运行：
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8787/api/research/paper-trading-plan
+Invoke-RestMethod http://127.0.0.1:8787/api/research/paper-trading-plan -WebSession $KairosSession
 ```
 
 如需查看自动执行器状态或手动触发一次本地 paper 执行，可运行：
 
 ```powershell
-Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status
-Invoke-RestMethod -Method Post http://127.0.0.1:8787/api/trading/auto-paper-execution/run
-Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-review
+Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status -WebSession $KairosSession
+Invoke-RestMethod -Method Post http://127.0.0.1:8787/api/trading/auto-paper-execution/run -WebSession $KairosSession -Headers $KairosHeaders
+Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-review -WebSession $KairosSession
 ```
 
 手动触发接口仍会拒绝非 paper 模式，并继续通过本地风控检查；重复触发使用 `kairos-auto-paper:*` 幂等键，避免同一纸面动作重复建单。
@@ -201,7 +218,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-review
 每次自动运行都会写入 `paper-auto-execution.run` 审计，包括非交易时段、没有合格候选、风控拦截和订单提交结果。可用下面的命令判断“没有交易”究竟是没有机会还是服务没有运行：
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8787/api/audit?limit=50" |
+Invoke-RestMethod "http://127.0.0.1:8787/api/audit?limit=50" -WebSession $KairosSession |
   Where-Object { $_.action -eq "paper-auto-execution.run" }
 ```
 
@@ -212,7 +229,7 @@ Invoke-RestMethod "http://127.0.0.1:8787/api/audit?limit=50" |
 如需把本地 paper 计划转成同花顺 SuperMind 可人工复核的模拟盘输入，可运行：
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8787/api/integrations/supermind/signal-package"
+Invoke-RestMethod "http://127.0.0.1:8787/api/integrations/supermind/signal-package" -WebSession $KairosSession
 ```
 
 该接口只输出信号行、CSV 和 SuperMind 云端策略模板示例。它不会登录同花顺、不会读取或保存密码/Cookie/浏览器 Token/短信验证码，也不会自动提交订单；复制到 SuperMind 前必须人工复核标的、数量、T+1、现金和一手 100 股约束。
@@ -255,15 +272,15 @@ npm run check:a-share
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8787/api/health
-Invoke-RestMethod http://127.0.0.1:8787/api/capabilities
-Invoke-RestMethod http://127.0.0.1:8787/api/account
-Invoke-RestMethod http://127.0.0.1:8787/api/market/snapshot
-Invoke-RestMethod http://127.0.0.1:8787/api/research/strategy-leaderboard
-Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-candidates
-Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-quality-stocks
-Invoke-RestMethod http://127.0.0.1:8787/api/integrations/supermind/signal-package
-Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status
-Invoke-RestMethod http://127.0.0.1:8787/api/research/real-data-feed
+Invoke-RestMethod http://127.0.0.1:8787/api/capabilities -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/account -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/market/snapshot -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/research/strategy-leaderboard -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-candidates -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-quality-stocks -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/integrations/supermind/signal-package -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/research/real-data-feed -WebSession $KairosSession
 ```
 
 OpenAPI 界面位于 `http://127.0.0.1:8787/documentation`。
@@ -273,7 +290,7 @@ OpenAPI 界面位于 `http://127.0.0.1:8787/documentation`。
 今日候选端点会基于当前行情快照输出 A 股强势回踩确认战法的观察清单：
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-candidates?limit=24"
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-candidates?limit=24" -WebSession $KairosSession
 ```
 
 前端策略页和研究管线页会通过 TanStack Query 自动刷新该清单。当前自动更新机制是：AkShare/Mock 行情源按 `MARKET_TICK_MS` 更新后端快照并推送 WebSocket；研究排行榜按页面缓存策略刷新；今日候选扫描每 60 秒刷新一次，也可手动点击刷新。后端默认支持更大的候选池，便于 10000 元 paper 账户从更多标的里寻找满足一手约束的观察对象。它仍是只读研究与 paper 模拟信号，不会自动真实下单。
@@ -281,7 +298,7 @@ Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-candidates?limit=24"
 每日优质股端点用于生成更宽口径的观察池：
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-quality-stocks?limit=30"
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-quality-stocks?limit=30" -WebSession $KairosSession
 ```
 
 当前评分使用实时行情快照中的价格、成交量/成交额、涨跌幅、振幅、换手率和日内位置。AkShare 模式下实时行情来源可以是真实只读行情，但历史 K 线、新闻、财务因子和同花顺模拟盘订单仍未接入。
@@ -291,7 +308,7 @@ Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-quality-stocks?limit
 真实研究数据流端点用于查看新闻和外围市场输入：
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8787/api/research/real-data-feed"
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/real-data-feed" -WebSession $KairosSession
 ```
 
 该端点只读。它不会读取账户、不会提交订单，也不会连接同花顺或中信账户；全球市场对 A 股的影响摘要只是研究信号，需要后续历史样本验证。
@@ -312,6 +329,8 @@ $body = @{
 Invoke-RestMethod `
   -Method Post `
   -Uri http://127.0.0.1:8787/api/orders `
+  -WebSession $KairosSession `
+  -Headers $KairosHeaders `
   -ContentType "application/json" `
   -Body $body
 ```
@@ -322,11 +341,12 @@ Invoke-RestMethod `
 
 2026-07-14 的验证结果：
 
-1. `npm test`：25 个服务端测试文件、557 项服务端测试，以及 2 个前端测试文件、9 项前端测试全部通过。
+1. `npm test`：27 个服务端测试文件、564 项服务端测试，以及 3 个前端测试文件、12 项前端测试全部通过。
 2. `npm run build`：TypeScript 检查与 Vite 生产构建通过。
-3. `npm run check:a-share`：Fastify、AkShare、Vite 代理、指数、股票和 KAIROS 快照全部通过，后端为 `paper + akshare`，有效指数 4 个。
-4. 运行态 AkShare 缓存包含 5529 只 A 股和 562 个指数；盘前自动执行未下单，并把跳过原因写入 JSON 审计。
-5. 本次未重跑 Python 单测；AkShare 桥接通过实际健康检查和只读行情链路检查。
+3. 登录运行态为 `paper + akshare`、`authEnabled=true`；匿名健康检查为 200，能力、账户、复盘、指标和 OpenAPI 均为 401。
+4. 浏览器验证错误密码、成功登录、刷新保持、认证 WebSocket、安全登出和 390 x 844 手机布局均通过。
+5. `npm run check:a-share` 通过会话登录后完成 6 项检查，后端为 `paper + akshare`，有效指数 4 个。
+6. 本机未安装 Docker CLI，因此容器构建需要在部署服务器继续验证；本次未重跑 Python 单测。
 
 ## 生成文件
 

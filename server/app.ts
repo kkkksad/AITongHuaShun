@@ -1,3 +1,4 @@
+import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -15,9 +16,10 @@ import type {
   OrderRequest,
 } from "../shared/trading";
 import {
+  SessionStore,
   createAuthHook,
+  extractSessionToken,
   registerAuthRoutes,
-  verifyToken,
   type AuthConfig,
 } from "./auth";
 import type { ServerConfig } from "./config";
@@ -96,18 +98,14 @@ const dailyQualityStocksQuerySchema = z.object({
 
 const publicAuthPaths = new Set([
   "/api/health",
-  "/api/capabilities",
   "/api/auth/login",
-  "/api/auth/verify",
-  "/api/auth/logout",
-  "/metrics",
+  "/api/auth/session",
 ]);
 
 function isPublicPath(url: string): boolean {
   const pathname = url.split("?")[0] ?? url;
   return (
     publicAuthPaths.has(pathname) ||
-    pathname.startsWith("/documentation") ||
     pathname === "/ws"
   );
 }
@@ -115,9 +113,11 @@ function isPublicPath(url: string): boolean {
 function getAuthConfig(config: ServerConfig): AuthConfig {
   return {
     username: config.AUTH_USERNAME,
-    password: config.AUTH_PASSWORD,
-    jwtSecret: config.JWT_SECRET,
-    tokenTtlSeconds: config.AUTH_TOKEN_TTL_SECONDS,
+    passwordHash: config.AUTH_PASSWORD_HASH,
+    sessionTtlSeconds: config.AUTH_SESSION_TTL_SECONDS,
+    cookieSecure: config.AUTH_COOKIE_SECURE,
+    maxSessions: config.AUTH_MAX_SESSIONS,
+    loginRateLimitMax: config.AUTH_LOGIN_RATE_LIMIT_MAX,
   };
 }
 
@@ -190,12 +190,21 @@ interface BuildTradingAppOptions {
 export async function buildTradingApp(
   options: BuildTradingAppOptions,
 ): Promise<FastifyInstance> {
-  const app = Fastify({ logger: options.startMarket !== false });
+  const app = Fastify({
+    logger: options.startMarket !== false,
+    trustProxy: options.config.TRUST_PROXY,
+  });
   const system = options.system ?? createTradingSystem(options.config);
   const hub = new WebSocketHub();
   const researchStore = new InMemoryResearchStore();
   const authConfig = options.config.AUTH_ENABLED
     ? getAuthConfig(options.config)
+    : null;
+  const sessions = authConfig
+    ? new SessionStore({
+        ttlSeconds: authConfig.sessionTtlSeconds,
+        maxSessions: authConfig.maxSessions,
+      })
     : null;
 
   // ── Plugins ──────────────────────────────────────────────
@@ -207,20 +216,32 @@ export async function buildTradingApp(
     max: options.config.RATE_LIMIT_MAX,
     timeWindow: options.config.RATE_LIMIT_WINDOW_MS,
   });
+  await app.register(cookie);
   await app.register(cors, {
     origin: options.config.WEB_ORIGIN,
-    methods: ["GET", "POST", "DELETE"],
+    credentials: true,
+    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Accept", "Content-Type", "X-CSRF-Token"],
   });
   await app.register(websocket);
 
-  if (authConfig) {
-    registerAuthRoutes(app, authConfig);
-    const authHook = createAuthHook(authConfig);
+  if (authConfig && sessions) {
+    const authHook = createAuthHook(sessions);
     app.addHook("preHandler", async (request, reply) => {
-      if (isPublicPath(request.url)) return;
+      if (request.method === "OPTIONS" || isPublicPath(request.url)) return;
       await authHook(request, reply);
     });
+    registerAuthRoutes(app, authConfig, sessions);
   }
+
+  app.addHook("onSend", async (request, reply, payload) => {
+    const pathname = request.url.split("?")[0] ?? request.url;
+    if (pathname.startsWith("/api/") || pathname === "/metrics") {
+      reply.header("Cache-Control", "no-store");
+      reply.header("Pragma", "no-cache");
+    }
+    return payload;
+  });
 
   // ── Swagger / OpenAPI ───────────────────────────────────
   if (options.config.API_DOCS_ENABLED) {
@@ -424,11 +445,11 @@ export async function buildTradingApp(
     },
     credentials: {
       browserAllowed: false,
-      storage: "server-environment-only",
+      storage: "server-password-hash-only",
     },
     authentication: {
       enabled: options.config.AUTH_ENABLED,
-      mode: options.config.AUTH_ENABLED ? "local-jwt" : "local-unprotected",
+      mode: options.config.AUTH_ENABLED ? "server-session" : "test-unprotected",
       defaultCredentials: false,
     },
     researchData: {
@@ -1098,10 +1119,10 @@ export async function buildTradingApp(
     },
     websocket: true,
   }, (socket, request) => {
-    if (authConfig) {
-      const requestUrl = new URL(request.url, "http://localhost");
-      const token = requestUrl.searchParams.get("token");
-      if (!token || !verifyToken(token, authConfig)) {
+    if (authConfig && sessions) {
+      const token = extractSessionToken(request);
+      const originMatches = request.headers.origin === options.config.WEB_ORIGIN;
+      if (!originMatches || !token || !sessions.verify(token)) {
         socket.close(1008, "UNAUTHORIZED");
         return;
       }
@@ -1134,6 +1155,7 @@ export async function buildTradingApp(
   // ── Lifecycle ───────────────────────────────────────────
 
   app.addHook("onClose", async () => {
+    sessions?.clear();
     paperAutoExecutor.stop();
     system.market.stop();
   });

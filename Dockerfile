@@ -9,16 +9,10 @@ RUN npm ci
 COPY . .
 
 # ============================================================
-# Stage 2: Builder — compile backend TS + build frontend
+# Stage 2: Builder — type-check the workspace and build frontend assets
 # ============================================================
 FROM dev AS builder
-# Build frontend (Vite -> dist/)
-RUN npx vite build
-# Build backend: compile TypeScript -> server-dist/
-# Override noEmit & composite from tsconfig.server.json
-RUN echo '{"extends":"./tsconfig.server.json","compilerOptions":{"noEmit":false,"composite":false,"outDir":"server-dist"}}' > tsconfig.build.json \
-    && npx tsc -p tsconfig.build.json \
-    && rm tsconfig.build.json
+RUN npm run build
 
 # ============================================================
 # Stage 3: Production — minimal runtime image
@@ -28,7 +22,8 @@ WORKDIR /app
 
 # Copy built artifacts and dependencies
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/server-dist ./server-dist
+COPY --from=builder /app/server ./server
+COPY --from=builder /app/shared ./shared
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 
@@ -40,4 +35,4 @@ ENV API_PORT=3001
 EXPOSE 3001 4173
 
 # Default command: start the trading API server
-CMD ["node", "server-dist/server/index.js"]
+CMD ["./node_modules/.bin/tsx", "server/index.ts"]

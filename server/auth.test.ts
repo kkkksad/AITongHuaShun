@@ -1,121 +1,187 @@
+import cookie from "@fastify/cookie";
+import rateLimit from "@fastify/rate-limit";
 import Fastify from "fastify";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
+  SessionStore,
+  hashPassword,
   parseAuthConfig,
   registerAuthRoutes,
-  signToken,
-  verifyCredentials,
-  verifyToken,
+  verifyPassword,
   type AuthConfig,
 } from "./auth";
 
-const config: AuthConfig = {
-  username: "local-admin",
-  password: "correct-horse-battery-staple",
-  jwtSecret: "0123456789abcdef0123456789abcdef",
-  tokenTtlSeconds: 3_600,
-};
+const rawPassword = "correct-horse-battery-staple";
+let passwordHash = "";
+
+beforeAll(async () => {
+  passwordHash = await hashPassword(rawPassword);
+});
+
+function createAuthConfig(overrides: Partial<AuthConfig> = {}): AuthConfig {
+  return {
+    username: "local-admin",
+    passwordHash,
+    sessionTtlSeconds: 3_600,
+    cookieSecure: false,
+    maxSessions: 3,
+    loginRateLimitMax: 5,
+    ...overrides,
+  };
+}
 
 describe("auth configuration", () => {
-  it("rejects missing or weak credentials", () => {
+  it("rejects missing or malformed password hashes", () => {
     expect(() => parseAuthConfig({})).toThrow();
     expect(() =>
       parseAuthConfig({
         AUTH_USERNAME: "admin",
-        AUTH_PASSWORD: "short",
-        JWT_SECRET: "short",
+        AUTH_PASSWORD_HASH: "plaintext-password",
       }),
     ).toThrow();
   });
 
-  it("parses explicit secure local configuration", () => {
+  it("parses explicit session security configuration", () => {
     expect(
       parseAuthConfig({
-        AUTH_USERNAME: config.username,
-        AUTH_PASSWORD: config.password,
-        JWT_SECRET: config.jwtSecret,
-        AUTH_TOKEN_TTL_SECONDS: "1800",
+        AUTH_USERNAME: "local-admin",
+        AUTH_PASSWORD_HASH: passwordHash,
+        AUTH_SESSION_TTL_SECONDS: "1800",
+        AUTH_COOKIE_SECURE: "true",
+        AUTH_MAX_SESSIONS: "2",
+        AUTH_LOGIN_RATE_LIMIT_MAX: "4",
       }),
-    ).toEqual({ ...config, tokenTtlSeconds: 1_800 });
+    ).toEqual({
+      username: "local-admin",
+      passwordHash,
+      sessionTtlSeconds: 1_800,
+      cookieSecure: true,
+      maxSessions: 2,
+      loginRateLimitMax: 4,
+    });
   });
 });
 
-describe("auth tokens", () => {
-  it("signs and verifies a token with explicit configuration", () => {
-    const token = signToken(
-      { sub: config.username, role: "admin" },
-      config,
-      1_000,
-    );
-    expect(verifyToken(token, config, 1_001)).toMatchObject({
-      sub: config.username,
-      role: "admin",
-      iat: 1_000,
-      exp: 4_600,
+describe("password hashing", () => {
+  it("stores a scrypt hash instead of the raw password", async () => {
+    expect(passwordHash).toMatch(/^scrypt\$16384\$8\$1\$/);
+    expect(passwordHash).not.toContain(rawPassword);
+    expect(await verifyPassword(rawPassword, passwordHash)).toBe(true);
+  });
+
+  it("rejects wrong passwords and malformed hashes", async () => {
+    expect(await verifyPassword("wrong-password", passwordHash)).toBe(false);
+    expect(await verifyPassword(rawPassword, "not-a-password-hash")).toBe(false);
+  });
+});
+
+describe("server sessions", () => {
+  it("creates, verifies, expires, and revokes opaque sessions", () => {
+    let now = 1_000_000;
+    const sessions = new SessionStore({
+      ttlSeconds: 60,
+      maxSessions: 2,
+      now: () => now,
     });
+
+    const first = sessions.create("local-admin", "admin");
+    expect(first.token).toHaveLength(43);
+    expect(sessions.verify(first.token)).toMatchObject({
+      username: "local-admin",
+      role: "admin",
+      csrfToken: first.csrfToken,
+      expiresAt: 1_060_000,
+    });
+
+    sessions.revoke(first.token);
+    expect(sessions.verify(first.token)).toBeNull();
+
+    const expiring = sessions.create("local-admin", "admin");
+    now = 1_060_001;
+    expect(sessions.verify(expiring.token)).toBeNull();
   });
 
-  it("rejects expired and tampered tokens", () => {
-    const token = signToken(
-      { sub: config.username, role: "admin" },
-      config,
-      1_000,
-    );
-    expect(verifyToken(token, config, 4_600)).toBeNull();
-    expect(verifyToken(`${token}tampered`, config, 1_001)).toBeNull();
-  });
+  it("evicts the oldest session when the per-user limit is reached", () => {
+    let now = 1_000_000;
+    const sessions = new SessionStore({
+      ttlSeconds: 3_600,
+      maxSessions: 2,
+      now: () => now,
+    });
+    const first = sessions.create("local-admin", "admin");
+    now += 1;
+    const second = sessions.create("local-admin", "admin");
+    now += 1;
+    const third = sessions.create("local-admin", "admin");
 
-  it("compares both username and password", () => {
-    expect(
-      verifyCredentials(config.username, config.password, config),
-    ).toBe(true);
-    expect(
-      verifyCredentials("wrong-user", config.password, config),
-    ).toBe(false);
-    expect(
-      verifyCredentials(config.username, "wrong-password", config),
-    ).toBe(false);
+    expect(sessions.verify(first.token)).toBeNull();
+    expect(sessions.verify(second.token)).not.toBeNull();
+    expect(sessions.verify(third.token)).not.toBeNull();
   });
 });
 
 describe("auth routes", () => {
-  it("logs in and verifies a bearer token", async () => {
+  it("uses an HttpOnly cookie and revokes it on CSRF-protected logout", async () => {
     const app = Fastify();
-    registerAuthRoutes(app, config);
+    await app.register(cookie);
+    await app.register(rateLimit);
+    const sessions = new SessionStore({ ttlSeconds: 3_600, maxSessions: 3 });
+    registerAuthRoutes(app, createAuthConfig(), sessions);
 
     const rejected = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: {
-        username: config.username,
-        password: "wrong-password",
-      },
+      payload: { username: "local-admin", password: "wrong-password" },
     });
     expect(rejected.statusCode).toBe(401);
 
     const login = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: {
-        username: config.username,
-        password: config.password,
-      },
+      payload: { username: "local-admin", password: rawPassword },
     });
     expect(login.statusCode).toBe(200);
-    const body = login.json<{ token: string; expiresIn: number }>();
-    expect(body.expiresIn).toBe(config.tokenTtlSeconds);
+    expect(login.json()).not.toHaveProperty("token");
+    const csrfToken = login.json<{ csrfToken: string }>().csrfToken;
+    const setCookie = String(login.headers["set-cookie"]);
+    expect(setCookie).toContain("kairos_session=");
+    expect(setCookie).toContain("HttpOnly");
+    expect(setCookie).toContain("SameSite=Strict");
+    const sessionCookie = setCookie.split(";")[0];
 
     const verified = await app.inject({
       method: "GET",
-      url: "/api/auth/verify",
-      headers: { authorization: `Bearer ${body.token}` },
+      url: "/api/auth/session",
+      headers: { cookie: sessionCookie },
     });
     expect(verified.statusCode).toBe(200);
     expect(verified.json()).toMatchObject({
-      valid: true,
-      user: { username: config.username, role: "admin" },
+      authenticated: true,
+      csrfToken,
+      user: { username: "local-admin", role: "admin" },
     });
 
+    const missingCsrf = await app.inject({
+      method: "POST",
+      url: "/api/auth/logout",
+      headers: { cookie: sessionCookie },
+    });
+    expect(missingCsrf.statusCode).toBe(403);
+
+    const logout = await app.inject({
+      method: "POST",
+      url: "/api/auth/logout",
+      headers: { cookie: sessionCookie, "x-csrf-token": csrfToken },
+    });
+    expect(logout.statusCode).toBe(200);
+    expect(String(logout.headers["set-cookie"])).toContain("Max-Age=0");
+
+    const afterLogout = await app.inject({
+      method: "GET",
+      url: "/api/auth/session",
+      headers: { cookie: sessionCookie },
+    });
+    expect(afterLogout.statusCode).toBe(401);
     await app.close();
   });
 });

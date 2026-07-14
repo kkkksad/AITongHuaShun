@@ -35,8 +35,8 @@ export const translations = {
     "sidebar.note.offline": "后端未连接，页面保留静态研究数据作为降级展示。",
     "profile.name": "Research Desk",
     "profile.role": "本地工作区",
-    "profile.auth.enabled": "已登录 · 本地保护",
-    "profile.auth.local": "本地未保护模式",
+    "profile.auth.enabled": "已登录 · 服务器会话",
+    "profile.auth.local": "测试未保护模式",
     "auth.logout": "退出登录",
 
     "search.placeholder": "搜索标的或策略",
@@ -162,8 +162,8 @@ export const translations = {
       "Backend disconnected. Static research data shown as fallback.",
     "profile.name": "Research Desk",
     "profile.role": "Local Workspace",
-    "profile.auth.enabled": "Signed in · Local protected",
-    "profile.auth.local": "Local unprotected mode",
+    "profile.auth.enabled": "Signed in · Server session",
+    "profile.auth.local": "Unprotected test mode",
     "auth.logout": "Log out",
 
     "search.placeholder": "Search symbols or strategies",

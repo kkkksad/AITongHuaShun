@@ -45,7 +45,7 @@ server/
   risk/          风险规则
   store/         内存与本地 JSON 交易状态
   contracts/     行情和交易仓储适配器契约
-  auth.ts        未装配的显式配置认证原型
+  auth.ts        scrypt 密码验证、可撤销会话、Cookie 与 CSRF
   app.ts         Fastify 插件、路由和事件装配
   config.ts      Zod 环境变量校验
   index.ts       服务进程入口
@@ -64,18 +64,19 @@ shared/
 - `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都不是未来数据库模型的替代品。
 - `shared/` 只保存跨进程契约，不包含浏览器或 Node.js 运行时副作用。
 - 行情读取和订单执行保持为不同模块与未来不同权限域。
-- `server/auth.ts` 当前不由 `app.ts` 注册；未来启用必须显式注入账号、密码和至少 32 字符的密钥，并为真实执行使用独立身份提供商和会话策略。
+- `server/auth.ts` 由 `app.ts` 默认注册；浏览器只能通过 `HttpOnly` Cookie 使用服务端会话，业务 API、指标、文档和 WebSocket 不得建立匿名旁路。当前内存会话只支持单实例；真实执行仍必须使用独立身份提供商和权限域。
 
 ## 运行时数据流
 
-1. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
-2. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
-3. Fastify 将行情通过 `/ws` 广播给 React。
-4. React 通过 `POST /api/orders` 提交带客户端幂等键的模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
-5. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
-6. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
-7. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
-8. 新账户、持仓和订单状态再次通过 WebSocket 推送。
+1. React 启动时验证服务端会话；未登录时只渲染登录页，不启动业务 REST 或 WebSocket。
+2. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
+3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
+4. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
+5. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
+6. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
+7. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
+8. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
+9. 新账户、持仓和订单状态再次通过已认证 WebSocket 推送。
 
 Fastify 使用 Helmet 设置基础安全响应头，并使用 Rate Limit 对 HTTP 请求进行全局限流。统一错误处理必须保留插件产生的 4xx 状态，不能把 429 改写为 500。
 Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabilities` 声明只读行情与纸面执行边界。

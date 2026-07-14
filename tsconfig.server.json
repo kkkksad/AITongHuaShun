@@ -13,5 +13,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["server", "shared"]
+  "include": ["server", "shared", "scripts/setup-auth.ts"]
 }

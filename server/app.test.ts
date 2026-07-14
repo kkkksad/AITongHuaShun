@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildTradingApp } from "./app";
+import { hashPassword } from "./auth";
 import { createTestConfig } from "./test/testConfig";
 
 describe("trading API", () => {
@@ -58,7 +59,7 @@ describe("trading API", () => {
       },
       authentication: {
         enabled: false,
-        mode: "local-unprotected",
+        mode: "test-unprotected",
         defaultCredentials: false,
       },
       researchData: {
@@ -72,57 +73,118 @@ describe("trading API", () => {
     expect(response.json().openApi).toBe("/documentation/json");
   });
 
-  it("protects API routes when local auth is enabled", async () => {
+  it("protects APIs, metrics, docs, and mutations with a server session", async () => {
+    const password = "correct-horse-battery-staple";
     const authApp = await buildTradingApp({
       config: createTestConfig({
         AUTH_ENABLED: true,
         AUTH_USERNAME: "local-admin",
-        AUTH_PASSWORD: "correct-horse-battery-staple",
-        JWT_SECRET: "0123456789abcdef0123456789abcdef",
+        AUTH_PASSWORD_HASH: await hashPassword(password),
       }),
       startMarket: false,
     });
 
     try {
-      const publicCapabilities = await authApp.inject({
-        method: "GET",
-        url: "/api/capabilities",
-      });
-      expect(publicCapabilities.statusCode).toBe(200);
-      expect(publicCapabilities.json().authentication).toMatchObject({
-        enabled: true,
-        mode: "local-jwt",
-      });
-
-      const rejected = await authApp.inject({
-        method: "GET",
-        url: "/api/account",
-      });
-      expect(rejected.statusCode).toBe(401);
+      for (const url of [
+        "/api/capabilities",
+        "/api/account",
+        "/api/research/daily-review",
+        "/metrics",
+        "/documentation/json",
+      ]) {
+        const rejected = await authApp.inject({ method: "GET", url });
+        expect(rejected.statusCode, url).toBe(401);
+      }
 
       const login = await authApp.inject({
         method: "POST",
         url: "/api/auth/login",
         payload: {
           username: "local-admin",
-          password: "correct-horse-battery-staple",
+          password,
         },
       });
       expect(login.statusCode).toBe(200);
+      expect(login.json()).not.toHaveProperty("token");
+      const csrfToken = login.json<{ csrfToken: string }>().csrfToken;
+      const sessionCookie = String(login.headers["set-cookie"]).split(";")[0];
 
       const account = await authApp.inject({
         method: "GET",
         url: "/api/account",
-        headers: { authorization: `Bearer ${login.json().token}` },
+        headers: { cookie: sessionCookie },
       });
       expect(account.statusCode).toBe(200);
 
-      const orders = await authApp.inject({
+      const capabilities = await authApp.inject({
         method: "GET",
-        url: "/api/orders",
-        headers: { authorization: `Bearer ${login.json().token}` },
+        url: "/api/capabilities",
+        headers: { cookie: sessionCookie },
       });
-      expect(orders.statusCode).toBe(200);
+      expect(capabilities.statusCode).toBe(200);
+      expect(capabilities.json().authentication).toMatchObject({
+        enabled: true,
+        mode: "server-session",
+      });
+
+      const missingCsrf = await authApp.inject({
+        method: "POST",
+        url: "/api/trading/pause",
+        headers: { cookie: sessionCookie },
+      });
+      expect(missingCsrf.statusCode).toBe(403);
+
+      const paused = await authApp.inject({
+        method: "POST",
+        url: "/api/trading/pause",
+        headers: { cookie: sessionCookie, "x-csrf-token": csrfToken },
+      });
+      expect(paused.statusCode).toBe(200);
+
+      const logout = await authApp.inject({
+        method: "POST",
+        url: "/api/auth/logout",
+        headers: { cookie: sessionCookie, "x-csrf-token": csrfToken },
+      });
+      expect(logout.statusCode).toBe(200);
+
+      const afterLogout = await authApp.inject({
+        method: "GET",
+        url: "/api/account",
+        headers: { cookie: sessionCookie },
+      });
+      expect(afterLogout.statusCode).toBe(401);
+    } finally {
+      await authApp.close();
+    }
+  });
+
+  it("rate limits repeated login failures", async () => {
+    const authApp = await buildTradingApp({
+      config: createTestConfig({
+        AUTH_ENABLED: true,
+        AUTH_USERNAME: "local-admin",
+        AUTH_PASSWORD_HASH: await hashPassword("correct-horse-battery-staple"),
+        AUTH_LOGIN_RATE_LIMIT_MAX: 2,
+      }),
+      startMarket: false,
+    });
+
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await authApp.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          payload: { username: "local-admin", password: "wrong-password" },
+        });
+        expect(response.statusCode).toBe(401);
+      }
+      const limited = await authApp.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { username: "local-admin", password: "wrong-password" },
+      });
+      expect(limited.statusCode).toBe(429);
     } finally {
       await authApp.close();
     }

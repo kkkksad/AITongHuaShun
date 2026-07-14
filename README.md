@@ -16,6 +16,7 @@
 | 📋 交易策略 | 建仓计划、网格交易、定投策略（DCA） | ✅ |
 | 🔬 研究管线 | 策略学习、候选验证、审批流程 | ✅ |
 | 📡 系统监控 | Prometheus 指标端点、HTTP/WS/账户/订单指标 | ✅ |
+| 🔐 访问保护 | scrypt 密码、可撤销服务器会话、CSRF、安全登出 | ✅ |
 | 🌓 暗色主题 | CSS变量驱动、平滑过渡、减少动画偏好适配 | ✅ |
 | 🔌 行情对接 | 东方财富 + AkShare 行情桥接（只读） | ✅ |
 
@@ -36,6 +37,7 @@
 
 ```powershell
 npm install
+npm run auth:setup -- --username kjq  # 首次运行，记录终端显示的一次性初始密码
 npm run dev       # 同时启动 API 后端 (8787) 和前端 (4173)
 npm test          # 运行全部测试
 npm run build     # TypeScript 编译 + Vite 构建
@@ -82,6 +84,8 @@ npm run build     # TypeScript 编译 + Vite 构建
 ```
 
 ## 可用 API
+
+除 `/api/health`、登录和会话检查外，API、指标、文档与 WebSocket 都要求服务器会话；修改请求还要求 CSRF。单实例服务器部署见[部署说明](docs/operations/deployment.md)。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|

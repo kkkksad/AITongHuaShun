@@ -46,11 +46,11 @@ export interface CapabilitiesSnapshot {
   };
   credentials: {
     browserAllowed: false;
-    storage: "server-environment-only";
+    storage: "server-password-hash-only";
   };
   authentication: {
     enabled: boolean;
-    mode: "local-jwt" | "local-unprotected";
+    mode: "server-session" | "test-unprotected";
     defaultCredentials: false;
   };
   researchData: {
@@ -604,13 +604,17 @@ export interface AuthUser {
 }
 
 export interface LoginResponse {
-  token: string;
+  authenticated: true;
   expiresIn: number;
+  expiresAt: string;
+  csrfToken: string;
   user: AuthUser;
 }
 
 export interface AuthVerifyResponse {
-  valid: true;
+  authenticated: true;
+  expiresAt: string;
+  csrfToken: string;
   user: AuthUser;
 }
 
@@ -649,7 +653,8 @@ interface AccountResponse {
 
 const API_PROXY_MISS_HINT =
   "API 代理未命中：请求返回了前端 HTML。请确认使用 npm run dev 或 npm run dev:a-share 启动，且 4173 端口由 config/vite.app.config.js 提供；如果只启动前端，请设置 VITE_API_BASE_URL=http://127.0.0.1:8787。";
-const AUTH_TOKEN_STORAGE_KEY = "xuanshu.auth.token";
+export const AUTH_EXPIRED_EVENT = "kairos:auth-expired";
+let csrfToken: string | null = null;
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
@@ -703,6 +708,7 @@ export async function apiRequest<T>(
   try {
     response = await fetch(url, {
       ...init,
+      credentials: "include",
       headers: {
         Accept: "application/json",
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
@@ -735,34 +741,36 @@ export async function apiRequest<T>(
   }
 
   if (!response.ok) {
+    if (
+      response.status === 401 &&
+      path !== "/api/auth/login" &&
+      path !== "/api/auth/session"
+    ) {
+      notifyAuthExpired();
+    }
     throw new Error(getPayloadMessage(payload) ?? `请求失败：HTTP ${response.status}`);
   }
 
   return payload as T;
 }
 
-export function getStoredAuthToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-}
-
-export function setStoredAuthToken(token: string): void {
-  window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-}
-
-export function clearStoredAuthToken(): void {
-  window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+export function notifyAuthExpired(): void {
+  csrfToken = null;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  }
 }
 
 export async function authApiRequest<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const token = getStoredAuthToken();
+  const method = (init?.method ?? "GET").toUpperCase();
+  const needsCsrf = !["GET", "HEAD", "OPTIONS"].includes(method);
   return apiRequest<T>(path, {
     ...init,
     headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(needsCsrf && csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
       ...init?.headers,
     },
   });
@@ -773,26 +781,28 @@ export async function login(username: string, password: string): Promise<LoginRe
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
-  setStoredAuthToken(response.token);
+  csrfToken = response.csrfToken;
   return response;
 }
 
-export function verifyLogin(): Promise<AuthVerifyResponse> {
-  return authApiRequest<AuthVerifyResponse>("/api/auth/verify");
+export async function verifyLogin(): Promise<AuthVerifyResponse> {
+  const response = await apiRequest<AuthVerifyResponse>("/api/auth/session");
+  csrfToken = response.csrfToken;
+  return response;
 }
 
 export async function logout(): Promise<void> {
   try {
     await authApiRequest<{ message: string }>("/api/auth/logout", { method: "POST" });
   } finally {
-    clearStoredAuthToken();
+    csrfToken = null;
   }
 }
 
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   const [health, capabilities] = await Promise.all([
     apiRequest<HealthSnapshot>("/api/health"),
-    apiRequest<CapabilitiesSnapshot>("/api/capabilities"),
+    authApiRequest<CapabilitiesSnapshot>("/api/capabilities"),
   ]);
 
   return { health, capabilities };
@@ -896,11 +906,9 @@ export function fetchAuditEvents(limit = 100): Promise<AuditEvent[]> {
 
 export function getTradingSocketUrl(): string {
   const configured = import.meta.env.VITE_WS_URL;
-  const token = getStoredAuthToken();
 
   if (typeof configured === "string" && configured.trim()) {
     const explicitUrl = new URL(configured.trim(), window.location.origin);
-    if (token) explicitUrl.searchParams.set("token", token);
     return explicitUrl.toString();
   }
 
@@ -911,12 +919,10 @@ export function getTradingSocketUrl(): string {
     apiUrl.pathname = "/ws";
     apiUrl.search = "";
     apiUrl.hash = "";
-    if (token) apiUrl.searchParams.set("token", token);
     return apiUrl.toString();
   }
 
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const socketUrl = new URL(`${protocol}//${window.location.host}/ws`);
-  if (token) socketUrl.searchParams.set("token", token);
   return socketUrl.toString();
 }

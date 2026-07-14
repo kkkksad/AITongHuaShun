@@ -33,8 +33,8 @@
 - **东方财富只读行情原型** —— `EastMoneyMarketProvider` 可读取公开行情并拒绝 `live`，当前尚未接入主服务的 `MARKET_DATA_PROVIDER` 选择器。
 - **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
 - **同花顺模拟盘纸面适配器骨架** —— `TongHuaShunPaperAdapter` 只允许 `paper`/`sandbox`，接收行情注入后委托 `PaperBroker + RiskEngine` 完成模拟成交；拒绝 `live` 和 `tradingEnabled=true`，当前未装配到主服务，也不包含同花顺真实下单端点。
-- **可选本地登录保护** —— `AUTH_ENABLED=true` 时主 Fastify 服务注册 `/api/auth/*`，并用短期 HMAC 令牌保护 API；默认 `AUTH_ENABLED=false`，本地开发仍为未保护模式且没有默认凭据。
-- **认证感知前端连接** —— 前端先确认登录配置和用户状态，只有认证关闭或已登录后才拉取交易 bootstrap 并建立 WebSocket，避免登录页误报后端离线或产生未授权请求。
+- **强制服务端会话认证** —— 正常运行默认要求登录，密码配置只保存 `scrypt` 散列；浏览器使用可撤销的 `HttpOnly`、`SameSite=Strict` Cookie，会话有过期时间与数量上限，生产环境要求 HTTPS `Secure` Cookie。除最小健康检查和认证入口外，业务 API、指标、OpenAPI 与 WebSocket 都受保护。
+- **认证感知前端连接** —— 前端只有在服务端会话验证成功后才拉取交易 bootstrap 并建立 WebSocket；令牌不进入 `localStorage` 或 WebSocket URL，任意业务 API 401 或 WebSocket 1008 会立即返回登录页。修改请求额外携带会话级 CSRF，登出会服务端撤销会话。
 - **自优化与存储控制状态** —— `/api/research/self-optimization` 声明 paper-only 策略自优化输入、目标和有界本地研究缓存策略，默认只计划保存紧凑日线/特征，不保存无上限垃圾数据。
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
 - **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示成功率/胜率优先排名；排序同时约束交易次数、正收益和最大回撤，结果明确标注为研究/模拟，不代表真实收益。
@@ -45,7 +45,7 @@
 - **研究管线实时化** —— 研究管线页已从静态说明升级为读取策略排行榜、今日候选扫描和学习状态，并修复默认导出组件被命名懒加载误用导致的页面渲染异常。
 - **前端稳定性防护** —— 开发环境自动注销 PWA Service Worker 并清理缓存；REST 客户端会识别 API 代理误返回 HTML 的情况，WebSocket 默认支持同源代理和显式 `VITE_WS_URL`。
 - **连接状态诊断** —— 顶栏将 REST 后端连接、运行模式、行情源和 WebSocket 实时通道分开展示，避免 React 开发模式下短暂的 WebSocket 预关闭被误判为后端未连接或行情源回落到 mock。
-- **A 股链路健康检查** —— `npm run check:a-share` 可验证 Fastify API、AkShare 桥接、Vite 代理、指数行情、个股行情和 KAIROS 行情快照是否处于同一套正在运行的服务。
+- **A 股链路健康检查** —— `npm run check:a-share` 通过临时 Cookie 会话验证 Fastify API、AkShare 桥接、Vite 代理、指数行情、个股行情和受保护的 KAIROS 行情快照是否处于同一套正在运行的服务；密码只从安全提示或当前进程环境变量读取。
 - **纸面账户纯现金启动配置** —— `TRADING_STARTING_CASH` 控制新建本地模拟账户初始资金，`TRADING_SEED_PORTFOLIO=false` 可关闭默认演示持仓种子，用于从 10000 元纯现金开始做本地 paper 观察。
 - **大盘指数展示修正** —— 主要指数卡片在 AkShare 模式下显示指数成交额，市场页指数图表改为使用当前后端指数快照，不再把静态模拟分时图伪装成实时大盘走势。
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
@@ -64,6 +64,9 @@
 ## 可用接口
 
 ```text
+POST /api/auth/login
+GET  /api/auth/session
+POST /api/auth/logout
 GET  /api/health
 GET  /api/capabilities
 GET  /metrics                              (Prometheus 指标)
@@ -99,6 +102,21 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-14 required login and server session security
+npm test
+27 server test files passed
+564 server tests passed
+3 web test files passed
+12 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+Runtime: paper + akshare, authEnabled=true. Anonymous health returned 200; capabilities, account, daily review, metrics, and OpenAPI returned 401. Browser checks passed for invalid login, valid login, authenticated WebSocket, reload persistence, and server-side logout. The 390 x 844 mobile viewport had no horizontal overflow. Docker CLI was unavailable, so container build remains a deployment-host verification step.
+
+npm run check:a-share
+Authenticated Fastify API, AkShare Bridge, Vite API Proxy, A-share index quotes, stock quotes, and KAIROS market snapshot all passed; backend paper, provider akshare, 4 live index quotes.
+
 2026-07-14 cumulative cash reservation and daily paper review
 npm run test:server -- server/research/paperTradingPlan.test.ts server/research/dailyMarketReview.test.ts server/app.test.ts server/config.test.ts
 4 test files passed
@@ -359,7 +377,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - A 股 paper 撮合遵守一手 100 股和 T+1 卖出限制；同日买入的 `t1LockedQuantity` 只会在后续交易日释放为可卖数量。
 - 本地 paper 自动执行器默认关闭；开启后只在 `MARKET_MODE=paper` 与 `REAL_TRADING_ENABLED=false` 下运行，默认限制在 A 股交易时段，并只向本地 `PaperBroker` 提交模拟订单。
 - 当前没有事务型数据库、真实账户连接或真实券商执行。
-- 登录保护默认关闭；开启 `AUTH_ENABLED=true` 时必须显式提供账号、至少 12 位密码和至少 32 位 `JWT_SECRET`，不存在默认账号、默认密码或默认 JWT 密钥。
+- 登录保护默认强制开启，必须显式提供账号与有效 `scrypt` 密码散列；不存在默认账号或默认密码。`AUTH_ENABLED=false` 只允许测试环境。当前会话保存在单个 Fastify 进程内，服务重启会要求重新登录，多实例部署前需要共享会话存储。
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。
 - AkShare 模式必须使用 `MARKET_MODE=paper`，真实行情不改变订单执行权限。
 - 当前没有任何真实订单执行代码。

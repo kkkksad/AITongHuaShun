@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode, lazy, Suspense } from "react";
+import { useEffect, useMemo, useState, type ReactNode, lazy, Suspense } from "react";
 import { Activity, CircleAlert, Database, Gauge, TrendingUp } from "lucide-react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppShell, type ViewId } from "./components/AppShell";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PwaInstallPrompt, OfflineBanner } from "./components/PwaInstallPrompt";
 import { LazyFallback } from "./components/Skeleton";
+import { LoginPage } from "./components/LoginPage";
 import { TradingStrategies } from "./components/TradingStrategies";
 import { SystemMonitor } from "./components/SystemMonitor";
 import { strategies } from "./data/mockData";
 import { runBacktest } from "./lib/backtest";
 import {
-  fetchSystemStatus,
-  login,
+  AUTH_EXPIRED_EVENT,
   logout,
   verifyLogin,
   type AuthUser,
@@ -60,75 +60,6 @@ function percent(value: number): string {
   return (value >= 0 ? "+" : "") + (value * 100).toFixed(2) + "%";
 }
 
-function LoginGate({
-  onAuthenticated,
-}: {
-  onAuthenticated: (user: AuthUser) => void;
-}) {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setPending(true);
-    setError(null);
-    try {
-      const response = await login(username, password);
-      onAuthenticated(response.user);
-    } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "登录失败");
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <div className="login-page">
-      <form className="login-card" onSubmit={handleSubmit}>
-        <div className="brand login-brand">
-          <div className="brand-mark" aria-hidden="true">
-            <Database size={21} />
-          </div>
-          <div>
-            <strong>玄枢 Quant</strong>
-            <span>AI A股研究系统</span>
-          </div>
-        </div>
-        <div>
-          <span className="section-kicker">本地登录</span>
-          <h1>进入研究工作台</h1>
-          <p>后端已开启登录保护。登录只保护本地 API，不代表真实券商交易权限。</p>
-        </div>
-        <label>
-          <span>用户名</span>
-          <input
-            autoComplete="username"
-            onChange={(event) => setUsername(event.target.value)}
-            required
-            value={username}
-          />
-        </label>
-        <label>
-          <span>密码</span>
-          <input
-            autoComplete="current-password"
-            onChange={(event) => setPassword(event.target.value)}
-            required
-            type="password"
-            value={password}
-          />
-        </label>
-        {error && <p className="login-error">{error}</p>}
-        <button className="primary-button full-width" disabled={pending} type="submit">
-          {pending ? "登录中..." : "登录"}
-        </button>
-      </form>
-    </div>
-  );
-}
-
 const accountTabs: { id: AccountTab; label: string }[] = [
   { id: "portfolio", label: "持仓分析" },
   { id: "trading", label: "交易下单" },
@@ -153,11 +84,10 @@ const pathViews = Object.fromEntries(
 ) as Record<string, ViewId>;
 
 function App() {
-  const [authRequired, setAuthRequired] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const trading = useTradingBackend({
-    enabled: authChecked && (!authRequired || Boolean(authUser)),
+    enabled: authChecked && Boolean(authUser),
   });
   const location = useLocation();
   const navigate = useNavigate();
@@ -201,23 +131,11 @@ function App() {
     let cancelled = false;
     async function checkAuth() {
       try {
-        const status = await fetchSystemStatus();
-        const enabled = status.capabilities.authentication.enabled;
-        if (cancelled) return;
-        setAuthRequired(enabled);
-        if (!enabled) {
-          setAuthChecked(true);
-          return;
-        }
-        try {
-          const verified = await verifyLogin();
-          if (!cancelled) setAuthUser(verified.user);
-        } catch {
-          if (!cancelled) setAuthUser(null);
-        } finally {
-          if (!cancelled) setAuthChecked(true);
-        }
+        const verified = await verifyLogin();
+        if (!cancelled) setAuthUser(verified.user);
       } catch {
+        if (!cancelled) setAuthUser(null);
+      } finally {
         if (!cancelled) setAuthChecked(true);
       }
     }
@@ -227,23 +145,32 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleAuthExpired = () => setAuthUser(null);
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
+  }, []);
+
   async function handleLogout() {
-    await logout();
-    setAuthUser(null);
+    try {
+      await logout();
+    } finally {
+      setAuthUser(null);
+    }
   }
 
   useEffect(() => {
-    if (authRequired && authUser) {
+    if (authUser) {
       void trading.refresh().catch(() => undefined);
     }
-  }, [authRequired, authUser, trading.refresh]);
+  }, [authUser, trading.refresh]);
 
   if (!authChecked) {
     return <LazyFallback />;
   }
 
-  if (authRequired && !authUser) {
-    return <LoginGate onAuthenticated={setAuthUser} />;
+  if (!authUser) {
+    return <LoginPage onAuthenticated={setAuthUser} />;
   }
 
   const overview = (
@@ -532,7 +459,7 @@ function App() {
       <PwaInstallPrompt />
       <AppShell
         activeView={activeView}
-        authEnabled={authRequired}
+        authEnabled
         authUser={authUser?.username}
         connectionState={trading.connectionState}
         marketDataProvider={trading.marketDataProvider}

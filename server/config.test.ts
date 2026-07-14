@@ -22,19 +22,28 @@ const envSchema = z.object({
     .transform((value) => value === "true"),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
-  AUTH_ENABLED: z
+  TRUST_PROXY: z
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  AUTH_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
   AUTH_USERNAME: z.string().default(""),
-  AUTH_PASSWORD: z.string().default(""),
-  JWT_SECRET: z.string().default(""),
-  AUTH_TOKEN_TTL_SECONDS: z.coerce
+  AUTH_PASSWORD_HASH: z.string().default(""),
+  AUTH_SESSION_TTL_SECONDS: z.coerce
     .number()
     .int()
     .min(300)
     .max(86_400)
-    .default(3_600),
+    .default(28_800),
+  AUTH_COOKIE_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  AUTH_MAX_SESSIONS: z.coerce.number().int().min(1).max(20).default(3),
+  AUTH_LOGIN_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(20).default(5),
   MARKET_MODE: z.enum(["mock", "paper", "live"]).default("mock"),
   MARKET_DATA_PROVIDER: z.enum(["mock", "akshare"]).default("mock"),
   MARKET_TICK_MS: z.coerce.number().int().min(250).default(1000),
@@ -152,8 +161,11 @@ describe("ServerConfig", () => {
       expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(1);
       expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(4);
       expect(config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0.1);
-      expect(config.AUTH_ENABLED).toBe(false);
-      expect(config.AUTH_TOKEN_TTL_SECONDS).toBe(3_600);
+      expect(config.AUTH_ENABLED).toBe(true);
+      expect(config.AUTH_SESSION_TTL_SECONDS).toBe(28_800);
+      expect(config.AUTH_COOKIE_SECURE).toBe(false);
+      expect(config.AUTH_MAX_SESSIONS).toBe(3);
+      expect(config.AUTH_LOGIN_RATE_LIMIT_MAX).toBe(5);
       expect(config.STORE_BACKEND).toBe("memory");
       expect(config.DATA_DIR).toBe("./data");
       expect(config.TRADING_HISTORY_RETENTION_DAYS).toBe(7);
@@ -314,16 +326,23 @@ describe("ServerConfig", () => {
     });
 
     it("respects local auth settings", () => {
+      const passwordHash = `scrypt$16384$8$1$${"A".repeat(22)}$${"B".repeat(86)}`;
       const config = parse({
         AUTH_ENABLED: "true",
         AUTH_USERNAME: "local-admin",
-        AUTH_PASSWORD: "correct-horse-battery-staple",
-        JWT_SECRET: "0123456789abcdef0123456789abcdef",
-        AUTH_TOKEN_TTL_SECONDS: "1800",
+        AUTH_PASSWORD_HASH: passwordHash,
+        AUTH_SESSION_TTL_SECONDS: "1800",
+        AUTH_COOKIE_SECURE: "true",
+        AUTH_MAX_SESSIONS: "2",
+        AUTH_LOGIN_RATE_LIMIT_MAX: "4",
       });
       expect(config.AUTH_ENABLED).toBe(true);
       expect(config.AUTH_USERNAME).toBe("local-admin");
-      expect(config.AUTH_TOKEN_TTL_SECONDS).toBe(1_800);
+      expect(config.AUTH_PASSWORD_HASH).toBe(passwordHash);
+      expect(config.AUTH_SESSION_TTL_SECONDS).toBe(1_800);
+      expect(config.AUTH_COOKIE_SECURE).toBe(true);
+      expect(config.AUTH_MAX_SESSIONS).toBe(2);
+      expect(config.AUTH_LOGIN_RATE_LIMIT_MAX).toBe(4);
     });
 
     it("respects research cache limits", () => {
@@ -610,14 +629,39 @@ describe("ServerConfig", () => {
       expect(typeof getConfig).toBe("function");
     });
 
-    it("getConfig returns an object with expected shape", async () => {
-      const { getConfig } = await import("./config");
-      const config = getConfig();
+    it("parseServerConfig returns an object with expected shape in test mode", async () => {
+      const { parseServerConfig } = await import("./config");
+      const config = parseServerConfig({ NODE_ENV: "test", AUTH_ENABLED: "false" });
       expect(typeof config).toBe("object");
       expect(typeof config.API_HOST).toBe("string");
       expect(typeof config.API_PORT).toBe("number");
       expect(typeof config.MARKET_MODE).toBe("string");
       expect(typeof config.REAL_TRADING_ENABLED).toBe("boolean");
+    });
+
+    it("fails closed without credentials and requires secure cookies in production", async () => {
+      const { parseServerConfig } = await import("./config");
+      const passwordHash = `scrypt$16384$8$1$${"A".repeat(22)}$${"B".repeat(86)}`;
+      expect(() => parseServerConfig({})).toThrow(/AUTH_USERNAME/);
+      expect(() =>
+        parseServerConfig({ NODE_ENV: "development", AUTH_ENABLED: "false" }),
+      ).toThrow(/only allowed/);
+      expect(() =>
+        parseServerConfig({
+          NODE_ENV: "production",
+          AUTH_USERNAME: "admin",
+          AUTH_PASSWORD_HASH: passwordHash,
+          AUTH_COOKIE_SECURE: "false",
+        }),
+      ).toThrow(/AUTH_COOKIE_SECURE/);
+      expect(
+        parseServerConfig({
+          NODE_ENV: "production",
+          AUTH_USERNAME: "admin",
+          AUTH_PASSWORD_HASH: passwordHash,
+          AUTH_COOKIE_SECURE: "true",
+        }).AUTH_ENABLED,
+      ).toBe(true);
     });
   });
 });
