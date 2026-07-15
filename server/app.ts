@@ -41,6 +41,8 @@ import {
   exportOrdersToCsv,
 } from "./monitoring/exportUtils";
 import type { ExportFormat } from "./monitoring/exportUtils";
+import { PaperPlanNotifier } from "./notifications/paperPlanNotifier";
+import { WxPusherClient } from "./notifications/wxPusherClient";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
@@ -346,6 +348,17 @@ export async function buildTradingApp(
     hub.broadcast({ type: "order.updated", data: order });
   });
 
+  const wxPusherSender = options.config.WXPUSHER_ENABLED
+    ? new WxPusherClient({
+        spt: options.config.WXPUSHER_SPT,
+        timeoutMs: options.config.WXPUSHER_TIMEOUT_MS,
+      })
+    : undefined;
+  const paperPlanNotifier = new PaperPlanNotifier({
+    enabled: options.config.WXPUSHER_ENABLED,
+    sender: wxPusherSender,
+    store: system.store,
+  });
   const paperAutoExecutor = new PaperAutoExecutor({
     system,
     config: options.config,
@@ -354,6 +367,7 @@ export async function buildTradingApp(
     tradeWindowOnly: options.config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY,
     maxOrdersPerRun: options.config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN,
     maxDailyOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
+    planNotifier: paperPlanNotifier,
     onOrder: (order, request) => {
       recordOrder(request.side, order.status);
       broadcastPositions(system.market.getSnapshot());

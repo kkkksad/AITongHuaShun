@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTradingApp } from "./app";
 import { hashPassword } from "./auth";
 import { createTestConfig } from "./test/testConfig";
@@ -743,6 +743,112 @@ describe("trading API", () => {
       ]));
     } finally {
       await paperApp.close();
+    }
+  });
+
+  it("sends a deduplicated WxPusher reminder for an actionable local paper plan", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      code: 1000,
+      msg: "processed",
+      success: true,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const paperApp = await buildTradingApp({
+      config: createTestConfig({
+        MARKET_MODE: "paper",
+        TRADING_STARTING_CASH: 10_000,
+        TRADING_SEED_PORTFOLIO: false,
+        MAX_ORDER_NOTIONAL: 6_000,
+        MAX_POSITION_WEIGHT: 1,
+        PAPER_AUTO_EXECUTION_ENABLED: true,
+        PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: false,
+        PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: 1,
+        PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: 2,
+        WXPUSHER_ENABLED: true,
+        WXPUSHER_SPT: "SPT_testToken123",
+      }),
+      startMarket: false,
+    });
+
+    try {
+      const firstRun = await paperApp.inject({
+        method: "POST",
+        url: "/api/trading/auto-paper-execution/run",
+      });
+      const secondRun = await paperApp.inject({
+        method: "POST",
+        url: "/api/trading/auto-paper-execution/run",
+      });
+      const audit = await paperApp.inject({
+        method: "GET",
+        url: "/api/audit?limit=50",
+      });
+
+      expect(firstRun.json().run.submittedOrders).toHaveLength(1);
+      expect(secondRun.statusCode).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(audit.json()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ action: "wxpusher.paper-plan.sent" }),
+      ]));
+      expect(audit.body).not.toContain("SPT_testToken123");
+    } finally {
+      await paperApp.close();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps local paper execution running when WxPusher rejects a reminder", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      code: 1001,
+      msg: "rejected",
+      success: false,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const paperApp = await buildTradingApp({
+      config: createTestConfig({
+        MARKET_MODE: "paper",
+        TRADING_STARTING_CASH: 10_000,
+        TRADING_SEED_PORTFOLIO: false,
+        MAX_ORDER_NOTIONAL: 6_000,
+        MAX_POSITION_WEIGHT: 1,
+        PAPER_AUTO_EXECUTION_ENABLED: true,
+        PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: false,
+        PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: 1,
+        PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: 2,
+        WXPUSHER_ENABLED: true,
+        WXPUSHER_SPT: "SPT_testToken123",
+      }),
+      startMarket: false,
+    });
+
+    try {
+      const run = await paperApp.inject({
+        method: "POST",
+        url: "/api/trading/auto-paper-execution/run",
+      });
+      const audit = await paperApp.inject({
+        method: "GET",
+        url: "/api/audit?limit=50",
+      });
+
+      expect(run.json().run.submittedOrders).toHaveLength(1);
+      expect(run.json().run.submittedOrders[0].status).toBe("filled");
+      expect(audit.json()).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          action: "wxpusher.paper-plan.failed",
+          data: expect.objectContaining({ reason: "provider-request-failed" }),
+        }),
+      ]));
+      expect(audit.body).not.toContain("SPT_testToken123");
+    } finally {
+      await paperApp.close();
+      vi.unstubAllGlobals();
     }
   });
 

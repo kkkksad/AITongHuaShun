@@ -1,6 +1,7 @@
 import type { OrderRecord, OrderRequest } from "../../shared/trading";
 import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
+import type { PaperPlanNotifier } from "../notifications/paperPlanNotifier";
 import { buildCurrentPaperTradingPlan } from "../research/paperTradingPlanService";
 import type {
   PaperTradingOperation,
@@ -78,6 +79,7 @@ export interface PaperAutoExecutorOptions {
   maxDailyOrders: number;
   clock?: () => Date;
   onOrder?: (order: OrderRecord, request: OrderRequest) => void;
+  planNotifier?: Pick<PaperPlanNotifier, "notify">;
 }
 
 const HISTORY_LIMIT = 30;
@@ -219,6 +221,7 @@ export class PaperAutoExecutor {
         system: this.options.system,
         config: this.options.config,
       });
+      await this.options.planNotifier?.notify(plan);
 
       const todaySubmitted = this.countSubmittedOrders(tradingDate);
       let remainingDailyOrders = Math.max(0, this.options.maxDailyOrders - todaySubmitted);

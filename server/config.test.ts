@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 // and then dynamically re-evaluate. For simplicity, we test the schema directly.
 
 import { z } from "zod";
+import { parseServerConfig } from "./config";
 
 // Replicate the envSchema from config.ts for testing (without dotenv side effects)
 const envSchema = z.object({
@@ -663,5 +664,47 @@ describe("ServerConfig", () => {
         }).AUTH_ENABLED,
       ).toBe(true);
     });
+  });
+});
+
+describe("WxPusher configuration", () => {
+  const baseEnvironment = {
+    NODE_ENV: "test",
+    AUTH_ENABLED: "false",
+  };
+
+  it("keeps WxPusher disabled and credential-free by default", () => {
+    const config = parseServerConfig(baseEnvironment);
+
+    expect(config.WXPUSHER_ENABLED).toBe(false);
+    expect(config.WXPUSHER_SPT).toBe("");
+    expect(config.WXPUSHER_TIMEOUT_MS).toBe(5_000);
+  });
+
+  it("accepts an enabled SPT channel with a bounded timeout", () => {
+    const config = parseServerConfig({
+      ...baseEnvironment,
+      WXPUSHER_ENABLED: "true",
+      WXPUSHER_SPT: "SPT_testToken123",
+      WXPUSHER_TIMEOUT_MS: "8000",
+    });
+
+    expect(config.WXPUSHER_ENABLED).toBe(true);
+    expect(config.WXPUSHER_SPT).toBe("SPT_testToken123");
+    expect(config.WXPUSHER_TIMEOUT_MS).toBe(8_000);
+  });
+
+  it("rejects an enabled channel without an SPT credential", () => {
+    expect(() => parseServerConfig({
+      ...baseEnvironment,
+      WXPUSHER_ENABLED: "true",
+    })).toThrow("WXPUSHER_ENABLED=true requires a valid WXPUSHER_SPT");
+  });
+
+  it("rejects an excessive provider timeout", () => {
+    expect(() => parseServerConfig({
+      ...baseEnvironment,
+      WXPUSHER_TIMEOUT_MS: "60000",
+    })).toThrow();
   });
 });

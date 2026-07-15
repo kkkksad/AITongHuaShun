@@ -86,6 +86,16 @@ PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS=4
 PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO=0.10
 ```
 
+需要在可执行 paper 计划提交前发送 WxPusher 私人提醒时，在未提交的 `.env.local` 增加：
+
+```text
+WXPUSHER_ENABLED=true
+WXPUSHER_SPT=SPT_从WxPusher重置后取得的新值
+WXPUSHER_TIMEOUT_MS=5000
+```
+
+`WXPUSHER_SPT` 只允许存在于服务端 `.env.local`，不得写入源码、日志、提交记录或 `VITE_*` 变量。系统仅对包含 `paper-buy-plan` / `paper-sell-plan` 的计划发送提醒；同一交易日相同标的、动作、数量和参考价只成功发送一次。提供方失败会写入 `wxpusher.paper-plan.failed` 审计，但不会改变本地 paper 风控或授权真实下单。微信 ClawBot 渠道每次激活后 24 小时内最多接收 10 条，额度用尽或失效后需要在微信中向 ClawBot 回复任意内容重新激活。
+
 该自动执行器只会把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`，不会连接同花顺、中信、SuperMind 或任何真实券商。盘外启动时会保持等待，直到 A 股交易时段才自动运行。默认每轮最多 1 笔、每天最多 4 笔，当日笔数从持久化自动订单统计，服务重启不会重置上限；买入计划会累计预留成交额、滑点和手续费，并保留当前 paper 权益的 10% 作为现金缓冲。最新现金不足时会直接跳过，不创建 rejected 订单。
 
 `TRADING_SEED_PORTFOLIO=true` 是默认演示模式，会在新账户中预置样例持仓；用于从下一个交易日开始观察或纸面买卖时，应设为 `false`，再停止旧服务并重新启动。若使用 `STORE_BACKEND=json`，还需要删除或移走 `DATA_DIR` 下已有的 `paper-trading-state.json`，否则系统会恢复旧账户状态而不是重新创建 10000 元纯现金账户。

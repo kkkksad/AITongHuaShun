@@ -91,6 +91,17 @@ const envSchema = z.object({
     .min(0)
     .max(0.5)
     .default(0.1),
+  WXPUSHER_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  WXPUSHER_SPT: z.string().default(""),
+  WXPUSHER_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(30_000)
+    .default(5_000),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
   TRADING_HISTORY_RETENTION_DAYS: z.coerce
@@ -135,6 +146,12 @@ export function parseServerConfig(environment: NodeJS.ProcessEnv) {
     if (environment.NODE_ENV === "production" && !config.AUTH_COOKIE_SECURE) {
       throw new Error("Production authentication requires AUTH_COOKIE_SECURE=true and HTTPS");
     }
+  }
+  if (
+    config.WXPUSHER_ENABLED &&
+    !/^SPT_[A-Za-z0-9]{8,}$/.test(config.WXPUSHER_SPT)
+  ) {
+    throw new Error("WXPUSHER_ENABLED=true requires a valid WXPUSHER_SPT");
   }
   return config;
 }
