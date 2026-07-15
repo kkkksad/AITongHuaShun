@@ -10,6 +10,8 @@ import { buildMarketRegimeResearch } from "./marketRegimeResearch";
 import type { MarketRegimeResearchReport } from "./marketRegimeResearch";
 import { buildPaperTradingPlan } from "./paperTradingPlan";
 import type { PaperTradingPlan } from "./paperTradingPlan";
+import { buildRealResearchDataFeed } from "./realResearchData";
+import type { RealResearchDataFeed } from "./realResearchData";
 import { buildStrategyLeaderboard } from "./strategyLeaderboard";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 import type { InMemoryResearchStore } from "./researchStore";
@@ -20,6 +22,7 @@ export interface CurrentPaperTradingPlanResult {
   candidates: DailyCandidateReport;
   qualityStocks: DailyQualityStockReport;
   marketRegimeResearch: MarketRegimeResearchReport;
+  realResearchDataFeed: RealResearchDataFeed;
   adaptiveRouting: AdaptiveStrategyRouting;
 }
 
@@ -34,7 +37,13 @@ export async function buildCurrentPaperTradingPlan(input: {
   const snapshot = input.system.market.getSnapshot();
   const account = input.system.broker.getAccount(snapshot);
   const positions = input.system.broker.getPositions(snapshot);
-  const [leaderboard, candidates, qualityStocks, marketRegimeResearch] = await Promise.all([
+  const [
+    leaderboard,
+    candidates,
+    qualityStocks,
+    marketRegimeResearch,
+    realResearchDataFeed,
+  ] = await Promise.all([
     buildStrategyLeaderboard(
       snapshot,
       input.system.marketDataProvider,
@@ -63,6 +72,14 @@ export async function buildCurrentPaperTradingPlan(input: {
       sectorLimit: 10,
       stockLimit: 12,
       days: 180,
+      timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
+    }),
+    buildRealResearchDataFeed({
+      bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: input.system.marketDataProvider,
+      mode: input.config.MARKET_MODE,
+      snapshot,
       timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
     }),
   ]);
@@ -102,6 +119,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     candidates,
     qualityStocks,
     marketRegimeResearch,
+    realResearchDataFeed,
     adaptiveRouting,
   };
 }

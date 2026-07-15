@@ -1986,9 +1986,42 @@ select:focus-visible {
   color: var(--text-muted);
 }
 
+.adaptive-routing-playbook {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.adaptive-routing-playbook div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.adaptive-routing-playbook dt,
+.adaptive-routing-playbook dd {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.adaptive-routing-playbook dt {
+  color: var(--text-muted);
+}
+
+.adaptive-routing-playbook dd {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 720px) {
   .adaptive-routing-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adaptive-routing-playbook div {
+    grid-template-columns: 1fr;
+    gap: 2px;
   }
 }
 

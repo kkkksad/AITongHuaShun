@@ -144,6 +144,15 @@ describe("routeAdaptiveStrategies", () => {
     ]));
     expect(result.cashReserveRatio).toBe(0.1);
     expect(result.confidence).toBeGreaterThanOrEqual(0.6);
+    expect(result.version).toBe("1.1.0");
+    expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
+      "kairosLowVolTrend",
+      "kairosTrendHealth",
+    ]);
+    expect(result.strategyPlaybook.useWhen).toContain("趋势");
+    expect(result.capitalPacing.openingMaxInvestedRatio).toBeLessThan(
+      result.capitalPacing.closingMaxInvestedRatio,
+    );
   });
 
   it("prefers pullback and defensive strategies when an uptrend is volatile", () => {
@@ -167,6 +176,8 @@ describe("routeAdaptiveStrategies", () => {
     ]));
     expect(result.newPositionScale).toBeLessThan(1);
     expect(result.cashReserveRatio).toBeGreaterThanOrEqual(0.25);
+    expect(result.strategyPlaybook.avoidWhen).toContain("追高");
+    expect(result.capitalPacing.openingMaxInvestedRatio).toBeLessThanOrEqual(0.4);
   });
 
   it("switches to capital protection when trends and breadth deteriorate", () => {
@@ -197,6 +208,9 @@ describe("routeAdaptiveStrategies", () => {
     expect(result.allowNewPositions).toBe(false);
     expect(result.eligibleStrategyKeys).toEqual(["kairosCapitalShield"]);
     expect(result.cashReserveRatio).toBeGreaterThanOrEqual(0.5);
+    expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
+      "kairosCapitalShield",
+    ]);
   });
 
   it("falls back to cash when real history is degraded", () => {
@@ -211,5 +225,67 @@ describe("routeAdaptiveStrategies", () => {
     expect(result.positionPosture).toBe("hold");
     expect(result.eligibleStrategyKeys).toEqual(["kairosCapitalShield"]);
     expect(result.evidence.join(" ")).toContain("降级");
+    expect(result.strategyPlaybook.useWhen).toContain("数据");
+  });
+
+  it("uses mean reversion only in a low-volatility range", () => {
+    const quietRange = sector({
+      factors: {
+        ...sector().factors,
+        return20d: 0.01,
+        return60d: 0.02,
+        ma20Slope5d: 0.003,
+        annualizedVolatility20d: 0.2,
+        breadthRatio: 0.52,
+      },
+    });
+    const result = routeAdaptiveStrategies(report({
+      sectors: [quietRange, { ...quietRange, symbol: "BK0002" }],
+    }));
+
+    expect(result.regime).toBe("range-low-volatility");
+    expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
+      "rsi",
+      "bollingerBands",
+    ]);
+    expect(result.strategyPlaybook.avoidWhen).toContain("突破");
+  });
+
+  it("uses defensive pullback logic in a high-volatility range", () => {
+    const volatileRange = sector({
+      factors: {
+        ...sector().factors,
+        return20d: 0,
+        return60d: 0.01,
+        ma20Slope5d: -0.002,
+        annualizedVolatility20d: 0.48,
+        breadthRatio: 0.45,
+      },
+    });
+    const result = routeAdaptiveStrategies(report({
+      sectors: [volatileRange, { ...volatileRange, symbol: "BK0002" }],
+    }));
+
+    expect(result.regime).toBe("range-high-volatility");
+    expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
+      "kairosCapitalShield",
+      "kairosQuietPullback",
+    ]);
+    expect(result.capitalPacing.closingMaxInvestedRatio).toBeLessThanOrEqual(0.6);
+  });
+
+  it("requires available breadth to confirm an otherwise positive trend", () => {
+    const narrowTrend = sector({
+      factors: {
+        ...sector().factors,
+        breadthRatio: 0.32,
+      },
+    });
+    const result = routeAdaptiveStrategies(report({
+      sectors: [narrowTrend, { ...narrowTrend, symbol: "BK0002" }],
+    }));
+
+    expect(result.regime).toBe("range-low-volatility");
+    expect(result.riskFlags.join(" ")).toContain("宽度");
   });
 });

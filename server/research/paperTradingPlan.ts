@@ -304,7 +304,8 @@ export function buildPaperTradingPlan(input: {
   minimumCommission: number;
   cashReserveRatio: number;
 }): PaperTradingPlan {
-  const now = new Date().toISOString();
+  const marketTime = new Date(input.snapshot.marketTime);
+  const now = marketTime.toISOString();
   const quoteMap = new Map(input.snapshot.quotes.map((quote) => [quote.symbol, quote]));
   const positionMap = new Map(input.positions.map((position) => [position.symbol, position]));
   const stockRegimeMap = new Map(
@@ -672,7 +673,7 @@ export function buildPaperTradingPlan(input: {
 
   return {
     generatedAt: now,
-    tradingDate: getChinaTradeDate(),
+    tradingDate: getChinaTradeDate(marketTime),
     mode: input.snapshot.mode,
     provider: input.provider,
     account: {

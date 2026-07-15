@@ -1,4 +1,5 @@
 import type {
+  AdaptiveCapitalPacing,
   AdaptiveMarketRegime,
   AdaptivePositionPosture,
 } from "./tradingApi";
@@ -26,4 +27,15 @@ export function adaptivePostureLabel(
   posture: AdaptivePositionPosture,
 ): string {
   return postureLabels[posture];
+}
+
+export function formatAdaptiveCapitalPacing(
+  pacing: AdaptiveCapitalPacing,
+): string {
+  return [
+    `开盘 ${(pacing.openingMaxInvestedRatio * 100).toFixed(0)}%`,
+    `上午 ${(pacing.morningMaxInvestedRatio * 100).toFixed(0)}%`,
+    `下午 ${(pacing.afternoonMaxInvestedRatio * 100).toFixed(0)}%`,
+    `尾盘 ${(pacing.closingMaxInvestedRatio * 100).toFixed(0)}%`,
+  ].join(" · ");
 }

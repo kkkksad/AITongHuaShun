@@ -679,6 +679,8 @@ describe("WxPusher configuration", () => {
     expect(config.WXPUSHER_ENABLED).toBe(false);
     expect(config.WXPUSHER_SPT).toBe("");
     expect(config.WXPUSHER_TIMEOUT_MS).toBe(5_000);
+    expect(config.WXPUSHER_DAILY_MESSAGE_LIMIT).toBe(8);
+    expect(config.WXPUSHER_MATERIAL_COOLDOWN_MS).toBe(20 * 60_000);
   });
 
   it("accepts an enabled SPT channel with a bounded timeout", () => {
@@ -687,11 +689,15 @@ describe("WxPusher configuration", () => {
       WXPUSHER_ENABLED: "true",
       WXPUSHER_SPT: "SPT_testToken123",
       WXPUSHER_TIMEOUT_MS: "8000",
+      WXPUSHER_DAILY_MESSAGE_LIMIT: "6",
+      WXPUSHER_MATERIAL_COOLDOWN_MS: "900000",
     });
 
     expect(config.WXPUSHER_ENABLED).toBe(true);
     expect(config.WXPUSHER_SPT).toBe("SPT_testToken123");
     expect(config.WXPUSHER_TIMEOUT_MS).toBe(8_000);
+    expect(config.WXPUSHER_DAILY_MESSAGE_LIMIT).toBe(6);
+    expect(config.WXPUSHER_MATERIAL_COOLDOWN_MS).toBe(900_000);
   });
 
   it("rejects an enabled channel without an SPT credential", () => {
@@ -705,6 +711,20 @@ describe("WxPusher configuration", () => {
     expect(() => parseServerConfig({
       ...baseEnvironment,
       WXPUSHER_TIMEOUT_MS: "60000",
+    })).toThrow();
+  });
+
+  it("rejects a message budget above the ClawBot daily allowance", () => {
+    expect(() => parseServerConfig({
+      ...baseEnvironment,
+      WXPUSHER_DAILY_MESSAGE_LIMIT: "11",
+    })).toThrow();
+  });
+
+  it("rejects a material update cooldown below five minutes", () => {
+    expect(() => parseServerConfig({
+      ...baseEnvironment,
+      WXPUSHER_MATERIAL_COOLDOWN_MS: "60000",
     })).toThrow();
   });
 });

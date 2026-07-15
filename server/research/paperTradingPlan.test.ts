@@ -124,4 +124,49 @@ describe("buildPaperTradingPlan cash reservation", () => {
       }),
     ]));
   });
+
+  it("uses the market snapshot time for plan and operation timestamps", () => {
+    const marketTime = "2026-07-16T16:30:00.000Z";
+    const snapshot: MarketSnapshot = {
+      mode: "paper",
+      sequence: 1,
+      marketTime,
+      quotes: [],
+    };
+    const account: AccountSnapshot = {
+      accountId: "PAPER-CN-01",
+      mode: "paper",
+      cash: 10_000,
+      equity: 10_000,
+      marketValue: 0,
+      unrealizedPnl: 0,
+      realizedPnl: 0,
+      dailyPnl: 0,
+      dailyPnlPercent: 0,
+      riskUtilization: 0,
+      paused: false,
+      updatedAt: marketTime,
+    };
+
+    const plan = buildPaperTradingPlan({
+      snapshot,
+      provider: "akshare",
+      account,
+      positions: [],
+      leaderboard: { entries: [] } as unknown as StrategyLeaderboardReport,
+      candidates: { candidates: [] } as unknown as DailyCandidateReport,
+      qualityStocks: { stocks: [] } as unknown as DailyQualityStockReport,
+      initialCapital: 10_000,
+      lotSize: 100,
+      maxPositionWeight: 0.5,
+      maxSingleOrderNotional: 2_000,
+      commissionRate: 0.0003,
+      minimumCommission: 5,
+      cashReserveRatio: 0.1,
+    });
+
+    expect(plan.generatedAt).toBe(marketTime);
+    expect(plan.tradingDate).toBe("2026-07-17");
+    expect(plan.operations.every((operation) => operation.timestamp === marketTime)).toBe(true);
+  });
 });

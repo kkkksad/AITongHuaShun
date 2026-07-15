@@ -14,6 +14,7 @@ import { pipelineStages } from "../data/mockData";
 import {
   adaptivePostureLabel,
   adaptiveRegimeLabel,
+  formatAdaptiveCapitalPacing,
 } from "../lib/adaptiveStrategyPresentation";
 import {
   fetchDailyCandidates,
@@ -306,6 +307,20 @@ export default function LearningPipeline() {
                 </span>
               </div>
               <p>{paperPlan.adaptiveRouting.evidence[0] ?? "等待真实历史状态确认。"}</p>
+              <dl className="adaptive-routing-playbook">
+                <div>
+                  <dt>适用条件</dt>
+                  <dd>{paperPlan.adaptiveRouting.strategyPlaybook.useWhen}</dd>
+                </div>
+                <div>
+                  <dt>回避条件</dt>
+                  <dd>{paperPlan.adaptiveRouting.strategyPlaybook.avoidWhen}</dd>
+                </div>
+                <div>
+                  <dt>分时仓位上限</dt>
+                  <dd>{formatAdaptiveCapitalPacing(paperPlan.adaptiveRouting.capitalPacing)}</dd>
+                </div>
+              </dl>
               <small>
                 当前策略 {paperPlan.topStrategy?.strategyName ?? "资金盾牌"} · 允许策略{" "}
                 {paperPlan.adaptiveRouting.eligibleStrategyKeys.length} 个 ·

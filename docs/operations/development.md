@@ -92,9 +92,13 @@ PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO=0.10
 WXPUSHER_ENABLED=true
 WXPUSHER_SPT=SPT_从WxPusher重置后取得的新值
 WXPUSHER_TIMEOUT_MS=5000
+WXPUSHER_DAILY_MESSAGE_LIMIT=8
+WXPUSHER_MATERIAL_COOLDOWN_MS=1200000
 ```
 
-`WXPUSHER_SPT` 只允许存在于服务端 `.env.local`，不得写入源码、日志、提交记录或 `VITE_*` 变量。系统仅对包含 `paper-buy-plan` / `paper-sell-plan` 的计划发送提醒；同一交易日相同标的、动作、数量和参考价只成功发送一次。提供方失败会写入 `wxpusher.paper-plan.failed` 审计，但不会改变本地 paper 风控或授权真实下单。微信 ClawBot 渠道每次激活后 24 小时内最多接收 10 条，额度用尽或失效后需要在微信中向 ClawBot 回复任意内容重新激活。
+`WXPUSHER_SPT` 只允许存在于服务端 `.env.local`，不得写入源码、日志、提交记录或 `VITE_*` 变量。系统在开盘观察、上午确认、下午确认和尾盘风险复核四个阶段各允许一条简报；简报包含当前/计划后 paper 持仓、精确的本轮模拟动作、现金、仓位、阶段上限、策略适用/回避条件、前三板块和风险/数据源警告。普通参考价变化不触发重发；同阶段持仓、动作或市场状态发生实质变化时默认冷却 20 分钟，转为 `risk-off` 或数据降级可立即提醒。
+
+默认每天最多尝试发送 8 条，配置硬上限为 10，给 ClawBot 的 10 条渠道额度保留 2 条余量；成功和失败的提供方请求都会计入尝试次数。提供方失败只写入不含凭据的 `wxpusher.paper-plan.failed` 审计，不会改变本地 paper 风控或授权真实下单。微信 ClawBot 渠道每次激活后 24 小时内最多接收 10 条，额度用尽或失效后需要在微信中向 ClawBot 回复任意内容重新激活。
 
 该自动执行器只会把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`，不会连接同花顺、中信、SuperMind 或任何真实券商。盘外启动时会保持等待，直到 A 股交易时段才自动运行。默认每轮最多 1 笔、每天最多 4 笔，当日笔数从持久化自动订单统计，服务重启不会重置上限；买入计划会累计预留成交额、滑点和手续费，并保留当前 paper 权益的 10% 作为现金缓冲。最新现金不足时会直接跳过，不创建 rejected 订单。
 

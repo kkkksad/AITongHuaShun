@@ -88,7 +88,7 @@ function routing(
   overrides: Partial<AdaptiveStrategyRouting> = {},
 ): AdaptiveStrategyRouting {
   return {
-    version: "1.0.0",
+    version: "1.1.0",
     generatedAt: snapshot.marketTime,
     regime: "trend-up-low-volatility",
     confidence: 0.72,
@@ -98,6 +98,18 @@ function routing(
     newPositionScale: 1,
     eligibleStrategyKeys: ["momentum", "kairosTrendHealth"],
     disabledStrategyKeys: ["rsi"],
+    strategyPlaybook: {
+      primaryStrategyKeys: ["kairosLowVolTrend", "kairosTrendHealth"],
+      useWhen: "趋势和宽度确认",
+      avoidWhen: "趋势转弱",
+      recheckTriggers: ["宽度转弱"],
+    },
+    capitalPacing: {
+      openingMaxInvestedRatio: 0.55,
+      morningMaxInvestedRatio: 0.7,
+      afternoonMaxInvestedRatio: 0.82,
+      closingMaxInvestedRatio: 0.9,
+    },
     evidence: ["趋势向上"],
     riskFlags: [],
     metrics: {

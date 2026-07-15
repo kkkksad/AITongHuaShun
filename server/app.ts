@@ -196,6 +196,7 @@ interface BuildTradingAppOptions {
   config: ServerConfig;
   system?: TradingSystem;
   startMarket?: boolean;
+  clock?: () => Date;
 }
 
 export async function buildTradingApp(
@@ -358,6 +359,9 @@ export async function buildTradingApp(
     enabled: options.config.WXPUSHER_ENABLED,
     sender: wxPusherSender,
     store: system.store,
+    dailyMessageLimit: options.config.WXPUSHER_DAILY_MESSAGE_LIMIT,
+    materialCooldownMs: options.config.WXPUSHER_MATERIAL_COOLDOWN_MS,
+    clock: options.clock,
   });
   const paperAutoExecutor = new PaperAutoExecutor({
     system,
@@ -367,6 +371,7 @@ export async function buildTradingApp(
     tradeWindowOnly: options.config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY,
     maxOrdersPerRun: options.config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN,
     maxDailyOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
+    clock: options.clock,
     planNotifier: paperPlanNotifier,
     onOrder: (order, request) => {
       recordOrder(request.side, order.status);

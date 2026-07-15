@@ -102,6 +102,18 @@ const envSchema = z.object({
     .min(1_000)
     .max(30_000)
     .default(5_000),
+  WXPUSHER_DAILY_MESSAGE_LIMIT: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .default(8),
+  WXPUSHER_MATERIAL_COOLDOWN_MS: z.coerce
+    .number()
+    .int()
+    .min(5 * 60_000)
+    .max(4 * 60 * 60_000)
+    .default(20 * 60_000),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
   TRADING_HISTORY_RETENTION_DAYS: z.coerce

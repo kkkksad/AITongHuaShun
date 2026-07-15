@@ -7,6 +7,12 @@ import type {
   PaperTradingOperation,
   PaperTradingPlan,
 } from "../research/paperTradingPlan";
+import {
+  getAshareTradingPhase,
+  getIntradayExecutionPolicy,
+  type AShareTradingPhase,
+  type IntradayExecutionPolicy,
+} from "./intradayExecutionPolicy";
 
 export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
 export type PaperAutoExecutionSession =
@@ -43,6 +49,8 @@ export interface PaperAutoExecutionRun {
   finishedAt: string;
   tradingDate: string;
   session: PaperAutoExecutionSession;
+  phase: AShareTradingPhase;
+  phaseMaxInvestedRatio: number;
   planQuality: PaperTradingPlan["qualitySummary"]["planQuality"] | "not-run";
   submittedOrders: PaperAutoExecutionOrder[];
   skippedOperations: PaperAutoExecutionSkip[];
@@ -61,6 +69,8 @@ export interface PaperAutoExecutionStatus {
   maxDailyOrders: number;
   todaySubmittedOrders: number;
   currentSession: PaperAutoExecutionSession;
+  currentPhase: AShareTradingPhase;
+  phaseMaxInvestedRatio: number;
   startedAt: string | null;
   lastRunAt: string | null;
   nextRunAt: string | null;
@@ -80,6 +90,11 @@ export interface PaperAutoExecutorOptions {
   clock?: () => Date;
   onOrder?: (order: OrderRecord, request: OrderRequest) => void;
   planNotifier?: Pick<PaperPlanNotifier, "notify">;
+}
+
+interface PreparedPaperOperation {
+  operation: PaperTradingOperation;
+  request: OrderRequest;
 }
 
 const HISTORY_LIMIT = 30;
@@ -139,6 +154,7 @@ export class PaperAutoExecutor {
 
   getStatus(): PaperAutoExecutionStatus {
     const latestRun = this.runs[0] ?? null;
+    const currentPolicy = getIntradayExecutionPolicy(this.now(), null);
     return {
       enabled: this.options.enabled,
       running: this.running,
@@ -151,6 +167,9 @@ export class PaperAutoExecutor {
       maxDailyOrders: this.options.maxDailyOrders,
       todaySubmittedOrders: this.countSubmittedOrders(getChinaTradeDate(this.now())),
       currentSession: getAshareSession(this.now()),
+      currentPhase: getAshareTradingPhase(this.now()),
+      phaseMaxInvestedRatio:
+        latestRun?.phaseMaxInvestedRatio ?? currentPolicy.maxInvestedRatio,
       startedAt: this.startedAt,
       lastRunAt: this.lastRunAt,
       nextRunAt: this.nextRunAt,
@@ -163,6 +182,7 @@ export class PaperAutoExecutor {
   async runOnce(trigger: PaperAutoExecutionTrigger = "manual"): Promise<PaperAutoExecutionRun> {
     const started = this.now();
     const session = getAshareSession(started);
+    const initialPolicy = getIntradayExecutionPolicy(started, null);
     const tradingDate = getChinaTradeDate(started);
     const skippedOperations: PaperAutoExecutionSkip[] = [];
     const submittedOrders: PaperAutoExecutionOrder[] = [];
@@ -175,6 +195,8 @@ export class PaperAutoExecutor {
         finishedAt: this.now().toISOString(),
         tradingDate,
         session,
+        phase: initialPolicy.phase,
+        phaseMaxInvestedRatio: initialPolicy.maxInvestedRatio,
         planQuality: "not-run",
         submittedOrders,
         skippedOperations: [
@@ -196,7 +218,7 @@ export class PaperAutoExecutor {
           action: "observe",
           reason: "auto paper execution is disabled",
         });
-        return this.finalizeRun(trigger, started, tradingDate, session, "not-run", submittedOrders, skippedOperations);
+        return this.finalizeRun(trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
       }
 
       if (this.options.config.REAL_TRADING_ENABLED || this.options.config.MARKET_MODE !== "paper") {
@@ -205,7 +227,7 @@ export class PaperAutoExecutor {
           action: "blocked",
           reason: "auto execution requires MARKET_MODE=paper and REAL_TRADING_ENABLED=false",
         });
-        return this.finalizeRun(trigger, started, tradingDate, session, "not-run", submittedOrders, skippedOperations);
+        return this.finalizeRun(trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
       }
 
       if (this.options.tradeWindowOnly && session !== "open") {
@@ -214,99 +236,53 @@ export class PaperAutoExecutor {
           action: "observe",
           reason: `outside A-share trading session: ${session}`,
         });
-        return this.finalizeRun(trigger, started, tradingDate, session, "not-run", submittedOrders, skippedOperations);
+        return this.finalizeRun(trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
       }
 
-      const { plan } = await buildCurrentPaperTradingPlan({
+      const {
+        plan,
+        marketRegimeResearch,
+        realResearchDataFeed,
+      } = await buildCurrentPaperTradingPlan({
         system: this.options.system,
         config: this.options.config,
       });
-      await this.options.planNotifier?.notify(plan);
+      const policy = getIntradayExecutionPolicy(started, plan.adaptiveRouting);
+      const preparedOperations = this.preflightOperations(
+        plan,
+        policy,
+        skippedOperations,
+      );
+      await this.options.planNotifier?.notify(plan, {
+        account: this.options.system.broker.getAccount(),
+        positions: this.options.system.broker.getPositions(),
+        executableOperations: preparedOperations.map(({ operation }) => operation),
+        policy,
+        marketContext: {
+          sourceStatus:
+            marketRegimeResearch.sourceStatus === "degraded" ||
+            realResearchDataFeed.sourceStatus === "degraded"
+              ? "degraded"
+              : marketRegimeResearch.sourceStatus === "live-read-only" &&
+                  realResearchDataFeed.sourceStatus === "live-read-only"
+                ? "live-read-only"
+                : "mock-disabled",
+          sectors: marketRegimeResearch.sectorOutlooks.slice(0, 3).map((sector) => ({
+            name: sector.name,
+            direction: sector.direction,
+            score: sector.score,
+            changePercent: sector.current.changePercent,
+          })),
+          warnings: [...new Set([
+            ...marketRegimeResearch.warnings,
+            realResearchDataFeed.news.warning,
+            realResearchDataFeed.globalMarkets.warning,
+          ].filter((warning): warning is string => Boolean(warning)))],
+        },
+      });
 
-      const todaySubmitted = this.countSubmittedOrders(tradingDate);
-      let remainingDailyOrders = Math.max(0, this.options.maxDailyOrders - todaySubmitted);
-      let remainingRunOrders = this.options.maxOrdersPerRun;
-
-      for (const operation of plan.operations) {
-        const side = this.toOrderSide(operation.action);
-        if (!side) {
-          skippedOperations.push({
-            symbol: operation.symbol,
-            action: operation.action,
-            reason: "operation is not an executable paper auto action",
-          });
-          continue;
-        }
-
-        if (operation.quantity <= 0 || !/^\d{6}$/.test(operation.symbol)) {
-          skippedOperations.push({
-            symbol: operation.symbol,
-            action: operation.action,
-            reason: "operation quantity or symbol is not executable",
-          });
-          continue;
-        }
-
-        if (remainingDailyOrders <= 0) {
-          skippedOperations.push({
-            symbol: operation.symbol,
-            action: operation.action,
-            reason: "daily auto paper order cap reached",
-          });
-          continue;
-        }
-
-        if (remainingRunOrders <= 0) {
-          skippedOperations.push({
-            symbol: operation.symbol,
-            action: operation.action,
-            reason: "per-run auto paper order cap reached",
-          });
-          continue;
-        }
-
-        if (side === "buy") {
-          const quote = this.options.system.market.getQuote(operation.symbol);
-          if (!quote) {
-            skippedOperations.push({
-              symbol: operation.symbol,
-              action: operation.action,
-              reason: "最新行情不可用，未创建本地 paper 买单",
-            });
-            continue;
-          }
-
-          const fillPrice = Number((
-            quote.price * (1 + this.options.config.SLIPPAGE_BPS / 10_000)
-          ).toFixed(2));
-          const notional = fillPrice * operation.quantity;
-          const commission = Math.max(
-            this.options.config.MIN_COMMISSION,
-            notional * this.options.config.COMMISSION_RATE,
-          );
-          const requiredCash = notional + commission;
-          const account = this.options.system.broker.getAccount();
-          const cashReserve = account.equity *
-            this.options.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO;
-          const spendableCash = Math.max(0, account.cash - cashReserve);
-
-          if (requiredCash > spendableCash + 0.001) {
-            skippedOperations.push({
-              symbol: operation.symbol,
-              action: operation.action,
-              reason: `累计订单后可用资金不足，需 ${requiredCash.toFixed(2)} 元，可用于新买单 ${spendableCash.toFixed(2)} 元；未创建订单`,
-            });
-            continue;
-          }
-        }
-
-        const request: OrderRequest = {
-          symbol: operation.symbol,
-          side,
-          type: "market",
-          quantity: operation.quantity,
-          clientOrderId: this.clientOrderId(plan.tradingDate, operation),
-        };
+      for (const { operation, request } of preparedOperations) {
+        const side = request.side;
         const order = this.options.system.broker.submitOrder(request);
         this.options.onOrder?.(order, request);
         submittedOrders.push({
@@ -341,9 +317,6 @@ export class PaperAutoExecutor {
             rejectionReason: order.rejectionReason,
           },
         );
-
-        remainingRunOrders -= 1;
-        remainingDailyOrders -= 1;
       }
 
       return this.finalizeRun(
@@ -351,6 +324,7 @@ export class PaperAutoExecutor {
         started,
         tradingDate,
         session,
+        policy,
         plan.qualitySummary.planQuality,
         submittedOrders,
         skippedOperations,
@@ -361,11 +335,132 @@ export class PaperAutoExecutor {
     }
   }
 
+  private preflightOperations(
+    plan: PaperTradingPlan,
+    policy: IntradayExecutionPolicy,
+    skippedOperations: PaperAutoExecutionSkip[],
+  ): PreparedPaperOperation[] {
+    const prepared: PreparedPaperOperation[] = [];
+    const todaySubmitted = this.countSubmittedOrders(plan.tradingDate);
+    let remainingDailyOrders = Math.max(0, this.options.maxDailyOrders - todaySubmitted);
+    let remainingRunOrders = this.options.maxOrdersPerRun;
+    const account = this.options.system.broker.getAccount();
+    let projectedCash = account.cash;
+    let projectedMarketValue = account.marketValue;
+    const reserveRatio = Math.max(
+      this.options.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
+      plan.capitalPlan.cashReserveRatio,
+    );
+    const cashReserve = account.equity * reserveRatio;
+
+    for (const operation of plan.operations) {
+      const side = this.toOrderSide(operation.action);
+      if (!side) {
+        skippedOperations.push({
+          symbol: operation.symbol,
+          action: operation.action,
+          reason: "operation is not an executable paper auto action",
+        });
+        continue;
+      }
+      if (operation.quantity <= 0 || !/^\d{6}$/.test(operation.symbol)) {
+        skippedOperations.push({
+          symbol: operation.symbol,
+          action: operation.action,
+          reason: "operation quantity or symbol is not executable",
+        });
+        continue;
+      }
+      if (remainingDailyOrders <= 0) {
+        skippedOperations.push({
+          symbol: operation.symbol,
+          action: operation.action,
+          reason: "daily auto paper order cap reached",
+        });
+        continue;
+      }
+      if (remainingRunOrders <= 0) {
+        skippedOperations.push({
+          symbol: operation.symbol,
+          action: operation.action,
+          reason: "per-run auto paper order cap reached",
+        });
+        continue;
+      }
+
+      const request: OrderRequest = {
+        symbol: operation.symbol,
+        side,
+        type: "market",
+        quantity: operation.quantity,
+        clientOrderId: this.clientOrderId(plan.tradingDate, operation),
+      };
+      if (this.options.system.store.findByClientOrderId(request.clientOrderId)) {
+        skippedOperations.push({
+          symbol: operation.symbol,
+          action: operation.action,
+          reason: "operation was already submitted for this trading date",
+        });
+        continue;
+      }
+
+      if (side === "buy") {
+        const quote = this.options.system.market.getQuote(operation.symbol);
+        if (!quote) {
+          skippedOperations.push({
+            symbol: operation.symbol,
+            action: operation.action,
+            reason: "最新行情不可用，未创建本地 paper 买单",
+          });
+          continue;
+        }
+        const fillPrice = Number((
+          quote.price * (1 + this.options.config.SLIPPAGE_BPS / 10_000)
+        ).toFixed(2));
+        const notional = fillPrice * operation.quantity;
+        const commission = Math.max(
+          this.options.config.MIN_COMMISSION,
+          notional * this.options.config.COMMISSION_RATE,
+        );
+        const requiredCash = notional + commission;
+        const spendableCash = Math.max(0, projectedCash - cashReserve);
+        if (requiredCash > spendableCash + 0.001) {
+          skippedOperations.push({
+            symbol: operation.symbol,
+            action: operation.action,
+            reason: `累计订单后可用资金不足，需 ${requiredCash.toFixed(2)} 元，可用于新买单 ${spendableCash.toFixed(2)} 元；未创建订单`,
+          });
+          continue;
+        }
+        const projectedInvestedRatio = account.equity > 0
+          ? (projectedMarketValue + notional) / account.equity
+          : 1;
+        if (projectedInvestedRatio > policy.maxInvestedRatio + 0.0001) {
+          skippedOperations.push({
+            symbol: operation.symbol,
+            action: operation.action,
+            reason: `${policy.phaseLabel}仓位节奏限制：计划后仓位 ${(projectedInvestedRatio * 100).toFixed(1)}% 超过阶段上限 ${(policy.maxInvestedRatio * 100).toFixed(1)}%`,
+          });
+          continue;
+        }
+        projectedCash -= requiredCash;
+        projectedMarketValue += notional;
+      }
+
+      prepared.push({ operation, request });
+      remainingRunOrders -= 1;
+      remainingDailyOrders -= 1;
+    }
+
+    return prepared;
+  }
+
   private finalizeRun(
     trigger: PaperAutoExecutionTrigger,
     started: Date,
     tradingDate: string,
     session: PaperAutoExecutionSession,
+    policy: IntradayExecutionPolicy,
     planQuality: PaperAutoExecutionRun["planQuality"],
     submittedOrders: PaperAutoExecutionOrder[],
     skippedOperations: PaperAutoExecutionSkip[],
@@ -377,6 +472,8 @@ export class PaperAutoExecutor {
       finishedAt: this.now().toISOString(),
       tradingDate,
       session,
+      phase: policy.phase,
+      phaseMaxInvestedRatio: policy.maxInvestedRatio,
       planQuality,
       submittedOrders,
       skippedOperations,
@@ -399,6 +496,8 @@ export class PaperAutoExecutor {
         trigger: run.trigger,
         tradingDate: run.tradingDate,
         session: run.session,
+        phase: run.phase,
+        phaseMaxInvestedRatio: run.phaseMaxInvestedRatio,
         planQuality: run.planQuality,
         submittedOrders: run.submittedOrders.length,
         skippedOperations: run.skippedOperations.length,
@@ -472,6 +571,7 @@ export class PaperAutoExecutor {
       "Auto execution submits orders only to the local PaperBroker.",
       "REAL_TRADING_ENABLED must remain false and MARKET_MODE must be paper.",
       "A-share lot-size, T+1, cash, position and circuit-breaker checks still run before every order.",
+      "New paper buys are paced by opening, morning, afternoon and closing invested-ratio caps.",
       "No TongHuaShun, Zhongxin, SuperMind, browser cookie, password, SMS code or live broker token is used.",
     ];
   }

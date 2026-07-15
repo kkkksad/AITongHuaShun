@@ -67,6 +67,9 @@
 - **KAIROS 形态策略与回测日期修复** —— 新增“洗盘恢复”和“趋势健康”两种确定性研究策略，内置优化策略增至 14，并纳入合成样本排行榜候选。回测仓储改用当前历史 bar 的市场日期执行 A 股 T+1，不再把所有历史 bar 错当成电脑当天而永久拦截卖出。
 - **真实板块研究前端** —— 市场页新增“板块展望 / 形态识别”模块；旧 `FlowPanel` 不再读取静态 `sectorFlows`，上游不可用时显示降级原因。桌面与手机宽表格将横向滚动限制在模块内部。
 - **市场状态自适应策略路由** —— `AdaptiveStrategyRouter` 使用真实行业 20/60 日收益、均线斜率、波动率、板块宽度和个股形态宽度，确定性输出六类市场状态、置信度、允许/禁用策略、仓位姿态、现金储备和新增仓位缩放。它只在 AkShare 只读行情模式下参与本地 paper 计划；Mock 模式继续保留原有确定性演示行为。
+- **策略路由 1.1 明确操作手册** —— 六类市场状态现在分别输出优先策略、适用条件、回避条件、复核触发器以及开盘/上午/下午/尾盘最大 paper 仓位；可用的市场宽度必须确认上升趋势，宽度偏弱会进入风险标记。该手册是确定性研究规则，不是校准后的盈利概率。
+- **分时资金节奏与执行前预检** —— 本地 paper 自动执行器在 09:30、10:15、13:00 和 14:15 四个阶段重新评估，先完成每日/单轮笔数、幂等、行情、现金储备和买入后总仓位检查，再形成精确的本轮模拟动作；降风险卖出不受买入仓位上限限制。
+- **预算化 WxPusher 盘中简报** —— 默认每天最多尝试 8 条并硬限制为 10 条，正常发送四个阶段简报，包含当前/计划后 paper 持仓、精确模拟动作、现金、仓位、策略条件、前三板块和风险/数据警告。同阶段实质变化默认冷却 20 分钟，价格变化不触发重发，发送失败也计入额度且审计不保存凭据。
 - **持仓优先的历史形态研究** —— 生成市场状态前会把当前 paper 持仓放在个股历史研究队列前部，去重后仍限制最多 12 只，避免候选池挤掉真正需要退出判断的已有仓位。
 - **趋势恶化减仓与现金观察** —— `risk-off` 下，高置信度“趋势恶化”且 T+1 可卖的持仓会生成有上限的半仓减仓计划；原有 3% 亏损退出仍是更严格的全量止损。健康趋势和洗盘候选明确保持观察；从计划开始就没有任何一手可负担候选时，只生成一条现金观察，不再重复列出十条注定资金不足的买入。
 - **策略状态前端解释** —— 研究管线页显示当前市场状态、路由置信度、仓位姿态、现金储备、选中策略、允许策略数量和是否允许新增 paper 仓位，不把启发式置信度描述为盈利概率。
@@ -124,6 +127,18 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-16 intraday strategy playbook and budgeted paper briefings
+npm test
+33 server test files passed
+619 server tests passed
+4 web test files passed
+16 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+git diff --check passed. A tracked/untracked credential scan found no real-length SPT/UID value outside ignored .env.local. The existing local paper + AkShare health endpoint returned 200 and the browser loaded the protected login page. No live WxPusher quota was consumed and no authenticated page was inspected; tomorrow still requires restarting the project with the new code and reactivating ClawBot if its 24-hour window has expired.
+
 2026-07-15 adaptive strategy routing and runtime recovery
 npm test
 30 server test files passed

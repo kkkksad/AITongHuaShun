@@ -333,8 +333,22 @@ export type AdaptiveMarketRegime =
 
 export type AdaptivePositionPosture = "accumulate" | "hold" | "reduce";
 
+export interface AdaptiveStrategyPlaybook {
+  primaryStrategyKeys: string[];
+  useWhen: string;
+  avoidWhen: string;
+  recheckTriggers: string[];
+}
+
+export interface AdaptiveCapitalPacing {
+  openingMaxInvestedRatio: number;
+  morningMaxInvestedRatio: number;
+  afternoonMaxInvestedRatio: number;
+  closingMaxInvestedRatio: number;
+}
+
 export interface AdaptiveStrategyRouting {
-  version: "1.0.0";
+  version: "1.1.0";
   generatedAt: string;
   regime: AdaptiveMarketRegime;
   confidence: number;
@@ -344,6 +358,8 @@ export interface AdaptiveStrategyRouting {
   newPositionScale: number;
   eligibleStrategyKeys: string[];
   disabledStrategyKeys: string[];
+  strategyPlaybook: AdaptiveStrategyPlaybook;
+  capitalPacing: AdaptiveCapitalPacing;
   evidence: string[];
   riskFlags: string[];
   metrics: {

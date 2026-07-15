@@ -746,6 +746,74 @@ describe("trading API", () => {
     }
   });
 
+  it("paces new paper capital during the opening phase", async () => {
+    const paperApp = await buildTradingApp({
+      config: createTestConfig({
+        MARKET_MODE: "paper",
+        TRADING_STARTING_CASH: 10_000,
+        TRADING_SEED_PORTFOLIO: false,
+        MAX_ORDER_NOTIONAL: 6_000,
+        MAX_POSITION_WEIGHT: 1,
+        PAPER_AUTO_EXECUTION_ENABLED: true,
+        PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: true,
+      }),
+      startMarket: false,
+      clock: () => new Date("2026-07-17T09:35:00+08:00"),
+    });
+
+    try {
+      const response = await paperApp.inject({
+        method: "POST",
+        url: "/api/trading/auto-paper-execution/run",
+      });
+
+      expect(response.json().run).toMatchObject({
+        phase: "opening",
+        phaseMaxInvestedRatio: 0.45,
+        submittedOrders: [],
+      });
+      expect(response.json().run.skippedOperations).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          action: "paper-buy-plan",
+          reason: expect.stringContaining("开盘观察仓位节奏限制"),
+        }),
+      ]));
+    } finally {
+      await paperApp.close();
+    }
+  });
+
+  it("allows the same bounded paper plan after morning confirmation", async () => {
+    const paperApp = await buildTradingApp({
+      config: createTestConfig({
+        MARKET_MODE: "paper",
+        TRADING_STARTING_CASH: 10_000,
+        TRADING_SEED_PORTFOLIO: false,
+        MAX_ORDER_NOTIONAL: 6_000,
+        MAX_POSITION_WEIGHT: 1,
+        PAPER_AUTO_EXECUTION_ENABLED: true,
+        PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: true,
+      }),
+      startMarket: false,
+      clock: () => new Date("2026-07-17T10:30:00+08:00"),
+    });
+
+    try {
+      const response = await paperApp.inject({
+        method: "POST",
+        url: "/api/trading/auto-paper-execution/run",
+      });
+
+      expect(response.json().run).toMatchObject({
+        phase: "morning-confirmation",
+        phaseMaxInvestedRatio: 0.6,
+      });
+      expect(response.json().run.submittedOrders).toHaveLength(1);
+    } finally {
+      await paperApp.close();
+    }
+  });
+
   it("sends a deduplicated WxPusher reminder for an actionable local paper plan", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       code: 1000,
@@ -771,6 +839,7 @@ describe("trading API", () => {
         WXPUSHER_SPT: "SPT_testToken123",
       }),
       startMarket: false,
+      clock: () => new Date("2026-07-17T10:30:00+08:00"),
     });
 
     try {
@@ -782,6 +851,10 @@ describe("trading API", () => {
         method: "POST",
         url: "/api/trading/auto-paper-execution/run",
       });
+      const orders = await paperApp.inject({
+        method: "GET",
+        url: "/api/orders",
+      });
       const audit = await paperApp.inject({
         method: "GET",
         url: "/api/audit?limit=50",
@@ -789,6 +862,8 @@ describe("trading API", () => {
 
       expect(firstRun.json().run.submittedOrders).toHaveLength(1);
       expect(secondRun.statusCode).toBe(200);
+      expect(secondRun.json().run.submittedOrders).toHaveLength(0);
+      expect(orders.json()).toHaveLength(1);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(audit.json()).toEqual(expect.arrayContaining([
         expect.objectContaining({ action: "wxpusher.paper-plan.sent" }),
@@ -825,6 +900,7 @@ describe("trading API", () => {
         WXPUSHER_SPT: "SPT_testToken123",
       }),
       startMarket: false,
+      clock: () => new Date("2026-07-17T10:30:00+08:00"),
     });
 
     try {
