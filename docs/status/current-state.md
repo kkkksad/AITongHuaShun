@@ -1,6 +1,6 @@
 ﻿# 当前状态
 
-**核对日期：** 2026-07-14
+**核对日期：** 2026-07-15
 
 ## 已实现
 
@@ -65,6 +65,12 @@
 - **洗盘候选与趋势恶化识别** —— 同一研究接口使用 180 日个股前复权日线，基于 20/60 日收益、均线斜率、回撤深度和量能变化区分“缩量洗盘候选、趋势恶化、健康趋势、信号不清、数据不足”；洗盘只作为待确认解释，不做必然拉升断言。
 - **KAIROS 形态策略与回测日期修复** —— 新增“洗盘恢复”和“趋势健康”两种确定性研究策略，内置优化策略增至 14，并纳入合成样本排行榜候选。回测仓储改用当前历史 bar 的市场日期执行 A 股 T+1，不再把所有历史 bar 错当成电脑当天而永久拦截卖出。
 - **真实板块研究前端** —— 市场页新增“板块展望 / 形态识别”模块；旧 `FlowPanel` 不再读取静态 `sectorFlows`，上游不可用时显示降级原因。桌面与手机宽表格将横向滚动限制在模块内部。
+- **市场状态自适应策略路由** —— `AdaptiveStrategyRouter` 使用真实行业 20/60 日收益、均线斜率、波动率、板块宽度和个股形态宽度，确定性输出六类市场状态、置信度、允许/禁用策略、仓位姿态、现金储备和新增仓位缩放。它只在 AkShare 只读行情模式下参与本地 paper 计划；Mock 模式继续保留原有确定性演示行为。
+- **持仓优先的历史形态研究** —— 生成市场状态前会把当前 paper 持仓放在个股历史研究队列前部，去重后仍限制最多 12 只，避免候选池挤掉真正需要退出判断的已有仓位。
+- **趋势恶化减仓与现金观察** —— `risk-off` 下，高置信度“趋势恶化”且 T+1 可卖的持仓会生成有上限的半仓减仓计划；原有 3% 亏损退出仍是更严格的全量止损。健康趋势和洗盘候选明确保持观察；从计划开始就没有任何一手可负担候选时，只生成一条现金观察，不再重复列出十条注定资金不足的买入。
+- **策略状态前端解释** —— 研究管线页显示当前市场状态、路由置信度、仓位姿态、现金储备、选中策略、允许策略数量和是否允许新增 paper 仓位，不把启发式置信度描述为盈利概率。
+- **开发服务异常恢复** —— `npm run dev` 与 `npm run dev:a-share` 以 `concurrently` 监督前台 API，并对非零退出无限重启；`npm run dev:api:watch` 单独保留代码热重载。这样 API 子进程退出后不会只留下一个仍存活但无法提供 `8787` 的 watcher 父进程。
+- **移动导航状态修复** —— 980px 以下未打开的侧栏保持隐藏，菜单按钮打开抽屉、关闭按钮关闭抽屉；390px 页面无横向溢出，不再同时显示旧顶部侧栏和抽屉导航。
 
 ## 仍为静态或合成的数据
 
@@ -117,6 +123,23 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-15 adaptive strategy routing and runtime recovery
+npm test
+30 server test files passed
+587 server tests passed
+4 web test files passed
+15 web tests passed
+
+python -m pytest akshare-bridge/test_bridge.py -q
+46 bridge tests passed, 1 dependency deprecation warning
+
+npm run build
+TypeScript checks and Vite production build passed
+
+Runtime: paper + akshare, authEnabled=true, realTradingEnabled=false. After terminating only API PID 287472, concurrently logged a non-zero exit and restart, and port 8787 returned under PID 265224 while the web and bridge processes stayed online. API, Vite proxy, and bridge health passed; the authenticated leaderboard returned 12 entries. The adaptive plan returned risk-off at 77% routing confidence, selected KAIROS资金护城河, disabled new positions, and produced two bounded paper sell plans plus one cash observation. Auto execution remained local-paper-broker-only and after-hours, so no external or real order was submitted. Browser checks at 1440 x 900 and 390 x 844 showed the regime panel without horizontal overflow; the mobile drawer opened and closed correctly and the console had no errors.
+
+Day review: the auto executor recorded 80 open-session runs from 09:30 through 10:49 and submitted 0 orders because every generated plan was blocked. The account had 412 cash and five existing positions; none of the initial 12 candidates was affordable as a 100-share lot. The API child then stopped around 10:49 while the old tsx watcher parent remained alive. This explains the no-trade day without inventing missing orders or attributing it to strategy quality alone.
+
 2026-07-14 real sector outlook and market-regime research
 python -m pytest akshare-bridge/test_bridge.py -q
 46 bridge tests passed

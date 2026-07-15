@@ -177,6 +177,10 @@ export interface BuildMarketRegimeResearchInput {
   marketDataProvider: string;
   mode: TradingMode;
   snapshot: MarketSnapshot;
+  preferredStocks?: Array<{
+    symbol: string;
+    name: string;
+  }>;
   sectorLimit: number;
   stockLimit: number;
   days: number;
@@ -816,12 +820,21 @@ export async function buildMarketRegimeResearch(
 
   const sectorNames = selectSectorUniverse(sectorResponse.sectors, input.sectorLimit)
     .map((sector) => sector.name);
+  const stockLimit = Math.max(1, Math.min(input.stockLimit, 12));
+  const preferredStocks = (input.preferredStocks ?? [])
+    .filter((stock) => /^\d{6}$/.test(stock.symbol))
+    .map((stock) => ({ symbol: stock.symbol, name: stock.name }));
   const stockQuotes = [...input.snapshot.quotes]
     .filter((quote) => quote.tradable && /^\d{6}$/.test(quote.symbol) && quote.price > 0)
     .sort((a, b) => (b.amount ?? b.price * b.volume) - (a.amount ?? a.price * a.volume))
-    .slice(0, input.stockLimit);
-  const stockSymbols = stockQuotes.map((quote) => quote.symbol);
-  const stockNames = new Map(stockQuotes.map((quote) => [quote.symbol, quote.name]));
+    .map((quote) => ({ symbol: quote.symbol, name: quote.name }));
+  const stockUniverse = [...preferredStocks, ...stockQuotes]
+    .filter((stock, index, items) =>
+      items.findIndex((candidate) => candidate.symbol === stock.symbol) === index,
+    )
+    .slice(0, stockLimit);
+  const stockSymbols = stockUniverse.map((stock) => stock.symbol);
+  const stockNames = new Map(stockUniverse.map((stock) => [stock.symbol, stock.name]));
 
   const sectorUrl = new URL(`${baseUrl}/api/market/sector-history`);
   sectorUrl.searchParams.set("sectors", sectorNames.join(","));

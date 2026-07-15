@@ -104,6 +104,16 @@ npm run dev
 npm run dev:a-share
 ```
 
+`npm run dev` 和 `npm run dev:a-share` 是稳定观察命令：API 以前台进程运行，任一服务异常退出后由 `concurrently` 等待 1 秒并自动重启。它们适合盘中本地 paper 观察，可避免 `tsx watch` 的父进程仍在、实际 API 子进程已经退出时，前端长期连接不到 `8787`。
+
+修改服务端代码并需要热重载时，可单独运行：
+
+```powershell
+npm run dev:api:watch
+```
+
+该命令优先服务于开发时的代码重载；整日观察仍应使用 `npm run dev:a-share`，并配合健康检查确认 API、行情桥接和前端代理都可用。
+
 启动后执行健康检查：
 
 ```powershell
@@ -349,6 +359,16 @@ Invoke-RestMethod `
 模拟撮合遵守 A 股 T+1：当天买入后，持仓中的 `t1LockedQuantity` 会计入锁定数量，`availableQuantity` 为 0 或不足时，当天卖出请求会被拒绝。该规则只作用于本地 paper 账户，不代表真实券商回报。
 
 ## 最近验证
+
+2026-07-15 的自适应策略与异常恢复验证结果：
+
+1. `npm test`：30 个服务端测试文件、587 项服务端测试，以及 4 个前端测试文件、15 项前端测试全部通过。
+2. `npm run build`：TypeScript 检查与 Vite 生产构建通过。
+3. `python -m pytest akshare-bridge/test_bridge.py -q`：46 项桥接测试通过，只有一项依赖弃用警告。
+4. 新 `npm run dev:a-share` 启动后，API、Vite 代理和 AkShare 桥接健康；后端为 `paper + akshare`，`authEnabled=true`，`REAL_TRADING_ENABLED=false`。
+5. 受控终止 API PID 287472 后，`concurrently` 记录异常退出并自动重启，`8787` 由 PID 265224 恢复；前端和行情桥没有同时退出。
+6. 登录后策略排行榜返回 12 项；纸面计划识别 `risk-off`、路由置信度 77%，选择 `KAIROS资金护城河`，生成两条有上限的减仓计划和一条现金观察。自动执行器仍为 `local-paper-broker-only`，检查时处于盘后，没有提交外部或真实订单。
+7. 1440 x 900 桌面和 390 x 844 手机浏览器检查无横向溢出；移动菜单可正常打开/关闭，新策略状态区无重叠，控制台无错误。
 
 2026-07-14 的验证结果：
 

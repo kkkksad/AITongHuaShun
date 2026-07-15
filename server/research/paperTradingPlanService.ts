@@ -4,6 +4,10 @@ import { buildDailyCandidates } from "./dailyCandidates";
 import type { DailyCandidateReport } from "./dailyCandidates";
 import { buildDailyQualityStocks } from "./dailyQualityStocks";
 import type { DailyQualityStockReport } from "./dailyQualityStocks";
+import { routeAdaptiveStrategies } from "./adaptiveStrategyRouter";
+import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
+import { buildMarketRegimeResearch } from "./marketRegimeResearch";
+import type { MarketRegimeResearchReport } from "./marketRegimeResearch";
 import { buildPaperTradingPlan } from "./paperTradingPlan";
 import type { PaperTradingPlan } from "./paperTradingPlan";
 import { buildStrategyLeaderboard } from "./strategyLeaderboard";
@@ -15,6 +19,8 @@ export interface CurrentPaperTradingPlanResult {
   leaderboard: StrategyLeaderboardReport;
   candidates: DailyCandidateReport;
   qualityStocks: DailyQualityStockReport;
+  marketRegimeResearch: MarketRegimeResearchReport;
+  adaptiveRouting: AdaptiveStrategyRouting;
 }
 
 export async function buildCurrentPaperTradingPlan(input: {
@@ -28,7 +34,7 @@ export async function buildCurrentPaperTradingPlan(input: {
   const snapshot = input.system.market.getSnapshot();
   const account = input.system.broker.getAccount(snapshot);
   const positions = input.system.broker.getPositions(snapshot);
-  const [leaderboard, candidates, qualityStocks] = await Promise.all([
+  const [leaderboard, candidates, qualityStocks, marketRegimeResearch] = await Promise.all([
     buildStrategyLeaderboard(
       snapshot,
       input.system.marketDataProvider,
@@ -44,7 +50,23 @@ export async function buildCurrentPaperTradingPlan(input: {
       input.system.marketDataProvider,
       input.qualityLimit ?? 60,
     ),
+    buildMarketRegimeResearch({
+      bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: input.system.marketDataProvider,
+      mode: input.config.MARKET_MODE,
+      snapshot,
+      preferredStocks: positions.map((position) => ({
+        symbol: position.symbol,
+        name: position.name,
+      })),
+      sectorLimit: 10,
+      stockLimit: 12,
+      days: 180,
+      timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
+    }),
   ]);
+  const adaptiveRouting = routeAdaptiveStrategies(marketRegimeResearch);
 
   input.researchStore?.recordMarketSnapshot(snapshot, input.system.marketDataProvider);
   input.researchStore?.recordStrategyLeaderboard(leaderboard);
@@ -59,6 +81,12 @@ export async function buildCurrentPaperTradingPlan(input: {
     leaderboard,
     candidates,
     qualityStocks,
+    adaptiveRouting:
+      input.system.marketDataProvider === "akshare" ? adaptiveRouting : undefined,
+    marketRegimeResearch:
+      input.system.marketDataProvider === "akshare"
+        ? marketRegimeResearch
+        : undefined,
     initialCapital: input.config.TRADING_STARTING_CASH,
     lotSize: input.system.limits.lotSize,
     maxPositionWeight: input.system.risk.getEffectiveMaxPositionWeight(),
@@ -73,5 +101,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     leaderboard,
     candidates,
     qualityStocks,
+    marketRegimeResearch,
+    adaptiveRouting,
   };
 }

@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | 当前状态 | [status/current-state.md](status/current-state.md) | 现在实际有哪些文件，哪些能力可运行？ |
 | 产品范围 | [product/overview.md](product/overview.md) | 产品要解决什么问题，包含和不包含什么？ |
+| 未来优化蓝图 | [product/future-optimization.md](product/future-optimization.md) | 如何按市场状态选择策略，并逐步升级数据、风控、同花顺模拟接入和长期运行？ |
 | 系统架构 | [architecture/system-overview.md](architecture/system-overview.md) | 模块如何划分，依赖方向是什么？ |
 | 本地开发 | [operations/development.md](operations/development.md) | 如何安装、运行、测试和排错？ |
 | 服务器部署 | [operations/deployment.md](operations/deployment.md) | 如何用 HTTPS 和强制会话保护部署单实例？ |

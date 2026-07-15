@@ -12,6 +12,10 @@ import {
 } from "lucide-react";
 import { pipelineStages } from "../data/mockData";
 import {
+  adaptivePostureLabel,
+  adaptiveRegimeLabel,
+} from "../lib/adaptiveStrategyPresentation";
+import {
   fetchDailyCandidates,
   fetchDailyMarketReview,
   fetchLearningState,
@@ -281,6 +285,34 @@ export default function LearningPipeline() {
               <small>一手 {paperPlan?.capitalPlan.lotSize ?? 100} 股</small>
             </article>
           </div>
+          {paperPlan?.adaptiveRouting && (
+            <div className="adaptive-routing-summary">
+              <div className="adaptive-routing-stats">
+                <span>
+                  市场状态
+                  <strong>{adaptiveRegimeLabel(paperPlan.adaptiveRouting.regime)}</strong>
+                </span>
+                <span>
+                  路由置信度
+                  <strong>{(paperPlan.adaptiveRouting.confidence * 100).toFixed(0)}%</strong>
+                </span>
+                <span>
+                  仓位姿态
+                  <strong>{adaptivePostureLabel(paperPlan.adaptiveRouting.positionPosture)}</strong>
+                </span>
+                <span>
+                  现金储备
+                  <strong>{(paperPlan.adaptiveRouting.cashReserveRatio * 100).toFixed(0)}%</strong>
+                </span>
+              </div>
+              <p>{paperPlan.adaptiveRouting.evidence[0] ?? "等待真实历史状态确认。"}</p>
+              <small>
+                当前策略 {paperPlan.topStrategy?.strategyName ?? "资金盾牌"} · 允许策略{" "}
+                {paperPlan.adaptiveRouting.eligibleStrategyKeys.length} 个 ·
+                {paperPlan.adaptiveRouting.allowNewPositions ? " 可新增 paper 仓位" : " 停止新增仓位"}
+              </small>
+            </div>
+          )}
           {paperPlanQuality && (
             <div className="learning-plan-summary">
               <strong>纸面计划诊断</strong>

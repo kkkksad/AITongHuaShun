@@ -196,4 +196,96 @@ describe("market regime research", () => {
       "行业7",
     ]);
   });
+
+  it("puts preferred held stocks before snapshot candidates within the bridge limit", async () => {
+    const requestedUrls: string[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.includes("/api/market/sectors")) {
+        return new Response(JSON.stringify({
+          provider: "akshare",
+          source: "ths-industry-summary",
+          fetchedAt: "2026-07-15T01:00:00Z",
+          sectors: [
+            {
+              symbol: "BK0001",
+              name: "测试行业",
+              price: 100,
+              changePercent: 1,
+              amount: null,
+              turnover: null,
+              advancers: null,
+              decliners: null,
+              leaderName: null,
+              leaderChangePercent: null,
+              mainNetInflow: null,
+              updatedAt: "2026-07-15T01:00:00Z",
+            },
+          ],
+          warning: null,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        provider: "akshare",
+        source: "test-history",
+        fetchedAt: "2026-07-15T01:00:00Z",
+        series: [],
+        warning: null,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    await buildMarketRegimeResearch({
+      bridgeUrl: "http://127.0.0.1:8800",
+      marketDataProvider: "akshare",
+      mode: "paper",
+      snapshot: {
+        mode: "paper",
+        sequence: 1,
+        marketTime: "2026-07-15T01:00:00Z",
+        quotes: [
+          {
+            symbol: "000001",
+            name: "平安银行",
+            price: 10,
+            previousClose: 9.9,
+            changePercent: 1,
+            volume: 10_000_000,
+            amount: 100_000_000,
+            tradable: true,
+            updatedAt: "2026-07-15T01:00:00Z",
+          },
+          {
+            symbol: "000002",
+            name: "万科A",
+            price: 8,
+            previousClose: 8,
+            changePercent: 0,
+            volume: 5_000_000,
+            amount: 40_000_000,
+            tradable: true,
+            updatedAt: "2026-07-15T01:00:00Z",
+          },
+        ],
+      },
+      preferredStocks: [
+        { symbol: "600519", name: "贵州茅台" },
+        { symbol: "601398", name: "工商银行" },
+        { symbol: "600519", name: "重复持仓" },
+      ],
+      sectorLimit: 1,
+      stockLimit: 3,
+      days: 180,
+      timeoutMs: 1_000,
+      fetchImpl,
+    });
+
+    const stockRequest = requestedUrls.find((url) =>
+      url.includes("/api/market/stock-history"),
+    );
+    expect(stockRequest).toBeDefined();
+    expect(new URL(stockRequest!).searchParams.get("symbols")).toBe(
+      "600519,601398,000001",
+    );
+  });
 });

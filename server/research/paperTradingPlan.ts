@@ -7,6 +7,8 @@ import type {
 } from "../../shared/trading";
 import type { DailyCandidateReport } from "./dailyCandidates";
 import type { DailyQualityStockReport } from "./dailyQualityStocks";
+import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
+import type { MarketRegimeResearchReport } from "./marketRegimeResearch";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 
 export type PaperTradingOperationAction =
@@ -72,6 +74,7 @@ export interface PaperTradingPlan {
     totalTrades: number;
     qualityGate: string;
   } | null;
+  adaptiveRouting: AdaptiveStrategyRouting | null;
   qualitySummary: PaperTradingPlanQualitySummary;
   operations: PaperTradingOperation[];
   guardrails: string[];
@@ -291,6 +294,8 @@ export function buildPaperTradingPlan(input: {
   leaderboard: StrategyLeaderboardReport;
   candidates: DailyCandidateReport;
   qualityStocks: DailyQualityStockReport;
+  adaptiveRouting?: AdaptiveStrategyRouting;
+  marketRegimeResearch?: MarketRegimeResearchReport;
   initialCapital: number;
   lotSize: number;
   maxPositionWeight: number;
@@ -302,15 +307,27 @@ export function buildPaperTradingPlan(input: {
   const now = new Date().toISOString();
   const quoteMap = new Map(input.snapshot.quotes.map((quote) => [quote.symbol, quote]));
   const positionMap = new Map(input.positions.map((position) => [position.symbol, position]));
-  const topStrategy = input.leaderboard.entries[0] ?? null;
+  const stockRegimeMap = new Map(
+    (input.marketRegimeResearch?.stockRegimes ?? []).map((stock) => [stock.symbol, stock]),
+  );
+  const topStrategy = input.adaptiveRouting
+    ? input.leaderboard.entries.find((entry) =>
+        input.adaptiveRouting?.eligibleStrategyKeys.includes(entry.strategyKey),
+      ) ?? null
+    : input.leaderboard.entries[0] ?? null;
+  const effectiveCashReserveRatio = Math.max(
+    input.cashReserveRatio,
+    input.adaptiveRouting?.cashReserveRatio ?? 0,
+  );
   const cashReserveAmount = Math.min(
     input.account.cash,
-    Math.max(0, input.account.equity * input.cashReserveRatio),
+    Math.max(0, input.account.equity * effectiveCashReserveRatio),
   );
   const plannedCashBudget = Math.max(0, input.account.cash - cashReserveAmount);
+  const newPositionScale = input.adaptiveRouting?.newPositionScale ?? 1;
   const maxSingleOrderNotional = Math.min(
-    input.maxSingleOrderNotional,
-    Math.max(0, input.account.equity * input.maxPositionWeight),
+    input.maxSingleOrderNotional * newPositionScale,
+    Math.max(0, input.account.equity * input.maxPositionWeight * newPositionScale),
     plannedCashBudget,
   );
 
@@ -321,8 +338,15 @@ export function buildPaperTradingPlan(input: {
     const price = quote?.price ?? position.currentPrice;
     const locked = position.t1LockedQuantity ?? 0;
     const available = position.availableQuantity ?? position.quantity;
+    const historicalRegime = stockRegimeMap.get(position.symbol);
+    const hardStop =
+      position.unrealizedPnl / Math.max(1, position.marketValue) <= -0.03;
+    const adaptiveReduction =
+      input.adaptiveRouting?.positionPosture === "reduce" &&
+      historicalRegime?.regime === "trend-deterioration" &&
+      historicalRegime.confidence >= 0.65;
 
-    if (locked > 0) {
+    if ((hardStop || adaptiveReduction) && locked > 0 && available <= 0) {
       operations.push({
         timestamp: now,
         symbol: position.symbol,
@@ -335,18 +359,74 @@ export function buildPaperTradingPlan(input: {
         reason: "今日买入数量仍处于 T+1 锁定，不能当天卖出。",
         ruleChecks: ["T+1: blocked", `可卖 ${available} / 总持仓 ${position.quantity}`],
       });
-    } else if (position.unrealizedPnl / Math.max(1, position.marketValue) <= -0.03 && available > 0) {
+    } else if (hardStop && available > 0) {
+      const quantity = roundLot(
+        Math.min(available, position.quantity),
+        input.lotSize,
+      );
       operations.push({
         timestamp: now,
         symbol: position.symbol,
         name: position.name,
         action: "paper-sell-plan",
         strategy: "回撤控制",
-        quantity: roundLot(Math.min(available, position.quantity), input.lotSize),
+        quantity,
         price,
-        estimatedNotional: Number((roundLot(Math.min(available, position.quantity), input.lotSize) * price).toFixed(2)),
+        estimatedNotional: Number((quantity * price).toFixed(2)),
         reason: "持仓浮亏超过 3%，纳入纸面减仓观察；不会触发真实下单。",
         ruleChecks: ["paper-only", "T+1: pass", "manual-review-required"],
+      });
+    } else if (adaptiveReduction && available >= input.lotSize) {
+      const targetQuantity = Math.max(
+        input.lotSize,
+        roundLot(position.quantity * 0.5, input.lotSize),
+      );
+      const quantity = roundLot(
+        Math.min(available, targetQuantity),
+        input.lotSize,
+      );
+      operations.push({
+        timestamp: now,
+        symbol: position.symbol,
+        name: position.name,
+        action: "paper-sell-plan",
+        strategy: "市场状态减仓",
+        quantity,
+        price,
+        estimatedNotional: Number((quantity * price).toFixed(2)),
+        reason: "真实历史形态显示高置信度趋势恶化，按当前 risk-off 状态减半仓位并保留后续观察。",
+        ruleChecks: [
+          "paper-only",
+          "T+1: pass",
+          `stock-regime: trend-deterioration (${historicalRegime.confidence.toFixed(2)})`,
+          "adaptive-position-reduction: 50%",
+        ],
+      });
+    } else if (historicalRegime?.regime === "washout-candidate") {
+      operations.push({
+        timestamp: now,
+        symbol: position.symbol,
+        name: position.name,
+        action: "hold",
+        strategy: "洗盘候选持仓观察",
+        quantity: 0,
+        price,
+        estimatedNotional: 0,
+        reason: "真实历史形态仍是缩量洗盘候选，尚未确认趋势恶化，保持原仓位观察。",
+        ruleChecks: ["paper-only", "stock-regime: washout-candidate", "no-forced-sell"],
+      });
+    } else if (historicalRegime?.regime === "healthy-trend") {
+      operations.push({
+        timestamp: now,
+        symbol: position.symbol,
+        name: position.name,
+        action: "hold",
+        strategy: "趋势健康持仓",
+        quantity: 0,
+        price,
+        estimatedNotional: 0,
+        reason: "真实历史形态仍处于健康趋势，保持原仓位并继续跟踪退出条件。",
+        ruleChecks: ["paper-only", "stock-regime: healthy-trend", "no-forced-trade"],
       });
     }
   }
@@ -440,7 +520,38 @@ export function buildPaperTradingPlan(input: {
   ).length;
 
   let remainingPlannedCash = plannedCashBudget;
-  for (const candidate of candidatePool) {
+  const routeAllowsBuying = input.adaptiveRouting?.allowNewPositions ?? true;
+  if (!routeAllowsBuying) {
+    operations.push({
+      timestamp: now,
+      symbol: "CASH",
+      name: "现金观察",
+      action: "observe",
+      strategy: topStrategy?.strategyName ?? "资金盾牌",
+      quantity: 0,
+      price: 1,
+      estimatedNotional: 0,
+      reason: `当前市场状态 ${input.adaptiveRouting?.regime ?? "unclear"} 禁止新增仓位，等待状态和数据恢复。`,
+      ruleChecks: ["paper-only", "adaptive-new-position: blocked", "no-forced-trade"],
+    });
+  } else if (candidatePoolSize > 0 && affordableCandidateCount === 0) {
+    operations.push({
+      timestamp: now,
+      symbol: "CASH",
+      name: "现金观察",
+      action: "observe",
+      strategy: topStrategy?.strategyName ?? "策略路由",
+      quantity: 0,
+      price: 1,
+      estimatedNotional: 0,
+      reason: "当前可用现金和现金缓冲不足以买入任一候选的一手，停止重复生成不可执行买单。",
+      ruleChecks: ["paper-only", "cash-constrained", "lot-size: not-affordable"],
+    });
+  }
+
+  for (const candidate of routeAllowsBuying && affordableCandidateCount > 0
+    ? candidatePool
+    : []) {
     const existing = positionMap.get(candidate.symbol);
     const quantity = candidateQuantity(
       candidate,
@@ -459,6 +570,9 @@ export function buildPaperTradingPlan(input: {
     const estimatedCashRequired = estimatedNotional + estimatedFee;
 
     if (existing) {
+      if (operations.some((operation) => operation.symbol === candidate.symbol)) {
+        continue;
+      }
       operations.push({
         timestamp: now,
         symbol: candidate.symbol,
@@ -572,7 +686,7 @@ export function buildPaperTradingPlan(input: {
       maxPositionWeight: input.maxPositionWeight,
       maxSingleOrderNotional,
       lotSize: input.lotSize,
-      cashReserveRatio: input.cashReserveRatio,
+      cashReserveRatio: effectiveCashReserveRatio,
       cashReserveAmount: Number(cashReserveAmount.toFixed(2)),
     },
     rules: [
@@ -590,6 +704,7 @@ export function buildPaperTradingPlan(input: {
           qualityGate: topStrategy.qualityGate,
         }
       : null,
+    adaptiveRouting: input.adaptiveRouting ?? null,
     qualitySummary: buildQualitySummary({
       operations,
       candidatePoolSize,

@@ -323,6 +323,42 @@ export interface PaperTradingPlanQualitySummary {
   summary: string;
 }
 
+export type AdaptiveMarketRegime =
+  | "trend-up-low-volatility"
+  | "trend-up-high-volatility"
+  | "range-low-volatility"
+  | "range-high-volatility"
+  | "risk-off"
+  | "unclear";
+
+export type AdaptivePositionPosture = "accumulate" | "hold" | "reduce";
+
+export interface AdaptiveStrategyRouting {
+  version: "1.0.0";
+  generatedAt: string;
+  regime: AdaptiveMarketRegime;
+  confidence: number;
+  positionPosture: AdaptivePositionPosture;
+  allowNewPositions: boolean;
+  cashReserveRatio: number;
+  newPositionScale: number;
+  eligibleStrategyKeys: string[];
+  disabledStrategyKeys: string[];
+  evidence: string[];
+  riskFlags: string[];
+  metrics: {
+    constructiveSectorRatio: number;
+    cautiousSectorRatio: number;
+    averageReturn20d: number;
+    averageReturn60d: number;
+    averageMa20Slope5d: number;
+    averageVolatility20d: number;
+    averageBreadthRatio: number | null;
+    healthyStockRatio: number;
+    deterioratingStockRatio: number;
+  };
+}
+
 export interface PaperTradingPlan {
   generatedAt: string;
   tradingDate: string;
@@ -350,6 +386,7 @@ export interface PaperTradingPlan {
     totalTrades: number;
     qualityGate: string;
   } | null;
+  adaptiveRouting: AdaptiveStrategyRouting | null;
   qualitySummary: PaperTradingPlanQualitySummary;
   operations: PaperTradingOperation[];
   guardrails: string[];
