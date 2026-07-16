@@ -72,6 +72,7 @@
 - **预算化 WxPusher 盘中简报** —— 默认每天最多尝试 8 条并硬限制为 10 条，正常发送四个阶段简报，包含当前/计划后 paper 持仓、精确模拟动作、现金、仓位、策略条件、前三板块和风险/数据警告。同阶段实质变化默认冷却 20 分钟，价格变化不触发重发，发送失败也计入额度且审计不保存凭据。
 - **全市场偏弱明确提醒** —— 当前配置股票池至少 10 只、平均涨跌幅不高于 -0.8% 且上涨/下跌家数比不高于 0.67 时，WxPusher 阶段简报标题和正文明确显示“市场不宜操作”，提示暂停新增 paper 仓位；该状态进入通知签名和审计，转弱可绕过同阶段冷却，但仍受每日消息预算限制。
 - **真实新股申购研究** —— AkShare 桥接新增东方财富新股申购表只读端点，Fastify `/api/research/ipo-subscriptions` 按北京时间筛选前后 30 天的今日/即将申购、待上市和近期上市记录；只用发行价与发行/行业市盈率形成 0-100 启发式规则分，未定价时等待定价，上市后涨幅不参与历史建议。市场页提供三个标签和来源/风险展示，不读取账户资格或自动申购。
+- **按名称/代码的个股趋势研判** —— AkShare 桥复用全 A 股内存行情缓存解析代码、完整名称和模糊名称；Fastify `/api/research/stock-trend` 读取单股默认 360 日前复权日线，基于均线、5/20/60 日动量、RSI、波动、ATR 和量能输出 3/5/10 个交易日规则分，并严格滚动验证过去同方向信号。市场页显示真实 Close/MA20/MA60 图、经验涨跌/震荡概率、阶段高低点中位交易日和幅度、支撑压力、依据与风险；规则分和经验频率都不是校准后的未来概率，也不会触发订单。
 - **持仓优先的历史形态研究** —— 生成市场状态前会把当前 paper 持仓放在个股历史研究队列前部，去重后仍限制最多 12 只，避免候选池挤掉真正需要退出判断的已有仓位。
 - **趋势恶化减仓与现金观察** —— `risk-off` 下，高置信度“趋势恶化”且 T+1 可卖的持仓会生成有上限的半仓减仓计划；原有 3% 亏损退出仍是更严格的全量止损。健康趋势和洗盘候选明确保持观察；从计划开始就没有任何一手可负担候选时，只生成一条现金观察，不再重复列出十条注定资金不足的买入。
 - **风险收缩日内减仓纪律** —— 普通市场状态减仓和风险仓位再平衡按持久化订单限制为同一标的每个交易日最多一轮，避免多次“减半”突破原风险预算；3% 硬止损仍可覆盖该限制。`risk-off` 且仓位高于现金目标时，计划优先对趋势恶化、信号不清或数据不足且 T+1 可卖的持仓执行最多四分之一仓位的一手级分阶段减仓，不机械卖出健康趋势或洗盘候选。
@@ -132,6 +133,29 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-16 name/code stock trend forecast
+D:\conda\python.exe -m pytest akshare-bridge\test_bridge.py -q
+56 bridge tests passed, 1 dependency deprecation warning
+
+npm test
+36 server test files passed
+647 server tests passed
+4 web test files passed
+18 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+git diff --check passed with line-ending conversion warnings only. The tracked/untracked credential scan excluding `.env.local` found no configured SPT, UID, or login password.
+
+Runtime health returned paper + akshare, authEnabled=true, realTradingEnabled=false. The restarted AkShare bridge held 5528 stock symbols and 562 indices with no stock or index error. Exact code `600519` and exact name `贵州茅台` both resolved to the same 360-bar qfq series from `tencent-stock-history`; partial name `酒` returned eight choices without selecting one, and an unknown name returned not-found without static fallback data.
+
+Real 600519 snapshot: quote 1258.99 (+0.63%), latest history date 2026-07-16, 20-day support 1151.01 and resistance 1267.97. The 3-day outlook was slightly bullish at 64/100 with 44 same-direction samples and 36.4% historical hit rate; 5-day was slightly bullish at 60/100 with 42 samples and 40.5% hit rate; 10-day was sideways at 55/100 with 124 samples and 65.3% range hit rate. The low short-horizon validation is displayed rather than hidden and is not described as future probability.
+
+Empirical distribution on the same real 600519 sample: 3-day up/down/flat frequencies were 29.5%/54.5%/15.9%, with median peak/trough near trading day 2 at +0.1%/-1.3%; 5-day frequencies were 30.9%/52.4%/16.7%, with median peak near day 2 (+0.4%) and trough near day 4 (-1.6%); 10-day frequencies were 46.0%/46.8%/7.3%, with median peak near day 5 (+1.3%) and trough near day 7 (-2.0%). The positive short-term rule score conflicts with the historical downside frequency, so the API adds an explicit conflict risk instead of hiding the disagreement.
+
+The authenticated market page passed 1280px desktop and 390 x 844 mobile checks. Close/MA20/MA60 rendered as three non-empty SVG paths; the mobile panel was 370px wide, chart 334 x 250, all horizon items stayed within 340px, page-level horizontal overflow was false, and the authenticated reload console had no errors.
+
 2026-07-16 broad-market warning and real IPO subscription research
 D:\conda\python.exe -m pytest akshare-bridge\test_bridge.py -q
 50 bridge tests passed, 1 dependency deprecation warning
@@ -477,6 +501,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 每日优质股筛选器当前主要基于实时快照质量评分，尚未把真实新闻、全球市场、授权历史 K 线或财务因子纳入评分闭环；`focus` 只表示优先观察或进入 paper 小仓位验证。
 - 研究学习状态当前只是运行期内存样本池，不是长期训练库；服务重启会清空，不能用于声称策略已完成自学习或已验证真实胜率。
 - A 股强势回踩确认战法是研究候选策略，不是“稳赚”或“实盘收割”承诺；接入授权历史行情、样本外验证和模拟盘观察前，不应作为真实下单依据。
+- 单股趋势研判只使用公开前复权日线和启发式技术结构；历史同向命中率不是未来胜率，未纳入公司财务、公告事件、停复牌、涨跌停可成交性或完整逐笔数据，不应作为单独下单依据。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
 - JSON 交易历史默认只保留最近 7 天，过期清理也会缩短订单幂等查询和审计回看窗口；需要长期研究的汇总结果应另行导出，不应依赖无限增长的运行状态文件。
 - 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 从 10000 元纯现金开始；已有 JSON 状态文件不会被自动覆盖，需要用户明确删除或移走后才会重新初始化。

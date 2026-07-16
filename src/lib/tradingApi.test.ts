@@ -4,6 +4,7 @@ import {
   fetchAuditEvents,
   fetchIpoSubscriptionResearch,
   fetchMarketRegimeResearch,
+  fetchStockTrendForecast,
   getTradingSocketUrl,
   login,
   notifyAuthExpired,
@@ -121,5 +122,31 @@ describe("session-aware trading API", () => {
       expect.stringMatching(/\/api\/research\/ipo-subscriptions\?limit=80$/),
       expect.objectContaining({ credentials: "include" }),
     );
+  });
+
+  it("encodes a Chinese stock trend query and bounds the history window", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        sourceStatus: "live-read-only",
+        query: "贵州茅台 & 600519",
+        resolution: "resolved",
+        horizons: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchStockTrendForecast("  贵州茅台 & 600519  ", 999);
+
+    const requestedUrl = String(fetchMock.mock.calls[0][0]);
+    const parsed = new URL(requestedUrl, "http://localhost");
+    expect(parsed.pathname).toBe("/api/research/stock-trend");
+    expect(parsed.searchParams.get("query")).toBe("贵州茅台 & 600519");
+    expect(parsed.searchParams.get("days")).toBe("500");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ credentials: "include" }),
+    );
+    expect(requestedUrl).not.toContain("password");
+    expect(requestedUrl).not.toContain("token");
   });
 });

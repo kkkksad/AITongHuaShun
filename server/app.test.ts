@@ -90,6 +90,7 @@ describe("trading API", () => {
         "/api/account",
         "/api/research/daily-review",
         "/api/research/market-regime",
+        "/api/research/stock-trend?query=600519",
         "/api/research/ipo-subscriptions",
         "/metrics",
         "/documentation/json",
@@ -367,6 +368,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/trading/auto-paper-execution/run");
     expect(response.json().paths).toHaveProperty("/api/research/real-data-feed");
     expect(response.json().paths).toHaveProperty("/api/research/market-regime");
+    expect(response.json().paths).toHaveProperty("/api/research/stock-trend");
     expect(response.json().paths).toHaveProperty("/api/research/self-optimization");
   });
 
@@ -417,6 +419,44 @@ describe("trading API", () => {
       },
     });
     expect(response.json().guardrails.join(" ")).toContain("不会使用静态板块数据替代");
+  });
+
+  it("does not fabricate a stock trend forecast when real history is disabled", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/stock-trend?query=600519&days=360",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      sourceStatus: "mock-disabled",
+      query: "600519",
+      resolution: "mock-disabled",
+      selected: null,
+      matches: [],
+      horizons: [],
+      chart: [],
+      methodology: {
+        horizons: [3, 5, 10],
+        walkForward: true,
+      },
+    });
+    expect(response.json().guardrails.join(" ")).toContain("不会提交模拟或真实订单");
+  });
+
+  it("validates stock trend queries before accessing research data", async () => {
+    const missing = await app.inject({
+      method: "GET",
+      url: "/api/research/stock-trend",
+    });
+    const tooLong = await app.inject({
+      method: "GET",
+      url: `/api/research/stock-trend?query=${"a".repeat(41)}`,
+    });
+
+    expect(missing.statusCode).toBe(400);
+    expect(tooLong.statusCode).toBe(400);
   });
 
   it("adds baseline security headers", async () => {

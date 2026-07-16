@@ -51,6 +51,7 @@ import { buildIpoSubscriptionResearch } from "./research/ipoSubscriptionResearch
 import { buildCurrentPaperTradingPlan } from "./research/paperTradingPlanService";
 import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
+import { buildStockTrendForecast } from "./research/stockTrendForecast";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
 import { buildSuperMindSignalPackage } from "./research/supermindSignalBridge";
 import { WebSocketHub } from "./realtime/webSocketHub";
@@ -104,6 +105,11 @@ const marketRegimeQuerySchema = z.object({
   sectorLimit: z.coerce.number().int().min(1).max(20).default(10),
   stockLimit: z.coerce.number().int().min(1).max(12).default(8),
   days: z.coerce.number().int().min(60).max(500).default(180),
+});
+
+const stockTrendQuerySchema = z.object({
+  query: z.string().trim().min(1).max(40),
+  days: z.coerce.number().int().min(120).max(500).default(360),
 });
 
 const ipoSubscriptionsQuerySchema = z.object({
@@ -687,6 +693,44 @@ export async function buildTradingApp(
       sectorLimit,
       stockLimit,
       days,
+      timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+    });
+  });
+
+  app.get("/api/research/stock-trend", {
+    schema: {
+      tags: ["研究"],
+      summary: "按股票名称或代码获取未来趋势研究",
+      description:
+        "解析真实 A 股名称或代码，读取前复权日线并输出 3/5/10 个交易日启发式趋势、滚动历史验证、依据和风险。规则分不是上涨概率，接口只读且不会提交订单。",
+      querystring: {
+        type: "object",
+        required: ["query"],
+        properties: {
+          query: {
+            type: "string",
+            minLength: 1,
+            maxLength: 40,
+            description: "A 股六位代码、完整名称或名称片段",
+          },
+          days: {
+            type: "integer",
+            minimum: 120,
+            maximum: 500,
+            default: 360,
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { query, days } = stockTrendQuerySchema.parse(request.query);
+    return buildStockTrendForecast({
+      query,
+      days,
+      bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
       timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
     });
   });

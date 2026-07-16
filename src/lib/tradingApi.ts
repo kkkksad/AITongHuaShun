@@ -764,6 +764,110 @@ export interface MarketRegimeResearchReport {
   guardrails: string[];
 }
 
+export type StockTrendHorizon = 3 | 5 | 10;
+export type StockTrendDirection =
+  | "bullish"
+  | "slightly-bullish"
+  | "sideways"
+  | "slightly-bearish"
+  | "bearish"
+  | "insufficient-data";
+
+export interface StockSearchMatch {
+  symbol: string;
+  name: string;
+  price: number;
+  changePercent: number;
+  updatedAt: string;
+}
+
+export interface StockTrendValidation {
+  samples: number;
+  directionalHitRate: number | null;
+  empiricalUpProbability: number | null;
+  empiricalDownProbability: number | null;
+  empiricalFlatProbability: number | null;
+  averageForwardReturn: number | null;
+  bestForwardReturn: number | null;
+  worstForwardReturn: number | null;
+  medianPeakTradingDay: number | null;
+  medianTroughTradingDay: number | null;
+  medianPeakReturn: number | null;
+  medianTroughReturn: number | null;
+  lastSignalDate: string | null;
+  lastOutcomeDate: string | null;
+}
+
+export interface StockTrendOutlook {
+  horizon: StockTrendHorizon;
+  direction: StockTrendDirection;
+  score: number;
+  signalStrength: number;
+  volatilityReferencePercent: number;
+  validation: StockTrendValidation;
+}
+
+export interface StockTrendForecastReport {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+  query: string;
+  resolution: "resolved" | "ambiguous" | "not-found" | "mock-disabled" | "degraded";
+  selected: StockSearchMatch | null;
+  matches: StockSearchMatch[];
+  source: {
+    searchSource: string;
+    historySource: string;
+    fetchedAt: string | null;
+    adjustment: "qfq";
+    requestedDays: number;
+    barCount: number;
+  };
+  latest: {
+    date: string;
+    close: number;
+    changePercent: number;
+  } | null;
+  factors: {
+    return5d: number;
+    return20d: number;
+    return60d: number;
+    distanceFromMa20: number;
+    distanceFromMa60: number;
+    ma20Slope5d: number;
+    ma60Slope5d: number;
+    rsi14: number;
+    annualizedVolatility20d: number;
+    atr14Percent: number;
+    volumeRatio5d: number;
+    drawdownFrom20DayHigh: number;
+  } | null;
+  supportResistance: {
+    support20: number;
+    resistance20: number;
+  } | null;
+  horizons: StockTrendOutlook[];
+  chart: Array<{
+    date: string;
+    close: number;
+    ma20: number | null;
+    ma60: number | null;
+  }>;
+  evidence: string[];
+  risks: string[];
+  warnings: string[];
+  methodology: {
+    version: string;
+    horizons: [3, 5, 10];
+    minimumBars: number;
+    walkForward: true;
+    scoreMeaning: string;
+    validationMeaning: string;
+  };
+  guardrails: string[];
+}
+
 export type IpoSubscriptionStatus =
   | "open-today"
   | "upcoming"
@@ -1138,6 +1242,20 @@ export function fetchIpoSubscriptionResearch(
   const boundedLimit = Math.min(80, Math.max(1, Math.round(limit)));
   return authApiRequest<IpoSubscriptionResearchReport>(
     `/api/research/ipo-subscriptions?limit=${boundedLimit}`,
+  );
+}
+
+export function fetchStockTrendForecast(
+  query: string,
+  days = 360,
+): Promise<StockTrendForecastReport> {
+  const boundedDays = Math.min(500, Math.max(120, Math.round(days)));
+  const params = new URLSearchParams({
+    query: query.trim(),
+    days: String(boundedDays),
+  });
+  return authApiRequest<StockTrendForecastReport>(
+    `/api/research/stock-trend?${params.toString()}`,
   );
 }
 

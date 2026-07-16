@@ -5,7 +5,7 @@ AkShare 桥接微服务单元测试
 """
 
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -31,6 +31,8 @@ from main import (
     IndexCache,
     SectorSnapshot,
     SectorSnapshotResponse,
+    StockSearchItem,
+    StockSearchResponse,
     fetch_a_share_spot_dataframe,
     fetch_a_share_index_dataframe,
     fetch_financial_news_dataframe,
@@ -46,6 +48,7 @@ from main import (
     normalize_a_share_symbol,
     normalize_index_symbol,
     normalize_ipo_subscriptions_dataframe,
+    rank_stock_matches,
 )
 
 client = TestClient(app)
@@ -90,6 +93,97 @@ class TestQuotesEndpoint:
         response = client.get(f"/api/market/quotes?symbols={symbols}")
         assert response.status_code == 400
         assert "100" in response.json()["detail"]
+
+
+class TestStockSearchEndpoint:
+    @staticmethod
+    def quote(symbol: str, name: str) -> MarketQuote:
+        return MarketQuote(
+            symbol=symbol,
+            name=name,
+            price=100.0,
+            previousClose=99.0,
+            changePercent=1.01,
+            volume=1000,
+            updatedAt="2026-07-16T12:00:00.000Z",
+        )
+
+    def test_exact_code_ranks_before_fuzzy_name_matches(self):
+        items = rank_stock_matches([
+            self.quote("600519", "贵州茅台"),
+            self.quote("600809", "山西汾酒"),
+            self.quote("600516", "方大炭素"),
+        ], "600519", 8)
+
+        assert [item.symbol for item in items] == ["600519"]
+        assert items[0].name == "贵州茅台"
+
+    def test_exact_chinese_name_ranks_before_contained_names(self):
+        items = rank_stock_matches([
+            self.quote("600519", "贵州茅台"),
+            self.quote("600111", "北方稀土"),
+            self.quote("600222", "贵州茅台测试"),
+        ], "贵州茅台", 8)
+
+        assert [item.symbol for item in items] == ["600519", "600222"]
+
+    def test_fuzzy_name_returns_bounded_ambiguous_choices(self):
+        items = rank_stock_matches([
+            self.quote("600519", "贵州茅台"),
+            self.quote("600199", "金种子酒"),
+            self.quote("000858", "五粮液"),
+        ], "酒", 1)
+
+        assert len(items) == 1
+        assert items[0].name == "金种子酒"
+
+    def test_search_models_keep_only_read_only_quote_metadata(self):
+        response = StockSearchResponse(
+            provider="akshare",
+            source="a-share-spot-cache",
+            fetchedAt="2026-07-16T12:00:00Z",
+            items=[StockSearchItem(
+                symbol="600519",
+                name="贵州茅台",
+                price=1400.0,
+                changePercent=-1.2,
+                updatedAt="2026-07-16T07:00:00.000Z",
+            )],
+        )
+
+        assert response.model_dump()["items"][0] == {
+            "symbol": "600519",
+            "name": "贵州茅台",
+            "price": 1400.0,
+            "changePercent": -1.2,
+            "updatedAt": "2026-07-16T07:00:00.000Z",
+        }
+
+    def test_stock_search_requires_server_token_when_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/api/market/stock-search?query=贵州茅台")
+        assert response.status_code == 401
+
+    def test_stock_search_endpoint_uses_bounded_cache_search(self):
+        match = StockSearchItem(
+            symbol="600519",
+            name="贵州茅台",
+            price=1400.0,
+            changePercent=-1.2,
+            updatedAt="2026-07-16T07:00:00.000Z",
+        )
+        with patch("main.cache.search", new=AsyncMock(return_value=[match])) as search:
+            response = client.get("/api/market/stock-search?query=贵州茅台&limit=99")
+
+        assert response.status_code == 422
+        search.assert_not_awaited()
+
+        with patch("main.cache.search", new=AsyncMock(return_value=[match])) as search:
+            response = client.get("/api/market/stock-search?query=贵州茅台&limit=8")
+
+        assert response.status_code == 200
+        assert response.json()["items"][0]["symbol"] == "600519"
+        search.assert_awaited_once_with("贵州茅台", 8)
 
 
 class TestIndicesEndpoint:

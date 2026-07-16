@@ -91,6 +91,22 @@ class QuotesResponse(BaseModel):
     quotes: list[MarketQuote]
 
 
+class StockSearchItem(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    changePercent: float
+    updatedAt: str
+
+
+class StockSearchResponse(BaseModel):
+    provider: str
+    source: str
+    fetchedAt: str
+    items: list[StockSearchItem] = Field(default_factory=list)
+    warning: str | None = None
+
+
 class NewsItem(BaseModel):
     id: str
     source: str
@@ -229,6 +245,47 @@ GLOBAL_MARKET_ALIASES = {
 }
 
 
+def rank_stock_matches(
+    quotes: list[MarketQuote],
+    query: str,
+    limit: int,
+) -> list[StockSearchItem]:
+    normalized = query.strip().casefold()
+    if not normalized:
+        return []
+
+    ranked: list[tuple[int, int, str, MarketQuote]] = []
+    for quote in quotes:
+        symbol = quote.symbol.casefold()
+        name = quote.name.strip()
+        normalized_name = name.casefold()
+        if symbol == normalized:
+            priority = 0
+        elif normalized_name == normalized:
+            priority = 1
+        elif symbol.startswith(normalized):
+            priority = 2
+        elif normalized_name.startswith(normalized):
+            priority = 3
+        elif normalized in normalized_name:
+            priority = 4
+        else:
+            continue
+        ranked.append((priority, len(name), quote.symbol, quote))
+
+    ranked.sort(key=lambda item: item[:3])
+    return [
+        StockSearchItem(
+            symbol=quote.symbol,
+            name=quote.name,
+            price=quote.price,
+            changePercent=quote.changePercent,
+            updatedAt=quote.updatedAt,
+        )
+        for _, _, _, quote in ranked[:max(1, min(limit, 20))]
+    ]
+
+
 # ── 行情缓存 ──────────────────────────────────────────────
 
 class QuoteCache:
@@ -338,6 +395,13 @@ class QuoteCache:
             if sym in self._data:
                 results.append(self._data[sym])
         return results
+
+    async def search(self, query: str, limit: int) -> list[StockSearchItem]:
+        if self._data and self._needs_refresh():
+            self._schedule_refresh()
+        elif not self._data:
+            await self.refresh()
+        return rank_stock_matches(list(self._data.values()), query, limit)
 
     @property
     def count(self) -> int:
@@ -1305,6 +1369,37 @@ async def get_indices(
         raise HTTPException(status_code=502, detail=f"指数行情数据获取失败: {e}")
 
     return QuotesResponse(quotes=quotes)
+
+
+@app.get("/api/market/stock-search", response_model=StockSearchResponse)
+async def search_stocks(
+    query: str = Query(..., min_length=1, max_length=40),
+    limit: int = Query(8, ge=1, le=20),
+):
+    """Search the bounded in-memory A-share quote cache by code or name."""
+    normalized_query = query.strip()
+    if not normalized_query:
+        raise HTTPException(status_code=400, detail="query 参数不能为空")
+
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        items = await cache.search(normalized_query, limit)
+    except Exception as exc:
+        logger.error("股票搜索失败: %s", exc)
+        return StockSearchResponse(
+            provider="akshare",
+            source="unavailable",
+            fetchedAt=fetched_at,
+            items=[],
+            warning=f"股票名称与代码搜索暂不可用: {exc}",
+        )
+
+    return StockSearchResponse(
+        provider="akshare",
+        source="a-share-spot-cache",
+        fetchedAt=fetched_at,
+        items=items,
+    )
 
 
 @app.get("/api/market/sectors", response_model=SectorSnapshotResponse)

@@ -210,6 +210,8 @@ AkShare 桥接还提供只读财经新闻和全球主要指数接口。Fastify �
 
 AkShare 桥接的 `/api/research/ipo-subscriptions` 读取真实新股申购表；Fastify 的同名受保护接口按北京时间保留前后 30 天记录，并只用申购时可见的发行价、发行市盈率和行业市盈率形成启发式规则分。市场页分为可申购、待上市和近期上市三个标签；未定价时显示等待定价，上游不可用时明确降级，不使用静态新股数据替代。
 
+AkShare 桥接的 `/api/market/stock-search` 使用内存中的全 A 股行情按名称或代码返回最多 20 个匹配；Fastify `/api/research/stock-trend` 默认读取选中股票 360 日、最多 500 日前复权日线，生成 3/5/10 个交易日趋势规则分和同向滚动验证。该接口要求登录，只读，不会提交 paper 或真实订单。
+
 `AKSHARE_BRIDGE_DISABLE_PROXY=true` 会让 AkShare 桥接绕过本机系统代理，避免东方财富行情接口被代理连接中断；如需显式走代理，可在 `.env.local` 中设为 `false`。
 
 如果 AkShare 桥接健康检查中出现 `WinError 10013`，或 `/health` 显示 `cachedSymbols: 0`、`cachedIndices: 0`，说明本机 Python 进程可能被防火墙、代理或网络权限拦截。此时不要把页面上的候选或行情视为有效实时数据；先检查 Windows 防火墙/安全软件是否允许当前 Python 解释器访问网络，并在 `AKSHARE_BRIDGE_DISABLE_PROXY=true/false` 之间切换验证，再重新运行 `npm run check:a-share`。
@@ -316,6 +318,8 @@ Invoke-RestMethod http://127.0.0.1:8787/api/integrations/supermind/signal-packag
 Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/real-data-feed -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/ipo-subscriptions -WebSession $KairosSession
+
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/stock-trend?query=600519&days=360" -WebSession $KairosSession
 ```
 
 OpenAPI 界面位于 `http://127.0.0.1:8787/documentation`。
