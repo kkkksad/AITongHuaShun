@@ -47,6 +47,7 @@ import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
 import { buildMarketRegimeResearch } from "./research/marketRegimeResearch";
+import { buildIpoSubscriptionResearch } from "./research/ipoSubscriptionResearch";
 import { buildCurrentPaperTradingPlan } from "./research/paperTradingPlanService";
 import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
@@ -103,6 +104,10 @@ const marketRegimeQuerySchema = z.object({
   sectorLimit: z.coerce.number().int().min(1).max(20).default(10),
   stockLimit: z.coerce.number().int().min(1).max(12).default(8),
   days: z.coerce.number().int().min(60).max(500).default(180),
+});
+
+const ipoSubscriptionsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(80).default(40),
 });
 
 const publicAuthPaths = new Set([
@@ -683,6 +688,37 @@ export async function buildTradingApp(
       stockLimit,
       days,
       timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+    });
+  });
+
+  app.get("/api/research/ipo-subscriptions", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取真实新股申购与近期上市研究",
+      description:
+        "读取 AkShare 真实只读新股申购表，按申购时可见的估值与价格字段生成启发式研究结论。接口不读取账户资格，也不会提交申购。",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 80,
+            default: 40,
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { limit } = ipoSubscriptionsQuerySchema.parse(request.query);
+    return buildIpoSubscriptionResearch({
+      bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
+      timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+      limit,
+      now: options.clock,
     });
   });
 

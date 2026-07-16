@@ -38,6 +38,10 @@ const MarketRegimePanel = lazyNamed(
   () => import("./components/MarketRegimePanel"),
   "MarketRegimePanel",
 );
+const IpoSubscriptionPanel = lazyNamed(
+  () => import("./components/IpoSubscriptionPanel"),
+  "IpoSubscriptionPanel",
+);
 const MarketOverview = lazyNamed(() => import("./components/MarketOverview"), "MarketOverview");
 const NewsPanel = lazyNamed(() => import("./components/NewsPanel"), "NewsPanel");
 const OrderHistory = lazyNamed(() => import("./components/OrderHistory"), "OrderHistory");
@@ -363,6 +367,9 @@ function App() {
       </div>
       <Suspense fallback={<LazyFallback />}>
         <MarketRegimePanel />
+      </Suspense>
+      <Suspense fallback={<LazyFallback />}>
+        <IpoSubscriptionPanel />
       </Suspense>
       <Suspense fallback={<LazyFallback />}>
         <NewsPanel />

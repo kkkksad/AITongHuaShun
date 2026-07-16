@@ -58,7 +58,7 @@
 - **KAIROS 防守型策略组** —— 新增低波趋势、安静回踩和资金盾牌三种确定性研究策略，内置优化策略总数增至 12；排行榜与纸面计划更重视最大回撤、Sortino、Sharpe、盈利因子和候选防守分，低分候选会保持观望。结果仍是回测/本地 paper 研究，不是实际收益。
 - **累计资金预留与保守执行节奏** —— 同一批 paper 买单会按顺序扣减预计成交额和手续费，默认保留权益的 10% 现金，并将自动执行收紧为每轮最多 1 笔、每天最多 4 笔；当日笔数从持久化订单统计，服务重启不会重置日限额。提交前再按最新报价、滑点和佣金复核，资金不足时只记录跳过原因，不创建订单。
 - **逐笔交易理由审计** —— 新自动订单会写入 `paper-auto-execution.decision`，保留策略名称、买卖理由、规则检查、预计金额和最终状态；修复前缺失的历史理由明确标注缺失，不做事后推测。
-- **每日盘面与交易复盘** —— `/api/research/daily-review` 聚合观察池涨跌家数、主要指数、账户权益、持仓、订单、手续费和逐笔理由，并在研究管线页展示策略优点、问题和下一步改进。
+- **每日盘面与交易复盘** —— `/api/research/daily-review` 聚合观察池涨跌家数、主要指数、账户权益、持仓、订单、手续费和逐笔理由，并在研究管线页展示策略优点、问题和下一步改进；复盘会识别同一标的单日重复执行普通市场状态减仓，并报告 `risk-off` 下实际仓位与防守现金目标的偏差。
 - **SuperMind 模拟盘信号桥** —— `/api/integrations/supermind/signal-package` 将本地 paper 操作计划转换为可人工复核的 SuperMind 信号 CSV 和云端策略模板；该接口不登录同花顺、不保存密码/Cookie/Token，也不会自动提交订单。
 - **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
 - **真实板块与历史日线桥接** —— AkShare 桥接新增真实行业板块、行业日线和个股前复权日线接口；行业快照优先东方财富并回退到同花顺行业一览，行业历史优先东方财富并回退到同花顺行业指数，个股历史依次尝试东方财富、腾讯和新浪。请求限制为最多 20 个板块、12 只股票和 60 至 500 个交易日，返回实际来源、抓取时间、复权语义与部分失败警告。
@@ -70,8 +70,12 @@
 - **策略路由 1.1 明确操作手册** —— 六类市场状态现在分别输出优先策略、适用条件、回避条件、复核触发器以及开盘/上午/下午/尾盘最大 paper 仓位；可用的市场宽度必须确认上升趋势，宽度偏弱会进入风险标记。该手册是确定性研究规则，不是校准后的盈利概率。
 - **分时资金节奏与执行前预检** —— 本地 paper 自动执行器在 09:30、10:15、13:00 和 14:15 四个阶段重新评估，先完成每日/单轮笔数、幂等、行情、现金储备和买入后总仓位检查，再形成精确的本轮模拟动作；降风险卖出不受买入仓位上限限制。
 - **预算化 WxPusher 盘中简报** —— 默认每天最多尝试 8 条并硬限制为 10 条，正常发送四个阶段简报，包含当前/计划后 paper 持仓、精确模拟动作、现金、仓位、策略条件、前三板块和风险/数据警告。同阶段实质变化默认冷却 20 分钟，价格变化不触发重发，发送失败也计入额度且审计不保存凭据。
+- **全市场偏弱明确提醒** —— 当前配置股票池至少 10 只、平均涨跌幅不高于 -0.8% 且上涨/下跌家数比不高于 0.67 时，WxPusher 阶段简报标题和正文明确显示“市场不宜操作”，提示暂停新增 paper 仓位；该状态进入通知签名和审计，转弱可绕过同阶段冷却，但仍受每日消息预算限制。
+- **真实新股申购研究** —— AkShare 桥接新增东方财富新股申购表只读端点，Fastify `/api/research/ipo-subscriptions` 按北京时间筛选前后 30 天的今日/即将申购、待上市和近期上市记录；只用发行价与发行/行业市盈率形成 0-100 启发式规则分，未定价时等待定价，上市后涨幅不参与历史建议。市场页提供三个标签和来源/风险展示，不读取账户资格或自动申购。
 - **持仓优先的历史形态研究** —— 生成市场状态前会把当前 paper 持仓放在个股历史研究队列前部，去重后仍限制最多 12 只，避免候选池挤掉真正需要退出判断的已有仓位。
 - **趋势恶化减仓与现金观察** —— `risk-off` 下，高置信度“趋势恶化”且 T+1 可卖的持仓会生成有上限的半仓减仓计划；原有 3% 亏损退出仍是更严格的全量止损。健康趋势和洗盘候选明确保持观察；从计划开始就没有任何一手可负担候选时，只生成一条现金观察，不再重复列出十条注定资金不足的买入。
+- **风险收缩日内减仓纪律** —— 普通市场状态减仓和风险仓位再平衡按持久化订单限制为同一标的每个交易日最多一轮，避免多次“减半”突破原风险预算；3% 硬止损仍可覆盖该限制。`risk-off` 且仓位高于现金目标时，计划优先对趋势恶化、信号不清或数据不足且 T+1 可卖的持仓执行最多四分之一仓位的一手级分阶段减仓，不机械卖出健康趋势或洗盘候选。
+- **盘外自动执行降噪** —— `PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY=true` 时，定时器只在 A 股交易时段运行；启动和手动触发仍各自保留一条盘外原因审计，但盘前、午休、盘后和周末不再每分钟写入重复跳过记录，降低本地 JSON 增长和无效研究请求。
 - **策略状态前端解释** —— 研究管线页显示当前市场状态、路由置信度、仓位姿态、现金储备、选中策略、允许策略数量和是否允许新增 paper 仓位，不把启发式置信度描述为盈利概率。
 - **开发服务异常恢复** —— `npm run dev` 与 `npm run dev:a-share` 以 `concurrently` 监督前台 API，并对非零退出无限重启；`npm run dev:api:watch` 单独保留代码热重载。这样 API 子进程退出后不会只留下一个仍存活但无法提供 `8787` 的 watcher 父进程。
 - **移动导航状态修复** —— 980px 以下未打开的侧栏保持隐藏，菜单按钮打开抽屉、关闭按钮关闭抽屉；390px 页面无横向溢出，不再同时显示旧顶部侧栏和抽屉导航。
@@ -104,6 +108,7 @@ GET  /api/research/daily-review
 GET  /api/integrations/supermind/signal-package
 GET  /api/research/real-data-feed
 GET  /api/research/market-regime?sectorLimit=10&stockLimit=8&days=180
+GET  /api/research/ipo-subscriptions?limit=40
 GET  /api/trading/auto-paper-execution/status
 GET  /api/account
 GET  /api/positions
@@ -127,6 +132,37 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-16 broad-market warning and real IPO subscription research
+D:\conda\python.exe -m pytest akshare-bridge\test_bridge.py -q
+50 bridge tests passed, 1 dependency deprecation warning
+
+npm test
+35 server test files passed
+638 server tests passed
+4 web test files passed
+17 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+git diff --check passed with line-ending conversion warnings only. The credential scan found no real-length SPT/UID value or configured login password outside ignored .env.local. Runtime health returned paper + akshare, authEnabled=true, realTradingEnabled=false; the AkShare bridge on port 8800 was healthy with no stock or index error.
+
+The authenticated IPO endpoint returned eastmoney-ipo-subscription data with 1 open-today, 4 upcoming, 4 awaiting-listing, and 11 recently-listed rows. 长鑫科技 scored 20/100 and was marked 暂不参与 because issue PE was 308.92 versus industry PE 76.32. 千岸科技 scored 70/100 and was marked 可关注申购, with an explicit Beijing Stock Exchange permission and funding-rule warning. 欣兴工具 correctly carries the ChiNext permission warning; ordinary-board 津富士达 and 嘉立创 no longer incorrectly report STAR Market eligibility. Missing issue-time pricing remains 待定/等待定价 rather than being invented.
+
+The market page passed authenticated desktop and 390 x 844 checks: all three IPO tabs rendered real rows, the page had no horizontal overflow, the 957px research table scrolled inside its 338px mobile container, and no console errors were recorded. No live WxPusher message was sent during verification; broad-market warning behavior was covered by deterministic notifier tests.
+
+2026-07-16 daily review and risk-off execution discipline
+npm test
+34 server test files passed
+631 server tests passed
+4 web test files passed
+16 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed
+
+git diff --check passed with line-ending conversion warnings only. Credential scan found no real-length SPT/UID value outside ignored .env.local. After an API-only restart, health returned paper + akshare with auth enabled and realTradingEnabled=false. The authenticated daily review classified the configured 100-stock pool as risk-off, reported the same-day repeated 600010 reduction and 80.9% invested ratio, and the upgraded plan held already-reduced 600010/601600 while staging one-lot risk reductions for three unclear holdings. The after-hours executor recorded only its startup skip in runtime status; scheduled off-session suppression is covered by six focused tests.
+
 2026-07-16 intraday strategy playbook and budgeted paper briefings
 npm test
 33 server test files passed

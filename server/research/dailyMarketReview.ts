@@ -13,6 +13,19 @@ export type DailyMarketTone =
   | "risk-off"
   | "insufficient-data";
 
+export interface MarketSnapshotAssessment {
+  tone: DailyMarketTone;
+  summary: string;
+  breadth: {
+    total: number;
+    advancers: number;
+    decliners: number;
+    flat: number;
+    averageChangePercent: number;
+    advanceDeclineRatio: number;
+  };
+}
+
 export interface DailyMarketReviewTrade {
   orderId: string;
   symbol: string;
@@ -146,7 +159,7 @@ function marketTone(
   averageChangePercent: number,
   advanceDeclineRatio: number,
 ): DailyMarketTone {
-  if (total === 0) return "insufficient-data";
+  if (total < 10) return "insufficient-data";
   if (averageChangePercent >= 0.8 && advanceDeclineRatio >= 1.5) return "risk-on";
   if (averageChangePercent <= -0.8 && advanceDeclineRatio <= 0.67) return "risk-off";
   return "balanced";
@@ -165,12 +178,10 @@ function marketSummary(
   return `当前观察池盘面${label}：上涨 ${advancers} 只、下跌 ${decliners} 只，平均涨跌幅 ${averageChangePercent.toFixed(2)}%。`;
 }
 
-export function buildDailyMarketReview(
-  input: DailyMarketReviewInput,
-): DailyMarketReview {
-  const now = input.now ?? new Date();
-  const tradingDate = chinaParts(now).date;
-  const tradableQuotes = input.snapshot.quotes.filter(
+export function assessMarketSnapshot(
+  snapshot: MarketSnapshot,
+): MarketSnapshotAssessment {
+  const tradableQuotes = snapshot.quotes.filter(
     (quote) => quote.tradable && quote.price > 0,
   );
   const advancers = tradableQuotes.filter((quote) => quote.changePercent > 0).length;
@@ -190,6 +201,33 @@ export function buildDailyMarketReview(
     averageChangePercent,
     advanceDeclineRatio,
   );
+
+  return {
+    tone,
+    summary: marketSummary(tone, advancers, decliners, averageChangePercent),
+    breadth: {
+      total: tradableQuotes.length,
+      advancers,
+      decliners,
+      flat,
+      averageChangePercent: round(averageChangePercent),
+      advanceDeclineRatio: round(advanceDeclineRatio),
+    },
+  };
+}
+
+export function buildDailyMarketReview(
+  input: DailyMarketReviewInput,
+): DailyMarketReview {
+  const now = input.now ?? new Date();
+  const tradingDate = chinaParts(now).date;
+  const marketAssessment = assessMarketSnapshot(input.snapshot);
+  const { tone } = marketAssessment;
+  const {
+    advancers,
+    decliners,
+    averageChangePercent,
+  } = marketAssessment.breadth;
   const quoteMap = new Map(input.snapshot.quotes.map((quote) => [quote.symbol, quote]));
   const positionMap = new Map(input.positions.map((position) => [position.symbol, position]));
   const decisions = decisionAuditMap(input.auditEvents);
@@ -241,6 +279,23 @@ export function buildDailyMarketReview(
   const missingDecisionReasons = tradeItems.filter(
     (trade) => trade.reasonSource === "historical-fallback",
   ).length;
+  const adaptiveReductionCounts = new Map<string, number>();
+  for (const trade of tradeItems) {
+    if (
+      trade.status !== "filled" ||
+      trade.side !== "sell" ||
+      trade.strategy !== "市场状态减仓"
+    ) {
+      continue;
+    }
+    adaptiveReductionCounts.set(
+      trade.symbol,
+      (adaptiveReductionCounts.get(trade.symbol) ?? 0) + 1,
+    );
+  }
+  const repeatedAdaptiveReductionSymbols = [...adaptiveReductionCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([symbol]) => symbol);
   const issues: string[] = [];
   const strengths: string[] = [
     "所有订单均保留在本地 paper 账户，真实交易继续关闭。",
@@ -259,20 +314,36 @@ export function buildDailyMarketReview(
   if (missingDecisionReasons > 0) {
     issues.push(`${missingDecisionReasons} 笔历史订单缺少逐笔策略理由，旧记录只能复核成交事实。`);
   }
+  if (repeatedAdaptiveReductionSymbols.length > 0) {
+    issues.push(
+      `同一标的在一个交易日内重复执行普通市场状态减仓：${repeatedAdaptiveReductionSymbols.join("、")}；连续“减半”会突破原本的单次风险预算。`,
+    );
+  }
   if (tone === "risk-off" && capitalDeployedPercent > 0.7) {
-    issues.push("观察池盘面偏弱时仓位仍超过 70%，市场状态过滤需要更严格。");
+    issues.push(
+      `观察池盘面偏弱时收盘仓位仍为 ${(capitalDeployedPercent * 100).toFixed(1)}%，高于 70% 风险观察线；防守现金目标需要转成分阶段减仓。`,
+    );
   }
 
   const nextActions = [
-    "同一批买单按成交额、滑点和手续费累计预留现金，资金不足时直接跳过。",
-    "保留至少 10% paper 权益为现金缓冲，不把账户一次性打满。",
-    "自动执行收紧为每轮最多 1 笔、每天最多 4 笔，降低开盘集中建仓速度。",
+    "继续按成交额、滑点和手续费累计预留现金，资金不足时不创建 paper 订单。",
+    "维持每轮最多 1 笔、每天最多 4 笔的自动执行节奏。",
   ];
   if (openingBuyAttempts >= 2) {
     nextActions.push("将开盘集中建仓改为分批确认，观察首个价格区间后再增加下一笔 paper 仓位。");
   }
   if (missingDecisionReasons > 0) {
     nextActions.push("从下一笔自动订单开始持久化策略名称、买卖理由和全部规则检查。");
+  }
+  if (repeatedAdaptiveReductionSymbols.length > 0) {
+    nextActions.push(
+      "普通市场状态减仓调整为每个标的每天最多一次；持仓浮亏达到硬止损时允许覆盖该限制。",
+    );
+  }
+  if (tone === "risk-off" && capitalDeployedPercent > 0.7) {
+    nextActions.push(
+      "risk-off 下优先减持趋势恶化、信号不清或数据不足的仓位，按一手分阶段接近防守现金目标，不机械卖出健康趋势和洗盘候选。",
+    );
   }
   nextActions.push("至少积累一周 paper 样本后再比较胜率、回撤和盈亏比，不用单日结果证明策略有效。");
 
@@ -290,15 +361,8 @@ export function buildDailyMarketReview(
     market: {
       snapshotTime: input.snapshot.marketTime,
       tone,
-      summary: marketSummary(tone, advancers, decliners, averageChangePercent),
-      breadth: {
-        total: tradableQuotes.length,
-        advancers,
-        decliners,
-        flat,
-        averageChangePercent: round(averageChangePercent),
-        advanceDeclineRatio: round(advanceDeclineRatio),
-      },
+      summary: marketAssessment.summary,
+      breadth: marketAssessment.breadth,
       indices: input.snapshot.quotes
         .filter((quote) => !quote.tradable && quote.price > 0)
         .map((quote) => ({

@@ -764,6 +764,73 @@ export interface MarketRegimeResearchReport {
   guardrails: string[];
 }
 
+export type IpoSubscriptionStatus =
+  | "open-today"
+  | "upcoming"
+  | "awaiting-listing"
+  | "listed-recently";
+
+export type IpoRecommendation =
+  | "consider"
+  | "cautious"
+  | "avoid"
+  | "wait-for-pricing"
+  | "closed";
+
+export interface IpoSubscriptionResearchItem {
+  symbol: string;
+  name: string;
+  subscriptionCode: string;
+  exchange: string;
+  board: string;
+  issueTotalWanShares: number | null;
+  onlineIssueShares: number | null;
+  marketValueRequirementWan: number | null;
+  maxSubscriptionShares: number | null;
+  issuePrice: number | null;
+  latestPrice: number | null;
+  subscriptionDate: string | null;
+  ballotDate: string | null;
+  paymentDate: string | null;
+  listingDate: string | null;
+  issuePe: number | null;
+  industryPe: number | null;
+  winningRate: number | null;
+  firstDayChangePercent: number | null;
+  status: IpoSubscriptionStatus;
+  score: number | null;
+  recommendation: IpoRecommendation;
+  reasons: string[];
+  risks: string[];
+}
+
+export interface IpoSubscriptionResearchReport {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+  source: string;
+  fetchedAt: string | null;
+  window: {
+    lookbackDays: 30;
+    lookaheadDays: 30;
+  };
+  counts: {
+    openToday: number;
+    upcoming: number;
+    awaitingListing: number;
+    listedRecently: number;
+  };
+  methodology: {
+    version: string;
+    scoreMeaning: string;
+    recommendationMeaning: string;
+  };
+  items: IpoSubscriptionResearchItem[];
+  warning: string | null;
+  guardrails: string[];
+}
+
 export interface AuthUser {
   username: string;
   role: string;
@@ -1062,6 +1129,15 @@ export function fetchMarketRegimeResearch(
       `?sectorLimit=${boundedSectorLimit}` +
       `&stockLimit=${boundedStockLimit}` +
       `&days=${boundedDays}`,
+  );
+}
+
+export function fetchIpoSubscriptionResearch(
+  limit = 40,
+): Promise<IpoSubscriptionResearchReport> {
+  const boundedLimit = Math.min(80, Math.max(1, Math.round(limit)));
+  return authApiRequest<IpoSubscriptionResearchReport>(
+    `/api/research/ipo-subscriptions?limit=${boundedLimit}`,
   );
 }
 

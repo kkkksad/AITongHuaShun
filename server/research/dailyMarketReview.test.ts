@@ -6,7 +6,10 @@ import type {
   OrderRecord,
   PositionSnapshot,
 } from "../../shared/trading";
-import { buildDailyMarketReview } from "./dailyMarketReview";
+import {
+  assessMarketSnapshot,
+  buildDailyMarketReview,
+} from "./dailyMarketReview";
 
 const snapshot: MarketSnapshot = {
   mode: "paper",
@@ -125,6 +128,32 @@ const auditEvents: AuditEvent[] = [{
 }];
 
 describe("buildDailyMarketReview", () => {
+  it("classifies broad current weakness only with a sufficient tradable sample", () => {
+    const quote = snapshot.quotes[0];
+    const broadWeakSnapshot: MarketSnapshot = {
+      ...snapshot,
+      quotes: Array.from({ length: 10 }, (_, index) => ({
+        ...quote,
+        symbol: String(600000 + index),
+        changePercent: index < 2 ? 0.2 : -1.5,
+      })),
+    };
+    const tinyWeakSnapshot: MarketSnapshot = {
+      ...broadWeakSnapshot,
+      quotes: broadWeakSnapshot.quotes.slice(0, 9),
+    };
+
+    expect(assessMarketSnapshot(broadWeakSnapshot)).toMatchObject({
+      tone: "risk-off",
+      breadth: {
+        total: 10,
+        advancers: 2,
+        decliners: 8,
+      },
+    });
+    expect(assessMarketSnapshot(tinyWeakSnapshot).tone).toBe("insufficient-data");
+  });
+
   it("summarizes market breadth, trades, reasons, and strategy issues", () => {
     const report = buildDailyMarketReview({
       snapshot,
@@ -168,5 +197,60 @@ describe("buildDailyMarketReview", () => {
       reasonSource: "historical-fallback",
     });
     expect(report.trades.items[0].reason).toContain("历史版本未持久化逐笔策略理由");
+  });
+
+  it("flags repeated ordinary adaptive reductions for the same symbol", () => {
+    const repeatedSellOrders: OrderRecord[] = [
+      {
+        ...orders[0],
+        id: "adaptive-sell-1",
+        side: "sell",
+        quantity: 200,
+        filledQuantity: 200,
+        notional: 430,
+        clientOrderId: "kairos-auto-paper:2026-07-14:600010:paper-sell-plan:200",
+        createdAt: "2026-07-14T01:46:00.000Z",
+        updatedAt: "2026-07-14T01:46:00.000Z",
+      },
+      {
+        ...orders[0],
+        id: "adaptive-sell-2",
+        side: "sell",
+        quantity: 100,
+        filledQuantity: 100,
+        notional: 215,
+        clientOrderId: "kairos-auto-paper:2026-07-14:600010:paper-sell-plan:100",
+        createdAt: "2026-07-14T05:17:00.000Z",
+        updatedAt: "2026-07-14T05:17:00.000Z",
+      },
+    ];
+    const repeatedSellAudits: AuditEvent[] = repeatedSellOrders.map((order, index) => ({
+      id: `adaptive-decision-${index + 1}`,
+      category: "system",
+      action: "paper-auto-execution.decision",
+      message: "paper auto execution decision recorded",
+      timestamp: order.updatedAt,
+      data: {
+        orderId: order.id,
+        strategy: "市场状态减仓",
+        reason: "趋势恶化减半仓位",
+        ruleChecks: ["adaptive-position-reduction: 50%"],
+      },
+    }));
+
+    const report = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account,
+      positions,
+      orders: repeatedSellOrders,
+      auditEvents: repeatedSellAudits,
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+
+    expect(report.strategyReview.issues.join(" ")).toContain("同一标的");
+    expect(report.strategyReview.issues.join(" ")).toContain("重复");
+    expect(report.strategyReview.nextActions.join(" ")).toContain("每天最多一次");
+    expect(report.strategyReview.nextActions.join(" ")).toContain("硬止损");
   });
 });

@@ -3,6 +3,7 @@ import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
 import type { PaperPlanNotifier } from "../notifications/paperPlanNotifier";
 import { buildCurrentPaperTradingPlan } from "../research/paperTradingPlanService";
+import { assessMarketSnapshot } from "../research/dailyMarketReview";
 import type {
   PaperTradingOperation,
   PaperTradingPlan,
@@ -123,6 +124,13 @@ export function getChinaTradeDate(value = new Date()): string {
   return getChinaParts(value).date;
 }
 
+export function shouldRunScheduledPaperAutoExecution(
+  value: Date,
+  tradeWindowOnly: boolean,
+): boolean {
+  return !tradeWindowOnly || getAshareSession(value) === "open";
+}
+
 export class PaperAutoExecutor {
   private timer: ReturnType<typeof setInterval> | null = null;
   private startedAt: string | null = null;
@@ -139,6 +147,13 @@ export class PaperAutoExecutor {
     this.startedAt = this.now().toISOString();
     this.scheduleNext();
     this.timer = setInterval(() => {
+      if (!shouldRunScheduledPaperAutoExecution(
+        this.now(),
+        this.options.tradeWindowOnly,
+      )) {
+        this.scheduleNext();
+        return;
+      }
       void this.runOnce("timer");
     }, this.options.intervalMs);
     this.timer.unref?.();
@@ -248,6 +263,9 @@ export class PaperAutoExecutor {
         config: this.options.config,
       });
       const policy = getIntradayExecutionPolicy(started, plan.adaptiveRouting);
+      const marketAssessment = assessMarketSnapshot(
+        this.options.system.market.getSnapshot(),
+      );
       const preparedOperations = this.preflightOperations(
         plan,
         policy,
@@ -267,6 +285,8 @@ export class PaperAutoExecutor {
                   realResearchDataFeed.sourceStatus === "live-read-only"
                 ? "live-read-only"
                 : "mock-disabled",
+          tone: marketAssessment.tone,
+          summary: marketAssessment.summary,
           sectors: marketRegimeResearch.sectorOutlooks.slice(0, 3).map((sector) => ({
             name: sector.name,
             direction: sector.direction,

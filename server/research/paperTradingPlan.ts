@@ -2,6 +2,7 @@ import type {
   AccountSnapshot,
   MarketQuote,
   MarketSnapshot,
+  OrderRecord,
   PositionSnapshot,
   TradingMode,
 } from "../../shared/trading";
@@ -97,6 +98,22 @@ function uniqueBySymbol<T extends { symbol: string }>(items: T[]): T[] {
     seen.add(item.symbol);
     return true;
   });
+}
+
+function filledAutoSellSymbols(
+  orders: OrderRecord[],
+  tradingDate: string,
+): Set<string> {
+  const prefix = `kairos-auto-paper:${tradingDate}:`;
+  return new Set(
+    orders
+      .filter((order) =>
+        order.status === "filled" &&
+        order.side === "sell" &&
+        order.clientOrderId?.startsWith(prefix),
+      )
+      .map((order) => order.symbol),
+  );
 }
 
 function candidateQuantity(
@@ -291,6 +308,7 @@ export function buildPaperTradingPlan(input: {
   provider: string;
   account: AccountSnapshot;
   positions: PositionSnapshot[];
+  orders?: OrderRecord[];
   leaderboard: StrategyLeaderboardReport;
   candidates: DailyCandidateReport;
   qualityStocks: DailyQualityStockReport;
@@ -306,6 +324,7 @@ export function buildPaperTradingPlan(input: {
 }): PaperTradingPlan {
   const marketTime = new Date(input.snapshot.marketTime);
   const now = marketTime.toISOString();
+  const tradingDate = getChinaTradeDate(marketTime);
   const quoteMap = new Map(input.snapshot.quotes.map((quote) => [quote.symbol, quote]));
   const positionMap = new Map(input.positions.map((position) => [position.symbol, position]));
   const stockRegimeMap = new Map(
@@ -331,6 +350,10 @@ export function buildPaperTradingPlan(input: {
     Math.max(0, input.account.equity * input.maxPositionWeight * newPositionScale),
     plannedCashBudget,
   );
+  const alreadyReducedToday = filledAutoSellSymbols(
+    input.orders ?? [],
+    tradingDate,
+  );
 
   const operations: PaperTradingOperation[] = [];
 
@@ -346,8 +369,13 @@ export function buildPaperTradingPlan(input: {
       input.adaptiveRouting?.positionPosture === "reduce" &&
       historicalRegime?.regime === "trend-deterioration" &&
       historicalRegime.confidence >= 0.65;
+    const ordinaryReductionAllowed = !alreadyReducedToday.has(position.symbol);
 
-    if ((hardStop || adaptiveReduction) && locked > 0 && available <= 0) {
+    if (
+      (hardStop || (adaptiveReduction && ordinaryReductionAllowed)) &&
+      locked > 0 &&
+      available <= 0
+    ) {
       operations.push({
         timestamp: now,
         symbol: position.symbol,
@@ -376,6 +404,23 @@ export function buildPaperTradingPlan(input: {
         estimatedNotional: Number((quantity * price).toFixed(2)),
         reason: "持仓浮亏超过 3%，纳入纸面减仓观察；不会触发真实下单。",
         ruleChecks: ["paper-only", "T+1: pass", "manual-review-required"],
+      });
+    } else if (adaptiveReduction && !ordinaryReductionAllowed) {
+      operations.push({
+        timestamp: now,
+        symbol: position.symbol,
+        name: position.name,
+        action: "hold",
+        strategy: "当日减仓纪律",
+        quantity: 0,
+        price,
+        estimatedNotional: 0,
+        reason: "该标的今日已完成一轮普通风险减仓，保留剩余仓位到下一交易日复核；硬止损仍可覆盖此限制。",
+        ruleChecks: [
+          "paper-only",
+          "daily-reduction-limit",
+          "hard-stop-override: enabled",
+        ],
       });
     } else if (adaptiveReduction && available >= input.lotSize) {
       const targetQuantity = Math.max(
@@ -429,6 +474,93 @@ export function buildPaperTradingPlan(input: {
         reason: "真实历史形态仍处于健康趋势，保持原仓位并继续跟踪退出条件。",
         ruleChecks: ["paper-only", "stock-regime: healthy-trend", "no-forced-trade"],
       });
+    }
+  }
+
+  if (
+    input.adaptiveRouting?.positionPosture === "reduce" &&
+    input.account.equity > 0
+  ) {
+    const targetInvestedRatio = clamp(1 - effectiveCashReserveRatio, 0, 1);
+    const targetMarketValue = input.account.equity * targetInvestedRatio;
+    const plannedSellSymbols = new Set(
+      operations
+        .filter((operation) => operation.action === "paper-sell-plan")
+        .map((operation) => operation.symbol),
+    );
+    let projectedMarketValue = Math.max(
+      0,
+      input.account.marketValue - operations
+        .filter((operation) => operation.action === "paper-sell-plan")
+        .reduce((sum, operation) => sum + operation.estimatedNotional, 0),
+    );
+    const regimePriority = {
+      "trend-deterioration": 3,
+      unclear: 2,
+      "insufficient-data": 1,
+    } as const;
+    const exposureCandidates = input.positions
+      .map((position) => ({
+        position,
+        historicalRegime: stockRegimeMap.get(position.symbol),
+      }))
+      .filter(({ position, historicalRegime }) =>
+        Boolean(historicalRegime) &&
+        historicalRegime?.regime !== "healthy-trend" &&
+        historicalRegime?.regime !== "washout-candidate" &&
+        (position.availableQuantity ?? position.quantity) >= input.lotSize &&
+        !plannedSellSymbols.has(position.symbol) &&
+        !alreadyReducedToday.has(position.symbol),
+      )
+      .sort((a, b) => {
+        const regimeDifference =
+          (regimePriority[b.historicalRegime!.regime as keyof typeof regimePriority] ?? 0) -
+          (regimePriority[a.historicalRegime!.regime as keyof typeof regimePriority] ?? 0);
+        if (regimeDifference !== 0) return regimeDifference;
+        const returnDifference =
+          (a.historicalRegime?.features?.return20d ?? 0) -
+          (b.historicalRegime?.features?.return20d ?? 0);
+        if (returnDifference !== 0) return returnDifference;
+        return b.position.weight - a.position.weight;
+      });
+
+    for (const { position, historicalRegime } of exposureCandidates) {
+      if (projectedMarketValue <= targetMarketValue + 0.01) break;
+      const available = position.availableQuantity ?? position.quantity;
+      const quantity = roundLot(
+        Math.min(
+          available,
+          Math.max(input.lotSize, position.quantity * 0.25),
+        ),
+        input.lotSize,
+      );
+      if (quantity < input.lotSize) continue;
+      const quote = quoteMap.get(position.symbol);
+      const price = quote?.price ?? position.currentPrice;
+      const estimatedNotional = Number((quantity * price).toFixed(2));
+      operations.push({
+        timestamp: now,
+        symbol: position.symbol,
+        name: position.name,
+        action: "paper-sell-plan",
+        strategy: "风险仓位再平衡",
+        quantity,
+        price,
+        estimatedNotional,
+        reason: "当前 risk-off 仓位高于防守现金目标，对未确认健康趋势的持仓执行一手级分阶段减仓；不会触发真实下单。",
+        ruleChecks: [
+          "paper-only",
+          "T+1: pass",
+          "risk-off-target",
+          `stock-regime: ${historicalRegime!.regime}`,
+          `current-invested-ratio: ${(input.account.marketValue / input.account.equity).toFixed(4)}`,
+          `target-invested-ratio: ${targetInvestedRatio.toFixed(4)}`,
+          "adaptive-position-reduction: 25% max",
+          "daily-reduction-limit: one-per-symbol",
+        ],
+      });
+      plannedSellSymbols.add(position.symbol);
+      projectedMarketValue = Math.max(0, projectedMarketValue - estimatedNotional);
     }
   }
 
@@ -673,7 +805,7 @@ export function buildPaperTradingPlan(input: {
 
   return {
     generatedAt: now,
-    tradingDate: getChinaTradeDate(marketTime),
+    tradingDate,
     mode: input.snapshot.mode,
     provider: input.provider,
     account: {

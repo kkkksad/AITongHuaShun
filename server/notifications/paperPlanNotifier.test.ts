@@ -173,6 +173,8 @@ function context(
     policy: policy(),
     marketContext: {
       sourceStatus: "live-read-only",
+      tone: "balanced",
+      summary: "当前观察池盘面分化。",
       sectors: [
         { name: "银行", direction: "constructive", score: 78, changePercent: 1.2 },
         { name: "建筑", direction: "constructive", score: 72, changePercent: 0.8 },
@@ -256,6 +258,36 @@ describe("PaperPlanNotifier", () => {
     expect(sender.send.mock.calls[0][0].content).toContain("本轮paper动作：无，继续观察");
   });
 
+  it("labels broad risk-off conditions as unsuitable for operation without requiring an order", async () => {
+    const plan = createPlan("observe");
+    plan.adaptiveRouting = {
+      ...plan.adaptiveRouting!,
+      regime: "risk-off",
+      positionPosture: "reduce",
+      allowNewPositions: false,
+      cashReserveRatio: 0.55,
+      newPositionScale: 0,
+    };
+    const { notifier, sender } = createNotifier();
+    const riskOffContext = context(plan, {
+      marketContext: {
+        sourceStatus: "live-read-only",
+        sectors: [],
+        warnings: [],
+        tone: "risk-off",
+        summary: "当前观察池盘面偏弱：上涨 20 只、下跌 80 只。",
+      } as unknown as PaperPlanNotificationContext["marketContext"],
+    });
+
+    await expect(notifier.notify(plan, riskOffContext)).resolves.toMatchObject({
+      status: "sent",
+      messageKind: "phase-briefing",
+    });
+    expect(sender.send.mock.calls[0][0].summary).toContain("市场不宜操作");
+    expect(sender.send.mock.calls[0][0].content).toContain("市场不宜操作");
+    expect(sender.send.mock.calls[0][0].content).toContain("暂停新增 paper 仓位");
+  });
+
   it("does not treat a reference price change as a material update", async () => {
     const plan = createPlan();
     const { notifier, sender } = createNotifier();
@@ -315,6 +347,8 @@ describe("PaperPlanNotifier", () => {
     await expect(notifier.notify(plan, context(plan, {
       marketContext: {
         sourceStatus: "degraded",
+        tone: "balanced",
+        summary: "当前观察池盘面分化。",
         sectors: [],
         warnings: ["真实新闻源暂不可用"],
       },

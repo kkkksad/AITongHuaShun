@@ -90,6 +90,7 @@ describe("trading API", () => {
         "/api/account",
         "/api/research/daily-review",
         "/api/research/market-regime",
+        "/api/research/ipo-subscriptions",
         "/metrics",
         "/documentation/json",
       ]) {
@@ -656,6 +657,28 @@ describe("trading API", () => {
       },
     });
     expect(response.json().guardrails.join(" ")).toContain("paper");
+  });
+
+  it("does not substitute static IPO subscriptions when real data is disabled", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/ipo-subscriptions?limit=40",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      mode: "mock",
+      provider: "mock",
+      sourceStatus: "mock-disabled",
+      items: [],
+      counts: {
+        openToday: 0,
+        upcoming: 0,
+        awaitingListing: 0,
+        listedRecently: 0,
+      },
+    });
+    expect(response.json().guardrails.join(" ")).toContain("不会自动提交新股申购");
   });
 
   it("returns safe paper auto execution status by default", async () => {

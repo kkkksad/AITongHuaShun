@@ -21,6 +21,8 @@ from main import (
     HistoricalBar,
     HistoricalBarsResponse,
     HistoricalSeries,
+    IpoSubscriptionItem,
+    IpoSubscriptionsResponse,
     NewsResponse,
     NewsItem,
     QuotesResponse,
@@ -43,6 +45,7 @@ from main import (
     normalize_news_dataframe,
     normalize_a_share_symbol,
     normalize_index_symbol,
+    normalize_ipo_subscriptions_dataframe,
 )
 
 client = TestClient(app)
@@ -123,6 +126,93 @@ class TestResearchNewsEndpoint:
         assert data["source"] == "unavailable"
         assert data["items"] == []
         assert "真实新闻源暂不可用" in data["warning"]
+
+
+class TestIpoSubscriptionsEndpoint:
+    def test_ipo_subscriptions_require_server_token_when_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/api/research/ipo-subscriptions?limit=3")
+        assert response.status_code == 401
+
+    def test_ipo_subscriptions_return_degraded_payload_when_source_fails(self):
+        with patch(
+            "main.fetch_ipo_subscriptions_dataframe",
+            side_effect=RuntimeError("offline"),
+        ):
+            response = client.get("/api/research/ipo-subscriptions?limit=3")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["provider"] == "akshare"
+        assert data["source"] == "unavailable"
+        assert data["items"] == []
+        assert "新股申购源暂不可用" in data["warning"]
+
+    def test_normalizes_real_eastmoney_ipo_columns_without_zero_fallbacks(self):
+        frame = pd.DataFrame([{
+            "股票代码": "688825",
+            "股票简称": "长鑫科技",
+            "申购代码": "787825",
+            "交易所": "上海证券交易所",
+            "板块": "科创板",
+            "发行总数": 668808.8608,
+            "网上发行": 3851103500,
+            "顶格申购需配市值": 3349.0,
+            "申购上限": 3349000,
+            "发行价格": 8.66,
+            "最新价": None,
+            "申购日期": pd.Timestamp("2026-07-16"),
+            "中签号公布日": pd.Timestamp("2026-07-20"),
+            "中签缴款日期": pd.Timestamp("2026-07-20"),
+            "上市日期": None,
+            "发行市盈率": 308.92,
+            "行业市盈率": 76.32,
+            "中签率": 0.47141739,
+            "涨幅": None,
+        }])
+
+        items = normalize_ipo_subscriptions_dataframe(frame, 10)
+
+        assert len(items) == 1
+        item = items[0]
+        assert item.symbol == "688825"
+        assert item.name == "长鑫科技"
+        assert item.subscriptionCode == "787825"
+        assert item.exchange == "上海证券交易所"
+        assert item.board == "科创板"
+        assert item.issueTotalWanShares == 668808.8608
+        assert item.onlineIssueShares == 3851103500
+        assert item.marketValueRequirementWan == 3349.0
+        assert item.maxSubscriptionShares == 3349000
+        assert item.issuePrice == 8.66
+        assert item.latestPrice is None
+        assert item.subscriptionDate == "2026-07-16"
+        assert item.ballotDate == "2026-07-20"
+        assert item.paymentDate == "2026-07-20"
+        assert item.listingDate is None
+        assert item.issuePe == 308.92
+        assert item.industryPe == 76.32
+        assert item.winningRate == 0.47141739
+        assert item.firstDayChangePercent is None
+
+    def test_ipo_models_preserve_nullable_pricing(self):
+        response = IpoSubscriptionsResponse(
+            provider="akshare",
+            source="eastmoney-ipo-subscription",
+            fetchedAt="2026-07-16T12:00:00Z",
+            items=[IpoSubscriptionItem(
+                symbol="603468",
+                name="津富士达",
+                subscriptionCode="732468",
+                exchange="上海证券交易所",
+                board="非科创板",
+                subscriptionDate="2026-07-24",
+            )],
+        )
+
+        data = response.model_dump()
+        assert data["items"][0]["issuePrice"] is None
+        assert data["items"][0]["issuePe"] is None
 
 
 class TestGlobalMarketsEndpoint:

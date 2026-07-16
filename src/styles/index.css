@@ -2190,6 +2190,50 @@ select:focus-visible {
   border-radius: 6px;
 }
 
+.ipo-subscription-panel {
+  min-width: 0;
+}
+
+.ipo-panel-header {
+  align-items: center;
+}
+
+.ipo-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ipo-warning,
+.ipo-methodology {
+  margin-bottom: 10px;
+}
+
+.ipo-table-wrap {
+  width: 100%;
+  min-height: 220px;
+  overflow-x: auto;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+}
+
+.ipo-table {
+  min-width: 1040px;
+}
+
+.ipo-table th,
+.ipo-table td {
+  vertical-align: top;
+}
+
+.ipo-table .rank-badge {
+  white-space: nowrap;
+}
+
+.ipo-reason-cell {
+  width: 310px;
+  min-width: 240px;
+  line-height: 1.45;
+}
+
 .regime-table {
   min-width: 980px;
 }
@@ -5957,6 +6001,15 @@ select:focus-visible {
     width: 100%;
   }
 
+  .ipo-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .ipo-tabs button {
+    min-width: 0;
+    padding-inline: 6px;
+  }
+
   .regime-meta-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -5975,6 +6028,10 @@ select:focus-visible {
   }
 
   .regime-table-wrap {
+    margin-right: -4px;
+  }
+
+  .ipo-table-wrap {
     margin-right: -4px;
   }
 }

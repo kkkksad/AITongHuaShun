@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   AccountSnapshot,
   MarketSnapshot,
+  OrderRecord,
   PositionSnapshot,
 } from "../../shared/trading";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
@@ -81,6 +82,25 @@ function position(): PositionSnapshot {
     unrealizedPnl: 30,
     realizedPnl: 0,
     weight: 0.3,
+  };
+}
+
+function autoSellOrder(quantity = 100): OrderRecord {
+  return {
+    id: "today-auto-sell",
+    symbol: "600519",
+    side: "sell",
+    type: "market",
+    quantity,
+    status: "filled",
+    requestedPrice: 10,
+    filledPrice: 10,
+    filledQuantity: quantity,
+    notional: quantity * 10,
+    commission: 5,
+    clientOrderId: `kairos-auto-paper:2026-07-15:600519:paper-sell-plan:${quantity}`,
+    createdAt: "2026-07-15T01:35:00.000Z",
+    updatedAt: "2026-07-15T01:35:00.000Z",
   };
 }
 
@@ -196,12 +216,14 @@ function build(input: {
   adaptiveRouting?: AdaptiveStrategyRouting;
   research?: MarketRegimeResearchReport;
   includeCandidate?: boolean;
+  orders?: OrderRecord[];
 }) {
   return buildPaperTradingPlan({
     snapshot,
     provider: "akshare",
     account: account(),
     positions: input.positions ?? [],
+    orders: input.orders ?? [],
     leaderboard: leaderboard(),
     candidates: candidates(),
     qualityStocks: qualityStocks(input.includeCandidate),
@@ -241,6 +263,110 @@ describe("adaptive paper trading plan", () => {
       }),
     ]));
   });
+
+  it("limits ordinary adaptive reduction to once per symbol per trading day", () => {
+    const plan = build({
+      positions: [position()],
+      orders: [autoSellOrder()],
+      adaptiveRouting: routing({
+        regime: "risk-off",
+        positionPosture: "reduce",
+        allowNewPositions: false,
+        cashReserveRatio: 0.55,
+        newPositionScale: 0,
+        eligibleStrategyKeys: ["kairosCapitalShield"],
+      }),
+      research: marketRegime("trend-deterioration", 0.75),
+    });
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "600519",
+        action: "hold",
+        ruleChecks: expect.arrayContaining(["daily-reduction-limit"]),
+      }),
+    ]));
+    expect(plan.operations.some((operation) =>
+      operation.symbol === "600519" && operation.action === "paper-sell-plan"
+    )).toBe(false);
+  });
+
+  it("allows the hard stop to override the daily adaptive reduction limit", () => {
+    const losingPosition = {
+      ...position(),
+      currentPrice: 9,
+      marketValue: 2_700,
+      unrealizedPnl: -270,
+    };
+    const plan = build({
+      positions: [losingPosition],
+      orders: [autoSellOrder()],
+      adaptiveRouting: routing({
+        regime: "risk-off",
+        positionPosture: "reduce",
+        allowNewPositions: false,
+        cashReserveRatio: 0.55,
+        newPositionScale: 0,
+      }),
+      research: marketRegime("trend-deterioration", 0.75),
+    });
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "600519",
+        action: "paper-sell-plan",
+        strategy: "回撤控制",
+        quantity: 300,
+      }),
+    ]));
+  });
+
+  it("stages one-lot exposure reduction for an unclear holding in risk-off", () => {
+    const plan = build({
+      positions: [position()],
+      adaptiveRouting: routing({
+        regime: "risk-off",
+        positionPosture: "reduce",
+        allowNewPositions: false,
+        cashReserveRatio: 0.55,
+        newPositionScale: 0,
+        eligibleStrategyKeys: ["kairosCapitalShield"],
+      }),
+      research: marketRegime("unclear", 0.4),
+    });
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "600519",
+        action: "paper-sell-plan",
+        strategy: "风险仓位再平衡",
+        quantity: 100,
+        ruleChecks: expect.arrayContaining(["risk-off-target"]),
+      }),
+    ]));
+  });
+
+  it.each(["healthy-trend", "washout-candidate"] as const)(
+    "does not sell a %s holding only to satisfy the broad risk-off target",
+    (stockRegime) => {
+      const plan = build({
+        positions: [position()],
+        adaptiveRouting: routing({
+          regime: "risk-off",
+          positionPosture: "reduce",
+          allowNewPositions: false,
+          cashReserveRatio: 0.55,
+          newPositionScale: 0,
+          eligibleStrategyKeys: ["kairosCapitalShield"],
+        }),
+        research: marketRegime(stockRegime, 0.75),
+      });
+
+      expect(plan.operations.some((operation) =>
+        operation.symbol === "600519" && operation.action === "paper-sell-plan"
+      )).toBe(false);
+    },
+  );
 
   it("holds an intact washout candidate instead of selling it", () => {
     const plan = build({

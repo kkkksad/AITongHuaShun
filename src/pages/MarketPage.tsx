@@ -2,6 +2,7 @@ import { FlowPanel } from "../components/FlowPanel";
 import { MarketChart } from "../components/MarketChart";
 import { MarketOverview } from "../components/MarketOverview";
 import { MarketRegimePanel } from "../components/MarketRegimePanel";
+import { IpoSubscriptionPanel } from "../components/IpoSubscriptionPanel";
 import { NewsPanel } from "../components/NewsPanel";
 import type { TradingBackend } from "../hooks/useTradingBackend";
 
@@ -21,6 +22,7 @@ export default function MarketPage({ trading }: MarketPageProps) {
         <FlowPanel />
       </div>
       <MarketRegimePanel />
+      <IpoSubscriptionPanel />
       <NewsPanel />
     </div>
   );

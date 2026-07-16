@@ -8,6 +8,7 @@ import type {
   PaperTradingOperation,
   PaperTradingPlan,
 } from "../research/paperTradingPlan";
+import type { DailyMarketTone } from "../research/dailyMarketReview";
 import type {
   IntradayExecutionPolicy,
 } from "../trading/intradayExecutionPolicy";
@@ -31,6 +32,8 @@ export interface PaperPlanNotificationContext {
   policy: IntradayExecutionPolicy;
   marketContext: {
     sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+    tone: DailyMarketTone;
+    summary: string;
     sectors: PaperPlanNotificationSector[];
     warnings: string[];
   };
@@ -108,6 +111,7 @@ function materialSignature(
       strategy: plan.topStrategy?.strategyKey ?? "cash-observation",
       primaryStrategies: routing?.strategyPlaybook.primaryStrategyKeys ?? [],
       sourceStatus: context.marketContext.sourceStatus,
+      marketTone: context.marketContext.tone,
       currentPositions,
       operations,
     }))
@@ -215,12 +219,18 @@ function formatMessage(
     : context.marketContext.sourceStatus === "degraded"
       ? "数据降级"
       : "模拟/不可用";
+  const avoidNewRisk =
+    context.marketContext.tone === "risk-off" ||
+    (routing?.regime === "risk-off" && routing.allowNewPositions === false);
+  const headline = avoidNewRisk ? "市场不宜操作" : context.policy.phaseLabel;
 
   return {
-    summary: `KAIROS paper ${context.policy.phaseLabel} ${plan.tradingDate}`,
+    summary: `KAIROS paper ${headline} ${plan.tradingDate}`,
     content: [
-      `KAIROS 本地paper简报｜${context.policy.phaseLabel}`,
+      `KAIROS 本地paper简报｜${headline}｜${context.policy.phaseLabel}`,
       `日期：${plan.tradingDate}｜数据：${sourceLabel}`,
+      `操作判断：${avoidNewRisk ? "市场不宜操作，暂停新增 paper 仓位，优先保留现金并执行既定风控。" : "按当前阶段规则观察 paper 候选，不强制交易。"}`,
+      `盘面：${context.marketContext.summary}`,
       `当前持仓：${formatCurrentPositions(context.positions)}`,
       `本轮paper动作：${formatOperations(context.executableOperations)}`,
       `计划后持仓：${compactList(targets.map(formatPosition), "空仓")}`,
@@ -247,8 +257,10 @@ function isUrgentTransition(
 ): boolean {
   const previousRegime = auditString(previousData, "regime");
   const previousSourceStatus = auditString(previousData, "sourceStatus");
+  const previousMarketTone = auditString(previousData, "marketTone");
   return (
     (plan.adaptiveRouting?.regime === "risk-off" && previousRegime !== "risk-off") ||
+    (context.marketContext.tone === "risk-off" && previousMarketTone !== "risk-off") ||
     (context.marketContext.sourceStatus === "degraded" && previousSourceStatus !== "degraded")
   );
 }
@@ -312,6 +324,7 @@ export class PaperPlanNotifier {
       regime: plan.adaptiveRouting?.regime ?? "unavailable",
       strategy: plan.topStrategy?.strategyKey ?? "cash-observation",
       sourceStatus: context.marketContext.sourceStatus,
+      marketTone: context.marketContext.tone,
       signature,
       operationCount: context.executableOperations.length,
       symbols: context.executableOperations.map((operation) => operation.symbol),

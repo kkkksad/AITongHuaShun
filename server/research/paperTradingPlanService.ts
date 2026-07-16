@@ -95,6 +95,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     provider: input.system.marketDataProvider,
     account,
     positions,
+    orders: input.system.store.listOrders(10_000),
     leaderboard,
     candidates,
     qualityStocks,

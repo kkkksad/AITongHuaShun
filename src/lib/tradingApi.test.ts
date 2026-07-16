@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTH_EXPIRED_EVENT,
   fetchAuditEvents,
+  fetchIpoSubscriptionResearch,
   fetchMarketRegimeResearch,
   getTradingSocketUrl,
   login,
@@ -101,6 +102,23 @@ describe("session-aware trading API", () => {
       expect.stringMatching(
         /\/api\/research\/market-regime\?sectorLimit=20&stockLimit=1&days=500$/,
       ),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("requests bounded real IPO subscription research with the session cookie", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        sourceStatus: "live-read-only",
+        items: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchIpoSubscriptionResearch(999);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/research\/ipo-subscriptions\?limit=80$/),
       expect.objectContaining({ credentials: "include" }),
     );
   });

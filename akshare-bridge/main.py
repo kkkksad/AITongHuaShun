@@ -128,6 +128,36 @@ class GlobalMarketsResponse(BaseModel):
     warning: str | None = None
 
 
+class IpoSubscriptionItem(BaseModel):
+    symbol: str
+    name: str
+    subscriptionCode: str
+    exchange: str
+    board: str
+    issueTotalWanShares: float | None = None
+    onlineIssueShares: int | None = None
+    marketValueRequirementWan: float | None = None
+    maxSubscriptionShares: int | None = None
+    issuePrice: float | None = None
+    latestPrice: float | None = None
+    subscriptionDate: str | None = None
+    ballotDate: str | None = None
+    paymentDate: str | None = None
+    listingDate: str | None = None
+    issuePe: float | None = None
+    industryPe: float | None = None
+    winningRate: float | None = None
+    firstDayChangePercent: float | None = None
+
+
+class IpoSubscriptionsResponse(BaseModel):
+    provider: str
+    source: str
+    fetchedAt: str
+    items: list[IpoSubscriptionItem] = Field(default_factory=list)
+    warning: str | None = None
+
+
 class SectorSnapshot(BaseModel):
     symbol: str
     name: str
@@ -601,6 +631,11 @@ def fetch_financial_news_dataframe():
     raise last_error
 
 
+def fetch_ipo_subscriptions_dataframe():
+    """Fetch the EastMoney A-share IPO subscription/listing table."""
+    return ak.stock_xgsglb_em(symbol="全部股票"), "eastmoney-ipo-subscription"
+
+
 def fetch_sector_snapshot_dataframe():
     """Fetch the current industry-board snapshot with a THS fallback."""
     providers = (
@@ -762,6 +797,23 @@ def normalize_datetime(value: object) -> str:
     return text
 
 
+def normalize_date_only(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    text = str(value).strip().replace("/", "-")
+    if text.lower() in {"", "nan", "none", "-"}:
+        return None
+    match = re.match(r"^(\d{4}-\d{1,2}-\d{1,2})", text)
+    if match is None:
+        return None
+    try:
+        return datetime.strptime(match.group(1), "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
 def infer_sentiment(title: str) -> str:
     positive_words = ("增长", "上调", "突破", "利好", "回升", "上涨", "预增", "创新高")
     negative_words = ("下调", "风险", "亏损", "处罚", "下跌", "回落", "减持", "预亏")
@@ -801,6 +853,73 @@ def normalize_news_dataframe(df, provider_name: str, limit: int) -> list[NewsIte
             symbols=extract_symbols(text_for_symbols),
             sentiment=infer_sentiment(title),
             summary=str(summary).strip()[:240] if summary else None,
+        ))
+
+    return items
+
+
+def normalize_ipo_subscriptions_dataframe(
+    df,
+    limit: int,
+) -> list[IpoSubscriptionItem]:
+    items: list[IpoSubscriptionItem] = []
+
+    for _, row in df.head(limit).iterrows():
+        symbol = normalize_a_share_symbol(first_existing(row, ("股票代码",), ""))
+        name = str(first_existing(row, ("股票简称",), "")).strip()
+        subscription_code = normalize_a_share_symbol(
+            first_existing(row, ("申购代码",), "")
+        )
+        if symbol is None or subscription_code is None or not name:
+            continue
+        items.append(IpoSubscriptionItem(
+            symbol=symbol,
+            name=name,
+            subscriptionCode=subscription_code,
+            exchange=str(first_existing(row, ("交易所",), "未知")).strip(),
+            board=str(first_existing(row, ("板块",), "未知")).strip(),
+            issueTotalWanShares=parse_optional_float(
+                first_existing(row, ("发行总数",), None)
+            ),
+            onlineIssueShares=parse_optional_int(
+                first_existing(row, ("网上发行",), None)
+            ),
+            marketValueRequirementWan=parse_optional_float(
+                first_existing(row, ("顶格申购需配市值",), None)
+            ),
+            maxSubscriptionShares=parse_optional_int(
+                first_existing(row, ("申购上限",), None)
+            ),
+            issuePrice=parse_optional_float(
+                first_existing(row, ("发行价格",), None)
+            ),
+            latestPrice=parse_optional_float(
+                first_existing(row, ("最新价",), None)
+            ),
+            subscriptionDate=normalize_date_only(
+                first_existing(row, ("申购日期",), None)
+            ),
+            ballotDate=normalize_date_only(
+                first_existing(row, ("中签号公布日",), None)
+            ),
+            paymentDate=normalize_date_only(
+                first_existing(row, ("中签缴款日期",), None)
+            ),
+            listingDate=normalize_date_only(
+                first_existing(row, ("上市日期",), None)
+            ),
+            issuePe=parse_optional_float(
+                first_existing(row, ("发行市盈率",), None)
+            ),
+            industryPe=parse_optional_float(
+                first_existing(row, ("行业市盈率",), None)
+            ),
+            winningRate=parse_optional_float(
+                first_existing(row, ("中签率",), None)
+            ),
+            firstDayChangePercent=parse_optional_float(
+                first_existing(row, ("涨幅",), None)
+            ),
         ))
 
     return items
@@ -1317,6 +1436,41 @@ async def get_research_news(
             fetchedAt=fetched_at,
             items=[],
             warning=f"真实新闻源暂不可用: {e}",
+        )
+
+
+@app.get("/api/research/ipo-subscriptions", response_model=IpoSubscriptionsResponse)
+async def get_ipo_subscriptions(
+    limit: int = Query(80, ge=1, le=200, description="返回新股申购与上市记录上限"),
+):
+    """获取真实只读新股申购与上市数据，不包含账户或申购能力。"""
+    cache_key = f"ipo-subscriptions:{limit}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        loop = asyncio.get_running_loop()
+        df, provider_name = await loop.run_in_executor(
+            None,
+            fetch_ipo_subscriptions_dataframe,
+        )
+        response = IpoSubscriptionsResponse(
+            provider="akshare",
+            source=provider_name,
+            fetchedAt=fetched_at,
+            items=normalize_ipo_subscriptions_dataframe(df, limit),
+        )
+        return set_cached_research(cache_key, response) if response.items else response
+    except Exception as e:
+        logger.error("获取新股申购数据失败: %s", e)
+        return IpoSubscriptionsResponse(
+            provider="akshare",
+            source="unavailable",
+            fetchedAt=fetched_at,
+            items=[],
+            warning=f"新股申购源暂不可用: {e}",
         )
 
 

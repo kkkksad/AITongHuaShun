@@ -20,7 +20,8 @@ Fastify + TypeScript :8787
 FastAPI + AkShare :8800
         ├─ 实时个股与指数快照
         ├─ 新闻与全球指数
-        └─ 行业板块、行业日线与个股日线（只读，无账户和订单接口）
+        ├─ 行业板块、行业日线与个股日线
+        └─ 新股申购与上市记录（只读，无账户和订单接口）
 ```
 
 前后端共享 `shared/trading.ts` 中的行情、账户、持仓、订单、风险和实时事件契约。
@@ -73,7 +74,7 @@ shared/
 1. React 启动时验证服务端会话；未登录时只渲染登录页，不启动业务 REST 或 WebSocket。
 2. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
 3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
-4. `/api/research/market-regime` 通过桥接读取有界行业/个股历史日线，在 Fastify 内执行时间安全评分与滚动验证；该路径不接触账户或订单。
+4. `/api/research/market-regime` 通过桥接读取有界行业/个股历史日线，在 Fastify 内执行时间安全评分与滚动验证；`/api/research/ipo-subscriptions` 读取有界新股表，只使用申购时公开字段生成估值规则分；两条路径都不接触账户或订单。
 5. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
 6. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
 7. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
@@ -95,6 +96,10 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 ### `NewsProvider`
 
 未来提供原始来源、发布时间、抓取时间、关联标的和去重依据。
+
+### `IpoResearchProvider`
+
+当前由 AkShare 桥接归一化东方财富新股申购表，Fastify 负责北京时间窗口、状态分类和时间安全评分。发行价、发行市盈率或行业市盈率缺失时必须等待定价；上市后涨幅只能展示，不能回填申购建议。该模块不读取账户市值、交易权限或资金规则，也没有申购执行接口。
 
 ### `ExecutionGateway`
 
