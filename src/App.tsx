@@ -33,20 +33,8 @@ const DailyQualityStocks = lazyNamed(() => import("./components/DailyQualityStoc
 const FlowPanel = lazyNamed(() => import("./components/FlowPanel"), "FlowPanel");
 const LearningPipeline = lazy(() => import("./components/LearningPipeline"));
 const LogViewer = lazyNamed(() => import("./components/LogViewer"), "LogViewer");
-const MarketChart = lazyNamed(() => import("./components/MarketChart"), "MarketChart");
-const StockTrendForecastPanel = lazyNamed(
-  () => import("./components/StockTrendForecastPanel"),
-  "StockTrendForecastPanel",
-);
-const MarketRegimePanel = lazyNamed(
-  () => import("./components/MarketRegimePanel"),
-  "MarketRegimePanel",
-);
-const IpoSubscriptionPanel = lazyNamed(
-  () => import("./components/IpoSubscriptionPanel"),
-  "IpoSubscriptionPanel",
-);
 const MarketOverview = lazyNamed(() => import("./components/MarketOverview"), "MarketOverview");
+const MarketPage = lazy(() => import("./pages/MarketPage"));
 const NewsPanel = lazyNamed(() => import("./components/NewsPanel"), "NewsPanel");
 const OrderHistory = lazyNamed(() => import("./components/OrderHistory"), "OrderHistory");
 const PaperAccount = lazyNamed(() => import("./components/PaperAccount"), "PaperAccount");
@@ -354,34 +342,9 @@ function App() {
   );
 
   const market = (
-    <div className="page-stack">
-      <Suspense fallback={<LazyFallback />}>
-        <MarketOverview
-          connectionState={trading.connectionState}
-          market={trading.market}
-        />
-      </Suspense>
-      <Suspense fallback={<LazyFallback />}>
-        <StockTrendForecastPanel />
-      </Suspense>
-      <div className="two-column wide-left">
-        <Suspense fallback={<LazyFallback />}>
-          <MarketChart market={trading.market} />
-        </Suspense>
-        <Suspense fallback={<LazyFallback />}>
-          <FlowPanel />
-        </Suspense>
-      </div>
-      <Suspense fallback={<LazyFallback />}>
-        <MarketRegimePanel />
-      </Suspense>
-      <Suspense fallback={<LazyFallback />}>
-        <IpoSubscriptionPanel />
-      </Suspense>
-      <Suspense fallback={<LazyFallback />}>
-        <NewsPanel />
-      </Suspense>
-    </div>
+    <Suspense fallback={<LazyFallback />}>
+      <MarketPage trading={trading} />
+    </Suspense>
   );
 
   const accountTabContent: Record<AccountTab, ReactNode> = {

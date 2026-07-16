@@ -107,6 +107,29 @@ class StockSearchResponse(BaseModel):
     warning: str | None = None
 
 
+class HongKongQuote(BaseModel):
+    symbol: str
+    name: str
+    price: float
+    previousClose: float
+    changePercent: float
+    volume: int
+    updatedAt: str
+    source: str
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    amount: float | None = None
+
+
+class HongKongQuotesResponse(BaseModel):
+    provider: str
+    source: str
+    fetchedAt: str
+    items: list[HongKongQuote] = Field(default_factory=list)
+    warning: str | None = None
+
+
 class NewsItem(BaseModel):
     id: str
     source: str
@@ -599,6 +622,23 @@ def fetch_a_share_index_dataframe():
     raise last_error
 
 
+def fetch_hk_spot_dataframe():
+    """Fetch the real read-only Hong Kong stock snapshot."""
+    providers = (
+        ("sina-hk-spot", ak.stock_hk_spot),
+        ("eastmoney-hk-spot", ak.stock_hk_spot_em),
+    )
+    last_error: Exception | None = None
+    for provider_name, provider in providers:
+        try:
+            return provider(), provider_name
+        except Exception as exc:
+            last_error = exc
+            logger.warning("港股行情源 %s 失败，尝试下一个来源: %s", provider_name, exc)
+    assert last_error is not None
+    raise last_error
+
+
 def fetch_global_market_dataframe():
     """Fetch major global index quotes with provider fallback."""
     providers = []
@@ -820,6 +860,39 @@ def fetch_stock_history_dataframe(
     raise last_error
 
 
+def fetch_hk_history_dataframe(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+):
+    """Fetch forward-adjusted Hong Kong daily bars from EastMoney."""
+    providers = (
+        (
+            "eastmoney-hk-history",
+            lambda: ak.stock_hk_hist(
+                symbol=symbol,
+                period="daily",
+                start_date=start_date,
+                end_date=end_date,
+                adjust="qfq",
+            ),
+        ),
+        (
+            "sina-hk-history",
+            lambda: ak.stock_hk_daily(symbol=symbol, adjust="qfq"),
+        ),
+    )
+    last_error: Exception | None = None
+    for provider_name, provider in providers:
+        try:
+            return provider(), provider_name
+        except Exception as exc:
+            last_error = exc
+            logger.warning("港股历史源 %s 失败，尝试下一个来源: %s", provider_name, exc)
+    assert last_error is not None
+    raise last_error
+
+
 def first_existing(row, names: tuple[str, ...], default=None):
     for name in names:
         value = row.get(name)
@@ -1015,6 +1088,61 @@ def normalize_global_market_dataframe(df, provider_name: str, limit: int) -> lis
             break
 
     return markets
+
+
+def normalize_hk_quote_dataframe(
+    df,
+    provider_name: str,
+    limit: int,
+) -> list[HongKongQuote]:
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    items: list[HongKongQuote] = []
+    for _, row in df.iterrows():
+        raw_symbol = str(first_existing(row, ("代码", "symbol"), "")).strip()
+        match = re.search(r"(\d{5})$", raw_symbol)
+        symbol = match.group(1) if match else ""
+        name = str(first_existing(row, ("中文名称", "名称", "name"), "")).strip()
+        price = parse_float(first_existing(
+            row,
+            ("最新价", "price", "收盘", "lasttrade"),
+            0,
+        ))
+        previous_close = parse_float(first_existing(
+            row,
+            ("昨收", "previousClose", "prevclose"),
+            0,
+        ))
+        if not symbol or not name or price <= 0:
+            continue
+        change_percent = parse_optional_float(
+            first_existing(row, ("涨跌幅", "changePercent", "changepercent"), None)
+        )
+        if change_percent is None:
+            change_percent = (
+                (price / previous_close - 1) * 100
+                if previous_close > 0
+                else 0
+            )
+        items.append(HongKongQuote(
+            symbol=symbol,
+            name=name,
+            price=price,
+            previousClose=previous_close,
+            changePercent=change_percent,
+            volume=max(0, int(parse_float(first_existing(row, ("成交量", "volume"), 0)))),
+            amount=parse_optional_float(first_existing(row, ("成交额", "amount"), None)),
+            open=parse_optional_float(first_existing(row, ("今开", "开盘", "open"), None)),
+            high=parse_optional_float(first_existing(row, ("最高", "high"), None)),
+            low=parse_optional_float(first_existing(row, ("最低", "low"), None)),
+            updatedAt=fetched_at,
+            source=provider_name,
+        ))
+
+    items.sort(
+        key=lambda item: item.amount if item.amount is not None else item.price * item.volume,
+        reverse=True,
+    )
+    return items[:limit]
 
 
 def normalize_sector_snapshot_dataframes(
@@ -1400,6 +1528,66 @@ async def search_stocks(
         fetchedAt=fetched_at,
         items=items,
     )
+
+
+@app.get("/api/market/hk/quotes", response_model=HongKongQuotesResponse)
+async def get_hk_quotes(
+    limit: int = Query(20, ge=1, le=50, description="返回港股快照数量上限"),
+):
+    """获取按成交额排序的真实港股只读快照。"""
+    cache_key = f"hk-quotes:{limit}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        loop = asyncio.get_running_loop()
+        dataframe, source = await loop.run_in_executor(None, fetch_hk_spot_dataframe)
+        response = HongKongQuotesResponse(
+            provider="akshare",
+            source=source,
+            fetchedAt=fetched_at,
+            items=normalize_hk_quote_dataframe(dataframe, source, limit),
+        )
+        return set_cached_research(cache_key, response) if response.items else response
+    except Exception as exc:
+        logger.error("获取港股行情失败: %s", exc)
+        return HongKongQuotesResponse(
+            provider="akshare",
+            source="unavailable",
+            fetchedAt=fetched_at,
+            items=[],
+            warning=f"港股行情源暂不可用: {exc}",
+        )
+
+
+@app.get("/api/market/hk/history", response_model=HistoricalBarsResponse)
+async def get_hk_history(
+    symbols: str = Query(..., description="逗号分隔的 5 位港股代码"),
+    days: int = Query(180, ge=60, le=500, description="交易日数量上限"),
+):
+    """获取真实港股前复权日线，仅用于跨市场研究。"""
+    symbol_list = parse_query_values(symbols)
+    if not symbol_list:
+        raise HTTPException(status_code=400, detail="symbols 参数不能为空")
+    if len(symbol_list) > 12:
+        raise HTTPException(status_code=400, detail="单次最多查询 12 只港股")
+    if any(re.fullmatch(r"\d{5}", symbol) is None for symbol in symbol_list):
+        raise HTTPException(status_code=400, detail="symbols 必须是 5 位港股代码")
+
+    cache_key = f"hk-history:{days}:{','.join(symbol_list)}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+    response = await build_history_response(
+        identifiers=symbol_list,
+        days=days,
+        source="eastmoney-hk-history",
+        adjustment="qfq",
+        fetcher=fetch_hk_history_dataframe,
+    )
+    return set_cached_research(cache_key, response) if response.series else response
 
 
 @app.get("/api/market/sectors", response_model=SectorSnapshotResponse)

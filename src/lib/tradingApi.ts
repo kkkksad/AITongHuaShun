@@ -764,6 +764,148 @@ export interface MarketRegimeResearchReport {
   guardrails: string[];
 }
 
+export type TurningBias =
+  | "up"
+  | "down"
+  | "two-way"
+  | "none"
+  | "insufficient-data";
+
+export interface TurningPointCandidate {
+  rank: number;
+  symbol: string;
+  name: string;
+  latestDate: string | null;
+  barCount: number;
+  source: string;
+  adjustment: string;
+  bias: TurningBias;
+  readinessScore: number;
+  compressionScore: number;
+  triggerScore: number;
+  features: {
+    atr14Percent: number;
+    annualizedVolatility20d: number;
+    bollingerBandwidth20d: number;
+    rangeWidth20d: number;
+    rangePosition20d: number;
+    return5d: number;
+    return20d: number;
+    volumeRatio5d: number;
+    distanceFromMa20: number;
+  };
+  validation: {
+    samples: number;
+    breakProbability: number | null;
+    upProbability: number | null;
+    downProbability: number | null;
+    noBreakProbability: number | null;
+    medianUpTradingDay: number | null;
+    medianDownTradingDay: number | null;
+    medianUpReturn: number | null;
+    medianDownReturn: number | null;
+    lastOutcomeDate: string | null;
+  };
+  evidence: string[];
+  riskFlags: string[];
+}
+
+export interface TurningPointReport {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+  source: {
+    historySource: string;
+    fetchedAt: string | null;
+    adjustment: "qfq";
+    requestedDays: number;
+    universeCount: number;
+    analyzedCount: number;
+  };
+  horizon: 5;
+  minimumBars: 126;
+  minimumSamples: 20;
+  methodology: {
+    version: string;
+    eventDefinition: string;
+    probabilityMeaning: string;
+    rankingMeaning: string;
+    walkForward: true;
+  };
+  candidates: TurningPointCandidate[];
+  warnings: string[];
+  guardrails: string[];
+}
+
+export type HongKongTrend =
+  | "uptrend"
+  | "recovering"
+  | "range"
+  | "weakening"
+  | "downtrend"
+  | "insufficient-data";
+
+export interface HongKongMarketItem {
+  rank: number;
+  symbol: string;
+  name: string;
+  latestDate: string | null;
+  barCount: number;
+  price: number | null;
+  changePercent: number | null;
+  amount: number | null;
+  trend: HongKongTrend;
+  score: number;
+  factors: {
+    return5d: number;
+    return20d: number;
+    return60d: number;
+    distanceFromMa20: number;
+    distanceFromMa60: number;
+    ma20Slope5d: number;
+    annualizedVolatility20d: number;
+    drawdownFrom20DayHigh: number;
+    volumeRatio5d: number;
+  };
+  validation: {
+    samples: number;
+    upProbability5d: number | null;
+    averageForwardReturn5d: number | null;
+    worstForwardReturn5d: number | null;
+    lastOutcomeDate: string | null;
+  };
+  evidence: string[];
+  riskFlags: string[];
+}
+
+export interface HongKongMarketResearchReport {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+  source: {
+    quoteSource: string;
+    historySource: string;
+    fetchedAt: string | null;
+    adjustment: "qfq";
+    requestedDays: number;
+    quoteCount: number;
+    historyCount: number;
+  };
+  methodology: {
+    version: string;
+    minimumBars: 61;
+    validationHorizon: 5;
+    scoreMeaning: string;
+    validationMeaning: string;
+    walkForward: true;
+  };
+  items: HongKongMarketItem[];
+  warnings: string[];
+  guardrails: string[];
+}
+
 export type StockTrendHorizon = 3 | 5 | 10;
 export type StockTrendDirection =
   | "bullish"
@@ -1256,6 +1398,28 @@ export function fetchStockTrendForecast(
   });
   return authApiRequest<StockTrendForecastReport>(
     `/api/research/stock-trend?${params.toString()}`,
+  );
+}
+
+export function fetchTurningPointResearch(
+  limit = 12,
+  days = 360,
+): Promise<TurningPointReport> {
+  const boundedLimit = Math.min(12, Math.max(1, Math.round(limit)));
+  const boundedDays = Math.min(500, Math.max(180, Math.round(days)));
+  return authApiRequest<TurningPointReport>(
+    `/api/research/turning-points?limit=${boundedLimit}&days=${boundedDays}`,
+  );
+}
+
+export function fetchHongKongMarketResearch(
+  limit = 10,
+  days = 180,
+): Promise<HongKongMarketResearchReport> {
+  const boundedLimit = Math.min(12, Math.max(1, Math.round(limit)));
+  const boundedDays = Math.min(500, Math.max(60, Math.round(days)));
+  return authApiRequest<HongKongMarketResearchReport>(
+    `/api/research/hong-kong-market?limit=${boundedLimit}&days=${boundedDays}`,
   );
 }
 

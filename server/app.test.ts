@@ -90,6 +90,8 @@ describe("trading API", () => {
         "/api/account",
         "/api/research/daily-review",
         "/api/research/market-regime",
+        "/api/research/turning-points",
+        "/api/research/hong-kong-market",
         "/api/research/stock-trend?query=600519",
         "/api/research/ipo-subscriptions",
         "/metrics",
@@ -368,6 +370,8 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/trading/auto-paper-execution/run");
     expect(response.json().paths).toHaveProperty("/api/research/real-data-feed");
     expect(response.json().paths).toHaveProperty("/api/research/market-regime");
+    expect(response.json().paths).toHaveProperty("/api/research/turning-points");
+    expect(response.json().paths).toHaveProperty("/api/research/hong-kong-market");
     expect(response.json().paths).toHaveProperty("/api/research/stock-trend");
     expect(response.json().paths).toHaveProperty("/api/research/self-optimization");
   });
@@ -443,6 +447,75 @@ describe("trading API", () => {
       },
     });
     expect(response.json().guardrails.join(" ")).toContain("不会提交模拟或真实订单");
+  });
+
+  it("does not fabricate turning-point candidates when real history is disabled", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/turning-points?limit=12&days=360",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      sourceStatus: "mock-disabled",
+      horizon: 5,
+      minimumSamples: 20,
+      candidates: [],
+      source: {
+        requestedDays: 360,
+        analyzedCount: 0,
+      },
+    });
+    expect(response.json().guardrails.join(" ")).toContain("不直接生成本地 paper");
+  });
+
+  it("validates turning-point query bounds before accessing history", async () => {
+    const invalidLimit = await app.inject({
+      method: "GET",
+      url: "/api/research/turning-points?limit=13&days=360",
+    });
+    const invalidDays = await app.inject({
+      method: "GET",
+      url: "/api/research/turning-points?limit=8&days=179",
+    });
+
+    expect(invalidLimit.statusCode).toBe(400);
+    expect(invalidDays.statusCode).toBe(400);
+  });
+
+  it("does not fabricate Hong Kong market research when AkShare is disabled", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/hong-kong-market?limit=8&days=180",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      sourceStatus: "mock-disabled",
+      items: [],
+      source: {
+        requestedDays: 180,
+        quoteCount: 0,
+        historyCount: 0,
+      },
+    });
+    expect(response.json().guardrails.join(" ")).toContain("不会生成港股订单");
+  });
+
+  it("validates Hong Kong research query bounds", async () => {
+    const invalidLimit = await app.inject({
+      method: "GET",
+      url: "/api/research/hong-kong-market?limit=0&days=180",
+    });
+    const invalidDays = await app.inject({
+      method: "GET",
+      url: "/api/research/hong-kong-market?limit=8&days=59",
+    });
+
+    expect(invalidLimit.statusCode).toBe(400);
+    expect(invalidDays.statusCode).toBe(400);
   });
 
   it("validates stock trend queries before accessing research data", async () => {

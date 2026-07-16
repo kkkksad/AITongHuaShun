@@ -21,6 +21,8 @@ from main import (
     HistoricalBar,
     HistoricalBarsResponse,
     HistoricalSeries,
+    HongKongQuote,
+    HongKongQuotesResponse,
     IpoSubscriptionItem,
     IpoSubscriptionsResponse,
     NewsResponse,
@@ -38,10 +40,13 @@ from main import (
     fetch_financial_news_dataframe,
     fetch_global_market_dataframe,
     fetch_global_market_sina_snapshot_dataframe,
+    fetch_hk_history_dataframe,
+    fetch_hk_spot_dataframe,
     fetch_sector_history_dataframe,
     fetch_sector_snapshot_dataframe,
     fetch_stock_history_dataframe,
     normalize_history_dataframe,
+    normalize_hk_quote_dataframe,
     normalize_sector_snapshot_dataframes,
     normalize_global_market_dataframe,
     normalize_news_dataframe,
@@ -202,6 +207,158 @@ class TestIndicesEndpoint:
         response = client.get(f"/api/market/indices?symbols={symbols}")
         assert response.status_code == 400
         assert "50" in response.json()["detail"]
+
+
+class TestHongKongMarketEndpoints:
+    def test_hk_quotes_require_server_token_when_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/api/market/hk/quotes?limit=3")
+        assert response.status_code == 401
+
+    def test_normalizes_hk_spot_columns_and_preserves_amount(self):
+        frame = pd.DataFrame([{
+            "代码": "00700",
+            "名称": "腾讯控股",
+            "最新价": 521.0,
+            "昨收": 516.5,
+            "涨跌幅": 0.87,
+            "今开": 518.0,
+            "最高": 523.5,
+            "最低": 514.0,
+            "成交量": 21_000_000,
+            "成交额": 10_900_000_000,
+        }])
+
+        items = normalize_hk_quote_dataframe(frame, "eastmoney-hk-spot", 10)
+
+        assert items == [HongKongQuote(
+            symbol="00700",
+            name="腾讯控股",
+            price=521.0,
+            previousClose=516.5,
+            changePercent=0.87,
+            open=518.0,
+            high=523.5,
+            low=514.0,
+            volume=21_000_000,
+            amount=10_900_000_000,
+            updatedAt=items[0].updatedAt,
+            source="eastmoney-hk-spot",
+        )]
+
+    def test_normalizes_sina_hk_spot_fallback_columns(self):
+        frame = pd.DataFrame([{
+            "symbol": "00700",
+            "name": "腾讯控股",
+            "lasttrade": 521.0,
+            "prevclose": 516.5,
+            "changepercent": 0.87,
+            "open": 518.0,
+            "high": 523.5,
+            "low": 514.0,
+            "volume": 21_000_000,
+            "amount": 10_900_000_000,
+        }])
+
+        items = normalize_hk_quote_dataframe(frame, "sina-hk-spot", 10)
+
+        assert len(items) == 1
+        assert items[0].symbol == "00700"
+        assert items[0].price == 521.0
+        assert items[0].previousClose == 516.5
+        assert items[0].amount == 10_900_000_000
+
+    def test_hk_quotes_cache_the_real_read_only_response(self):
+        frame = pd.DataFrame([{
+            "代码": "00700",
+            "名称": "腾讯控股",
+            "最新价": 521.0,
+            "昨收": 516.5,
+            "涨跌幅": 0.87,
+            "成交量": 21_000_000,
+            "成交额": 10_900_000_000,
+        }])
+        with patch.dict("main.research_cache", {}, clear=True):
+            with patch(
+                "main.fetch_hk_spot_dataframe",
+                return_value=(frame, "eastmoney-hk-spot"),
+            ) as fetch:
+                first = client.get("/api/market/hk/quotes?limit=10")
+                second = client.get("/api/market/hk/quotes?limit=10")
+
+        assert first.status_code == 200
+        assert first.json()["items"][0]["symbol"] == "00700"
+        assert second.json() == first.json()
+        fetch.assert_called_once()
+
+    def test_hk_quotes_return_degraded_payload_when_source_fails(self):
+        with patch.dict("main.research_cache", {}, clear=True):
+            with patch("main.fetch_hk_spot_dataframe", side_effect=RuntimeError("offline")):
+                response = client.get("/api/market/hk/quotes?limit=3")
+
+        assert response.status_code == 200
+        assert response.json()["source"] == "unavailable"
+        assert response.json()["items"] == []
+        assert "港股行情源暂不可用" in response.json()["warning"]
+
+    def test_hk_history_rejects_non_five_digit_symbols(self):
+        response = client.get("/api/market/hk/history?symbols=700&days=180")
+        assert response.status_code == 400
+        assert "5 位港股代码" in response.json()["detail"]
+
+    def test_hk_history_uses_forward_adjusted_daily_bars(self):
+        history = MagicMock()
+        with patch("main.ak.stock_hk_hist", return_value=history) as fetch:
+            result, provider = fetch_hk_history_dataframe(
+                "00700",
+                "20250101",
+                "20260716",
+            )
+
+        assert result is history
+        assert provider == "eastmoney-hk-history"
+        assert fetch.call_args.kwargs == {
+            "symbol": "00700",
+            "period": "daily",
+            "start_date": "20250101",
+            "end_date": "20260716",
+            "adjust": "qfq",
+        }
+
+    def test_hk_spot_prefers_sina(self):
+        snapshot = MagicMock()
+        with patch("main.ak.stock_hk_spot", return_value=snapshot) as sina:
+            with patch("main.ak.stock_hk_spot_em") as eastmoney:
+                frame, provider = fetch_hk_spot_dataframe()
+
+        assert frame is snapshot
+        assert provider == "sina-hk-spot"
+        sina.assert_called_once_with()
+        eastmoney.assert_not_called()
+
+    def test_hk_spot_falls_back_to_eastmoney(self):
+        fallback = MagicMock()
+        with patch("main.ak.stock_hk_spot", side_effect=RuntimeError("sina offline")):
+            with patch("main.ak.stock_hk_spot_em", return_value=fallback) as eastmoney:
+                frame, provider = fetch_hk_spot_dataframe()
+
+        assert frame is fallback
+        assert provider == "eastmoney-hk-spot"
+        eastmoney.assert_called_once_with()
+
+    def test_hk_history_falls_back_to_sina_daily(self):
+        fallback = MagicMock()
+        with patch("main.ak.stock_hk_hist", side_effect=RuntimeError("eastmoney offline")):
+            with patch("main.ak.stock_hk_daily", return_value=fallback) as sina:
+                frame, provider = fetch_hk_history_dataframe(
+                    "00700",
+                    "20250101",
+                    "20260716",
+                )
+
+        assert frame is fallback
+        assert provider == "sina-hk-history"
+        assert sina.call_args.kwargs == {"symbol": "00700", "adjust": "qfq"}
 
 
 class TestResearchNewsEndpoint:

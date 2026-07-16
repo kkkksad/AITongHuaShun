@@ -73,6 +73,9 @@
 - **全市场偏弱明确提醒** —— 当前配置股票池至少 10 只、平均涨跌幅不高于 -0.8% 且上涨/下跌家数比不高于 0.67 时，WxPusher 阶段简报标题和正文明确显示“市场不宜操作”，提示暂停新增 paper 仓位；该状态进入通知签名和审计，转弱可绕过同阶段冷却，但仍受每日消息预算限制。
 - **真实新股申购研究** —— AkShare 桥接新增东方财富新股申购表只读端点，Fastify `/api/research/ipo-subscriptions` 按北京时间筛选前后 30 天的今日/即将申购、待上市和近期上市记录；只用发行价与发行/行业市盈率形成 0-100 启发式规则分，未定价时等待定价，上市后涨幅不参与历史建议。市场页提供三个标签和来源/风险展示，不读取账户资格或自动申购。
 - **按名称/代码的个股趋势研判** —— AkShare 桥复用全 A 股内存行情缓存解析代码、完整名称和模糊名称；Fastify `/api/research/stock-trend` 读取单股默认 360 日前复权日线，基于均线、5/20/60 日动量、RSI、波动、ATR 和量能输出 3/5/10 个交易日规则分，并严格滚动验证过去同方向信号。市场页显示真实 Close/MA20/MA60 图、经验涨跌/震荡概率、阶段高低点中位交易日和幅度、支撑压力、依据与风险；规则分和经验频率都不是校准后的未来概率，也不会触发订单。
+- **A 股五日变盘雷达** —— `/api/research/turning-points` 使用决策时点冻结的 20 日区间和 ATR 阈值定义之后 5 个交易日的向上、向下或不变盘，并按历史相似压缩状态统计条件频率；至少 20 个样本才返回概率，样本不足时明确留空。准备度综合历史频率、压缩、边界、量能和样本置信度，仅用于排序，当前只扫描最多 12 只受控观察池且不会直接生成 paper 或真实订单。
+- **港股真实只读研究** —— AkShare 桥新增 `/api/market/hk/quotes` 与 `/api/market/hk/history`，Fastify `/api/research/hong-kong-market` 输出真实港股快照、前复权日线、5/20/60 日趋势、波动、回撤、量能和同趋势历史验证。快照优先新浪并回退东方财富，历史优先东方财富并回退新浪；港股不读取账户，不继承 A 股 T+1、100 股整手或费用规则，也不进入当前 A 股 paper。
+- **市场研究六页签** —— 市场页按 A 股概览、变盘雷达、个股研判、板块形态、港股观察和事件资讯拆分，历史研究只在激活页签时加载；页签支持方向键和 Home/End，390px 下两列排列，宽表横向滚动限制在模块内部。
 - **持仓优先的历史形态研究** —— 生成市场状态前会把当前 paper 持仓放在个股历史研究队列前部，去重后仍限制最多 12 只，避免候选池挤掉真正需要退出判断的已有仓位。
 - **趋势恶化减仓与现金观察** —— `risk-off` 下，高置信度“趋势恶化”且 T+1 可卖的持仓会生成有上限的半仓减仓计划；原有 3% 亏损退出仍是更严格的全量止损。健康趋势和洗盘候选明确保持观察；从计划开始就没有任何一手可负担候选时，只生成一条现金观察，不再重复列出十条注定资金不足的买入。
 - **风险收缩日内减仓纪律** —— 普通市场状态减仓和风险仓位再平衡按持久化订单限制为同一标的每个交易日最多一轮，避免多次“减半”突破原风险预算；3% 硬止损仍可覆盖该限制。`risk-off` 且仓位高于现金目标时，计划优先对趋势恶化、信号不清或数据不足且 T+1 可卖的持仓执行最多四分之一仓位的一手级分阶段减仓，不机械卖出健康趋势或洗盘候选。
@@ -110,6 +113,8 @@ GET  /api/integrations/supermind/signal-package
 GET  /api/research/real-data-feed
 GET  /api/research/market-regime?sectorLimit=10&stockLimit=8&days=180
 GET  /api/research/ipo-subscriptions?limit=40
+GET  /api/research/turning-points?limit=12&days=360
+GET  /api/research/hong-kong-market?limit=10&days=180
 GET  /api/trading/auto-paper-execution/status
 GET  /api/account
 GET  /api/positions
@@ -133,6 +138,29 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-16 market intelligence, turning-point radar, and Hong Kong read-only research
+D:\conda\python.exe -m pytest akshare-bridge\test_bridge.py -q
+66 bridge tests passed, 1 dependency deprecation warning
+
+npm test
+38 server test files passed
+665 server tests passed
+4 web test files passed
+20 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed; 2,299 modules transformed
+
+git diff --check passed with line-ending conversion warnings only. The credential scan excluding .env.local, logs, data, generated output, and known test placeholders found no configured SPT, UID, or login password in source or documentation.
+
+Runtime validation used the listening Vite 4173, Fastify 8787, and AkShare 8800 services. The authenticated app reported paper mode, AkShare real read-only data, and a connected realtime channel.
+
+The real A-share turning scan used tencent-stock-history qfq data, requested 12 symbols and analyzed all 12 with 360 displayed bars per candidate and no degraded warning. No row met the high-probability turning threshold. 寒武纪 had 33 matching samples with 42.4% break / 12.1% up / 30.3% down; 中芯国际 had 61 samples and 29.5% break; 新易盛 had 72 samples and 26.4% break. Rows stayed at 暂未变盘 or 样本不足 instead of forcing a stock recommendation.
+
+The real Hong Kong report used sina-hk-spot + sina-hk-history, returned 10 quotes and 10 histories for the 180-day request, and reported no degraded warning. 泡泡玛特 had 32 same-trend samples and a 46.9% future-five-day up frequency; the other current rows had fewer than 20 samples and correctly kept probability empty.
+
+The market page passed authenticated 1280px desktop and 390 x 844 mobile checks. At 390px there was no page-level horizontal overflow, six task tabs formed two 175px columns, and the 1,180px turning table scrolled inside its 324px wrapper. Arrow keys changed tab focus and selection, ARIA panel linkage followed the active tab, and browser logs contained no error or warning.
+
 2026-07-16 name/code stock trend forecast
 D:\conda\python.exe -m pytest akshare-bridge\test_bridge.py -q
 56 bridge tests passed, 1 dependency deprecation warning
@@ -487,6 +515,8 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 
 - 将真实新闻和全球市场研究流抽象为 NewsProvider / MacroMarketProvider 契约，并补充历史影响验证。
 - 将策略研究排行榜从快照生成样本升级为授权历史行情缓存，并加入样本外验证。
+- 将变盘雷达升级为 point-in-time 股票池、purged walk-forward、置信区间、概率校准和市场状态分层验证。
+- 为港股只读研究补充交易日历、数据版本、公司行动和跨市场影响验证；在独立港股 paper 规则完成前继续禁止生成港股订单。
 - 增加账户白名单、角色权限和独立审批服务；当前本地登录只保护工作台 API，不授权真实交易。
 - 前端集成网格交易运行器控制面板。
 - PostgreSQL 替代 JSON 文件持久化。
@@ -502,6 +532,8 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 研究学习状态当前只是运行期内存样本池，不是长期训练库；服务重启会清空，不能用于声称策略已完成自学习或已验证真实胜率。
 - A 股强势回踩确认战法是研究候选策略，不是“稳赚”或“实盘收割”承诺；接入授权历史行情、样本外验证和模拟盘观察前，不应作为真实下单依据。
 - 单股趋势研判只使用公开前复权日线和启发式技术结构；历史同向命中率不是未来胜率，未纳入公司财务、公告事件、停复牌、涨跌停可成交性或完整逐笔数据，不应作为单独下单依据。
+- 变盘雷达只覆盖当前受控观察池，经验频率未完成生存者偏差修正、独立折概率校准和成交成本压力测试；当前结果是研究条件频率，不是生产级预测。
+- 港股模块只读取公开快照和前复权日线，不读取港股账户，也未实现港交所交易日历、T+0、每手股数、港币/汇率和港股费用，因此不能生成港股 paper 或真实订单。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
 - JSON 交易历史默认只保留最近 7 天，过期清理也会缩短订单幂等查询和审计回看窗口；需要长期研究的汇总结果应另行导出，不应依赖无限增长的运行状态文件。
 - 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 从 10000 元纯现金开始；已有 JSON 状态文件不会被自动覆盖，需要用户明确删除或移走后才会重新初始化。

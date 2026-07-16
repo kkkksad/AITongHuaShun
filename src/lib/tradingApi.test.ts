@@ -3,8 +3,10 @@ import {
   AUTH_EXPIRED_EVENT,
   fetchAuditEvents,
   fetchIpoSubscriptionResearch,
+  fetchHongKongMarketResearch,
   fetchMarketRegimeResearch,
   fetchStockTrendForecast,
+  fetchTurningPointResearch,
   getTradingSocketUrl,
   login,
   notifyAuthExpired,
@@ -148,5 +150,39 @@ describe("session-aware trading API", () => {
     );
     expect(requestedUrl).not.toContain("password");
     expect(requestedUrl).not.toContain("token");
+  });
+
+  it("requests a bounded turning-point scan with the session cookie", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        sourceStatus: "live-read-only",
+        candidates: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchTurningPointResearch(99, 999);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/research\/turning-points\?limit=12&days=500$/),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("requests bounded Hong Kong research with the session cookie", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        sourceStatus: "live-read-only",
+        items: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchHongKongMarketResearch(99, 999);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/research\/hong-kong-market\?limit=12&days=500$/),
+      expect.objectContaining({ credentials: "include" }),
+    );
   });
 });

@@ -46,6 +46,7 @@ import { WxPusherClient } from "./notifications/wxPusherClient";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
+import { buildHongKongMarketResearch } from "./research/hongKongMarketResearch";
 import { buildMarketRegimeResearch } from "./research/marketRegimeResearch";
 import { buildIpoSubscriptionResearch } from "./research/ipoSubscriptionResearch";
 import { buildCurrentPaperTradingPlan } from "./research/paperTradingPlanService";
@@ -54,6 +55,7 @@ import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStockTrendForecast } from "./research/stockTrendForecast";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
 import { buildSuperMindSignalPackage } from "./research/supermindSignalBridge";
+import { buildTurningPointReport } from "./research/turningPointScanner";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
 import { PaperAutoExecutor } from "./trading/paperAutoExecutor";
@@ -104,6 +106,16 @@ const dailyQualityStocksQuerySchema = z.object({
 const marketRegimeQuerySchema = z.object({
   sectorLimit: z.coerce.number().int().min(1).max(20).default(10),
   stockLimit: z.coerce.number().int().min(1).max(12).default(8),
+  days: z.coerce.number().int().min(60).max(500).default(180),
+});
+
+const turningPointQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(12).default(12),
+  days: z.coerce.number().int().min(180).max(500).default(360),
+});
+
+const hongKongMarketQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(12).default(10),
   days: z.coerce.number().int().min(60).max(500).default(180),
 });
 
@@ -692,6 +704,81 @@ export async function buildTradingApp(
       snapshot: system.market.getSnapshot(),
       sectorLimit,
       stockLimit,
+      days,
+      timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+    });
+  });
+
+  app.get("/api/research/turning-points", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取 A 股变盘候选雷达",
+      description:
+        "扫描当前受控 A 股观察池，使用真实前复权日线识别波动压缩，并按历史相似状态统计随后 5 个交易日向上、向下或未突破的条件频率。接口只读且不生成订单。",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 12,
+            default: 12,
+          },
+          days: {
+            type: "integer",
+            minimum: 180,
+            maximum: 500,
+            default: 360,
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { limit, days } = turningPointQuerySchema.parse(request.query);
+    return buildTurningPointReport({
+      bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
+      snapshot: system.market.getSnapshot(),
+      limit,
+      days,
+      timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+    });
+  });
+
+  app.get("/api/research/hong-kong-market", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取真实港股只读研究",
+      description:
+        "读取港股成交活跃标的快照和前复权日线，输出 5/20/60 日趋势、波动、回撤及同趋势历史验证。接口不读取账户、不套用 A 股规则，也不会生成港股订单。",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            minimum: 1,
+            maximum: 12,
+            default: 10,
+          },
+          days: {
+            type: "integer",
+            minimum: 60,
+            maximum: 500,
+            default: 180,
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { limit, days } = hongKongMarketQuerySchema.parse(request.query);
+    return buildHongKongMarketResearch({
+      bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
+      limit,
       days,
       timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
     });
