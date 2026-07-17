@@ -253,4 +253,139 @@ describe("buildDailyMarketReview", () => {
     expect(report.strategyReview.nextActions.join(" ")).toContain("每天最多一次");
     expect(report.strategyReview.nextActions.join(" ")).toContain("硬止损");
   });
+
+  it("reviews the previous Friday on a weekend and separates daily from cumulative pnl", () => {
+    const fridaySnapshot: MarketSnapshot = {
+      mode: "paper",
+      sequence: 20,
+      marketTime: "2026-07-17T07:00:00.000Z",
+      quotes: [{
+        symbol: "600010",
+        name: "包钢股份",
+        tradable: true,
+        price: 11,
+        previousClose: 10,
+        changePercent: 10,
+        volume: 1_000_000,
+        updatedAt: "2026-07-17T07:00:00.000Z",
+      }],
+    };
+    const weekendAccount: AccountSnapshot = {
+      ...account,
+      cash: 2_095,
+      equity: 2_095,
+      marketValue: 0,
+      dailyPnl: 295,
+      dailyPnlPercent: 0.1639,
+    };
+    const fridaySell: OrderRecord = {
+      ...orders[0],
+      id: "friday-sell",
+      side: "sell",
+      quantity: 100,
+      filledQuantity: 100,
+      filledPrice: 11,
+      requestedPrice: 11,
+      notional: 1_100,
+      commission: 5,
+      createdAt: "2026-07-17T01:31:00.000Z",
+      updatedAt: "2026-07-17T01:31:00.000Z",
+    };
+
+    const report = buildDailyMarketReview({
+      snapshot: fridaySnapshot,
+      provider: "akshare",
+      account: weekendAccount,
+      positions: [],
+      orders: [fridaySell],
+      auditEvents: [],
+      now: new Date("2026-07-18T02:00:00.000Z"),
+    });
+
+    expect(report).toMatchObject({
+      tradingDate: "2026-07-17",
+      dateBasis: "weekend-previous-weekday",
+      account: {
+        dailyPnl: 95,
+        dailyPnlPercent: 0.0475,
+        cumulativePnl: 295,
+        cumulativePnlPercent: 0.1639,
+        performanceBasis: "mark-to-market",
+        missingPreviousCloseSymbols: [],
+      },
+      trades: {
+        submitted: 1,
+        filledSells: 1,
+      },
+    });
+  });
+
+  it("does not substitute cumulative pnl when previous-close inputs are missing", () => {
+    const report = buildDailyMarketReview({
+      snapshot: { ...snapshot, quotes: [] },
+      provider: "akshare",
+      account,
+      positions,
+      orders: [],
+      auditEvents: [],
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+
+    expect(report.account).toMatchObject({
+      dailyPnl: null,
+      dailyPnlPercent: null,
+      cumulativePnl: account.dailyPnl,
+      cumulativePnlPercent: account.dailyPnlPercent,
+      performanceBasis: "unavailable",
+      missingPreviousCloseSymbols: ["600010"],
+    });
+  });
+
+  it("keeps the previous Friday review before the Monday open", () => {
+    const report = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account,
+      positions,
+      orders: [],
+      auditEvents: [],
+      now: new Date("2026-07-20T00:30:00.000Z"),
+    });
+
+    expect(report).toMatchObject({
+      tradingDate: "2026-07-17",
+      dateBasis: "pre-market-previous-weekday",
+    });
+  });
+
+  it("flags an opening phase that consumes the full automatic daily order budget", () => {
+    const openingSells = Array.from({ length: 4 }, (_, index): OrderRecord => ({
+      ...orders[0],
+      id: `opening-sell-${index}`,
+      symbol: String(600010 + index),
+      side: "sell",
+      quantity: 100,
+      filledQuantity: 100,
+      notional: 215,
+      commission: 5,
+      clientOrderId: `kairos-auto-paper:2026-07-14:${600010 + index}:paper-sell-plan:100`,
+      createdAt: `2026-07-14T01:3${index + 1}:00.000Z`,
+      updatedAt: `2026-07-14T01:3${index + 1}:00.000Z`,
+    }));
+
+    const report = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account,
+      positions,
+      orders: openingSells,
+      auditEvents: [],
+      maxDailyAutoOrders: 4,
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+
+    expect(report.strategyReview.issues.join(" ")).toContain("开盘阶段");
+    expect(report.strategyReview.issues.join(" ")).toContain("全天 4 笔");
+    expect(report.strategyReview.nextActions.join(" ")).toContain("后续确认阶段");
+  });
 });

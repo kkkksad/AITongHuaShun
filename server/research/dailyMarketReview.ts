@@ -13,6 +13,11 @@ export type DailyMarketTone =
   | "risk-off"
   | "insufficient-data";
 
+export type DailyReviewDateBasis =
+  | "current-weekday"
+  | "pre-market-previous-weekday"
+  | "weekend-previous-weekday";
+
 export interface MarketSnapshotAssessment {
   tone: DailyMarketTone;
   summary: string;
@@ -47,6 +52,7 @@ export interface DailyMarketReviewTrade {
 export interface DailyMarketReview {
   generatedAt: string;
   tradingDate: string;
+  dateBasis: DailyReviewDateBasis;
   mode: TradingMode;
   provider: string;
   market: {
@@ -73,8 +79,13 @@ export interface DailyMarketReview {
     equity: number;
     cash: number;
     marketValue: number;
-    dailyPnl: number;
-    dailyPnlPercent: number;
+    dailyPnl: number | null;
+    dailyPnlPercent: number | null;
+    cumulativePnl: number;
+    cumulativePnlPercent: number;
+    performanceBasis: "mark-to-market" | "unavailable";
+    openingEquity: number | null;
+    missingPreviousCloseSymbols: string[];
     cashRatio: number;
     capitalDeployedPercent: number;
     positionCount: number;
@@ -108,6 +119,7 @@ interface DailyMarketReviewInput {
   positions: PositionSnapshot[];
   orders: OrderRecord[];
   auditEvents: AuditEvent[];
+  maxDailyAutoOrders?: number;
   now?: Date;
 }
 
@@ -125,6 +137,94 @@ function chinaParts(value: Date): { date: string; minutes: number } {
   return {
     date: shifted.toISOString().slice(0, 10),
     minutes: shifted.getUTCHours() * 60 + shifted.getUTCMinutes(),
+  };
+}
+
+function resolveReviewTradingDate(now: Date): {
+  tradingDate: string;
+  dateBasis: DailyReviewDateBasis;
+} {
+  const shifted = new Date(now.getTime() + CHINA_OFFSET_MS);
+  const day = shifted.getUTCDay();
+  const minutes = shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
+  if (day === 0 || day === 6 || minutes < 9 * 60 + 30) {
+    do {
+      shifted.setUTCDate(shifted.getUTCDate() - 1);
+    } while (shifted.getUTCDay() === 0 || shifted.getUTCDay() === 6);
+    return {
+      tradingDate: shifted.toISOString().slice(0, 10),
+      dateBasis: day === 0 || day === 6
+        ? "weekend-previous-weekday"
+        : "pre-market-previous-weekday",
+    };
+  }
+  return {
+    tradingDate: shifted.toISOString().slice(0, 10),
+    dateBasis: "current-weekday",
+  };
+}
+
+function calculateReviewDayPerformance(input: {
+  account: AccountSnapshot;
+  positions: PositionSnapshot[];
+  dailyOrders: OrderRecord[];
+  quoteMap: Map<string, MarketSnapshot["quotes"][number]>;
+}): {
+  dailyPnl: number | null;
+  dailyPnlPercent: number | null;
+  performanceBasis: "mark-to-market" | "unavailable";
+  openingEquity: number | null;
+  missingPreviousCloseSymbols: string[];
+} {
+  let openingCash = input.account.cash;
+  const openingQuantities = new Map(
+    input.positions.map((position) => [position.symbol, position.quantity]),
+  );
+
+  for (const order of input.dailyOrders) {
+    if (order.status !== "filled") continue;
+    const quantity = order.filledQuantity || order.quantity;
+    const currentQuantity = openingQuantities.get(order.symbol) ?? 0;
+    if (order.side === "buy") {
+      openingCash += order.notional + order.commission;
+      openingQuantities.set(order.symbol, Math.max(0, currentQuantity - quantity));
+    } else {
+      openingCash -= order.notional - order.commission;
+      openingQuantities.set(order.symbol, currentQuantity + quantity);
+    }
+  }
+
+  const missingPreviousCloseSymbols = [...openingQuantities.entries()]
+    .filter(([, quantity]) => quantity > 0)
+    .filter(([symbol]) => {
+      const quote = input.quoteMap.get(symbol);
+      return !quote || !Number.isFinite(quote.previousClose) || quote.previousClose <= 0;
+    })
+    .map(([symbol]) => symbol)
+    .sort();
+  if (missingPreviousCloseSymbols.length > 0) {
+    return {
+      dailyPnl: null,
+      dailyPnlPercent: null,
+      performanceBasis: "unavailable",
+      openingEquity: null,
+      missingPreviousCloseSymbols,
+    };
+  }
+
+  const openingMarketValue = [...openingQuantities.entries()].reduce(
+    (sum, [symbol, quantity]) =>
+      sum + quantity * (input.quoteMap.get(symbol)?.previousClose ?? 0),
+    0,
+  );
+  const openingEquity = openingCash + openingMarketValue;
+  const dailyPnl = input.account.equity - openingEquity;
+  return {
+    dailyPnl: round(dailyPnl),
+    dailyPnlPercent: openingEquity > 0 ? round(dailyPnl / openingEquity, 4) : null,
+    performanceBasis: "mark-to-market",
+    openingEquity: round(openingEquity),
+    missingPreviousCloseSymbols,
   };
 }
 
@@ -220,7 +320,7 @@ export function buildDailyMarketReview(
   input: DailyMarketReviewInput,
 ): DailyMarketReview {
   const now = input.now ?? new Date();
-  const tradingDate = chinaParts(now).date;
+  const { tradingDate, dateBasis } = resolveReviewTradingDate(now);
   const marketAssessment = assessMarketSnapshot(input.snapshot);
   const { tone } = marketAssessment;
   const {
@@ -234,6 +334,12 @@ export function buildDailyMarketReview(
   const dailyOrders = input.orders
     .filter((order) => chinaParts(new Date(order.createdAt)).date === tradingDate)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const reviewDayPerformance = calculateReviewDayPerformance({
+    account: input.account,
+    positions: input.positions,
+    dailyOrders,
+    quoteMap,
+  });
 
   const tradeItems: DailyMarketReviewTrade[] = dailyOrders.map((order) => {
     const decision = decisions.get(order.id);
@@ -276,6 +382,12 @@ export function buildDailyMarketReview(
     const { minutes } = chinaParts(new Date(order.createdAt));
     return minutes >= 9 * 60 + 30 && minutes <= 9 * 60 + 35;
   }).length;
+  const maxDailyAutoOrders = Math.max(1, input.maxDailyAutoOrders ?? 4);
+  const openingAutoOrders = dailyOrders.filter((order) => {
+    if (!order.clientOrderId?.startsWith("kairos-auto-paper:")) return false;
+    const { minutes } = chinaParts(new Date(order.createdAt));
+    return minutes >= 9 * 60 + 30 && minutes < 10 * 60 + 15;
+  }).length;
   const missingDecisionReasons = tradeItems.filter(
     (trade) => trade.reasonSource === "historical-fallback",
   ).length;
@@ -311,6 +423,16 @@ export function buildDailyMarketReview(
   if (openingBuyAttempts >= 2) {
     issues.push(`开盘 5 分钟内连续尝试 ${openingBuyAttempts} 笔买单，建仓节奏过于集中。`);
   }
+  if (openingAutoOrders >= maxDailyAutoOrders) {
+    issues.push(
+      `开盘阶段已使用全天 ${maxDailyAutoOrders} 笔自动订单额度，后续确认和尾盘风险复核没有剩余额度。`,
+    );
+  }
+  if (reviewDayPerformance.performanceBasis === "unavailable") {
+    issues.push(
+      `缺少 ${reviewDayPerformance.missingPreviousCloseSymbols.join("、")} 的昨收，无法重建复盘日盯市收益；累计收益未被冒充为当日收益。`,
+    );
+  }
   if (missingDecisionReasons > 0) {
     issues.push(`${missingDecisionReasons} 笔历史订单缺少逐笔策略理由，旧记录只能复核成交事实。`);
   }
@@ -331,6 +453,11 @@ export function buildDailyMarketReview(
   ];
   if (openingBuyAttempts >= 2) {
     nextActions.push("将开盘集中建仓改为分批确认，观察首个价格区间后再增加下一笔 paper 仓位。");
+  }
+  if (openingAutoOrders >= maxDailyAutoOrders) {
+    nextActions.push(
+      "开盘阶段最多使用全天自动订单额度的一半，保留额度给上午、下午和尾盘的后续确认阶段。",
+    );
   }
   if (missingDecisionReasons > 0) {
     nextActions.push("从下一笔自动订单开始持久化策略名称、买卖理由和全部规则检查。");
@@ -356,6 +483,7 @@ export function buildDailyMarketReview(
   return {
     generatedAt: now.toISOString(),
     tradingDate,
+    dateBasis,
     mode: input.snapshot.mode,
     provider: input.provider,
     market: {
@@ -377,8 +505,14 @@ export function buildDailyMarketReview(
       equity: round(input.account.equity),
       cash: round(input.account.cash),
       marketValue: round(input.account.marketValue),
-      dailyPnl: round(input.account.dailyPnl),
-      dailyPnlPercent: round(input.account.dailyPnlPercent, 4),
+      dailyPnl: reviewDayPerformance.dailyPnl,
+      dailyPnlPercent: reviewDayPerformance.dailyPnlPercent,
+      cumulativePnl: round(input.account.dailyPnl),
+      cumulativePnlPercent: round(input.account.dailyPnlPercent, 4),
+      performanceBasis: reviewDayPerformance.performanceBasis,
+      openingEquity: reviewDayPerformance.openingEquity,
+      missingPreviousCloseSymbols:
+        reviewDayPerformance.missingPreviousCloseSymbols,
       cashRatio: round(cashRatio, 4),
       capitalDeployedPercent: round(capitalDeployedPercent, 4),
       positionCount: input.positions.length,
@@ -415,6 +549,14 @@ export function buildDailyMarketReview(
       "盘面统计基于当前配置股票池和最新快照，不等同于完整交易所全市场统计。",
       "缺失的历史策略理由不会被推测或补写。",
       "真实交易与同花顺账户连接保持关闭。",
+      dateBasis === "weekend-previous-weekday"
+        ? "当前为周末，报告自动回看最近周五；法定节假日仍需交易所日历确认。"
+        : dateBasis === "pre-market-previous-weekday"
+          ? "当前尚未开盘，报告自动回看最近工作日；法定节假日仍需交易所日历确认。"
+          : "复盘日期按北京时间当前工作日确定；法定节假日仍需交易所日历确认。",
+      reviewDayPerformance.performanceBasis === "mark-to-market"
+        ? "复盘日收益由开盘现金、开盘持仓昨收、当日成交和手续费重建，与累计 paper 收益分开。"
+        : "复盘日收益因昨收缺失保持不可用，不使用累计 paper 收益替代。",
     ],
   };
 }

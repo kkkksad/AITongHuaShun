@@ -10,6 +10,7 @@ import type {
 } from "../research/paperTradingPlan";
 import {
   getAshareTradingPhase,
+  getPhaseCumulativeOrderLimit,
   getIntradayExecutionPolicy,
   type AShareTradingPhase,
   type IntradayExecutionPolicy,
@@ -69,6 +70,8 @@ export interface PaperAutoExecutionStatus {
   maxOrdersPerRun: number;
   maxDailyOrders: number;
   todaySubmittedOrders: number;
+  phaseDailyOrderLimit: number;
+  phaseRemainingOrders: number;
   currentSession: PaperAutoExecutionSession;
   currentPhase: AShareTradingPhase;
   phaseMaxInvestedRatio: number;
@@ -99,6 +102,7 @@ interface PreparedPaperOperation {
 }
 
 const HISTORY_LIMIT = 30;
+const AUDIT_HEARTBEAT_MS = 15 * 60_000;
 const CHINA_TZ_OFFSET_MINUTES = 8 * 60;
 
 function getChinaParts(value: Date) {
@@ -131,6 +135,54 @@ export function shouldRunScheduledPaperAutoExecution(
   return !tradeWindowOnly || getAshareSession(value) === "open";
 }
 
+export function paperAutoExecutionAuditSignature(
+  run: PaperAutoExecutionRun,
+): string {
+  return JSON.stringify({
+    tradingDate: run.tradingDate,
+    session: run.session,
+    phase: run.phase,
+    planQuality: run.planQuality,
+    submittedOrders: run.submittedOrders.map((order) => ({
+      symbol: order.symbol,
+      side: order.side,
+      quantity: order.quantity,
+      status: order.status,
+      rejectionReason: order.rejectionReason ?? null,
+    })),
+    skippedOperations: run.skippedOperations.map((operation) => ({
+      symbol: operation.symbol,
+      action: operation.action,
+      reason: operation.reason,
+    })),
+  });
+}
+
+export function shouldPersistPaperAutoExecutionRun(input: {
+  run: PaperAutoExecutionRun;
+  previousSignature: string | null;
+  previousPersistedAt: number | null;
+  heartbeatMs?: number;
+}): boolean {
+  if (input.run.trigger !== "timer" || input.run.submittedOrders.length > 0) {
+    return true;
+  }
+  const currentSignature = paperAutoExecutionAuditSignature(input.run);
+  if (input.previousSignature !== currentSignature) return true;
+  if (input.previousPersistedAt === null) return true;
+  const finishedAt = Date.parse(input.run.finishedAt);
+  if (!Number.isFinite(finishedAt)) return true;
+  return finishedAt - input.previousPersistedAt >=
+    (input.heartbeatMs ?? AUDIT_HEARTBEAT_MS);
+}
+
+export function isPaperOperationBlockedByPhaseBudget(
+  operation: PaperTradingOperation,
+  remainingPhaseOrders: number,
+): boolean {
+  return remainingPhaseOrders <= 0 && operation.strategy !== "回撤控制";
+}
+
 export class PaperAutoExecutor {
   private timer: ReturnType<typeof setInterval> | null = null;
   private startedAt: string | null = null;
@@ -138,6 +190,8 @@ export class PaperAutoExecutor {
   private nextRunAt: string | null = null;
   private running = false;
   private sequence = 0;
+  private lastPersistedRunSignature: string | null = null;
+  private lastPersistedRunAt: number | null = null;
   private readonly runs: PaperAutoExecutionRun[] = [];
 
   constructor(private readonly options: PaperAutoExecutorOptions) {}
@@ -169,7 +223,13 @@ export class PaperAutoExecutor {
 
   getStatus(): PaperAutoExecutionStatus {
     const latestRun = this.runs[0] ?? null;
-    const currentPolicy = getIntradayExecutionPolicy(this.now(), null);
+    const now = this.now();
+    const currentPolicy = getIntradayExecutionPolicy(now, null);
+    const todaySubmittedOrders = this.countSubmittedOrders(getChinaTradeDate(now));
+    const phaseDailyOrderLimit = getPhaseCumulativeOrderLimit(
+      this.options.maxDailyOrders,
+      currentPolicy.phase,
+    );
     return {
       enabled: this.options.enabled,
       running: this.running,
@@ -180,9 +240,11 @@ export class PaperAutoExecutor {
       tradeWindowOnly: this.options.tradeWindowOnly,
       maxOrdersPerRun: this.options.maxOrdersPerRun,
       maxDailyOrders: this.options.maxDailyOrders,
-      todaySubmittedOrders: this.countSubmittedOrders(getChinaTradeDate(this.now())),
-      currentSession: getAshareSession(this.now()),
-      currentPhase: getAshareTradingPhase(this.now()),
+      todaySubmittedOrders,
+      phaseDailyOrderLimit,
+      phaseRemainingOrders: Math.max(0, phaseDailyOrderLimit - todaySubmittedOrders),
+      currentSession: getAshareSession(now),
+      currentPhase: getAshareTradingPhase(now),
       phaseMaxInvestedRatio:
         latestRun?.phaseMaxInvestedRatio ?? currentPolicy.maxInvestedRatio,
       startedAt: this.startedAt,
@@ -364,6 +426,11 @@ export class PaperAutoExecutor {
     const todaySubmitted = this.countSubmittedOrders(plan.tradingDate);
     let remainingDailyOrders = Math.max(0, this.options.maxDailyOrders - todaySubmitted);
     let remainingRunOrders = this.options.maxOrdersPerRun;
+    let remainingPhaseOrders = Math.max(
+      0,
+      getPhaseCumulativeOrderLimit(this.options.maxDailyOrders, policy.phase) -
+        todaySubmitted,
+    );
     const account = this.options.system.broker.getAccount();
     let projectedCash = account.cash;
     let projectedMarketValue = account.marketValue;
@@ -404,6 +471,14 @@ export class PaperAutoExecutor {
           symbol: operation.symbol,
           action: operation.action,
           reason: "per-run auto paper order cap reached",
+        });
+        continue;
+      }
+      if (isPaperOperationBlockedByPhaseBudget(operation, remainingPhaseOrders)) {
+        skippedOperations.push({
+          symbol: operation.symbol,
+          action: operation.action,
+          reason: `${policy.phaseLabel}阶段自动订单额度已用完，保留额度给后续确认阶段`,
         });
         continue;
       }
@@ -470,6 +545,7 @@ export class PaperAutoExecutor {
       prepared.push({ operation, request });
       remainingRunOrders -= 1;
       remainingDailyOrders -= 1;
+      remainingPhaseOrders = Math.max(0, remainingPhaseOrders - 1);
     }
 
     return prepared;
@@ -507,6 +583,13 @@ export class PaperAutoExecutor {
     if (this.runs.length > HISTORY_LIMIT) {
       this.runs.splice(HISTORY_LIMIT);
     }
+    const signature = paperAutoExecutionAuditSignature(run);
+    const shouldPersist = shouldPersistPaperAutoExecutionRun({
+      run,
+      previousSignature: this.lastPersistedRunSignature,
+      previousPersistedAt: this.lastPersistedRunAt,
+    });
+    if (!shouldPersist) return run;
     this.options.system.store.appendAudit(
       "system",
       "paper-auto-execution.run",
@@ -537,6 +620,8 @@ export class PaperAutoExecutor {
         })),
       },
     );
+    this.lastPersistedRunSignature = signature;
+    this.lastPersistedRunAt = Date.parse(run.finishedAt);
     return run;
   }
 

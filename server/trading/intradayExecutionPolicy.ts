@@ -34,6 +34,25 @@ const PHASE_LABELS: Record<AShareTradingPhase, string> = {
   closed: "盘外手动复核",
 };
 
+const PHASE_ORDER_BUDGET_RATIO: Record<AShareTradingPhase, number> = {
+  opening: 0.5,
+  "morning-confirmation": 0.75,
+  "afternoon-confirmation": 1,
+  "closing-risk-review": 1,
+  closed: 1,
+};
+
+export function getPhaseCumulativeOrderLimit(
+  maxDailyOrders: number,
+  phase: AShareTradingPhase,
+): number {
+  const boundedDailyOrders = Math.max(1, Math.floor(maxDailyOrders));
+  return Math.min(
+    boundedDailyOrders,
+    Math.max(1, Math.ceil(boundedDailyOrders * PHASE_ORDER_BUDGET_RATIO[phase])),
+  );
+}
+
 function chinaParts(value: Date) {
   const shifted = new Date(value.getTime() + CHINA_TZ_OFFSET_MINUTES * 60_000);
   return {

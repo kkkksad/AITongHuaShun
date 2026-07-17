@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AdaptiveStrategyRouting } from "../research/adaptiveStrategyRouter";
 import {
   getAshareTradingPhase,
+  getPhaseCumulativeOrderLimit,
   getIntradayExecutionPolicy,
 } from "./intradayExecutionPolicy";
 
@@ -85,5 +86,12 @@ describe("intraday execution policy", () => {
 
     expect(result.phase).toBe("closed");
     expect(result.maxInvestedRatio).toBe(0.9);
+  });
+
+  it("reserves automatic order capacity for later confirmation phases", () => {
+    expect(getPhaseCumulativeOrderLimit(4, "opening")).toBe(2);
+    expect(getPhaseCumulativeOrderLimit(4, "morning-confirmation")).toBe(3);
+    expect(getPhaseCumulativeOrderLimit(4, "afternoon-confirmation")).toBe(4);
+    expect(getPhaseCumulativeOrderLimit(4, "closing-risk-review")).toBe(4);
   });
 });

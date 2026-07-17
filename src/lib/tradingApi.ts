@@ -620,6 +620,8 @@ export interface PaperAutoExecutionStatus {
   maxOrdersPerRun: number;
   maxDailyOrders: number;
   todaySubmittedOrders: number;
+  phaseDailyOrderLimit: number;
+  phaseRemainingOrders: number;
   currentSession: PaperAutoExecutionSession;
   startedAt: string | null;
   lastRunAt: string | null;
@@ -644,6 +646,10 @@ export type DailyMarketTone =
 export interface DailyMarketReview {
   generatedAt: string;
   tradingDate: string;
+  dateBasis:
+    | "current-weekday"
+    | "pre-market-previous-weekday"
+    | "weekend-previous-weekday";
   mode: TradingMode;
   provider: string;
   market: {
@@ -670,8 +676,13 @@ export interface DailyMarketReview {
     equity: number;
     cash: number;
     marketValue: number;
-    dailyPnl: number;
-    dailyPnlPercent: number;
+    dailyPnl: number | null;
+    dailyPnlPercent: number | null;
+    cumulativePnl: number;
+    cumulativePnlPercent: number;
+    performanceBasis: "mark-to-market" | "unavailable";
+    openingEquity: number | null;
+    missingPreviousCloseSymbols: string[];
     cashRatio: number;
     capitalDeployedPercent: number;
     positionCount: number;

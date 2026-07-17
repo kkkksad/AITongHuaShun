@@ -168,7 +168,11 @@ export default function LearningPipeline() {
         <section className="panel learning-memory-panel">
           <div className="panel-header">
             <div>
-              <span className="section-kicker">每日复盘</span>
+              <span className="section-kicker">
+                {dailyReview?.dateBasis !== "current-weekday"
+                  ? "最近交易日复盘"
+                  : "每日复盘"}
+              </span>
               <h2>盘面与 Paper 交易</h2>
             </div>
             <span className="sample-badge">
@@ -195,8 +199,8 @@ export default function LearningPipeline() {
               <span>账户权益</span>
               <strong>¥{(dailyReview?.account.equity ?? 0).toLocaleString("zh-CN")}</strong>
               <small>
-                当日 paper {dailyReview?.account.dailyPnlPercent !== undefined
-                  ? `${(dailyReview.account.dailyPnlPercent * 100).toFixed(2)}%`
+                复盘日 paper {dailyReview?.account.dailyPnlPercent != null
+                  ? `${dailyReview.account.dailyPnlPercent >= 0 ? "+" : ""}${(dailyReview.account.dailyPnlPercent * 100).toFixed(2)}%`
                   : "--"}
               </small>
             </article>
@@ -213,7 +217,7 @@ export default function LearningPipeline() {
               <strong>{dailyReview.strategyReview.summary}</strong>
               <p>{dailyReview.market.summary}</p>
               <span>
-                手续费 ¥{dailyReview.trades.commission.toFixed(2)} · 现金比例 {(dailyReview.account.cashRatio * 100).toFixed(1)}% · T+1 锁定 {dailyReview.account.t1LockedPositions} 只
+                累计 paper {dailyReview.account.cumulativePnl >= 0 ? "+" : ""}¥{dailyReview.account.cumulativePnl.toFixed(2)} · 手续费 ¥{dailyReview.trades.commission.toFixed(2)} · 现金比例 {(dailyReview.account.cashRatio * 100).toFixed(1)}% · T+1 锁定 {dailyReview.account.t1LockedPositions} 只
               </span>
             </div>
           )}
@@ -233,7 +237,9 @@ export default function LearningPipeline() {
               </article>
             ))}
             {!dailyReview?.trades.items.length && (
-              <p className="empty-copy">今日尚无本地 paper 订单。</p>
+              <p className="empty-copy">
+                {dailyReview?.tradingDate ?? "该复盘日"} 暂无本地 paper 订单。
+              </p>
             )}
           </div>
           {dailyReview && (

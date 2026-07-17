@@ -826,6 +826,9 @@ describe("trading API", () => {
     expect(response.json()).toMatchObject({
       mode: "mock",
       provider: "mock",
+      dateBasis: expect.stringMatching(
+        /^(current-weekday|pre-market-previous-weekday|weekend-previous-weekday)$/,
+      ),
       market: {
         tone: expect.stringMatching(/^(risk-on|balanced|risk-off|insufficient-data)$/),
         breadth: {
@@ -836,6 +839,10 @@ describe("trading API", () => {
       },
       account: {
         equity: expect.any(Number),
+        cumulativePnl: expect.any(Number),
+        cumulativePnlPercent: expect.any(Number),
+        performanceBasis: expect.stringMatching(/^(mark-to-market|unavailable)$/),
+        missingPreviousCloseSymbols: expect.any(Array),
         capitalDeployedPercent: expect.any(Number),
       },
       trades: {

@@ -98,6 +98,17 @@ class CacheEntry:
     stale_until: float
 ```
 
+Task 2 最小切片进度（2026-07-18）：
+
+- [x] 新增 `akshare-bridge/research_cache.py`，定义 `HistoryCacheKey`、`CacheEntry` 与独立 `ResearchHistoryCache`；缓存键按市场、代码、复权、截止日期和天数区分，fresh 命中直接返回缓存值。
+- [x] 新增 `akshare-bridge/test_research_cache.py`，覆盖 fresh 命中不调用上游、不同截止日期/天数不复用旧值，以及同键并发请求 single-flight 只触发一次 fetch。
+- [ ] 尚未接入 `akshare-bridge/main.py`；stale 后台刷新、上游失败保留旧结果、过期淘汰、港股历史独立查询和耗时指标留给后续 Task 2 切片。
+
+验证结果：
+
+- `D:\conda\python.exe -m pytest akshare-bridge\test_bridge.py akshare-bridge\test_research_cache.py -q`：78 passed，1 个既有 Starlette TestClient/httpx 弃用警告。
+- `git diff --check`：通过，仅有工作树 LF/CRLF 转换警告。
+
 ## Task 3：Fastify、客户端与 CSS 领域拆分
 
 **Files:**

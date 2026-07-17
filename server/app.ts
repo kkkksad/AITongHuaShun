@@ -1003,6 +1003,7 @@ export async function buildTradingApp(
       positions: system.broker.getPositions(snapshot),
       orders: system.broker.getOrders(10_000),
       auditEvents: system.store.listAudit(10_000),
+      maxDailyAutoOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
     });
   });
 
