@@ -145,6 +145,127 @@ export interface StrategyLeaderboardReport {
   entries: StrategyLeaderboardEntry[];
 }
 
+export type StrategyRobustnessFamily =
+  | "trend"
+  | "pullback"
+  | "breakout"
+  | "mean-reversion"
+  | "defensive";
+
+export interface StrategyRobustnessEntry {
+  rank: number;
+  strategyKey: string;
+  strategyName: string;
+  strategyFamily: StrategyRobustnessFamily;
+  fixedParams: Record<string, number>;
+  windows: number;
+  profitableWindows: number;
+  totalTrades: number;
+  medianReturn: number;
+  worstReturn: number;
+  averageMaxDrawdown: number;
+  worstMaxDrawdown: number;
+  averageWinRate: number;
+  stabilityGate: "pass" | "caution" | "blocked";
+}
+
+export interface StrategyRobustnessReport {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+  source: {
+    sampleType: "real-qfq-fixed-parameter-multi-window";
+    historySource: string;
+    fetchedAt: string | null;
+    adjustment: "qfq";
+    requestedDays: number;
+    requestedSymbols: number;
+    historySymbols: number;
+    alignedTradingDays: number;
+    windowCount: 3;
+  };
+  methodology: {
+    parametersOptimizedOnReportData: false;
+    nonOverlappingWindows: true;
+    minimumAlignedTradingDays: number;
+    stabilityMeaning: string;
+  };
+  entries: StrategyRobustnessEntry[];
+  warnings: string[];
+  guardrails: string[];
+}
+
+export type CrossMarketRiskTone = "risk-on" | "neutral" | "risk-off" | "mixed";
+export type CrossMarketSignalTone = "positive" | "neutral" | "negative";
+
+export interface CrossMarketSignalGroup {
+  tone: CrossMarketSignalTone;
+  coverage: number;
+  averageChangePercent: number;
+  averageReturn20d: number | null;
+}
+
+export interface CrossMarketGlobalSignal extends CrossMarketSignalGroup {
+  advancerRatio: number;
+}
+
+export interface FuturesMarketResearchItem {
+  symbol: string;
+  name: string;
+  category: string;
+  price: number;
+  previousSettlement: number;
+  changePercent: number;
+  volume: number;
+  openInterest: number;
+  updatedAt: string;
+  source: string;
+  history: {
+    source: string;
+    adjustment: "continuous-main";
+    latestDate: string | null;
+    barCount: number;
+    return5d: number | null;
+    return20d: number | null;
+    return60d: number | null;
+    annualizedVolatility20d: number | null;
+    drawdownFrom60DayHigh: number | null;
+  };
+}
+
+export interface CrossMarketStrategyContextReport {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+  source: {
+    globalSource: string;
+    futuresQuoteSource: string;
+    futuresHistorySource: string;
+    fetchedAt: string | null;
+    requestedDays: number;
+    globalCount: number;
+    futuresQuoteCount: number;
+    futuresHistoryCount: number;
+  };
+  riskTone: CrossMarketRiskTone;
+  positionPosture: "normal" | "reduced" | "cash-only";
+  preferredStrategyFamilies: StrategyRobustnessFamily[];
+  deweightedStrategyFamilies: StrategyRobustnessFamily[];
+  preferredStrategyKeys: string[];
+  evidence: string[];
+  signals: {
+    global: CrossMarketGlobalSignal;
+    equityFutures: CrossMarketSignalGroup;
+    industrialFutures: CrossMarketSignalGroup;
+    preciousMetals: CrossMarketSignalGroup;
+  };
+  futures: FuturesMarketResearchItem[];
+  warnings: string[];
+  guardrails: string[];
+}
+
 export type DailyCandidateAction = "watch" | "paper-buy" | "avoid";
 
 export interface DailyCandidate {
@@ -1312,6 +1433,29 @@ export function fetchStrategyLeaderboard(
 ): Promise<StrategyLeaderboardReport> {
   return authApiRequest<StrategyLeaderboardReport>(
     `/api/research/strategy-leaderboard?bars=${bars}`,
+  );
+}
+
+export function fetchStrategyRobustness(
+  limit = 8,
+  days = 500,
+): Promise<StrategyRobustnessReport> {
+  const boundedLimit = Math.min(8, Math.max(2, Math.round(limit)));
+  const boundedDays = Math.min(500, Math.max(360, Math.round(days)));
+  return authApiRequest<StrategyRobustnessReport>(
+    `/api/research/strategy-robustness?limit=${boundedLimit}&days=${boundedDays}`,
+  );
+}
+
+export function fetchCrossMarketStrategyContext(
+  limit = 12,
+  days = 180,
+): Promise<CrossMarketStrategyContextReport> {
+  const boundedLimit = Math.min(16, Math.max(4, Math.round(limit)));
+  const boundedDays = Math.min(500, Math.max(60, Math.round(days)));
+  return authApiRequest<CrossMarketStrategyContextReport>(
+    "/api/research/cross-market-strategy-context" +
+      `?limit=${boundedLimit}&days=${boundedDays}`,
   );
 }
 

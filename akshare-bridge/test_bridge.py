@@ -18,6 +18,8 @@ from main import (
     app,
     GlobalMarketsResponse,
     GlobalMarketQuote,
+    FuturesQuote,
+    FuturesQuotesResponse,
     HistoricalBar,
     HistoricalBarsResponse,
     HistoricalSeries,
@@ -40,6 +42,9 @@ from main import (
     fetch_financial_news_dataframe,
     fetch_global_market_dataframe,
     fetch_global_market_sina_snapshot_dataframe,
+    fetch_futures_history_dataframe,
+    fetch_futures_spot_dataframe,
+    fetch_sina_futures_realtime_dataframe,
     fetch_hk_history_dataframe,
     fetch_hk_spot_dataframe,
     fetch_sector_history_dataframe,
@@ -49,6 +54,7 @@ from main import (
     normalize_hk_quote_dataframe,
     normalize_sector_snapshot_dataframes,
     normalize_global_market_dataframe,
+    normalize_futures_quote_dataframe,
     normalize_news_dataframe,
     normalize_a_share_symbol,
     normalize_index_symbol,
@@ -481,6 +487,205 @@ class TestGlobalMarketsEndpoint:
         assert data["provider"] == "akshare"
         assert data["markets"] == []
         assert "全球市场源暂不可用" in data["warning"]
+
+
+class TestDomesticFuturesEndpoints:
+    def test_futures_quotes_require_server_token_when_configured(self):
+        with patch("main.AUTH_TOKEN", "test-secret"):
+            response = client.get("/api/market/futures/quotes?limit=4")
+        assert response.status_code == 401
+
+    def test_normalizes_controlled_main_contract_quotes(self):
+        frame = pd.DataFrame([{
+            "symbol": "沪深300指数",
+            "time": "15:00:00",
+            "open": 3980,
+            "high": 4025,
+            "low": 3960,
+            "current_price": 4000,
+            "bid_price": 3999.8,
+            "ask_price": 4000.2,
+            "hold": 125000,
+            "volume": 88000,
+            "avg_price": 3992,
+            "last_close": 3985,
+            "last_settle_price": 3990,
+        }])
+
+        items = normalize_futures_quote_dataframe(
+            frame,
+            ["IF0"],
+            "sina-domestic-futures-spot",
+            4,
+        )
+
+        assert len(items) == 1
+        assert items[0].symbol == "IF0"
+        assert items[0].name == "沪深300股指"
+        assert items[0].category == "股指"
+        assert items[0].price == 4000
+        assert items[0].previousSettlement == 3990
+        assert items[0].changePercent == pytest.approx(0.2506266)
+        assert items[0].openInterest == 125000
+        assert items[0].volume == 88000
+
+    def test_futures_spot_fetch_uses_sina_controlled_contract_list(self):
+        frame = MagicMock()
+        with patch("main.ak.futures_zh_spot", return_value=frame) as fetch:
+            result, provider = fetch_futures_spot_dataframe(["IF0", "CU0"])
+
+        assert result is frame
+        assert provider == "sina-domestic-futures-spot"
+        assert fetch.call_args.kwargs == {
+            "symbol": "IF0,CU0",
+            "market": "CF",
+            "adjust": "0",
+        }
+
+    def test_futures_spot_falls_back_when_akshare_bulk_parser_breaks(self):
+        frame = MagicMock()
+        with patch(
+            "main.ak.futures_zh_spot",
+            side_effect=ValueError("Length mismatch"),
+        ):
+            with patch(
+                "main.fetch_sina_futures_realtime_dataframe",
+                return_value=frame,
+            ) as fallback:
+                result, provider = fetch_futures_spot_dataframe(["IF0", "CU0"])
+
+        assert result is frame
+        assert provider == "sina-domestic-futures-realtime-compat"
+        fallback.assert_called_once_with(["IF0", "CU0"])
+
+    def test_sina_futures_compat_parser_keeps_only_requested_continuous_rows(self):
+        responses = {
+            "qz_qh": [{
+                "symbol": "IF0",
+                "name": "沪深300指数期货连续",
+                "trade": "4645.6",
+                "presettlement": "4713.0",
+                "open": "4677.0",
+                "high": "4712.6",
+                "low": "4618.0",
+                "bidprice1": "4644.8",
+                "askprice1": "4645.6",
+                "volume": "86023",
+                "position": "160153",
+                "ticktime": "15:00:00",
+            }],
+            "tong_qh": [{
+                "symbol": "CU0",
+                "name": "沪铜连续",
+                "trade": "88200",
+                "presettlement": "87500",
+                "volume": "125000",
+                "position": "220000",
+                "ticktime": "15:00:00",
+            }],
+        }
+
+        def fake_get(_url, params, **_kwargs):
+            response = MagicMock()
+            response.json.return_value = responses[params["node"]]
+            return response
+
+        with patch("main.requests.get", side_effect=fake_get) as request:
+            frame = fetch_sina_futures_realtime_dataframe(["IF0", "CU0"])
+
+        assert frame["contract"].tolist() == ["IF0", "CU0"]
+        assert frame["current_price"].tolist() == ["4645.6", "88200"]
+        assert frame["last_settle_price"].tolist() == ["4713.0", "87500"]
+        assert {call.kwargs["params"]["node"] for call in request.call_args_list} == {
+            "qz_qh",
+            "tong_qh",
+        }
+
+    def test_futures_quotes_cache_only_non_empty_real_response(self):
+        frame = pd.DataFrame([{
+            "symbol": "沪深300指数",
+            "time": "15:00:00",
+            "current_price": 4000,
+            "last_settle_price": 3990,
+            "volume": 88000,
+            "hold": 125000,
+        }])
+        with patch.dict("main.research_cache", {}, clear=True):
+            with patch(
+                "main.fetch_futures_spot_dataframe",
+                return_value=(frame, "sina-domestic-futures-spot"),
+            ) as fetch:
+                first = client.get("/api/market/futures/quotes?limit=1")
+                second = client.get("/api/market/futures/quotes?limit=1")
+
+        assert first.status_code == 200
+        assert first.json()["items"][0]["symbol"] == "IF0"
+        assert second.json() == first.json()
+        fetch.assert_called_once_with(["IF0"])
+
+    def test_futures_quotes_return_empty_degraded_payload_on_failure(self):
+        with patch.dict("main.research_cache", {}, clear=True):
+            with patch(
+                "main.fetch_futures_spot_dataframe",
+                side_effect=RuntimeError("offline"),
+            ):
+                response = client.get("/api/market/futures/quotes?limit=4")
+
+        assert response.status_code == 200
+        assert response.json()["source"] == "unavailable"
+        assert response.json()["items"] == []
+        assert "期货行情源暂不可用" in response.json()["warning"]
+
+    def test_futures_history_rejects_unknown_contracts(self):
+        response = client.get(
+            "/api/market/futures/history?symbols=IF0,UNKNOWN&days=180",
+        )
+        assert response.status_code == 400
+        assert "受控主连观察池" in response.json()["detail"]
+
+    def test_futures_history_uses_continuous_main_daily_bars(self):
+        frame = pd.DataFrame([{
+            "日期": "2026-07-15",
+            "开盘价": 3980,
+            "最高价": 4025,
+            "最低价": 3960,
+            "收盘价": 4000,
+            "成交量": 88000,
+            "持仓量": 125000,
+            "动态结算价": 3995,
+        }])
+        with patch.dict("main.research_cache", {}, clear=True):
+            with patch(
+                "main.fetch_futures_history_dataframe",
+                return_value=(frame, "sina-domestic-main-continuous"),
+            ) as fetch:
+                response = client.get(
+                    "/api/market/futures/history?symbols=IF0&days=180",
+                )
+
+        assert response.status_code == 200
+        series = response.json()["series"][0]
+        assert series["symbol"] == "IF0"
+        assert series["adjustment"] == "continuous-main"
+        assert series["bars"][0]["close"] == 4000
+        assert fetch.call_count == 1
+
+    def test_futures_history_fetches_sina_main_contract(self):
+        frame = MagicMock()
+        with patch("main.ak.futures_main_sina", return_value=frame) as fetch:
+            result, provider = fetch_futures_history_dataframe(
+                "CU0",
+                "20250101",
+                "20260716",
+            )
+
+        assert result is frame
+        assert provider == "sina-domestic-main-continuous"
+        assert fetch.call_args.kwargs == {
+            "symbol": "CU0",
+            "start_date": "20250101",
+            "end_date": "20260716",
+        }
 
 
 class TestSectorAndHistoryEndpoints:

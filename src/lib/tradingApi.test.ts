@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTH_EXPIRED_EVENT,
   fetchAuditEvents,
+  fetchCrossMarketStrategyContext,
   fetchIpoSubscriptionResearch,
   fetchHongKongMarketResearch,
   fetchMarketRegimeResearch,
+  fetchStrategyRobustness,
   fetchStockTrendForecast,
   fetchTurningPointResearch,
   getTradingSocketUrl,
@@ -104,6 +106,45 @@ describe("session-aware trading API", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(
         /\/api\/research\/market-regime\?sectorLimit=20&stockLimit=1&days=500$/,
+      ),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("requests bounded real strategy robustness history with the session cookie", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        sourceStatus: "live-read-only",
+        entries: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchStrategyRobustness(99, 999);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/api\/research\/strategy-robustness\?limit=8&days=500$/,
+      ),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("requests bounded cross-market strategy context with the session cookie", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        sourceStatus: "live-read-only",
+        riskTone: "neutral",
+        futures: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchCrossMarketStrategyContext(99, 999);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/api\/research\/cross-market-strategy-context\?limit=16&days=500$/,
       ),
       expect.objectContaining({ credentials: "include" }),
     );

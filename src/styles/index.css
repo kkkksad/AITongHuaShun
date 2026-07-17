@@ -1162,6 +1162,9 @@ select:focus-visible {
    ============================================================ */
 .trade-table-wrap {
   margin-top: 22px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .table-heading {
@@ -3553,6 +3556,22 @@ select:focus-visible {
   gap: 8px;
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.robustness-table-wrapper {
+  max-height: 430px;
+  overflow: auto;
+}
+
+.robustness-table {
+  min-width: 980px;
+}
+
+.strategy-family-label {
+  display: inline-flex;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 @media (max-width: 980px) {
@@ -6522,7 +6541,8 @@ select:focus-visible {
 .market-workspace,
 .market-workspace-panel,
 .turning-point-panel,
-.hong-kong-panel {
+.hong-kong-panel,
+.futures-market-panel {
   min-width: 0;
 }
 
@@ -6568,6 +6588,20 @@ select:focus-visible {
 
 .market-workspace-panel {
   padding-top: 16px;
+}
+
+.market-tab-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 320px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.market-tab-loading svg {
+  color: var(--color-primary);
 }
 
 .market-events-stack {
@@ -6623,6 +6657,46 @@ select:focus-visible {
   min-width: 1140px;
 }
 
+.futures-table {
+  min-width: 1080px;
+}
+
+.futures-strategy-context {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin-bottom: 12px;
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.futures-strategy-context > div {
+  min-width: 0;
+  padding: 11px 12px;
+}
+
+.futures-strategy-context > div + div {
+  border-left: 1px solid var(--border-light);
+}
+
+.futures-strategy-context span,
+.futures-strategy-context strong,
+.futures-strategy-context small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.futures-strategy-context span,
+.futures-strategy-context small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.futures-strategy-context strong {
+  margin: 4px 0;
+  color: var(--text-heading);
+  font-size: 13px;
+}
+
 .turning-table td,
 .hong-kong-table td {
   vertical-align: top;
@@ -6651,6 +6725,15 @@ select:focus-visible {
     width: 100%;
     min-width: 0;
     padding-inline: 8px;
+  }
+
+  .futures-strategy-context {
+    grid-template-columns: 1fr;
+  }
+
+  .futures-strategy-context > div + div {
+    border-top: 1px solid var(--border-light);
+    border-left: 0;
   }
 
   .research-panel-header {

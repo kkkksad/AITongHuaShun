@@ -21,7 +21,7 @@ function findPrimaryIndex(market?: MarketSnapshot): MarketQuote | undefined {
     ?? market?.quotes.find((quote) => !quote.tradable && quote.price > 0);
 }
 
-function buildIndexSnapshotData(index?: MarketQuote) {
+export function buildIndexSnapshotData(index?: MarketQuote) {
   if (!index) {
     return intradayData;
   }
@@ -37,7 +37,7 @@ function buildIndexSnapshotData(index?: MarketQuote) {
   return points.filter((point) => Number.isFinite(point.price) && point.price > 0);
 }
 
-function buildPriceDomain(data: Array<{ price: number; average: number }>): [number, number] {
+export function buildPriceDomain(data: Array<{ price: number; average: number }>): [number, number] {
   const values = data.flatMap((point) => [point.price, point.average]).filter((value) => Number.isFinite(value));
   if (values.length === 0) {
     return [3480, 3545];
@@ -75,7 +75,7 @@ export function MarketChart({ market }: MarketChartProps) {
       </div>
       <div className="market-chart">
         <ResponsiveContainer height="100%" width="100%">
-          <ComposedChart data={intradayData} margin={{ left: 0, right: 8, top: 12 }}>
+          <ComposedChart data={chartData} margin={{ left: 0, right: 8, top: 12 }}>
             <CartesianGrid stroke="#e7e9ee" strokeDasharray="3 3" vertical={false} />
             <XAxis
               axisLine={false}

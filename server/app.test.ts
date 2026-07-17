@@ -89,6 +89,8 @@ describe("trading API", () => {
         "/api/capabilities",
         "/api/account",
         "/api/research/daily-review",
+        "/api/research/strategy-robustness",
+        "/api/research/cross-market-strategy-context",
         "/api/research/market-regime",
         "/api/research/turning-points",
         "/api/research/hong-kong-market",
@@ -361,6 +363,8 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/orders");
     expect(response.json().paths).toHaveProperty("/api/capabilities");
     expect(response.json().paths).toHaveProperty("/api/research/strategy-leaderboard");
+    expect(response.json().paths).toHaveProperty("/api/research/strategy-robustness");
+    expect(response.json().paths).toHaveProperty("/api/research/cross-market-strategy-context");
     expect(response.json().paths).toHaveProperty("/api/research/daily-candidates");
     expect(response.json().paths).toHaveProperty("/api/research/daily-quality-stocks");
     expect(response.json().paths).toHaveProperty("/api/research/learning-state");
@@ -398,6 +402,80 @@ describe("trading API", () => {
     });
     expect(response.json().news.warning).toContain("不会使用静态模拟数据替代");
     expect(response.json().guardrails.join("")).toContain("不包含账户、下单或撤单能力");
+  });
+
+  it("does not replace real strategy robustness history with synthetic data", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/strategy-robustness?limit=8&days=500",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      sourceStatus: "mock-disabled",
+      source: {
+        sampleType: "real-qfq-fixed-parameter-multi-window",
+        requestedDays: 500,
+        windowCount: 3,
+      },
+      methodology: {
+        parametersOptimizedOnReportData: false,
+        nonOverlappingWindows: true,
+      },
+      entries: [],
+    });
+    expect(response.json().warnings.join(" ")).toContain("不会使用合成历史替代");
+  });
+
+  it("validates strategy robustness query bounds", async () => {
+    const invalidLimit = await app.inject({
+      method: "GET",
+      url: "/api/research/strategy-robustness?limit=9&days=500",
+    });
+    const invalidDays = await app.inject({
+      method: "GET",
+      url: "/api/research/strategy-robustness?limit=8&days=359",
+    });
+
+    expect(invalidLimit.statusCode).toBe(400);
+    expect(invalidDays.statusCode).toBe(400);
+  });
+
+  it("does not fabricate a cross-market strategy context in mock mode", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/cross-market-strategy-context?limit=12&days=180",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      sourceStatus: "mock-disabled",
+      riskTone: "mixed",
+      positionPosture: "cash-only",
+      futures: [],
+      source: {
+        requestedDays: 180,
+        globalCount: 0,
+        futuresQuoteCount: 0,
+      },
+    });
+    expect(response.json().guardrails.join(" ")).toContain("不直接生成订单");
+  });
+
+  it("validates cross-market strategy context query bounds", async () => {
+    const invalidLimit = await app.inject({
+      method: "GET",
+      url: "/api/research/cross-market-strategy-context?limit=3&days=180",
+    });
+    const invalidDays = await app.inject({
+      method: "GET",
+      url: "/api/research/cross-market-strategy-context?limit=12&days=59",
+    });
+
+    expect(invalidLimit.statusCode).toBe(400);
+    expect(invalidDays.statusCode).toBe(400);
   });
 
   it("does not replace unavailable market-regime history with static data", async () => {

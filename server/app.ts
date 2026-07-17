@@ -46,6 +46,7 @@ import { WxPusherClient } from "./notifications/wxPusherClient";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
+import { buildCrossMarketStrategyContext } from "./research/crossMarketStrategyContext";
 import { buildHongKongMarketResearch } from "./research/hongKongMarketResearch";
 import { buildMarketRegimeResearch } from "./research/marketRegimeResearch";
 import { buildIpoSubscriptionResearch } from "./research/ipoSubscriptionResearch";
@@ -54,6 +55,7 @@ import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStockTrendForecast } from "./research/stockTrendForecast";
 import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
+import { buildStrategyRobustnessReport } from "./research/strategyRobustness";
 import { buildSuperMindSignalPackage } from "./research/supermindSignalBridge";
 import { buildTurningPointReport } from "./research/turningPointScanner";
 import { WebSocketHub } from "./realtime/webSocketHub";
@@ -93,6 +95,16 @@ const logsQuerySchema = z.object({
 
 const strategyLeaderboardQuerySchema = z.object({
   bars: z.coerce.number().int().min(30).max(240).default(120),
+});
+
+const strategyRobustnessQuerySchema = z.object({
+  limit: z.coerce.number().int().min(2).max(8).default(8),
+  days: z.coerce.number().int().min(360).max(500).default(500),
+});
+
+const crossMarketStrategyContextQuerySchema = z.object({
+  limit: z.coerce.number().int().min(4).max(16).default(12),
+  days: z.coerce.number().int().min(60).max(500).default(180),
 });
 
 const dailyCandidatesQuerySchema = z.object({
@@ -600,6 +612,85 @@ export async function buildTradingApp(
     );
     researchStore.recordStrategyLeaderboard(report);
     return report;
+  });
+
+  app.get("/api/research/strategy-robustness", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取真实历史策略稳健性验证",
+      description:
+        "读取受控 A 股观察池的真实前复权日线，用预先固定参数在三个不重叠窗口独立回测。该报告与合成参数排行榜分开，不代表未来收益。",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            minimum: 2,
+            maximum: 8,
+            default: 8,
+            description: "按当前成交额选取的股票数量上限",
+          },
+          days: {
+            type: "integer",
+            minimum: 360,
+            maximum: 500,
+            default: 500,
+            description: "每只股票请求的前复权日线数量",
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { limit, days } = strategyRobustnessQuerySchema.parse(request.query);
+    return buildStrategyRobustnessReport({
+      bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
+      snapshot: system.market.getSnapshot(),
+      limit,
+      days,
+      timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+    });
+  });
+
+  app.get("/api/research/cross-market-strategy-context", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取全球市场与国内期货策略上下文",
+      description:
+        "组合真实全球指数、国内期货主连快照和连续历史，输出风险基调、优先与降权策略族。接口只读，不读取期货账户，也不直接生成订单。",
+      querystring: {
+        type: "object",
+        properties: {
+          limit: {
+            type: "integer",
+            minimum: 4,
+            maximum: 16,
+            default: 12,
+          },
+          days: {
+            type: "integer",
+            minimum: 60,
+            maximum: 500,
+            default: 180,
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { limit, days } = crossMarketStrategyContextQuerySchema.parse(
+      request.query,
+    );
+    return buildCrossMarketStrategyContext({
+      bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
+      limit,
+      days,
+      timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+    });
   });
 
   app.get("/api/research/daily-candidates", {

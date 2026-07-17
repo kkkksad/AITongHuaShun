@@ -15,12 +15,14 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
+import requests
 from pydantic import BaseModel, Field
 
 # ── 配置 ──────────────────────────────────────────────────
@@ -167,6 +169,34 @@ class GlobalMarketsResponse(BaseModel):
     warning: str | None = None
 
 
+class FuturesQuote(BaseModel):
+    symbol: str
+    name: str
+    category: str
+    price: float
+    previousSettlement: float
+    changePercent: float
+    volume: int
+    openInterest: int
+    updatedAt: str
+    source: str
+    quoteTime: str | None = None
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    bidPrice: float | None = None
+    askPrice: float | None = None
+    averagePrice: float | None = None
+
+
+class FuturesQuotesResponse(BaseModel):
+    provider: str
+    source: str
+    fetchedAt: str
+    items: list[FuturesQuote] = Field(default_factory=list)
+    warning: str | None = None
+
+
 class IpoSubscriptionItem(BaseModel):
     symbol: str
     name: str
@@ -265,6 +295,44 @@ GLOBAL_MARKET_ALIASES = {
     "德国DAX30": ("GDAXI", "德国DAX30", "EU"),
     "法国CAC40": ("FCHI", "法国CAC40", "EU"),
     "欧洲Stoxx50": ("SX5E", "欧洲Stoxx50", "EU"),
+}
+
+FUTURES_WATCHLIST = {
+    "IF0": ("沪深300股指", "股指"),
+    "IH0": ("上证50股指", "股指"),
+    "IC0": ("中证500股指", "股指"),
+    "IM0": ("中证1000股指", "股指"),
+    "AU0": ("沪金", "贵金属"),
+    "AG0": ("沪银", "贵金属"),
+    "CU0": ("沪铜", "有色"),
+    "AL0": ("沪铝", "有色"),
+    "RB0": ("螺纹钢", "黑色"),
+    "I0": ("铁矿石", "黑色"),
+    "SC0": ("原油", "能源化工"),
+    "TA0": ("PTA", "能源化工"),
+    "MA0": ("甲醇", "能源化工"),
+    "M0": ("豆粕", "农产品"),
+    "Y0": ("豆油", "农产品"),
+    "RM0": ("菜粕", "农产品"),
+}
+
+FUTURES_REALTIME_NODES = {
+    "IF0": "qz_qh",
+    "IH0": "szgz_qh",
+    "IC0": "zzgz_qh",
+    "IM0": "im_qh",
+    "AU0": "hj_qh",
+    "AG0": "by_qh",
+    "CU0": "tong_qh",
+    "AL0": "lv_qh",
+    "RB0": "lwg_qh",
+    "I0": "tks_qh",
+    "SC0": "yy_qh",
+    "TA0": "pta_qh",
+    "MA0": "zc_qh",
+    "M0": "dp_qh",
+    "Y0": "dy_qh",
+    "RM0": "czp_qh",
 }
 
 
@@ -670,6 +738,113 @@ def fetch_global_market_dataframe():
 
     assert last_error is not None
     raise last_error
+
+
+def fetch_futures_spot_dataframe(symbols: list[str]):
+    """Fetch real domestic main-contract snapshots from Sina through AkShare."""
+    try:
+        dataframe = ak.futures_zh_spot(
+            symbol=",".join(symbols),
+            market="CF",
+            adjust="0",
+        )
+        return dataframe, "sina-domestic-futures-spot"
+    except Exception as exc:
+        logger.warning("AkShare 期货批量快照解析失败，使用新浪 JSON 兼容读取: %s", exc)
+        return (
+            fetch_sina_futures_realtime_dataframe(symbols),
+            "sina-domestic-futures-realtime-compat",
+        )
+
+
+def fetch_sina_futures_realtime_dataframe(symbols: list[str]):
+    """Read controlled continuous rows from Sina's structured futures endpoint."""
+    url = (
+        "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+        "Market_Center.getHQFuturesData"
+    )
+
+    def fetch_one(symbol: str) -> dict[str, object]:
+        node = FUTURES_REALTIME_NODES[symbol]
+        response = requests.get(
+            url,
+            params={
+                "page": "1",
+                "sort": "position",
+                "asc": "0",
+                "node": node,
+                "base": "futures",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise RuntimeError(f"{symbol}: 新浪期货响应不是列表")
+        continuous = next(
+            (
+                row
+                for row in payload
+                if str(row.get("symbol", "")).strip().upper() == symbol
+            ),
+            None,
+        )
+        if continuous is None:
+            raise RuntimeError(f"{symbol}: 未找到连续合约行")
+        return {
+            "contract": symbol,
+            "symbol": continuous.get("name", symbol),
+            "time": continuous.get("ticktime"),
+            "open": continuous.get("open"),
+            "high": continuous.get("high"),
+            "low": continuous.get("low"),
+            "current_price": continuous.get("trade"),
+            "bid_price": continuous.get("bidprice1"),
+            "ask_price": continuous.get("askprice1"),
+            "hold": continuous.get("position"),
+            "volume": continuous.get("volume"),
+            "avg_price": continuous.get("settlement"),
+            "last_close": continuous.get("preclose"),
+            "last_settle_price": (
+                continuous.get("presettlement")
+                or continuous.get("prevsettlement")
+            ),
+        }
+
+    rows_by_symbol: dict[str, dict[str, object]] = {}
+    errors: list[str] = []
+    with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as executor:
+        futures = {
+            executor.submit(fetch_one, symbol): symbol
+            for symbol in symbols
+        }
+        for future in as_completed(futures):
+            symbol = futures[future]
+            try:
+                rows_by_symbol[symbol] = future.result()
+            except Exception as exc:
+                errors.append(f"{symbol}: {exc}")
+
+    rows = [rows_by_symbol[symbol] for symbol in symbols if symbol in rows_by_symbol]
+    if not rows:
+        raise RuntimeError("新浪期货兼容源全部失败: " + "; ".join(errors[:6]))
+    if errors:
+        logger.warning("新浪期货兼容源部分失败: %s", "; ".join(errors[:6]))
+    return pd.DataFrame(rows)
+
+
+def fetch_futures_history_dataframe(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+):
+    """Fetch a domestic main continuous daily series from Sina through AkShare."""
+    dataframe = ak.futures_main_sina(
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    return dataframe, "sina-domestic-main-continuous"
 
 
 def fetch_global_market_sina_snapshot_dataframe():
@@ -1088,6 +1263,73 @@ def normalize_global_market_dataframe(df, provider_name: str, limit: int) -> lis
             break
 
     return markets
+
+
+def normalize_futures_quote_dataframe(
+    df,
+    requested_symbols: list[str],
+    provider_name: str,
+    limit: int,
+) -> list[FuturesQuote]:
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    items: list[FuturesQuote] = []
+
+    for row_index, (_, row) in enumerate(df.iterrows()):
+        contract = str(first_existing(row, ("contract", "代码"), "")).strip().upper()
+        if contract not in FUTURES_WATCHLIST:
+            contract = requested_symbols[row_index] if row_index < len(requested_symbols) else ""
+        metadata = FUTURES_WATCHLIST.get(contract)
+        if metadata is None:
+            continue
+
+        price = parse_float(first_existing(
+            row,
+            ("current_price", "最新价", "price", "收盘价"),
+            0,
+        ))
+        previous_settlement = parse_float(first_existing(
+            row,
+            ("last_settle_price", "昨结算", "previousSettlement", "last_close"),
+            0,
+        ))
+        if price <= 0:
+            continue
+        change_percent = parse_optional_float(first_existing(
+            row,
+            ("change_percent", "涨跌幅", "changePercent"),
+            None,
+        ))
+        if change_percent is None:
+            change_percent = (
+                (price / previous_settlement - 1) * 100
+                if previous_settlement > 0
+                else 0
+            )
+
+        name, category = metadata
+        items.append(FuturesQuote(
+            symbol=contract,
+            name=name,
+            category=category,
+            price=price,
+            previousSettlement=previous_settlement,
+            changePercent=change_percent,
+            volume=max(0, int(parse_float(first_existing(row, ("volume", "成交量"), 0)))),
+            openInterest=max(0, int(parse_float(first_existing(row, ("hold", "持仓量"), 0)))),
+            updatedAt=fetched_at,
+            source=provider_name,
+            quoteTime=str(first_existing(row, ("time", "时间"), "")).strip() or None,
+            open=parse_optional_float(first_existing(row, ("open", "开盘", "开盘价"), None)),
+            high=parse_optional_float(first_existing(row, ("high", "最高", "最高价"), None)),
+            low=parse_optional_float(first_existing(row, ("low", "最低", "最低价"), None)),
+            bidPrice=parse_optional_float(first_existing(row, ("bid_price", "买价"), None)),
+            askPrice=parse_optional_float(first_existing(row, ("ask_price", "卖价"), None)),
+            averagePrice=parse_optional_float(first_existing(row, ("avg_price", "均价"), None)),
+        ))
+        if len(items) >= limit:
+            break
+
+    return items
 
 
 def normalize_hk_quote_dataframe(
@@ -1587,6 +1829,82 @@ async def get_hk_history(
         adjustment="qfq",
         fetcher=fetch_hk_history_dataframe,
     )
+    return set_cached_research(cache_key, response) if response.series else response
+
+
+@app.get("/api/market/futures/quotes", response_model=FuturesQuotesResponse)
+async def get_futures_quotes(
+    limit: int = Query(16, ge=1, le=16, description="受控国内主连观察数量上限"),
+):
+    """获取受控国内期货主连真实快照，不读取期货账户。"""
+    symbols = list(FUTURES_WATCHLIST)[:limit]
+    cache_key = f"futures-quotes:{','.join(symbols)}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        loop = asyncio.get_running_loop()
+        dataframe, source = await loop.run_in_executor(
+            None,
+            fetch_futures_spot_dataframe,
+            symbols,
+        )
+        response = FuturesQuotesResponse(
+            provider="akshare",
+            source=source,
+            fetchedAt=fetched_at,
+            items=normalize_futures_quote_dataframe(
+                dataframe,
+                symbols,
+                source,
+                limit,
+            ),
+        )
+        if len(response.items) < len(symbols):
+            response.warning = (
+                f"请求 {len(symbols)} 个主连，仅取得 {len(response.items)} 个有效真实快照。"
+            )
+        return set_cached_research(cache_key, response) if response.items else response
+    except Exception as exc:
+        logger.error("获取国内期货主连行情失败: %s", exc)
+        return FuturesQuotesResponse(
+            provider="akshare",
+            source="unavailable",
+            fetchedAt=fetched_at,
+            items=[],
+            warning=f"期货行情源暂不可用: {exc}",
+        )
+
+
+@app.get("/api/market/futures/history", response_model=HistoricalBarsResponse)
+async def get_futures_history(
+    symbols: str = Query(..., description="逗号分隔的受控国内期货主连代码"),
+    days: int = Query(180, ge=60, le=500, description="交易日数量上限"),
+):
+    """获取受控国内期货主连连续日线，不代表可交易具体合约。"""
+    symbol_list = [symbol.upper() for symbol in parse_query_values(symbols)]
+    if not symbol_list:
+        raise HTTPException(status_code=400, detail="symbols 参数不能为空")
+    if len(symbol_list) > 12:
+        raise HTTPException(status_code=400, detail="单次最多查询 12 个期货主连")
+    if any(symbol not in FUTURES_WATCHLIST for symbol in symbol_list):
+        raise HTTPException(status_code=400, detail="symbols 必须来自受控主连观察池")
+
+    cache_key = f"futures-history:{days}:{','.join(symbol_list)}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+    response = await build_history_response(
+        identifiers=symbol_list,
+        days=days,
+        source="sina-domestic-main-continuous",
+        adjustment="continuous-main",
+        fetcher=fetch_futures_history_dataframe,
+    )
+    for series in response.series:
+        series.name = FUTURES_WATCHLIST[series.symbol][0]
     return set_cached_research(cache_key, response) if response.series else response
 
 

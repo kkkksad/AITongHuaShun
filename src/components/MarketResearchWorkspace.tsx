@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useRef,
   useState,
   type ComponentType,
@@ -6,23 +8,47 @@ import {
 } from "react";
 import type { LucideProps } from "lucide-react";
 import {
+  Activity,
   BarChart3,
   Globe2,
   Layers3,
+  LoaderCircle,
   Newspaper,
   ScanSearch,
   Search,
 } from "lucide-react";
 import type { TradingBackend } from "../hooks/useTradingBackend";
-import { FlowPanel } from "./FlowPanel";
-import { HongKongMarketPanel } from "./HongKongMarketPanel";
-import { IpoSubscriptionPanel } from "./IpoSubscriptionPanel";
-import { MarketChart } from "./MarketChart";
 import { MarketOverview } from "./MarketOverview";
-import { MarketRegimePanel } from "./MarketRegimePanel";
-import { NewsPanel } from "./NewsPanel";
-import { StockTrendForecastPanel } from "./StockTrendForecastPanel";
-import { TurningPointPanel } from "./TurningPointPanel";
+
+const loadAsharePanel = () => import("./MarketAshareOverviewPanel");
+const loadTurningPanel = () => import("./TurningPointPanel");
+const loadStockPanel = () => import("./StockTrendForecastPanel");
+const loadRegimePanel = () => import("./MarketRegimePanel");
+const loadHongKongPanel = () => import("./HongKongMarketPanel");
+const loadFuturesPanel = () => import("./FuturesMarketPanel");
+const loadEventsPanel = () => import("./MarketEventsPanel");
+
+const MarketAshareOverviewPanel = lazy(async () => ({
+  default: (await loadAsharePanel()).MarketAshareOverviewPanel,
+}));
+const TurningPointPanel = lazy(async () => ({
+  default: (await loadTurningPanel()).TurningPointPanel,
+}));
+const StockTrendForecastPanel = lazy(async () => ({
+  default: (await loadStockPanel()).StockTrendForecastPanel,
+}));
+const MarketRegimePanel = lazy(async () => ({
+  default: (await loadRegimePanel()).MarketRegimePanel,
+}));
+const HongKongMarketPanel = lazy(async () => ({
+  default: (await loadHongKongPanel()).HongKongMarketPanel,
+}));
+const FuturesMarketPanel = lazy(async () => ({
+  default: (await loadFuturesPanel()).FuturesMarketPanel,
+}));
+const MarketEventsPanel = lazy(async () => ({
+  default: (await loadEventsPanel()).MarketEventsPanel,
+}));
 
 type MarketWorkspaceTab =
   | "a-share"
@@ -30,6 +56,7 @@ type MarketWorkspaceTab =
   | "stock"
   | "regime"
   | "hong-kong"
+  | "futures"
   | "events";
 
 interface MarketResearchWorkspaceProps {
@@ -40,14 +67,25 @@ const tabs: Array<{
   id: MarketWorkspaceTab;
   label: string;
   icon: ComponentType<LucideProps>;
+  preload: () => Promise<unknown>;
 }> = [
-  { id: "a-share", label: "A 股概览", icon: BarChart3 },
-  { id: "turning", label: "变盘雷达", icon: ScanSearch },
-  { id: "stock", label: "个股研判", icon: Search },
-  { id: "regime", label: "板块形态", icon: Layers3 },
-  { id: "hong-kong", label: "港股观察", icon: Globe2 },
-  { id: "events", label: "事件资讯", icon: Newspaper },
+  { id: "a-share", label: "A 股概览", icon: BarChart3, preload: loadAsharePanel },
+  { id: "turning", label: "变盘雷达", icon: ScanSearch, preload: loadTurningPanel },
+  { id: "stock", label: "个股研判", icon: Search, preload: loadStockPanel },
+  { id: "regime", label: "板块形态", icon: Layers3, preload: loadRegimePanel },
+  { id: "hong-kong", label: "港股观察", icon: Globe2, preload: loadHongKongPanel },
+  { id: "futures", label: "期货观察", icon: Activity, preload: loadFuturesPanel },
+  { id: "events", label: "事件资讯", icon: Newspaper, preload: loadEventsPanel },
 ];
+
+function MarketTabLoading() {
+  return (
+    <div aria-live="polite" className="market-tab-loading" role="status">
+      <LoaderCircle className="spin" size={20} />
+      <span>正在加载研究模块</span>
+    </div>
+  );
+}
 
 export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<MarketWorkspaceTab>("a-share");
@@ -86,6 +124,9 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
                 key={tab.id}
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
                 onClick={() => setActiveTab(tab.id)}
+                onFocus={() => void tab.preload()}
+                onMouseEnter={() => void tab.preload()}
+                onPointerDown={() => void tab.preload()}
                 ref={(element) => {
                   tabRefs.current[index] = element;
                 }}
@@ -106,22 +147,17 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
           id={`market-workspace-panel-${activeTab}`}
           role="tabpanel"
         >
-          {activeTab === "a-share" && (
-            <div className="two-column wide-left">
-              <MarketChart market={trading.market} />
-              <FlowPanel />
-            </div>
-          )}
-          {activeTab === "turning" && <TurningPointPanel />}
-          {activeTab === "stock" && <StockTrendForecastPanel />}
-          {activeTab === "regime" && <MarketRegimePanel />}
-          {activeTab === "hong-kong" && <HongKongMarketPanel />}
-          {activeTab === "events" && (
-            <div className="page-stack market-events-stack">
-              <IpoSubscriptionPanel />
-              <NewsPanel />
-            </div>
-          )}
+          <Suspense fallback={<MarketTabLoading />}>
+            {activeTab === "a-share" && (
+              <MarketAshareOverviewPanel market={trading.market} />
+            )}
+            {activeTab === "turning" && <TurningPointPanel />}
+            {activeTab === "stock" && <StockTrendForecastPanel />}
+            {activeTab === "regime" && <MarketRegimePanel />}
+            {activeTab === "hong-kong" && <HongKongMarketPanel />}
+            {activeTab === "futures" && <FuturesMarketPanel />}
+            {activeTab === "events" && <MarketEventsPanel />}
+          </Suspense>
         </div>
       </section>
     </div>
