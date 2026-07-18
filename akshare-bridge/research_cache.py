@@ -33,6 +33,11 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
         self._entries: dict[HistoryCacheKey, CacheEntry[HistoricalSeries]] = {}
         self._in_flight: dict[HistoryCacheKey, asyncio.Task[HistoricalSeries]] = {}
         self._lock = asyncio.Lock()
+        self._stats = {"fresh_hits": 0, "stale_hits": 0, "blocking_misses": 0}
+
+    def stats(self) -> dict[str, int]:
+        """Return a snapshot of cache lookup outcomes for observability."""
+        return dict(self._stats)
 
     def get_fresh(self, key: HistoryCacheKey) -> HistoricalSeries | None:
         entry = self._fresh_entry(key)
@@ -83,6 +88,7 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
     ) -> HistoricalSeries:
         fresh_entry = self._fresh_entry(key)
         if fresh_entry is not None:
+            self._stats["fresh_hits"] += 1
             return fresh_entry.value
 
         stale_entry = self._stale_entry(key)
@@ -94,6 +100,7 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
 
                 stale_entry = self._stale_entry(key)
                 if stale_entry is not None:
+                    self._stats["stale_hits"] += 1
                     self._get_or_start_in_flight(
                         key,
                         fetcher,
@@ -117,6 +124,7 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
                 )
                 return stale_entry.value
 
+            self._stats["blocking_misses"] += 1
             task = self._get_or_start_in_flight(
                 key,
                 fetcher,

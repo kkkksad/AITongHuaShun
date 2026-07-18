@@ -104,6 +104,7 @@ Task 2 最小切片进度（2026-07-18）：
 - [x] 新增 `akshare-bridge/test_research_cache.py`，覆盖 fresh 命中不调用上游、不同截止日期/天数不复用旧值，以及同键并发请求 single-flight 只触发一次 fetch。
 - [x] 在 `ResearchHistoryCache` 内实现 stale-while-revalidate：fresh 直接返回；stale 窗口立即返回旧值并 single-flight 后台刷新；后台刷新失败继续保留旧值；超过 stale 才阻塞等待上游新值。
 - [x] 新增显式 `prune_expired()` 过期淘汰：仅删除已超过 stale 窗口且没有在途刷新任务的条目，并返回淘汰数量。`akshare-bridge/main.py` 接入、港股历史独立查询和耗时指标留给后续 Task 2 切片。
+- [x] 为独立历史缓存增加 fresh 命中、stale 命中和阻塞 miss 计数快照，为后续接入桥接指标与 P95 验收提供可观测基础。
 
 验证结果：
 

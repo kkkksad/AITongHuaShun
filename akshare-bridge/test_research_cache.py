@@ -353,3 +353,23 @@ def test_prune_expired_removes_only_entries_past_stale_window():
     assert cache.prune_expired() == 1
     assert expired_key not in cache._entries
     assert cache._entries[stale_key].value == "stale"
+
+
+def test_cache_stats_distinguish_fresh_stale_and_blocking_miss():
+    clock = {"now": 1_000.0}
+    cache = ResearchHistoryCache(now=lambda: clock["now"])
+    key = HistoryCacheKey(
+        market="a-share",
+        symbol="600519",
+        adjustment="qfq",
+        end_date="2026-07-17",
+        days=120,
+    )
+
+    async def fetcher():
+        return "new"
+    assert run(cache.get_or_fetch(key, fetcher, fresh_ttl_sec=10, stale_ttl_sec=30)) == "new"
+    assert run(cache.get_or_fetch(key, fetcher, fresh_ttl_sec=10, stale_ttl_sec=30)) == "new"
+    clock["now"] = 1_015.0
+    assert run(cache.get_or_fetch(key, fetcher, fresh_ttl_sec=10, stale_ttl_sec=30)) == "new"
+    assert cache.stats() == {"fresh_hits": 1, "stale_hits": 1, "blocking_misses": 1}
