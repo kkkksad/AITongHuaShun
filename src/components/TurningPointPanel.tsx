@@ -13,10 +13,7 @@ import {
   type TurningBias,
   type TurningPointCandidate,
 } from "../lib/tradingApi";
-import {
-  formatResearchDataTime,
-  getResearchRefreshState,
-} from "../lib/researchQueryPresentation";
+import { ResearchQueryState } from "./ResearchQueryState";
 
 type TurningSort = "readiness" | "break" | "compression";
 
@@ -70,10 +67,6 @@ export function TurningPointPanel() {
     staleTime: 10 * 60_000,
   });
   const report = query.data;
-  const refreshState = getResearchRefreshState({
-    hasData: Boolean(report),
-    isError: query.isError,
-  });
   const candidates = useMemo(() => {
     const items = [...(report?.candidates ?? [])];
     return items.sort((left, right) => {
@@ -121,23 +114,14 @@ export function TurningPointPanel() {
         </div>
       </div>
 
-      {query.isLoading && (
-        <div className="research-empty">正在读取观察池的 360 日前复权行情…</div>
-      )}
-      {refreshState.showBlockingError && (
-        <div className="research-alert">
-          <AlertTriangle size={16} />
-          <span>变盘雷达暂不可用，请检查 API 与 AkShare 行情桥接。</span>
-        </div>
-      )}
-      {refreshState.showStaleWarning && (
-        <div className="research-alert regime-warning">
-          <AlertTriangle size={16} />
-          <span>
-            本次刷新失败，继续显示缓存数据 · 上次成功更新 {formatResearchDataTime(query.dataUpdatedAt)}
-          </span>
-        </div>
-      )}
+      <ResearchQueryState
+        dataUpdatedAt={query.dataUpdatedAt}
+        hasData={Boolean(report)}
+        isError={query.isError}
+        isLoading={query.isLoading}
+        loadingText="正在读取观察池的 360 日前复权行情…"
+        unavailableText="变盘雷达暂不可用，请检查 API 与 AkShare 行情桥接。"
+      />
 
       {report && (
         <>
