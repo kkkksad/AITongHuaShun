@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, BarChart3, RefreshCw, ShieldCheck, Target, Trophy } from "lucide-react";
+import { ResearchQueryState } from "./ResearchQueryState";
 import { fetchStrategyLeaderboard } from "../lib/tradingApi";
 import type { StrategyLeaderboardEntry } from "../lib/tradingApi";
 
@@ -68,16 +69,14 @@ export function StrategyLeaderboard() {
         </button>
       </div>
 
-      {leaderboardQuery.isLoading && (
-        <div className="research-empty">正在运行策略参数搜索…</div>
-      )}
-
-      {leaderboardQuery.isError && (
-        <div className="research-alert">
-          <AlertTriangle size={16} />
-          <span>策略排行榜暂时不可用，请确认后端服务已启动。</span>
-        </div>
-      )}
+      <ResearchQueryState
+        dataUpdatedAt={leaderboardQuery.dataUpdatedAt}
+        hasData={Boolean(report)}
+        isError={leaderboardQuery.isError}
+        isLoading={leaderboardQuery.isLoading}
+        loadingText="正在运行策略参数搜索…"
+        unavailableText="策略排行榜暂时不可用，请确认后端服务已启动。"
+      />
 
       {report && (
         <>
