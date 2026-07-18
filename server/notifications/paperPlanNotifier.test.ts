@@ -8,6 +8,7 @@ import { InMemoryTradingStore } from "../store/inMemoryTradingStore";
 import type { IntradayExecutionPolicy } from "../trading/intradayExecutionPolicy";
 import {
   PaperPlanNotifier,
+  formatPaperPlanMessage,
   type PaperPlanNotificationContext,
 } from "./paperPlanNotifier";
 
@@ -214,7 +215,7 @@ function createNotifier(input: {
 }
 
 describe("PaperPlanNotifier", () => {
-  it("sends a compact phase briefing with current and target paper positions", async () => {
+  it("sends a layered HTML briefing with precise actions and isolated data quality", async () => {
     const plan = createPlan();
     const { notifier, sender, store } = createNotifier();
 
@@ -225,16 +226,24 @@ describe("PaperPlanNotifier", () => {
 
     const message = sender.send.mock.calls[0][0];
     expect(message.summary).toContain("开盘观察");
-    expect(message.content).toContain("当前持仓：600519 Current Holding 100股");
-    expect(message.content).toContain("本轮paper动作：买入 000001 Sample Bank 100股");
-    expect(message.content).toContain("计划后持仓：");
+    expect(message.content).toContain("<h3>今日结论</h3>");
+    expect(message.content).toContain("<h3>精确动作</h3>");
+    expect(message.content).toContain("买入 000001 Sample Bank 100股");
+    expect(message.content).toContain("参考价 10.50 元");
+    expect(message.content).toContain("预计金额 1050.00 元");
+    expect(message.content).toContain("deterministic research signal");
+    expect(message.content).toContain("<h3>账户与持仓</h3>");
+    expect(message.content).toContain("当前：600519 Current Holding 100股");
+    expect(message.content).toContain("计划后：");
     expect(message.content).toContain("000001 Sample Bank 100股");
-    expect(message.content).toContain("现金5000.00");
-    expect(message.content).toContain("仓位50.0%");
+    expect(message.content).toContain("现金 5000.00 元");
+    expect(message.content).toContain("当前仓位 50.0%");
     expect(message.content).toContain("KAIROS 低波趋势");
     expect(message.content).toContain("银行+1.2%");
-    expect(message.content).toContain("风险：注意板块宽度；新闻源暂时降级");
-    expect(message.content.length).toBeLessThan(1_200);
+    expect(message.content).toContain("<h3>风险与数据质量</h3>");
+    expect(message.content).toContain("策略风险：注意板块宽度");
+    expect(message.content).toContain("数据质量：新闻源暂时降级");
+    expect(message.content.length).toBeLessThan(2_400);
     expect(store.listAudit(20)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         action: "wxpusher.paper-plan.sent",
@@ -255,7 +264,7 @@ describe("PaperPlanNotifier", () => {
       status: "sent",
       messageKind: "phase-briefing",
     });
-    expect(sender.send.mock.calls[0][0].content).toContain("本轮paper动作：无，继续观察");
+    expect(sender.send.mock.calls[0][0].content).toContain("本阶段无可执行 paper 动作");
   });
 
   it("labels broad risk-off conditions as unsuitable for operation without requiring an order", async () => {
@@ -286,6 +295,28 @@ describe("PaperPlanNotifier", () => {
     expect(sender.send.mock.calls[0][0].summary).toContain("市场不宜操作");
     expect(sender.send.mock.calls[0][0].content).toContain("市场不宜操作");
     expect(sender.send.mock.calls[0][0].content).toContain("暂停新增 paper 仓位");
+  });
+
+  it("escapes provider text and removes unusable sectors from core evidence", () => {
+    const plan = createPlan();
+    const message = formatPaperPlanMessage(plan, context(plan, {
+      marketContext: {
+        sourceStatus: "degraded",
+        tone: "balanced",
+        summary: "<script>alert('x')</script> 暂不可用",
+        sectors: [
+          { name: "暂不可用", direction: "neutral", score: 0, changePercent: 0 },
+          { name: "银行<script>", direction: "constructive", score: 78, changePercent: 1.2 },
+        ],
+        warnings: ["新闻源暂不可用", "新闻源暂不可用", "  "],
+      },
+    }));
+
+    expect(message.content).not.toContain("<script>");
+    expect(message.content).toContain("银行&lt;script&gt;+1.2%");
+    expect(message.content).not.toContain("板块：暂不可用");
+    expect(message.content.match(/新闻源暂不可用/g)).toHaveLength(1);
+    expect(message.content).toContain("数据处于降级状态，本轮不依据缺失项增加风险暴露");
   });
 
   it("does not treat a reference price change as a material update", async () => {

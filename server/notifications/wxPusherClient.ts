@@ -42,7 +42,7 @@ export class WxPusherClient {
         body: JSON.stringify({
           content: message.content,
           summary: message.summary.slice(0, 100),
-          contentType: 1,
+          contentType: 2,
           spt: this.options.spt,
         }),
         signal: controller.signal,

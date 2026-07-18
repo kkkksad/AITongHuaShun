@@ -11,7 +11,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("WxPusherClient", () => {
-  it("posts a text message to the official simple-push endpoint", async () => {
+  it("posts an HTML message to the official simple-push endpoint", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({
       code: 1000,
       msg: "processed",
@@ -25,7 +25,7 @@ describe("WxPusherClient", () => {
 
     await expect(client.send({
       summary: "KAIROS paper plan",
-      content: "Simulation-only reminder",
+      content: "<h2>Simulation-only reminder</h2>",
     })).resolves.toEqual({ provider: "wxpusher", accepted: true });
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -34,9 +34,9 @@ describe("WxPusherClient", () => {
     expect(request.method).toBe("POST");
     expect(request.headers).toEqual({ "Content-Type": "application/json" });
     expect(JSON.parse(String(request.body))).toEqual({
-      content: "Simulation-only reminder",
+      content: "<h2>Simulation-only reminder</h2>",
       summary: "KAIROS paper plan",
-      contentType: 1,
+      contentType: 2,
       spt: TEST_SPT,
     });
     expect(request.signal).toBeInstanceOf(AbortSignal);

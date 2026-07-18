@@ -126,6 +126,25 @@ function formatPosition(position: {
   return `${position.symbol} ${position.name} ${position.quantity}股`;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function uniqueText(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values
+    .map((value) => value?.trim() ?? "")
+    .filter(Boolean))];
+}
+
+function isUnavailableText(value: string): boolean {
+  return /暂不可用|不可用|未取得|unavailable|数据降级|源失败|请求失败|超时|为空/i.test(value);
+}
+
 function compactList(values: string[], empty: string, limit = 8): string {
   if (values.length === 0) return empty;
   const visible = values.slice(0, limit);
@@ -139,17 +158,6 @@ function formatCurrentPositions(positions: PositionSnapshot[]): string {
       .filter((position) => position.quantity > 0)
       .map(formatPosition),
     "空仓",
-  );
-}
-
-function formatOperations(operations: PaperTradingOperation[]): string {
-  return compactList(
-    operations.map((operation) => {
-      const action = operation.action === "paper-buy-plan" ? "买入" : "卖出";
-      return `${action} ${operation.symbol} ${operation.name} ${operation.quantity}股`;
-    }),
-    "无，继续观察",
-    4,
   );
 }
 
@@ -194,7 +202,24 @@ function formatSignedPercent(value: number): string {
   return `${sign}${value.toFixed(1)}%`;
 }
 
-function formatMessage(
+function formatAction(operation: PaperTradingOperation): string {
+  const action = operation.action === "paper-buy-plan" ? "买入" : "卖出";
+  return [
+    `<strong>${action} ${escapeHtml(operation.symbol)} ${escapeHtml(operation.name)} ${operation.quantity}股</strong>`,
+    `参考价 ${operation.price.toFixed(2)} 元`,
+    `预计金额 ${operation.estimatedNotional.toFixed(2)} 元`,
+    `原因：${escapeHtml(operation.reason)}`,
+  ].join("<br />");
+}
+
+function formatHtmlPositions(
+  positions: Array<{ symbol: string; name: string; quantity: number }>,
+  empty = "空仓",
+): string {
+  return escapeHtml(compactList(positions.map(formatPosition), empty, 6));
+}
+
+export function formatPaperPlanMessage(
   plan: PaperTradingPlan,
   context: PaperPlanNotificationContext,
 ): WxPusherMessage {
@@ -204,12 +229,19 @@ function formatMessage(
     ? context.account.marketValue / context.account.equity
     : 0;
   const sectors = context.marketContext.sectors
+    .filter((sector) => (
+      sector.name.trim().length > 0 &&
+      !isUnavailableText(sector.name) &&
+      Number.isFinite(sector.changePercent)
+    ))
     .slice(0, 3)
     .map((sector) => `${sector.name}${formatSignedPercent(sector.changePercent)}`);
-  const risks = [
-    ...(routing?.riskFlags ?? []),
+  const routingRisks = uniqueText(routing?.riskFlags ?? []);
+  const strategyRisks = routingRisks.filter((risk) => !isUnavailableText(risk)).slice(0, 4);
+  const dataWarnings = uniqueText([
     ...context.marketContext.warnings,
-  ].slice(0, 5);
+    ...routingRisks.filter(isUnavailableText),
+  ]).slice(0, 5);
   const targets = targetPositions(
     context.positions,
     context.executableOperations,
@@ -223,25 +255,52 @@ function formatMessage(
     context.marketContext.tone === "risk-off" ||
     (routing?.regime === "risk-off" && routing.allowNewPositions === false);
   const headline = avoidNewRisk ? "市场不宜操作" : context.policy.phaseLabel;
+  const conclusion = avoidNewRisk
+    ? "市场不宜操作，暂停新增 paper 仓位，优先保留现金并执行既定风控。"
+    : context.executableOperations.length > 0
+      ? `本阶段有 ${context.executableOperations.length} 项通过资金、仓位和策略约束的 paper 计划，仍需以实际撮合结果为准。`
+      : "本阶段无可执行 paper 动作，不为交易次数强行下单，继续等待策略与风险条件同时满足。";
+  const marketSummary = isUnavailableText(context.marketContext.summary)
+    ? "盘面摘要未通过有效性校验，不作为本轮新增风险依据。"
+    : context.marketContext.summary;
+  const dataQuality = uniqueText([
+    context.marketContext.sourceStatus === "degraded"
+      ? "数据处于降级状态，本轮不依据缺失项增加风险暴露"
+      : context.marketContext.sourceStatus === "mock-disabled"
+        ? "真实只读研究源未启用，本轮不依据模拟输入增加风险暴露"
+        : null,
+    ...dataWarnings,
+    isUnavailableText(context.marketContext.summary) ? "盘面摘要无有效内容" : null,
+  ]);
+  const actionHtml = context.executableOperations.length > 0
+    ? `<ol>${context.executableOperations.slice(0, 4).map((operation) => `<li>${formatAction(operation)}</li>`).join("")}</ol>`
+    : `<p><strong>本阶段无可执行 paper 动作。</strong><br />${escapeHtml(conclusion)}</p>`;
+  const strategyName = plan.topStrategy?.strategyName ?? "资金观察";
+  const regimeName = REGIME_LABELS[routing?.regime ?? "unclear"] ?? routing?.regime ?? "状态不清";
+  const validSectorText = sectors.length > 0
+    ? sectors.map(escapeHtml).join("；")
+    : "没有通过有效性校验的板块证据";
 
   return {
     summary: `KAIROS paper ${headline} ${plan.tradingDate}`,
     content: [
-      `KAIROS 本地paper简报｜${headline}｜${context.policy.phaseLabel}`,
-      `日期：${plan.tradingDate}｜数据：${sourceLabel}`,
-      `操作判断：${avoidNewRisk ? "市场不宜操作，暂停新增 paper 仓位，优先保留现金并执行既定风控。" : "按当前阶段规则观察 paper 候选，不强制交易。"}`,
-      `盘面：${context.marketContext.summary}`,
-      `当前持仓：${formatCurrentPositions(context.positions)}`,
-      `本轮paper动作：${formatOperations(context.executableOperations)}`,
-      `计划后持仓：${compactList(targets.map(formatPosition), "空仓")}`,
-      `账户：现金${context.account.cash.toFixed(2)}｜仓位${(investedRatio * 100).toFixed(1)}%｜阶段上限${(context.policy.maxInvestedRatio * 100).toFixed(1)}%`,
-      `状态：${REGIME_LABELS[routing?.regime ?? "unclear"] ?? routing?.regime ?? "状态不清"}｜策略：${plan.topStrategy?.strategyName ?? "资金观察"}`,
-      `适用：${playbook?.useWhen ?? "等待数据确认"}`,
-      `回避：${playbook?.avoidWhen ?? "数据不足时不新增仓位"}`,
-      `板块：${sectors.length > 0 ? sectors.join("｜") : "暂不可用"}`,
-      `风险：${risks.length > 0 ? risks.join("；") : "未发现新增风险标记"}`,
-      "仅用于本地模拟研究，不是真实持仓、真实订单或投资建议。",
-    ].join("\n"),
+      `<h2>KAIROS 本地 paper 简报</h2>`,
+      `<p><strong>${escapeHtml(headline)}</strong> · ${escapeHtml(context.policy.phaseLabel)}<br />${escapeHtml(plan.tradingDate)} · ${sourceLabel}</p>`,
+      "<hr />",
+      "<h3>今日结论</h3>",
+      `<p><strong>${escapeHtml(conclusion)}</strong><br />盘面：${escapeHtml(marketSummary)}</p>`,
+      `<p>状态：${escapeHtml(regimeName)} · 策略：${escapeHtml(strategyName)}</p>`,
+      "<h3>精确动作</h3>",
+      actionHtml,
+      "<h3>动作依据</h3>",
+      `<p>适用：${escapeHtml(playbook?.useWhen ?? "等待真实数据确认")}<br />回避：${escapeHtml(playbook?.avoidWhen ?? "数据不足时不新增仓位")}<br />有效板块：${validSectorText}</p>`,
+      "<h3>账户与持仓</h3>",
+      `<p>现金 ${context.account.cash.toFixed(2)} 元 · 当前仓位 ${(investedRatio * 100).toFixed(1)}% · 阶段上限 ${(context.policy.maxInvestedRatio * 100).toFixed(1)}%<br />当前：${escapeHtml(formatCurrentPositions(context.positions))}<br />计划后：${formatHtmlPositions(targets)}</p>`,
+      "<h3>风险与数据质量</h3>",
+      `<p>策略风险：${strategyRisks.length > 0 ? strategyRisks.map(escapeHtml).join("；") : "未记录新增策略风险"}<br />数据质量：${dataQuality.length > 0 ? dataQuality.map(escapeHtml).join("；") : "真实只读来源未记录新增缺失项"}</p>`,
+      "<hr />",
+      "<p><small>仅用于本地模拟研究，不是真实持仓、真实订单或投资建议。</small></p>",
+    ].join(""),
   };
 }
 
@@ -333,7 +392,7 @@ export class PaperPlanNotifier {
     };
 
     try {
-      await this.options.sender.send(formatMessage(plan, context));
+      await this.options.sender.send(formatPaperPlanMessage(plan, context));
       this.options.store.appendAudit(
         "system",
         "wxpusher.paper-plan.sent",
