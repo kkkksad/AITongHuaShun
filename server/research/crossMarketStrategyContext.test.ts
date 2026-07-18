@@ -164,4 +164,53 @@ describe("buildCrossMarketStrategyContext", () => {
     });
     expect(report.warnings.join(" ")).toContain("不会使用静态跨市场数据替代");
   });
+
+  it("includes the bridge error detail when futures history is rejected", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/api/market/global")) {
+        return new Response(JSON.stringify({
+          provider: "akshare",
+          fetchedAt: "2026-07-18T01:00:00Z",
+          markets: [],
+        }), { status: 200 });
+      }
+      if (url.includes("/api/market/futures/quotes")) {
+        return new Response(JSON.stringify({
+          provider: "akshare",
+          source: "sina-domestic-futures-realtime",
+          fetchedAt: "2026-07-18T01:00:00Z",
+          items: [{
+            symbol: "IF0",
+            name: "沪深300股指",
+            category: "股指",
+            price: 4000,
+            previousSettlement: 3990,
+            changePercent: 0.25,
+            volume: 88000,
+            openInterest: 125000,
+            updatedAt: "2026-07-18T01:00:00Z",
+            source: "sina-domestic-futures-realtime",
+          }],
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        detail: "单次最多查询 16 个期货主连",
+      }), { status: 400 });
+    }) as typeof fetch;
+
+    const report = await buildCrossMarketStrategyContext({
+      bridgeUrl: "http://127.0.0.1:8800",
+      marketDataProvider: "akshare",
+      mode: "paper",
+      limit: 16,
+      days: 500,
+      timeoutMs: 100,
+      fetchImpl,
+    });
+
+    expect(report.warnings.join(" ")).toContain(
+      "HTTP 400: 单次最多查询 16 个期货主连",
+    );
+  });
 });

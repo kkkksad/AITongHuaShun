@@ -500,6 +500,24 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+async function httpErrorMessage(response: Response): Promise<string> {
+  let detail: string | null = null;
+  try {
+    const payload = await response.json() as unknown;
+    if (typeof payload === "string") {
+      detail = payload;
+    } else if (payload && typeof payload === "object") {
+      const record = payload as Record<string, unknown>;
+      const candidate = record.detail ?? record.message;
+      if (typeof candidate === "string") detail = candidate;
+    }
+  } catch {
+    // Some upstream failures have no JSON body; the status remains actionable.
+  }
+  const normalized = detail?.replace(/\s+/g, " ").trim().slice(0, 240);
+  return `HTTP ${response.status}${normalized ? `: ${normalized}` : ""}`;
+}
+
 async function fetchJson<T>(
   url: string,
   token: string | undefined,
@@ -516,7 +534,7 @@ async function fetchJson<T>(
       },
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) throw new Error(await httpErrorMessage(response));
     return await response.json() as T;
   } finally {
     clearTimeout(timer);

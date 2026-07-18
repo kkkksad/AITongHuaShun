@@ -16,6 +16,7 @@ sys.modules["akshare"] = MagicMock()
 
 from main import (
     app,
+    FUTURES_WATCHLIST,
     history_cache,
     GlobalMarketsResponse,
     GlobalMarketQuote,
@@ -653,6 +654,30 @@ class TestDomesticFuturesEndpoints:
         )
         assert response.status_code == 400
         assert "受控主连观察池" in response.json()["detail"]
+
+    def test_futures_history_accepts_complete_watchlist(self):
+        frame = pd.DataFrame([{
+            "日期": "2026-07-15",
+            "开盘价": 3980,
+            "最高价": 4025,
+            "最低价": 3960,
+            "收盘价": 4000,
+            "成交量": 88000,
+            "持仓量": 125000,
+            "动态结算价": 3995,
+        }])
+        symbols = ",".join(FUTURES_WATCHLIST)
+        with patch(
+            "main.fetch_futures_history_dataframe",
+            return_value=(frame, "sina-domestic-main-continuous"),
+        ) as fetch:
+            response = client.get(
+                f"/api/market/futures/history?symbols={symbols}&days=180",
+            )
+
+        assert response.status_code == 200
+        assert len(response.json()["series"]) == len(FUTURES_WATCHLIST)
+        assert fetch.call_count == len(FUTURES_WATCHLIST)
 
     def test_futures_history_uses_continuous_main_daily_bars(self):
         frame = pd.DataFrame([{

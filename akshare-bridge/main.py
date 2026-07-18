@@ -1928,8 +1928,11 @@ async def get_futures_history(
     symbol_list = [symbol.upper() for symbol in parse_query_values(symbols)]
     if not symbol_list:
         raise HTTPException(status_code=400, detail="symbols 参数不能为空")
-    if len(symbol_list) > 12:
-        raise HTTPException(status_code=400, detail="单次最多查询 12 个期货主连")
+    if len(symbol_list) > len(FUTURES_WATCHLIST):
+        raise HTTPException(
+            status_code=400,
+            detail=f"单次最多查询 {len(FUTURES_WATCHLIST)} 个期货主连",
+        )
     if any(symbol not in FUTURES_WATCHLIST for symbol in symbol_list):
         raise HTTPException(status_code=400, detail="symbols 必须来自受控主连观察池")
 
