@@ -26,6 +26,7 @@ import { TradingStrategies } from "./components/TradingStrategies";
 import { SystemMonitor } from "./components/SystemMonitor";
 import { strategies } from "./data/mockData";
 import { runBacktest } from "./lib/backtest";
+import { buildOrderSymbolNames } from "./lib/orderPresentation";
 import {
   AUTH_EXPIRED_EVENT,
   logout,
@@ -148,10 +149,10 @@ function App() {
       })),
     [committedParameters],
   );
-  const orderSymbolNames = useMemo(() => new Map([
-    ...(trading.market?.quotes ?? []).map((quote) => [quote.symbol, quote.name] as const),
-    ...trading.positions.map((position) => [position.symbol, position.name] as const),
-  ]), [trading.market, trading.positions]);
+  const orderSymbolNames = useMemo(
+    () => buildOrderSymbolNames(trading.market, trading.positions),
+    [trading.market, trading.positions],
+  );
 
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
   const activeView = pathViews[normalizedPath] ?? "overview";

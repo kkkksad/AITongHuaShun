@@ -2002,6 +2002,17 @@ select:focus-visible {
   font-size: 11px;
 }
 
+.order-list .order-security {
+  display: grid;
+  gap: 1px;
+  min-width: 72px;
+  line-height: 1.25;
+}
+
+.order-list .order-security small {
+  display: block;
+}
+
 .order-list small,
 .order-list article > div:last-child span {
   color: var(--text-muted);

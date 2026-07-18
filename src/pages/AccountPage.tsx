@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { OrderHistory } from "../components/OrderHistory";
 import { PaperAccount } from "../components/PaperAccount";
 import { Portfolio } from "../components/Portfolio";
 import { RiskPanel } from "../components/RiskPanel";
 import type { TradingBackend } from "../hooks/useTradingBackend";
+import { buildOrderSymbolNames } from "../lib/orderPresentation";
 
 type AccountTab = "portfolio" | "trading" | "orders" | "risk";
 
@@ -20,6 +21,10 @@ interface AccountPageProps {
 
 export default function AccountPage({ trading }: AccountPageProps) {
   const [accountTab, setAccountTab] = useState<AccountTab>("portfolio");
+  const orderSymbolNames = useMemo(
+    () => buildOrderSymbolNames(trading.market, trading.positions),
+    [trading.market, trading.positions],
+  );
 
   const accountTabContent: Record<AccountTab, ReactNode> = {
     portfolio: (
@@ -33,6 +38,7 @@ export default function AccountPage({ trading }: AccountPageProps) {
     orders: (
       <OrderHistory
         orders={trading.orders}
+        symbolNames={orderSymbolNames}
         onCancelOrder={async (orderId) => {
           await trading.cancelOrder(orderId);
         }}

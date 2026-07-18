@@ -8,8 +8,9 @@ import {
   X,
   Clock,
 } from "lucide-react";
-import type { OrderRequest, OrderSide, OrderType } from "../../shared/trading";
+import type { OrderRecord, OrderRequest, OrderSide, OrderType } from "../../shared/trading";
 import type { TradingBackend } from "../hooks/useTradingBackend";
+import { buildOrderSymbolNames, resolveOrderName } from "../lib/orderPresentation";
 
 function money(value: number): string {
   return new Intl.NumberFormat("zh-CN", {
@@ -39,6 +40,22 @@ interface PaperAccountProps {
   backend: TradingBackend;
 }
 
+function OrderSecurity({
+  order,
+  symbolNames,
+}: {
+  order: OrderRecord;
+  symbolNames: ReadonlyMap<string, string>;
+}) {
+  const name = resolveOrderName(order, symbolNames);
+  return (
+    <span className="order-security">
+      <strong>{name ?? order.symbol}</strong>
+      <small>{name ? order.symbol : "名称暂不可用"}</small>
+    </span>
+  );
+}
+
 export function PaperAccount({ backend }: PaperAccountProps) {
   const [symbol, setSymbol] = useState("600519");
   const [side, setSide] = useState<OrderSide>("buy");
@@ -52,6 +69,10 @@ export function PaperAccount({ backend }: PaperAccountProps) {
     : (selectedQuote?.price ?? 0);
   const estimatedNotional = selectedPrice * quantity;
   const account = backend.account;
+  const orderSymbolNames = useMemo(
+    () => buildOrderSymbolNames(backend.market, backend.positions),
+    [backend.market, backend.positions],
+  );
 
   const positionCount = backend.positions.length;
   const canSubmit =
@@ -218,7 +239,7 @@ export function PaperAccount({ backend }: PaperAccountProps) {
                       <span className={order.side === "buy" ? "side buy" : "side sell"}>
                         {order.side === "buy" ? "买入" : "卖出"}
                       </span>
-                      <strong>{order.symbol}</strong>
+                      <OrderSecurity order={order} symbolNames={orderSymbolNames} />
                       <span className="order-type-tag">限价</span>
                       <small>
                         {new Date(order.createdAt).toLocaleTimeString("zh-CN", {
@@ -356,7 +377,7 @@ export function PaperAccount({ backend }: PaperAccountProps) {
                     <span className={order.side === "buy" ? "side buy" : "side sell"}>
                       {order.side === "buy" ? "买入" : "卖出"}
                     </span>
-                    <strong>{order.symbol}</strong>
+                    <OrderSecurity order={order} symbolNames={orderSymbolNames} />
                     <span className="order-type-tag">{orderTypeLabel(order.type)}</span>
                     <small>
                       {new Date(order.updatedAt).toLocaleTimeString("zh-CN", {

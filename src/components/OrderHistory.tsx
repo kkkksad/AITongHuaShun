@@ -11,6 +11,9 @@ import {
   XCircle,
 } from "lucide-react";
 import type { OrderRecord, OrderSide, OrderStatus } from "../../shared/trading";
+import { resolveOrderName } from "../lib/orderPresentation";
+
+export { resolveOrderName } from "../lib/orderPresentation";
 
 const PAGE_SIZE = 15;
 
@@ -57,13 +60,6 @@ interface OrderHistoryProps {
   symbolNames?: ReadonlyMap<string, string>;
   onCancelOrder?: (orderId: string) => Promise<void>;
   pendingAction?: boolean;
-}
-
-export function resolveOrderName(
-  order: OrderRecord,
-  symbolNames: ReadonlyMap<string, string>,
-): string | undefined {
-  return order.name?.trim() || symbolNames.get(order.symbol)?.trim() || undefined;
 }
 
 function csvCell(value: string | number): string {
