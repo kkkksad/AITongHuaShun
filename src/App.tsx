@@ -52,6 +52,7 @@ function lazyNamed(importer: () => Promise<any>, name: string): any {
 const BacktestResults = lazyNamed(() => import("./components/BacktestResults"), "BacktestResults");
 const DailyCandidates = lazyNamed(() => import("./components/DailyCandidates"), "DailyCandidates");
 const DailyQualityStocks = lazyNamed(() => import("./components/DailyQualityStocks"), "DailyQualityStocks");
+const DailyTaskCenter = lazyNamed(() => import("./components/DailyTaskCenter"), "DailyTaskCenter");
 const FlowPanel = lazyNamed(() => import("./components/FlowPanel"), "FlowPanel");
 const LearningPipeline = lazy(() => import("./components/LearningPipeline"));
 const LogViewer = lazyNamed(() => import("./components/LogViewer"), "LogViewer");
@@ -321,6 +322,17 @@ function App() {
           <small>{marketAsOf}</small>
         </article>
       </section>
+
+      <Suspense fallback={<LazyFallback />}>
+        <DailyTaskCenter
+          onOpenLearning={() => navigate("/learning")}
+          onOpenMarket={() => navigate("/market")}
+          onOpenOrders={() => {
+            setAccountTab("orders");
+            navigate("/account");
+          }}
+        />
+      </Suspense>
 
       <Suspense fallback={<LazyFallback />}>
         <MarketOverview

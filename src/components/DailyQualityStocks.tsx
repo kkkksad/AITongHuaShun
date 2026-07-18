@@ -1,8 +1,12 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, ShieldCheck, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, ShieldCheck, Star } from "lucide-react";
+import { paginateItems } from "../lib/pagination";
 import { fetchDailyQualityStocks } from "../lib/tradingApi";
 import type { DailyQualityStock, QualityStockAction } from "../lib/tradingApi";
 import { ResearchQueryState } from "./ResearchQueryState";
+
+const PAGE_SIZE = 8;
 
 function formatPercent(value: number): string {
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
@@ -49,6 +53,7 @@ function primaryReason(stock: DailyQualityStock): string {
 }
 
 export function DailyQualityStocks() {
+  const [page, setPage] = useState(1);
   const qualityQuery = useQuery({
     queryKey: ["daily-quality-stocks", 30],
     queryFn: () => fetchDailyQualityStocks(30),
@@ -58,7 +63,12 @@ export function DailyQualityStocks() {
 
   const report = qualityQuery.data;
   const stocks = report?.stocks ?? [];
+  const pagination = paginateItems(stocks, page, PAGE_SIZE);
   const focusCount = stocks.filter((stock) => stock.action === "focus").length;
+
+  useEffect(() => {
+    if (page !== pagination.page) setPage(pagination.page);
+  }, [page, pagination.page]);
 
   return (
     <section className="panel daily-quality-stocks">
@@ -136,7 +146,7 @@ export function DailyQualityStocks() {
                 </tr>
               </thead>
               <tbody>
-                {stocks.map((stock) => (
+                {pagination.items.map((stock) => (
                   <tr key={stock.symbol}>
                     <td>
                       <span className={`rank-badge rank-${stock.rank}`}>
@@ -183,6 +193,35 @@ export function DailyQualityStocks() {
               </tbody>
             </table>
           </div>
+
+          <nav aria-label="每日优质股分页" className="research-pagination">
+            <span>
+              显示 {pagination.rangeStart}-{pagination.rangeEnd}，共 {pagination.total} 条
+            </span>
+            <strong>第 {pagination.page} / {pagination.pageCount} 页</strong>
+            <div>
+              <button
+                aria-label="每日优质股上一页"
+                className="icon-button"
+                disabled={pagination.page === 1}
+                onClick={() => setPage(pagination.page - 1)}
+                title="上一页"
+                type="button"
+              >
+                <ChevronLeft size={17} />
+              </button>
+              <button
+                aria-label="每日优质股下一页"
+                className="icon-button"
+                disabled={pagination.page === pagination.pageCount}
+                onClick={() => setPage(pagination.page + 1)}
+                title="下一页"
+                type="button"
+              >
+                <ChevronRight size={17} />
+              </button>
+            </div>
+          </nav>
 
           <div className="research-source-row">
             <Star size={15} />

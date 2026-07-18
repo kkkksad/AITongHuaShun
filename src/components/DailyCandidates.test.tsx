@@ -8,6 +8,9 @@ describe("DailyCandidates", () => {
     expect(source).toContain('import { ResearchQueryState } from "./ResearchQueryState";');
     expect(source).toContain("<ResearchQueryState");
     expect(source).toContain("hasData={Boolean(report)}");
+    expect(source).toContain("const PAGE_SIZE = 8;");
+    expect(source).toContain("paginateItems(candidates, page, PAGE_SIZE)");
+    expect(source).toContain("pagination.items.map");
     expect(source).not.toContain("candidatesQuery.isLoading &&");
     expect(source).not.toContain("candidatesQuery.isError &&");
   });

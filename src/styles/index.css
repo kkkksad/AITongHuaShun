@@ -4099,6 +4099,426 @@ select:focus-visible {
   font-size: 11px;
 }
 
+/* ============================================================
+   Daily Task Center
+   ============================================================ */
+.daily-task-center {
+  overflow: hidden;
+  padding-bottom: 0;
+}
+
+.daily-task-center-header p {
+  max-width: 720px;
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.daily-task-center-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.task-data-badge {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.daily-task-center-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1.45fr);
+  min-width: 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.daily-task-list {
+  min-width: 0;
+  border-right: 1px solid var(--border-light);
+}
+
+.daily-task-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 15px 18px 15px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.daily-task-row:last-child {
+  border-bottom: 0;
+}
+
+.daily-task-row > div,
+.daily-task-row strong,
+.daily-task-row p {
+  min-width: 0;
+}
+
+.daily-task-row strong {
+  display: block;
+  color: var(--text-heading);
+  font-size: 13px;
+}
+
+.daily-task-row p {
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-task-icon {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: var(--text-muted);
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+}
+
+.daily-task-state {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.task-done .daily-task-icon,
+.task-done .daily-task-state {
+  color: var(--color-positive);
+}
+
+.task-current .daily-task-icon,
+.task-current .daily-task-state {
+  color: var(--color-primary);
+}
+
+.task-current .daily-task-icon {
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary-border);
+}
+
+.task-attention .daily-task-icon,
+.task-attention .daily-task-state {
+  color: var(--color-warning);
+}
+
+.daily-task-focus {
+  display: flex;
+  min-width: 0;
+  padding-left: 20px;
+  flex-direction: column;
+}
+
+.daily-task-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.daily-task-status-grid > div {
+  min-width: 0;
+  padding: 14px 16px;
+  border-right: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.daily-task-status-grid > div:nth-child(2n) {
+  border-right: 0;
+}
+
+.daily-task-status-grid span,
+.daily-task-status-grid small {
+  display: block;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.daily-task-status-grid strong {
+  display: block;
+  margin: 6px 0 4px;
+  overflow: hidden;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-task-status-grid small {
+  overflow: hidden;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tone-positive {
+  color: var(--color-positive) !important;
+}
+
+.tone-neutral {
+  color: var(--text-heading) !important;
+}
+
+.tone-warning {
+  color: var(--color-warning) !important;
+}
+
+.tone-danger {
+  color: var(--color-negative) !important;
+}
+
+.daily-task-blockers {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 16px;
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.daily-task-blockers svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.daily-task-next {
+  display: grid;
+  min-width: 0;
+  gap: 13px;
+  padding: 15px 16px 4px;
+}
+
+.daily-task-next span,
+.daily-task-next strong {
+  display: block;
+}
+
+.daily-task-next span {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.daily-task-next strong {
+  margin-top: 5px;
+  color: var(--text-body);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.daily-task-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.daily-task-actions .secondary-button {
+  min-height: 32px;
+  padding: 0 11px;
+}
+
+.daily-task-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 18px -22px 0;
+  background: var(--bg-panel-alt);
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.daily-task-metrics > div {
+  min-width: 0;
+  padding: 13px 18px;
+  border-right: 1px solid var(--border-light);
+}
+
+.daily-task-metrics > div:last-child {
+  border-right: 0;
+}
+
+.daily-task-metrics span,
+.daily-task-metrics strong {
+  display: block;
+  min-width: 0;
+}
+
+.daily-task-metrics span {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.daily-task-metrics strong {
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--text-heading);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.daily-task-footnote {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  margin: 0 -22px;
+  padding: 10px 22px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.daily-task-footnote svg {
+  flex: 0 0 auto;
+}
+
+/* ============================================================
+   Research Pagination
+   ============================================================ */
+.daily-quality-stocks .compare-ranking-table-wrapper,
+.daily-candidates .compare-ranking-table-wrapper {
+  max-height: none;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.research-pagination {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  margin: 14px 0;
+  padding-top: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-light);
+  font-size: 11px;
+}
+
+.research-pagination strong {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.research-pagination > div {
+  display: flex;
+  gap: 6px;
+}
+
+.research-pagination .icon-button {
+  width: 30px;
+  height: 30px;
+}
+
+.research-pagination .icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+@media (max-width: 980px) {
+  .daily-task-center-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-task-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  .daily-task-row {
+    padding-right: 0;
+  }
+
+  .daily-task-focus {
+    padding: 4px 0 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .daily-task-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-right: -17px;
+    margin-left: -17px;
+  }
+
+  .daily-task-metrics > div:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .daily-task-metrics > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  .daily-task-footnote {
+    margin-right: -17px;
+    margin-left: -17px;
+    padding-right: 17px;
+    padding-left: 17px;
+  }
+}
+
+@media (max-width: 560px) {
+  .daily-task-center-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .daily-task-center-header-actions {
+    justify-content: space-between;
+  }
+
+  .daily-task-row {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    padding: 13px 0;
+  }
+
+  .daily-task-row p {
+    white-space: normal;
+  }
+
+  .daily-task-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .daily-task-status-grid > div,
+  .daily-task-status-grid > div:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .daily-task-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .daily-task-actions .secondary-button {
+    min-width: 0;
+    padding: 0 7px;
+    font-size: 10px;
+  }
+
+  .research-pagination {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 12px;
+  }
+
+  .research-pagination > span {
+    grid-column: 1 / -1;
+  }
+
+  .research-pagination > div {
+    justify-self: end;
+  }
+}
+
 .robustness-table-wrapper {
   max-height: 430px;
   overflow: auto;

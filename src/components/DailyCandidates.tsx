@@ -1,8 +1,12 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { RefreshCw, ShieldCheck, Target } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw, ShieldCheck, Target } from "lucide-react";
+import { paginateItems } from "../lib/pagination";
 import { fetchDailyCandidates } from "../lib/tradingApi";
 import type { DailyCandidate, DailyCandidateAction } from "../lib/tradingApi";
 import { ResearchQueryState } from "./ResearchQueryState";
+
+const PAGE_SIZE = 8;
 
 function formatPercent(value: number): string {
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
@@ -32,6 +36,7 @@ function candidateReason(candidate: DailyCandidate): string {
 }
 
 export function DailyCandidates() {
+  const [page, setPage] = useState(1);
   const candidatesQuery = useQuery({
     queryKey: ["daily-candidates", 24],
     queryFn: () => fetchDailyCandidates(24),
@@ -41,6 +46,11 @@ export function DailyCandidates() {
 
   const report = candidatesQuery.data;
   const candidates = report?.candidates ?? [];
+  const pagination = paginateItems(candidates, page, PAGE_SIZE);
+
+  useEffect(() => {
+    if (page !== pagination.page) setPage(pagination.page);
+  }, [page, pagination.page]);
 
   return (
     <section className="panel daily-candidates">
@@ -115,7 +125,7 @@ export function DailyCandidates() {
                 </tr>
               </thead>
               <tbody>
-                {candidates.map((candidate) => (
+                {pagination.items.map((candidate) => (
                   <tr key={candidate.symbol}>
                     <td>
                       <span className={`rank-badge rank-${candidate.rank}`}>
@@ -164,6 +174,35 @@ export function DailyCandidates() {
               </tbody>
             </table>
           </div>
+
+          <nav aria-label="今日候选分页" className="research-pagination">
+            <span>
+              显示 {pagination.rangeStart}-{pagination.rangeEnd}，共 {pagination.total} 条
+            </span>
+            <strong>第 {pagination.page} / {pagination.pageCount} 页</strong>
+            <div>
+              <button
+                aria-label="今日候选上一页"
+                className="icon-button"
+                disabled={pagination.page === 1}
+                onClick={() => setPage(pagination.page - 1)}
+                title="上一页"
+                type="button"
+              >
+                <ChevronLeft size={17} />
+              </button>
+              <button
+                aria-label="今日候选下一页"
+                className="icon-button"
+                disabled={pagination.page === pagination.pageCount}
+                onClick={() => setPage(pagination.page + 1)}
+                title="下一页"
+                type="button"
+              >
+                <ChevronRight size={17} />
+              </button>
+            </div>
+          </nav>
 
           <div className="research-source-row">
             <Target size={15} />
