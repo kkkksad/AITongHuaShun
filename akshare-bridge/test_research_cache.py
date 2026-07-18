@@ -1,11 +1,112 @@
 import asyncio
 from contextlib import suppress
 
-from research_cache import HistoryCacheKey, ResearchHistoryCache
+from research_cache import BoundedTTLCache, HistoryCacheKey, ResearchHistoryCache
 
 
 def run(coro):
     return asyncio.run(coro)
+
+
+def history_key(symbol: str) -> HistoryCacheKey:
+    return HistoryCacheKey(
+        market="a-share",
+        symbol=symbol,
+        adjustment="qfq",
+        end_date="2026-07-17",
+        days=120,
+    )
+
+
+def test_bounded_ttl_cache_evicts_lru_entry_and_prunes_expired_entries():
+    clock = {"now": 1_000.0}
+    cache = BoundedTTLCache[str, str](
+        max_entries=2,
+        ttl_sec=10,
+        now=lambda: clock["now"],
+    )
+
+    cache["first"] = "one"
+    cache["second"] = "two"
+    assert cache.get("first") == "one"
+
+    cache["third"] = "three"
+
+    assert cache.get("second") is None
+    assert cache.get("first") == "one"
+    assert cache.get("third") == "three"
+    assert cache.stats() == {
+        "entries": 2,
+        "max_entries": 2,
+        "evictions": 1,
+        "expired_pruned": 0,
+    }
+
+    clock["now"] = 1_011.0
+    cache["fourth"] = "four"
+
+    assert list(cache) == ["fourth"]
+    assert cache.stats()["expired_pruned"] == 2
+
+
+def test_history_cache_evicts_least_recently_used_entry():
+    cache = ResearchHistoryCache[str](max_entries=2, now=lambda: 1_000.0)
+    first = history_key("600519")
+    second = history_key("000001")
+    third = history_key("300750")
+
+    cache.set(first, "first", fresh_ttl_sec=10, stale_ttl_sec=30)
+    cache.set(second, "second", fresh_ttl_sec=10, stale_ttl_sec=30)
+    assert cache.get_fresh(first) == "first"
+    cache.set(third, "third", fresh_ttl_sec=10, stale_ttl_sec=30)
+
+    assert cache.get_fresh(second) is None
+    assert cache.get_fresh(first) == "first"
+    assert cache.get_fresh(third) == "third"
+    assert cache.stats()["evictions"] == 1
+
+
+def test_history_cache_does_not_evict_entry_while_it_is_refreshing():
+    clock = {"now": 1_000.0}
+    cache = ResearchHistoryCache[str](
+        max_entries=1,
+        now=lambda: clock["now"],
+    )
+    refreshing = history_key("600519")
+    competing = history_key("000001")
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fetcher():
+        started.set()
+        await release.wait()
+        return "refreshed"
+
+    cache.set(refreshing, "stale", fresh_ttl_sec=5, stale_ttl_sec=30)
+    clock["now"] = 1_010.0
+
+    async def scenario():
+        assert await cache.get_or_fetch(
+            refreshing,
+            fetcher,
+            fresh_ttl_sec=5,
+            stale_ttl_sec=30,
+        ) == "stale"
+        await asyncio.wait_for(started.wait(), timeout=1)
+
+        cache.set(competing, "competing", fresh_ttl_sec=5, stale_ttl_sec=30)
+        assert refreshing in cache._entries
+        assert competing not in cache._entries
+
+        release.set()
+        for _ in range(10):
+            if cache.get_fresh(refreshing) == "refreshed":
+                break
+            await asyncio.sleep(0)
+
+        assert cache.get_fresh(refreshing) == "refreshed"
+
+    run(scenario())
 
 
 def test_fresh_cache_hit_returns_cached_value_without_fetching():
@@ -350,9 +451,10 @@ def test_prune_expired_removes_only_entries_past_stale_window():
     clock["now"] = 1_015.0
     cache.set(fresh_key, "fresh", fresh_ttl_sec=10, stale_ttl_sec=20)
 
-    assert cache.prune_expired() == 1
+    assert cache.prune_expired() == 0
     assert expired_key not in cache._entries
     assert cache._entries[stale_key].value == "stale"
+    assert cache.stats()["expired_pruned"] == 1
 
 
 def test_cache_stats_distinguish_fresh_stale_and_blocking_miss():
@@ -372,4 +474,14 @@ def test_cache_stats_distinguish_fresh_stale_and_blocking_miss():
     assert run(cache.get_or_fetch(key, fetcher, fresh_ttl_sec=10, stale_ttl_sec=30)) == "new"
     clock["now"] = 1_015.0
     assert run(cache.get_or_fetch(key, fetcher, fresh_ttl_sec=10, stale_ttl_sec=30)) == "new"
-    assert cache.stats() == {"fresh_hits": 1, "stale_hits": 1, "blocking_misses": 1}
+    stats = cache.stats()
+    assert {
+        "fresh_hits": stats["fresh_hits"],
+        "stale_hits": stats["stale_hits"],
+        "blocking_misses": stats["blocking_misses"],
+    } == {"fresh_hits": 1, "stale_hits": 1, "blocking_misses": 1}
+    assert stats["entries"] == 1
+    assert stats["max_entries"] == 128
+    assert stats["evictions"] == 0
+    assert stats["expired_pruned"] == 0
+    assert stats["in_flight"] in {0, 1}

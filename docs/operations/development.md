@@ -60,13 +60,27 @@ RESEARCH_STORE_RAW_NEWS=false
 
 当前 `/api/research/self-optimization` 只声明 paper-only 自优化和留存策略；后续接入授权历史 K 线时，应只保存紧凑日线/特征、新闻元数据和全球市场特征，不默认保存原始 tick、完整新闻正文或无上限临时数据。
 
-AkShare 桥接的板块与历史日线只保存在进程内短期缓存，默认 15 分钟：
+AkShare 桥接的板块与历史日线只保存在进程内短期缓存。普通研究响应默认保留 15 分钟且最多 64 个 key；单序列历史缓存最多 128 个 key，15 分钟内直接命中，最多 60 分钟可作为 stale-while-revalidate 回退：
 
 ```text
 AKSHARE_BRIDGE_RESEARCH_CACHE_TTL=900
+AKSHARE_BRIDGE_RESEARCH_CACHE_STALE_TTL=3600
+AKSHARE_BRIDGE_RESEARCH_CACHE_MAX_ENTRIES=64
+AKSHARE_BRIDGE_HISTORY_CACHE_MAX_ENTRIES=128
 ```
 
-单次历史研究请求最多读取 20 个行业板块、12 只股票和 60 至 500 个交易日。行业日线为不复权，个股日线为前复权；该缓存不会在 `data/` 中长期堆积原始日线。
+读写缓存时会主动清除过期项，超过容量后按 LRU 淘汰；正在拉取的历史序列不会在请求完成前被淘汰。`http://127.0.0.1:8800/health` 的 `researchCache` 和 `historyCache` 会返回当前条目数、上限、淘汰数和过期清理数。单次历史研究请求最多读取 20 个行业板块、12 只股票和 60 至 500 个交易日。行业日线为不复权，个股日线为前复权；该缓存不会在 `data/` 中长期堆积原始日线。
+
+开发日志在执行 `npm run dev` 或 `npm run dev:a-share` 前自动清理，默认预算为：
+
+```text
+RUNTIME_LOG_DIR=./logs
+RUNTIME_LOG_RETENTION_DAYS=7
+RUNTIME_LOG_MAX_TOTAL_MB=100
+RUNTIME_LOG_MAX_FILE_MB=20
+```
+
+清理器只扫描仓库内配置目录的普通 `*.log` 文件：先删除超过 7 天的日志，再删除超过 20 MB 的非活动单文件，最后从最旧文件开始把总量压到 100 MB。最近 5 分钟仍在写入的文件会跳过；锁定或删除失败只输出警告，不阻止项目启动。可先运行 `npm run runtime:cleanup:dry` 查看结果，再运行 `npm run runtime:cleanup` 执行。该流程不扫描 `data/`，不会删除 `paper-trading-state.json`、现金、持仓、开放订单或七天内审计，也不会自动删除正常依赖 `node_modules/`。
 
 需要把本地纸面账户重置为 10000 元纯现金、并清空默认演示持仓时，在未提交的 `.env.local` 设置：
 

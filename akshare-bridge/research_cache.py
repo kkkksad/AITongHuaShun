@@ -2,11 +2,97 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections import OrderedDict
+from collections.abc import Iterator, MutableMapping
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Generic, Literal, TypeVar
 
 
 HistoricalSeries = TypeVar("HistoricalSeries")
+CacheKey = TypeVar("CacheKey")
+CacheValue = TypeVar("CacheValue")
+
+
+@dataclass(slots=True)
+class TTLCacheEntry(Generic[CacheValue]):
+    value: CacheValue
+    expires_at: float
+
+
+class BoundedTTLCache(MutableMapping[CacheKey, CacheValue], Generic[CacheKey, CacheValue]):
+    """Small in-process TTL cache with an LRU capacity bound."""
+
+    def __init__(
+        self,
+        *,
+        max_entries: int,
+        ttl_sec: float,
+        now: Callable[[], float] | None = None,
+    ):
+        if max_entries < 1:
+            raise ValueError("max_entries must be positive")
+        if ttl_sec <= 0:
+            raise ValueError("ttl_sec must be positive")
+        self._max_entries = max_entries
+        self._ttl_sec = ttl_sec
+        self._now = now or time.monotonic
+        self._entries: OrderedDict[CacheKey, TTLCacheEntry[CacheValue]] = OrderedDict()
+        self._evictions = 0
+        self._expired_pruned = 0
+
+    def __getitem__(self, key: CacheKey) -> CacheValue:
+        self._prune_expired()
+        entry = self._entries.get(key)
+        if entry is None:
+            raise KeyError(key)
+        self._entries.move_to_end(key)
+        return entry.value
+
+    def __setitem__(self, key: CacheKey, value: CacheValue) -> None:
+        self._prune_expired()
+        self._entries[key] = TTLCacheEntry(
+            value=value,
+            expires_at=self._now() + self._ttl_sec,
+        )
+        self._entries.move_to_end(key)
+        while len(self._entries) > self._max_entries:
+            self._entries.popitem(last=False)
+            self._evictions += 1
+
+    def __delitem__(self, key: CacheKey) -> None:
+        del self._entries[key]
+
+    def __iter__(self) -> Iterator[CacheKey]:
+        self._prune_expired()
+        return iter(tuple(self._entries))
+
+    def __len__(self) -> int:
+        self._prune_expired()
+        return len(self._entries)
+
+    def clear(self) -> None:
+        self._entries.clear()
+
+    def stats(self) -> dict[str, int]:
+        self._prune_expired()
+        return {
+            "entries": len(self._entries),
+            "max_entries": self._max_entries,
+            "evictions": self._evictions,
+            "expired_pruned": self._expired_pruned,
+        }
+
+    def _prune_expired(self) -> int:
+        now = self._now()
+        expired_keys = [
+            key
+            for key, entry in self._entries.items()
+            if now >= entry.expires_at
+        ]
+        for key in expired_keys:
+            self._entries.pop(key, None)
+        self._expired_pruned += len(expired_keys)
+        return len(expired_keys)
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,16 +114,37 @@ class CacheEntry(Generic[HistoricalSeries]):
 
 
 class ResearchHistoryCache(Generic[HistoricalSeries]):
-    def __init__(self, now: Callable[[], float] | None = None):
+    def __init__(
+        self,
+        now: Callable[[], float] | None = None,
+        *,
+        max_entries: int = 128,
+    ):
+        if max_entries < 1:
+            raise ValueError("max_entries must be positive")
         self._now = now or time.monotonic
-        self._entries: dict[HistoryCacheKey, CacheEntry[HistoricalSeries]] = {}
+        self._max_entries = max_entries
+        self._entries: OrderedDict[
+            HistoryCacheKey,
+            CacheEntry[HistoricalSeries],
+        ] = OrderedDict()
         self._in_flight: dict[HistoryCacheKey, asyncio.Task[HistoricalSeries]] = {}
         self._lock = asyncio.Lock()
         self._stats = {"fresh_hits": 0, "stale_hits": 0, "blocking_misses": 0}
+        self._evictions = 0
+        self._expired_pruned = 0
 
     def stats(self) -> dict[str, int]:
         """Return a snapshot of cache lookup outcomes for observability."""
-        return dict(self._stats)
+        self.prune_expired()
+        return {
+            **self._stats,
+            "entries": len(self._entries),
+            "max_entries": self._max_entries,
+            "evictions": self._evictions,
+            "expired_pruned": self._expired_pruned,
+            "in_flight": len(self._in_flight),
+        }
 
     def get_fresh(self, key: HistoryCacheKey) -> HistoricalSeries | None:
         entry = self._fresh_entry(key)
@@ -51,6 +158,7 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
         fresh_ttl_sec: float,
         stale_ttl_sec: float,
     ) -> CacheEntry[HistoricalSeries]:
+        self.prune_expired()
         fetched_at = self._now()
         entry = CacheEntry(
             value=value,
@@ -59,6 +167,8 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
             stale_until=fetched_at + stale_ttl_sec,
         )
         self._entries[key] = entry
+        self._entries.move_to_end(key)
+        self._enforce_capacity()
         return entry
 
     def clear(self) -> None:
@@ -77,7 +187,9 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
         ]
         for key in expired_keys:
             self._entries.pop(key, None)
+        self._expired_pruned += len(expired_keys)
         return len(expired_keys)
+
     async def get_or_fetch(
         self,
         key: HistoryCacheKey,
@@ -185,6 +297,7 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
         entry = self._entries.get(key)
         if entry is None or self._now() >= entry.fresh_until:
             return None
+        self._entries.move_to_end(key)
         return entry
 
     def _stale_entry(
@@ -195,6 +308,7 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
         now = self._now()
         if entry is None or now < entry.fresh_until or now >= entry.stale_until:
             return None
+        self._entries.move_to_end(key)
         return entry
 
     def _discard_completed_task(
@@ -206,3 +320,19 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
             task.exception()
         if self._in_flight.get(key) is task:
             self._in_flight.pop(key, None)
+        self._enforce_capacity()
+
+    def _enforce_capacity(self) -> None:
+        while len(self._entries) > self._max_entries:
+            evicted_key = next(
+                (
+                    candidate
+                    for candidate in self._entries
+                    if candidate not in self._in_flight
+                ),
+                None,
+            )
+            if evicted_key is None:
+                return
+            self._entries.pop(evicted_key, None)
+            self._evictions += 1

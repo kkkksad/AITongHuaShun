@@ -25,7 +25,7 @@ import pandas as pd
 import requests
 from pydantic import BaseModel, Field
 
-from research_cache import HistoryCacheKey, ResearchHistoryCache
+from research_cache import BoundedTTLCache, HistoryCacheKey, ResearchHistoryCache
 
 # ── 配置 ──────────────────────────────────────────────────
 
@@ -37,6 +37,12 @@ RESEARCH_CACHE_TTL_SEC = float(
 )
 RESEARCH_CACHE_STALE_TTL_SEC = float(
     os.getenv("AKSHARE_BRIDGE_RESEARCH_CACHE_STALE_TTL", "3600.0")
+)
+RESEARCH_CACHE_MAX_ENTRIES = int(
+    os.getenv("AKSHARE_BRIDGE_RESEARCH_CACHE_MAX_ENTRIES", "64")
+)
+HISTORY_CACHE_MAX_ENTRIES = int(
+    os.getenv("AKSHARE_BRIDGE_HISTORY_CACHE_MAX_ENTRIES", "128")
 )
 AUTH_TOKEN = os.getenv("AKSHARE_BRIDGE_TOKEN", "")
 DISABLE_PROXY = os.getenv("AKSHARE_BRIDGE_DISABLE_PROXY", "true").strip().lower() not in {
@@ -1522,23 +1528,21 @@ def normalize_index_symbol(value: object) -> str | None:
 
 cache = QuoteCache(ttl_sec=CACHE_TTL_SEC)
 index_cache = IndexCache(ttl_sec=CACHE_TTL_SEC)
-research_cache: dict[str, tuple[float, BaseModel]] = {}
-history_cache: ResearchHistoryCache[HistoricalSeries] = ResearchHistoryCache()
+research_cache = BoundedTTLCache[str, BaseModel](
+    max_entries=RESEARCH_CACHE_MAX_ENTRIES,
+    ttl_sec=RESEARCH_CACHE_TTL_SEC,
+)
+history_cache: ResearchHistoryCache[HistoricalSeries] = ResearchHistoryCache(
+    max_entries=HISTORY_CACHE_MAX_ENTRIES,
+)
 
 
 def get_cached_research(key: str):
-    cached = research_cache.get(key)
-    if cached is None:
-        return None
-    cached_at, value = cached
-    if time.time() - cached_at >= RESEARCH_CACHE_TTL_SEC:
-        research_cache.pop(key, None)
-        return None
-    return value
+    return research_cache.get(key)
 
 
 def set_cached_research(key: str, value: BaseModel):
-    research_cache[key] = (time.time(), value)
+    research_cache[key] = value
     return value
 
 
@@ -1696,6 +1700,8 @@ async def health():
     """健康检查。"""
     cache_age = cache.age_sec
     index_cache_age = index_cache.age_sec
+    research_cache_stats = research_cache.stats()
+    history_cache_stats = history_cache.stats()
     return {
         "status": "ok",
         "service": "akshare-market-bridge",
@@ -1709,6 +1715,19 @@ async def health():
         else round(index_cache_age, 1),
         "lastStockError": cache.last_error,
         "lastIndexError": index_cache.last_error,
+        "researchCache": {
+            "entries": research_cache_stats["entries"],
+            "maxEntries": research_cache_stats["max_entries"],
+            "evictions": research_cache_stats["evictions"],
+            "expiredPruned": research_cache_stats["expired_pruned"],
+        },
+        "historyCache": {
+            "entries": history_cache_stats["entries"],
+            "maxEntries": history_cache_stats["max_entries"],
+            "evictions": history_cache_stats["evictions"],
+            "expiredPruned": history_cache_stats["expired_pruned"],
+            "inFlight": history_cache_stats["in_flight"],
+        },
         "proxyDisabled": DISABLE_PROXY,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }

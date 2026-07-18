@@ -79,6 +79,9 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["service"] == "akshare-market-bridge"
+        assert data["researchCache"]["entries"] <= data["researchCache"]["maxEntries"]
+        assert data["historyCache"]["entries"] <= data["historyCache"]["maxEntries"]
+        assert data["historyCache"]["inFlight"] >= 0
         assert response.headers["x-content-type-options"] == "nosniff"
 
     def test_api_health_alias_returns_same_service(self):

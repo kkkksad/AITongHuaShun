@@ -92,6 +92,8 @@
 - **开发服务异常恢复** —— `npm run dev` 与 `npm run dev:a-share` 以 `concurrently` 监督前台 API，并对非零退出无限重启；`npm run dev:api:watch` 单独保留代码热重载。这样 API 子进程退出后不会只留下一个仍存活但无法提供 `8787` 的 watcher 父进程。
 - **移动导航状态修复** —— 980px 以下未打开的侧栏保持隐藏，菜单按钮打开抽屉、关闭按钮关闭抽屉；390px 页面无横向溢出，不再同时显示旧顶部侧栏和抽屉导航。
 - **历史研究单序列缓存接入** —— A 股、港股和国内期货历史端点按市场、代码、来源、复权、截止日期与窗口复用单序列缓存，支持 single-flight 和 stale-while-revalidate；失败的空序列不进入缓存。
+- **研究缓存容量硬上限** —— AkShare 普通研究响应使用默认 64-key 的 TTL/LRU，历史单序列使用默认 128-key 的 TTL/LRU；读写路径主动清理过期项，进行中的历史请求不会被容量淘汰，桥接 `/health` 返回当前条目、上限、淘汰和过期清理统计。
+- **开发日志磁盘预算** —— `npm run dev` 与 `npm run dev:a-share` 启动前只清理仓库内 `logs/*.log`；默认保留 7 天、单文件 20 MB、目录总量 100 MB，最近 5 分钟仍在写入的文件跳过。该清理器不扫描交易 `data/` 或 `node_modules/`。
 - **查询短退避恢复** —— TanStack Query 仅对网络错误和 HTTP 5xx 最多重试两次，HTTP 4xx、认证失败和不可解析响应不重试。
 - **港股刷新降级保护** —— 港股观察已有成功报告时，后台刷新失败不会清空表格；页面继续显示缓存报告、明确刷新失败，并标出最后成功更新时间。首次加载失败仍显示阻断错误。
 - **统一研究查询状态起点** —— 新增可复用的 ResearchQueryState，统一首次加载、无缓存阻断失败和有缓存刷新失败三种展示；港股观察与期货研判已接入，其他研究模块仍待逐步迁移。
@@ -172,6 +174,21 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-18 cache and runtime storage guardrails
+D:\conda\python.exe -m pytest akshare-bridge/test_research_cache.py akshare-bridge/test_bridge.py -q
+88 tests passed; 1 FastAPI/httpx dependency deprecation warning
+
+Server Vitest
+42 server test files passed, 703 server tests passed
+
+Web Vitest
+21 web test files passed, 63 web tests passed
+
+TypeScript checks and Vite production build passed; 2,313 modules transformed
+git diff --check passed with line-ending conversion warnings only
+
+Runtime log cleanup scanned 12 files and reduced logs from 41.1 MB to 2.84 MB by deleting one inactive 38.2 MB development output file. It did not scan or modify data/paper-trading-state.json. Ports 4173, 8787, and 8800 each had one listener after verification.
+
 2026-07-18 history cache integration and query retry review
 D:\conda\python.exe -m pytest akshare-bridge\test_bridge.py akshare-bridge\test_research_cache.py -q
 84 tests passed; 1 dependency deprecation warning and 1 pytest cache permission warning
@@ -644,7 +661,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 变盘雷达只覆盖当前受控观察池，经验频率未完成生存者偏差修正、独立折概率校准和成交成本压力测试；当前结果是研究条件频率，不是生产级预测。
 - 港股模块只读取公开快照和前复权日线，不读取港股账户，也未实现港交所交易日历、T+0、每手股数、港币/汇率和港股费用，因此不能生成港股 paper 或真实订单。
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
-- 系统日志分页减少网络响应和前端 DOM，但任意模块/级别筛选仍需扫描指定日期日志文件；文件索引、异步读取和 PostgreSQL/日志平台接入仍属于后续存储优化。
+- 系统日志分页减少网络响应和前端 DOM，启动前日志预算避免开发输出无限增长；但活动重定向日志在持续写入时可以暂时超过预算，任意模块/级别筛选仍需扫描指定日期日志文件，文件索引、异步读取和 PostgreSQL/日志平台接入仍属于后续存储优化。
 - JSON 交易历史默认只保留最近 7 天，过期清理也会缩短订单幂等查询和审计回看窗口；需要长期研究的汇总结果应另行导出，不应依赖无限增长的运行状态文件。
 - 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 从 10000 元纯现金开始；已有 JSON 状态文件不会被自动覆盖，需要用户明确删除或移走后才会重新初始化。
 - A 股 paper 撮合遵守一手 100 股和 T+1 卖出限制；同日买入的 `t1LockedQuantity` 只会在后续交易日释放为可卖数量。

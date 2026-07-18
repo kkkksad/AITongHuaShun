@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "predev": "npm run runtime:cleanup",
     "dev": "concurrently -k --restart-tries -1 --restart-after 1000 -n API,WEB -c yellow,blue \"npm run dev:api\" \"npm run dev:web\"",
+    "predev:a-share": "npm run runtime:cleanup",
     "dev:a-share": "concurrently -k --restart-tries -1 --restart-after 1000 -n DATA,API,WEB -c green,yellow,blue \"npm run dev:market\" \"npm run dev:api\" \"npm run dev:web\"",
     "dev:market": "python akshare-bridge/main.py",
     "dev:web": "vite --config config/vite.app.config.js --configLoader runner --host 127.0.0.1 --port 4173 --strictPort",
@@ -12,6 +14,8 @@
     "dev:api:watch": "tsx watch server/index.ts",
     "dev:debug": "npm run dev",
     "auth:setup": "tsx scripts/setup-auth.ts",
+    "runtime:cleanup": "tsx scripts/cleanup-runtime-files.ts",
+    "runtime:cleanup:dry": "tsx scripts/cleanup-runtime-files.ts --dry-run",
     "check:a-share": "powershell -ExecutionPolicy Bypass -File scripts/check-a-share-dev.ps1",
     "start:api": "tsx server/index.ts",
     "build": "tsc -b && vite build --config config/vite.app.config.js --configLoader runner",
