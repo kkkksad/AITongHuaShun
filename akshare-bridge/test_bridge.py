@@ -16,6 +16,7 @@ sys.modules["akshare"] = MagicMock()
 
 from main import (
     app,
+    history_cache,
     GlobalMarketsResponse,
     GlobalMarketQuote,
     FuturesQuote,
@@ -63,6 +64,13 @@ from main import (
 )
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def clear_history_cache_between_tests():
+    history_cache.clear()
+    yield
+    history_cache.clear()
 
 
 class TestHealthEndpoint:
@@ -762,6 +770,33 @@ class TestSectorAndHistoryEndpoints:
         data = response.json()
         assert [item["symbol"] for item in data["series"]] == ["600519"]
         assert "000001" in data["warning"]
+
+    def test_stock_history_reuses_a_symbol_across_different_batches(self):
+        frame = pd.DataFrame([{
+            "date": "2026-07-10",
+            "open": 10,
+            "high": 11,
+            "low": 9.8,
+            "close": 10.8,
+            "volume": 1000,
+        }])
+
+        with patch("main.fetch_stock_history_dataframe", return_value=frame) as fetch:
+            first = client.get("/api/market/stock-history?symbols=600519&days=180")
+            second = client.get(
+                "/api/market/stock-history?symbols=600519,000001&days=180",
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert [item["symbol"] for item in second.json()["series"]] == [
+            "600519",
+            "000001",
+        ]
+        assert [call.args[0] for call in fetch.call_args_list] == [
+            "600519",
+            "000001",
+        ]
 
     def test_empty_stock_history_response_is_not_cached(self):
         recovered_df = pd.DataFrame([

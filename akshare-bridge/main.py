@@ -25,6 +25,8 @@ import pandas as pd
 import requests
 from pydantic import BaseModel, Field
 
+from research_cache import HistoryCacheKey, ResearchHistoryCache
+
 # ── 配置 ──────────────────────────────────────────────────
 
 HOST = os.getenv("AKSHARE_BRIDGE_HOST", "127.0.0.1")
@@ -32,6 +34,9 @@ PORT = int(os.getenv("AKSHARE_BRIDGE_PORT", "8800"))
 CACHE_TTL_SEC = float(os.getenv("AKSHARE_BRIDGE_CACHE_TTL", "3.0"))
 RESEARCH_CACHE_TTL_SEC = float(
     os.getenv("AKSHARE_BRIDGE_RESEARCH_CACHE_TTL", "900.0")
+)
+RESEARCH_CACHE_STALE_TTL_SEC = float(
+    os.getenv("AKSHARE_BRIDGE_RESEARCH_CACHE_STALE_TTL", "3600.0")
 )
 AUTH_TOKEN = os.getenv("AKSHARE_BRIDGE_TOKEN", "")
 DISABLE_PROXY = os.getenv("AKSHARE_BRIDGE_DISABLE_PROXY", "true").strip().lower() not in {
@@ -1518,6 +1523,7 @@ def normalize_index_symbol(value: object) -> str | None:
 cache = QuoteCache(ttl_sec=CACHE_TTL_SEC)
 index_cache = IndexCache(ttl_sec=CACHE_TTL_SEC)
 research_cache: dict[str, tuple[float, BaseModel]] = {}
+history_cache: ResearchHistoryCache[HistoricalSeries] = ResearchHistoryCache()
 
 
 def get_cached_research(key: str):
@@ -1552,21 +1558,55 @@ async def build_history_response(
     source: str,
     adjustment: str,
     fetcher,
+    market: str | None = None,
 ) -> HistoricalBarsResponse:
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     start_date, end_date = history_date_range(days)
     loop = asyncio.get_running_loop()
     request_semaphore = asyncio.Semaphore(2)
 
-    async def fetch_one(identifier: str):
-        async with request_semaphore:
-            return await loop.run_in_executor(
-                None,
-                fetcher,
-                identifier,
-                start_date,
-                end_date,
+    async def fetch_one(identifier: str) -> HistoricalSeries:
+        async def fetch_and_normalize() -> HistoricalSeries:
+            async with request_semaphore:
+                result = await loop.run_in_executor(
+                    None,
+                    fetcher,
+                    identifier,
+                    start_date,
+                    end_date,
+                )
+            dataframe = result
+            item_source = source
+            if isinstance(result, tuple) and len(result) == 2:
+                dataframe, item_source = result
+            normalized = normalize_history_dataframe(
+                dataframe,
+                symbol=identifier,
+                name=identifier,
+                source=str(item_source),
+                adjustment=adjustment,
+                limit=days,
             )
+            if not normalized.bars:
+                raise RuntimeError("无有效日线")
+            return normalized
+
+        if market is None:
+            return await fetch_and_normalize()
+        key = HistoryCacheKey(
+            market=market,
+            symbol=identifier,
+            adjustment=adjustment,
+            end_date=end_date,
+            days=days,
+            source=source,
+        )
+        return await history_cache.get_or_fetch(
+            key,
+            fetch_and_normalize,
+            fresh_ttl_sec=RESEARCH_CACHE_TTL_SEC,
+            stale_ttl_sec=RESEARCH_CACHE_STALE_TTL_SEC,
+        )
 
     results = await asyncio.gather(*[
         fetch_one(identifier)
@@ -1580,23 +1620,8 @@ async def build_history_response(
         if isinstance(result, BaseException):
             errors.append(f"{identifier}: {result}")
             continue
-        dataframe = result
-        item_source = source
-        if isinstance(result, tuple) and len(result) == 2:
-            dataframe, item_source = result
-        normalized = normalize_history_dataframe(
-            dataframe,
-            symbol=identifier,
-            name=identifier,
-            source=str(item_source),
-            adjustment=adjustment,
-            limit=days,
-        )
-        if normalized.bars:
-            series.append(normalized)
-            actual_sources.append(str(item_source))
-        else:
-            errors.append(f"{identifier}: 无有效日线")
+        series.append(result)
+        actual_sources.append(result.source)
 
     warning = None
     if errors:
@@ -1818,18 +1843,15 @@ async def get_hk_history(
     if any(re.fullmatch(r"\d{5}", symbol) is None for symbol in symbol_list):
         raise HTTPException(status_code=400, detail="symbols 必须是 5 位港股代码")
 
-    cache_key = f"hk-history:{days}:{','.join(symbol_list)}"
-    cached = get_cached_research(cache_key)
-    if cached is not None:
-        return cached
     response = await build_history_response(
         identifiers=symbol_list,
         days=days,
         source="eastmoney-hk-history",
         adjustment="qfq",
         fetcher=fetch_hk_history_dataframe,
+        market="hong-kong",
     )
-    return set_cached_research(cache_key, response) if response.series else response
+    return response
 
 
 @app.get("/api/market/futures/quotes", response_model=FuturesQuotesResponse)
@@ -1892,20 +1914,17 @@ async def get_futures_history(
     if any(symbol not in FUTURES_WATCHLIST for symbol in symbol_list):
         raise HTTPException(status_code=400, detail="symbols 必须来自受控主连观察池")
 
-    cache_key = f"futures-history:{days}:{','.join(symbol_list)}"
-    cached = get_cached_research(cache_key)
-    if cached is not None:
-        return cached
     response = await build_history_response(
         identifiers=symbol_list,
         days=days,
         source="sina-domestic-main-continuous",
         adjustment="continuous-main",
         fetcher=fetch_futures_history_dataframe,
+        market="futures",
     )
     for series in response.series:
         series.name = FUTURES_WATCHLIST[series.symbol][0]
-    return set_cached_research(cache_key, response) if response.series else response
+    return response
 
 
 @app.get("/api/market/sectors", response_model=SectorSnapshotResponse)
@@ -2000,18 +2019,15 @@ async def get_stock_history(
     if any(re.fullmatch(r"\d{6}", symbol) is None for symbol in symbol_list):
         raise HTTPException(status_code=400, detail="symbols 必须是 6 位 A 股代码")
 
-    cache_key = f"stock-history:{days}:{','.join(symbol_list)}"
-    cached = get_cached_research(cache_key)
-    if cached is not None:
-        return cached
     response = await build_history_response(
         identifiers=symbol_list,
         days=days,
         source="eastmoney-stock-history",
         adjustment="qfq",
         fetcher=fetch_stock_history_dataframe,
+        market="a-share",
     )
-    return set_cached_research(cache_key, response) if response.series else response
+    return response
 
 
 @app.get("/api/research/news", response_model=NewsResponse)

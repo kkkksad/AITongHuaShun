@@ -87,6 +87,8 @@
 - **策略状态前端解释** —— 研究管线页显示当前市场状态、路由置信度、仓位姿态、现金储备、选中策略、允许策略数量和是否允许新增 paper 仓位，不把启发式置信度描述为盈利概率。
 - **开发服务异常恢复** —— `npm run dev` 与 `npm run dev:a-share` 以 `concurrently` 监督前台 API，并对非零退出无限重启；`npm run dev:api:watch` 单独保留代码热重载。这样 API 子进程退出后不会只留下一个仍存活但无法提供 `8787` 的 watcher 父进程。
 - **移动导航状态修复** —— 980px 以下未打开的侧栏保持隐藏，菜单按钮打开抽屉、关闭按钮关闭抽屉；390px 页面无横向溢出，不再同时显示旧顶部侧栏和抽屉导航。
+- **历史研究单序列缓存接入** —— A 股、港股和国内期货历史端点按市场、代码、来源、复权、截止日期与窗口复用单序列缓存，支持 single-flight 和 stale-while-revalidate；失败的空序列不进入缓存。
+- **查询短退避恢复** —— TanStack Query 仅对网络错误和 HTTP 5xx 最多重试两次，HTTP 4xx、认证失败和不可解析响应不重试。
 
 ## 仍为静态或合成的数据
 
@@ -146,6 +148,19 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-18 history cache integration and query retry review
+D:\conda\python.exe -m pytest akshare-bridge\test_bridge.py akshare-bridge\test_research_cache.py -q
+84 tests passed; 1 dependency deprecation warning and 1 pytest cache permission warning
+
+npm test
+40 server test files passed, 690 server tests passed
+6 web test files passed, 27 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed; 2,304 modules transformed
+
+git diff --check passed with line-ending conversion warnings only.
+
 2026-07-18 weekend review, phased order budget, and audit coalescing
 D:\conda\python.exe -m pytest akshare-bridge -q
 82 bridge and research-cache tests passed, 1 dependency deprecation warning

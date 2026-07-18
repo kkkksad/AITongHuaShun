@@ -11,11 +11,12 @@ HistoricalSeries = TypeVar("HistoricalSeries")
 
 @dataclass(frozen=True, slots=True)
 class HistoryCacheKey:
-    market: Literal["a-share", "hong-kong"]
+    market: Literal["a-share", "hong-kong", "futures"]
     symbol: str
     adjustment: str
     end_date: str
     days: int
+    source: str = ""
 
 
 @dataclass(slots=True)
@@ -54,6 +55,12 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
         )
         self._entries[key] = entry
         return entry
+
+    def clear(self) -> None:
+        self._entries.clear()
+        for task in self._in_flight.values():
+            task.cancel()
+        self._in_flight.clear()
 
     def prune_expired(self) -> int:
         """Remove entries whose stale fallback window has elapsed."""
