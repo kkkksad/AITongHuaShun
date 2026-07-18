@@ -74,7 +74,7 @@ const tabs: Array<{
   { id: "stock", label: "个股研判", icon: Search, preload: loadStockPanel },
   { id: "regime", label: "板块形态", icon: Layers3, preload: loadRegimePanel },
   { id: "hong-kong", label: "港股观察", icon: Globe2, preload: loadHongKongPanel },
-  { id: "futures", label: "期货观察", icon: Activity, preload: loadFuturesPanel },
+  { id: "futures", label: "期货研判", icon: Activity, preload: loadFuturesPanel },
   { id: "events", label: "事件资讯", icon: Newspaper, preload: loadEventsPanel },
 ];
 

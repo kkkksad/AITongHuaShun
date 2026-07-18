@@ -1,10 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  buildFuturesForecast,
   buildCrossMarketStrategyContext,
   deriveCrossMarketDecision,
   summarizeGlobalMarkets,
   type CrossMarketSignalGroup,
 } from "./crossMarketStrategyContext";
+import type { HistoricalBar } from "./marketRegimeResearch";
+
+function futuresBars(count: number): HistoricalBar[] {
+  return Array.from({ length: count }, (_, index) => {
+    const close = 100 + index * 0.035 + Math.sin(index / 9) * 2.4;
+    return {
+      date: new Date(Date.UTC(2024, 0, 1 + index)).toISOString().slice(0, 10),
+      open: close - 0.12,
+      high: close + 0.8,
+      low: close - 0.7,
+      close,
+      volume: 100_000 + index * 100,
+      amount: null,
+      changePercent: null,
+      turnover: null,
+    };
+  });
+}
 
 function signal(
   tone: CrossMarketSignalGroup["tone"],
@@ -93,6 +112,33 @@ describe("deriveCrossMarketDecision", () => {
     expect(decision.riskTone).toBe("mixed");
     expect(decision.positionPosture).toBe("cash-only");
     expect(decision.preferredStrategyKeys).toEqual([]);
+  });
+});
+
+describe("buildFuturesForecast", () => {
+  it("builds time-safe five-day conditional frequencies from long history", () => {
+    const forecast = buildFuturesForecast(futuresBars(420));
+
+    expect(forecast.horizonDays).toBe(5);
+    expect(forecast.sampleSize).toBeGreaterThanOrEqual(20);
+    expect(forecast.sampleQuality).not.toBe("insufficient");
+    expect(forecast.upFrequency).not.toBeNull();
+    expect(forecast.upFrequency! + forecast.downFrequency! + forecast.rangeFrequency!).toBeCloseTo(1, 4);
+    expect(forecast.medianMaxFavorableMove).toBeGreaterThanOrEqual(0);
+    expect(forecast.medianMaxAdverseMove).toBeLessThanOrEqual(0);
+    expect(forecast.evidence.join(" ")).toContain("历史条件样本");
+    expect(forecast.invalidation.length).toBeGreaterThan(0);
+  });
+
+  it("does not invent frequencies when the history cannot supply 20 samples", () => {
+    const forecast = buildFuturesForecast(futuresBars(75));
+
+    expect(forecast.direction).toBe("insufficient");
+    expect(forecast.sampleQuality).toBe("insufficient");
+    expect(forecast.upFrequency).toBeNull();
+    expect(forecast.downFrequency).toBeNull();
+    expect(forecast.rangeFrequency).toBeNull();
+    expect(forecast.invalidation).toContain("20");
   });
 });
 

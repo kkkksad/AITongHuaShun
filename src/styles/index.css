@@ -6853,8 +6853,33 @@ select:focus-visible {
 }
 
 .futures-table {
-  min-width: 1080px;
+  min-width: 1120px;
 }
+
+.research-source-status { display:inline-flex; align-items:center; gap:5px; min-height:30px; padding:5px 8px; border:1px solid var(--border-default); border-radius:5px; color:var(--text-secondary); background:var(--bg-panel-hover); font-size:10px; font-weight:700; }
+.research-source-status.live { border-color:color-mix(in srgb, var(--color-positive) 30%, var(--border-default)); color:var(--color-positive); }
+.research-source-status.degraded { color:var(--text-muted); }
+.futures-section-heading { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin:22px 0 9px; }
+.futures-section-heading h3 { margin:2px 0 0; color:var(--text-heading); font-size:15px; }
+.futures-section-heading small { color:var(--text-muted); font-size:10px; text-align:right; }
+.futures-forecast-board { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); margin-bottom:18px; border-top:1px solid var(--border-default); }
+.futures-forecast-row { min-width:0; padding:15px 14px 14px; border-right:1px solid var(--border-default); border-bottom:1px solid var(--border-default); }
+.futures-forecast-row:nth-child(2n) { border-right:0; }
+.futures-forecast-heading,.futures-direction,.futures-forecast-stats { display:flex; align-items:center; }
+.futures-forecast-heading { justify-content:space-between; gap:12px; }
+.futures-forecast-heading > div { min-width:0; }
+.futures-forecast-heading span,.futures-forecast-heading strong { display:block; }
+.futures-forecast-heading > div > span { color:var(--text-muted); font-size:10px; }
+.futures-forecast-heading > div > strong { margin-top:3px; color:var(--text-heading); font-size:14px; }
+.futures-direction { flex:0 0 auto; gap:5px; color:var(--text-secondary); font-size:12px; font-weight:750; }
+.futures-forecast-frequencies { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin:13px 0 10px; border-top:1px solid var(--border-light); border-bottom:1px solid var(--border-light); }
+.futures-forecast-frequencies > div { min-width:0; padding:9px 8px; border-right:1px solid var(--border-light); }
+.futures-forecast-frequencies > div:last-child { border-right:0; }
+.futures-forecast-frequencies span,.futures-forecast-frequencies strong { display:block; }
+.futures-forecast-frequencies span { color:var(--text-muted); font-size:9px; }
+.futures-forecast-frequencies strong { margin-top:3px; font-size:13px; font-variant-numeric:tabular-nums; }
+.futures-forecast-stats { flex-wrap:wrap; gap:5px 11px; color:var(--text-secondary); font-size:10px; }
+.futures-forecast-row > p { margin:9px 0 0; color:var(--text-muted); font-size:10px; line-height:1.55; }
 
 .futures-strategy-context {
   display: grid;
@@ -6926,6 +6951,10 @@ select:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .futures-forecast-board { grid-template-columns:1fr; }
+  .futures-forecast-row,.futures-forecast-row:nth-child(2n) { border-right:0; }
+  .futures-section-heading { align-items:flex-start; }
+
   .futures-strategy-context > div + div {
     border-top: 1px solid var(--border-light);
     border-left: 0;
@@ -6951,6 +6980,17 @@ select:focus-visible {
   .compact-select-label select {
     min-width: 112px;
   }
+}
+
+@media (max-width: 520px) {
+  .market-range-summary { align-items:flex-start; gap:14px; }
+  .market-range-price > strong { font-size:28px; }
+  .market-range-position { min-width:0; padding-left:12px; }
+  .market-range-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .market-range-metrics > div:nth-child(2) { border-right:0; }
+  .market-range-metrics > div:nth-child(-n + 2) { border-bottom:1px solid var(--border-light); }
+  .futures-section-heading { display:block; }
+  .futures-section-heading small { display:block; margin-top:4px; text-align:left; }
 }
 
 @media (max-width: 390px) {

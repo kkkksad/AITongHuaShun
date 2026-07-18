@@ -1,5 +1,6 @@
 import type { TradingMode } from "../../shared/trading";
 import type {
+  HistoricalBar,
   HistoricalBarsResponse,
   HistoricalSeries,
 } from "./marketRegimeResearch";
@@ -59,6 +60,29 @@ export interface FuturesMarketResearchItem {
     annualizedVolatility20d: number | null;
     drawdownFrom60DayHigh: number | null;
   };
+  forecast: FuturesForecast;
+}
+
+export type FuturesTrendStructure = "uptrend" | "downtrend" | "range" | "unknown";
+export type FuturesForecastDirection = "bullish" | "bearish" | "range" | "insufficient";
+
+export interface FuturesForecast {
+  horizonDays: 5;
+  direction: FuturesForecastDirection;
+  structure: FuturesTrendStructure;
+  sampleQuality: "strong" | "usable" | "insufficient";
+  sampleSize: number;
+  upFrequency: number | null;
+  downFrequency: number | null;
+  rangeFrequency: number | null;
+  medianForwardReturn: number | null;
+  medianMaxFavorableMove: number | null;
+  medianMaxAdverseMove: number | null;
+  moveThreshold: number | null;
+  currentReturn20d: number | null;
+  currentVolatility20d: number | null;
+  evidence: string[];
+  invalidation: string;
 }
 
 export interface CrossMarketStrategyContextReport extends CrossMarketDecision {
@@ -152,6 +176,151 @@ function average(values: number[]): number {
   return values.length === 0
     ? 0
     : values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+function movingAverageAt(closes: number[], index: number, period: number): number | null {
+  if (index + 1 < period) return null;
+  return average(closes.slice(index + 1 - period, index + 1));
+}
+
+function returnAt(closes: number[], index: number, period: number): number | null {
+  if (index < period || closes[index - period] <= 0) return null;
+  return closes[index] / closes[index - period] - 1;
+}
+
+function volatilityAt(closes: number[], index: number, period = 20): number | null {
+  if (index < period) return null;
+  const sample = closes.slice(index - period, index + 1);
+  const returns = sample.slice(1).map((close, offset) => close / sample[offset] - 1);
+  const mean = average(returns);
+  const variance = average(returns.map((value) => (value - mean) ** 2));
+  return Math.sqrt(variance) * Math.sqrt(252);
+}
+
+function structureAt(closes: number[], index: number): FuturesTrendStructure {
+  const ma20 = movingAverageAt(closes, index, 20);
+  const ma60 = movingAverageAt(closes, index, 60);
+  const return20d = returnAt(closes, index, 20);
+  if (ma20 === null || ma60 === null || return20d === null) return "unknown";
+  const close = closes[index];
+  if (close > ma20 && ma20 > ma60 * 1.003 && return20d > 0.01) return "uptrend";
+  if (close < ma20 && ma20 < ma60 * 0.997 && return20d < -0.01) return "downtrend";
+  return "range";
+}
+
+function volatilityBucket(value: number | null): "low" | "normal" | "high" | "unknown" {
+  if (value === null) return "unknown";
+  if (value < 0.16) return "low";
+  if (value > 0.32) return "high";
+  return "normal";
+}
+
+function forecastInvalidation(direction: FuturesForecastDirection): string {
+  if (direction === "bullish") return "收盘跌破 20 日均线且 20 日动量转负时，本研判失效。";
+  if (direction === "bearish") return "收盘站上 20 日均线且 20 日动量转正时，本研判失效。";
+  if (direction === "range") return "收盘有效突破近 60 日区间且波动显著扩张时，震荡研判失效。";
+  return "历史条件样本少于 20 个，不形成方向研判。";
+}
+
+export function buildFuturesForecast(inputBars: HistoricalBar[]): FuturesForecast {
+  const horizonDays = 5 as const;
+  const bars = [...inputBars]
+    .filter((bar) => bar.date && bar.close > 0 && bar.high > 0 && bar.low > 0)
+    .sort((left, right) => left.date.localeCompare(right.date));
+  const closes = bars.map((bar) => bar.close);
+  const latestIndex = closes.length - 1;
+  const structure = latestIndex >= 0 ? structureAt(closes, latestIndex) : "unknown";
+  const currentReturn20d = latestIndex >= 0 ? returnAt(closes, latestIndex, 20) : null;
+  const currentVolatility20d = latestIndex >= 0 ? volatilityAt(closes, latestIndex) : null;
+  const currentVolatilityBucket = volatilityBucket(currentVolatility20d);
+  const candidates: number[] = [];
+  const broaderCandidates: number[] = [];
+
+  for (let index = 59; index + horizonDays < bars.length; index += horizonDays) {
+    const candidateStructure = structureAt(closes, index);
+    if (candidateStructure !== structure || structure === "unknown") continue;
+    broaderCandidates.push(index);
+    if (volatilityBucket(volatilityAt(closes, index)) === currentVolatilityBucket) candidates.push(index);
+  }
+
+  const selected = candidates.length >= 20 ? candidates : broaderCandidates;
+  const dailyVolatility = currentVolatility20d === null ? 0 : currentVolatility20d / Math.sqrt(252);
+  const moveThreshold = Math.max(0.008, dailyVolatility * Math.sqrt(horizonDays) * 0.35);
+  const outcomes = selected.map((index) => {
+    const entry = bars[index].close;
+    const forward = bars.slice(index + 1, index + horizonDays + 1);
+    return {
+      return: forward.at(-1)!.close / entry - 1,
+      favorable: Math.max(...forward.map((bar) => bar.high)) / entry - 1,
+      adverse: Math.min(...forward.map((bar) => bar.low)) / entry - 1,
+    };
+  });
+  const sampleSize = outcomes.length;
+  const evidence = [
+    `${sampleSize} 个不重叠历史条件样本，预测窗口为未来 ${horizonDays} 个交易日。`,
+    candidates.length >= 20
+      ? "样本同时匹配当前趋势结构与波动分层。"
+      : "严格波动分层样本不足，样本仅匹配当前趋势结构。",
+  ];
+
+  if (sampleSize < 20) {
+    return {
+      horizonDays,
+      direction: "insufficient",
+      structure,
+      sampleQuality: "insufficient",
+      sampleSize,
+      upFrequency: null,
+      downFrequency: null,
+      rangeFrequency: null,
+      medianForwardReturn: null,
+      medianMaxFavorableMove: null,
+      medianMaxAdverseMove: null,
+      moveThreshold: null,
+      currentReturn20d: currentReturn20d === null ? null : round(currentReturn20d),
+      currentVolatility20d: currentVolatility20d === null ? null : round(currentVolatility20d),
+      evidence,
+      invalidation: forecastInvalidation("insufficient"),
+    };
+  }
+
+  const upFrequency = outcomes.filter((outcome) => outcome.return > moveThreshold).length / sampleSize;
+  const downFrequency = outcomes.filter((outcome) => outcome.return < -moveThreshold).length / sampleSize;
+  const rangeFrequency = 1 - upFrequency - downFrequency;
+  const direction: FuturesForecastDirection =
+    upFrequency >= 0.48 && upFrequency - downFrequency >= 0.12
+      ? "bullish"
+      : downFrequency >= 0.48 && downFrequency - upFrequency >= 0.12
+        ? "bearish"
+        : "range";
+
+  return {
+    horizonDays,
+    direction,
+    structure,
+    sampleQuality: sampleSize >= 40 ? "strong" : "usable",
+    sampleSize,
+    upFrequency: round(upFrequency),
+    downFrequency: round(downFrequency),
+    rangeFrequency: round(rangeFrequency),
+    medianForwardReturn: round(median(outcomes.map((outcome) => outcome.return)) ?? 0),
+    medianMaxFavorableMove: round(median(outcomes.map((outcome) => outcome.favorable)) ?? 0),
+    medianMaxAdverseMove: round(median(outcomes.map((outcome) => outcome.adverse)) ?? 0),
+    moveThreshold: round(moveThreshold),
+    currentReturn20d: currentReturn20d === null ? null : round(currentReturn20d),
+    currentVolatility20d: currentVolatility20d === null ? null : round(currentVolatility20d),
+    evidence,
+    invalidation: forecastInvalidation(direction),
+  };
 }
 
 function errorMessage(error: unknown): string {
@@ -295,7 +464,6 @@ function volatility20(closes: number[]): number | null {
   const variance = average(returns.map((value) => (value - mean) ** 2));
   return Math.sqrt(variance) * Math.sqrt(252);
 }
-
 function buildFuturesItems(
   quotes: BridgeFuturesQuote[],
   history: HistoricalBarsResponse | null,
@@ -323,6 +491,7 @@ function buildFuturesItems(
         drawdownFrom60DayHigh:
           high60 && latestClose ? latestClose / high60 - 1 : null,
       },
+      forecast: buildFuturesForecast(bars),
     };
   });
 }

@@ -232,6 +232,24 @@ export interface FuturesMarketResearchItem {
     annualizedVolatility20d: number | null;
     drawdownFrom60DayHigh: number | null;
   };
+  forecast: {
+    horizonDays: 5;
+    direction: "bullish" | "bearish" | "range" | "insufficient";
+    structure: "uptrend" | "downtrend" | "range" | "unknown";
+    sampleQuality: "strong" | "usable" | "insufficient";
+    sampleSize: number;
+    upFrequency: number | null;
+    downFrequency: number | null;
+    rangeFrequency: number | null;
+    medianForwardReturn: number | null;
+    medianMaxFavorableMove: number | null;
+    medianMaxAdverseMove: number | null;
+    moveThreshold: number | null;
+    currentReturn20d: number | null;
+    currentVolatility20d: number | null;
+    evidence: string[];
+    invalidation: string;
+  };
 }
 
 export interface CrossMarketStrategyContextReport {
