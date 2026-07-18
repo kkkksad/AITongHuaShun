@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, RefreshCw, ShieldCheck, Target } from "lucide-react";
+import { RefreshCw, ShieldCheck, Target } from "lucide-react";
 import { fetchDailyCandidates } from "../lib/tradingApi";
 import type { DailyCandidate, DailyCandidateAction } from "../lib/tradingApi";
+import { ResearchQueryState } from "./ResearchQueryState";
 
 function formatPercent(value: number): string {
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
@@ -59,16 +60,14 @@ export function DailyCandidates() {
         </button>
       </div>
 
-      {candidatesQuery.isLoading && (
-        <div className="research-empty">正在扫描当前行情候选…</div>
-      )}
-
-      {candidatesQuery.isError && (
-        <div className="research-alert">
-          <AlertTriangle size={16} />
-          <span>今日候选暂时不可用，请确认交易后端和行情桥接已启动。</span>
-        </div>
-      )}
+      <ResearchQueryState
+        dataUpdatedAt={candidatesQuery.dataUpdatedAt}
+        hasData={Boolean(report)}
+        isError={candidatesQuery.isError}
+        isLoading={candidatesQuery.isLoading}
+        loadingText="正在扫描当前行情候选…"
+        unavailableText="今日候选暂时不可用，请确认交易后端和行情桥接已启动。"
+      />
 
       {report && (
         <>
