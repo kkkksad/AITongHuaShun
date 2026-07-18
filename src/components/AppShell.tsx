@@ -22,6 +22,7 @@ import { useTheme } from "../hooks/useTheme";
 import { useI18n, type Locale } from "../i18n";
 import type { TradingMode } from "../../shared/trading";
 import type { MarketDataProviderName } from "../lib/tradingApi";
+import { filterQuickNavigationItems, getQuickNavigationKeyAction } from "../lib/quickNavigation";
 import { MobileNav } from "./MobileNav";
 
 export type ViewId = "overview" | "strategy" | "market" | "account" | "learning" | "settings";
@@ -104,17 +105,28 @@ export function AppShell({
     connecting: t("connection.connecting"),
     offline: t("connection.offline"),
   };
+  const quickKeywords: Record<ViewId, string[]> = locale === "zh" ? {
+    overview: ["首页", "工作台"],
+    market: ["行情", "研判", "股票"],
+    strategy: ["回测", "验证", "实验"],
+    account: ["模拟下单", "下单", "订单", "持仓", "风控"],
+    learning: ["学习", "研究进度", "复盘"],
+    settings: ["配置", "系统"],
+  } : {
+    overview: ["home", "workspace"],
+    market: ["quotes", "stocks"],
+    strategy: ["backtest", "validation"],
+    account: ["paper order", "orders", "positions", "risk"],
+    learning: ["pipeline", "review"],
+    settings: ["configuration", "system"],
+  };
   const quickItems = navigationGroups.flatMap((group) => group.items.map((item) => ({
     ...item,
     group: group.label,
+    title: titles[item.id].title,
+    keywords: quickKeywords[item.id],
   })));
-  const normalizedQuickQuery = quickQuery.trim().toLocaleLowerCase();
-  const quickMatches = quickItems.filter((item) => (
-    !normalizedQuickQuery ||
-    `${item.label} ${item.group} ${titles[item.id].title}`
-      .toLocaleLowerCase()
-      .includes(normalizedQuickQuery)
-  ));
+  const quickMatches = filterQuickNavigationItems(quickItems, quickQuery);
 
   const handleQuickSelect = (view: ViewId) => {
     handleNavClick(view);
@@ -247,6 +259,7 @@ export function AppShell({
               <div className="search-box">
                 <Search size={17} />
                 <input
+                  aria-autocomplete="list"
                   aria-controls="quick-nav-results"
                   aria-expanded={quickOpen}
                   aria-label={locale === "zh" ? "快速跳转" : "Quick navigation"}
@@ -259,13 +272,13 @@ export function AppShell({
                   }}
                   onFocus={() => setQuickOpen(true)}
                   onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      setQuickOpen(false);
-                      return;
-                    }
-                    if (event.key === "Enter" && quickMatches[0]) {
+                    const action = getQuickNavigationKeyAction(event.key, quickMatches);
+                    if (action.type === "close") {
                       event.preventDefault();
-                      handleQuickSelect(quickMatches[0].id);
+                      setQuickOpen(false);
+                    } else if (action.type === "select") {
+                      event.preventDefault();
+                      handleQuickSelect(action.id);
                     }
                   }}
                   placeholder={locale === "zh" ? "快速跳转页面" : "Go to page"}
@@ -281,6 +294,7 @@ export function AppShell({
                     const Icon = item.icon;
                     return (
                       <button
+                        aria-selected={activeView === item.id}
                         className={activeView === item.id ? "active" : ""}
                         key={item.id}
                         onMouseDown={(event) => event.preventDefault()}
