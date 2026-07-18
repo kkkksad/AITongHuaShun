@@ -1,6 +1,6 @@
 ﻿# 当前状态
 
-**核对日期：** 2026-07-17
+**核对日期：** 2026-07-18
 
 ## 已实现
 
@@ -56,9 +56,9 @@
 - **自动执行完整留痕** —— 每次本地 paper 自动运行都会追加 `paper-auto-execution.run` 审计，记录交易时段、计划质量、订单状态和跳过原因；即使没有订单或处于盘外，也能在重启后通过 JSON 审计复盘。
 - **七天交易历史留存** —— JSON 仓储默认按 `TRADING_HISTORY_RETENTION_DAYS=7` 清理已结束订单和审计事件，同时永久保留账户现金、当前持仓、暂停状态、序列号和未完成订单，防止本地状态文件无限增长。
 - **KAIROS 防守型策略组** —— 新增低波趋势、安静回踩和资金盾牌三种确定性研究策略，内置优化策略总数增至 12；排行榜与纸面计划更重视最大回撤、Sortino、Sharpe、盈利因子和候选防守分，低分候选会保持观望。结果仍是回测/本地 paper 研究，不是实际收益。
-- **累计资金预留与保守执行节奏** —— 同一批 paper 买单会按顺序扣减预计成交额和手续费，默认保留权益的 10% 现金，并将自动执行收紧为每轮最多 1 笔、每天最多 4 笔；当日笔数从持久化订单统计，服务重启不会重置日限额。提交前再按最新报价、滑点和佣金复核，资金不足时只记录跳过原因，不创建订单。
+- **累计资金预留与保守执行节奏** —— 同一批 paper 买单会按顺序扣减预计成交额和手续费，默认保留权益的 10% 现金，并将自动执行收紧为每轮最多 1 笔、每天最多 4 笔；开盘/上午/下午/尾盘累计最多使用全天额度的 50%/75%/100%/100%，避免开盘数分钟内耗尽全天额度。`回撤控制` 硬止损可绕过阶段预算，但不能绕过全天上限、T+1、幂等或风险引擎。提交前仍按最新报价、滑点和佣金复核，资金不足时只记录跳过原因，不创建订单。
 - **逐笔交易理由审计** —— 新自动订单会写入 `paper-auto-execution.decision`，保留策略名称、买卖理由、规则检查、预计金额和最终状态；修复前缺失的历史理由明确标注缺失，不做事后推测。
-- **每日盘面与交易复盘** —— `/api/research/daily-review` 聚合观察池涨跌家数、主要指数、账户权益、持仓、订单、手续费和逐笔理由，并在研究管线页展示策略优点、问题和下一步改进；复盘会识别同一标的单日重复执行普通市场状态减仓，并报告 `risk-off` 下实际仓位与防守现金目标的偏差。
+- **每日盘面与交易复盘** —— `/api/research/daily-review` 聚合观察池涨跌家数、主要指数、账户权益、持仓、订单、手续费和逐笔理由，并在研究管线页展示策略优点、问题和下一步改进。周末及工作日开盘前自动回看最近工作日；复盘日收益由开盘现金、开盘持仓昨收、当日成交和手续费重建，与累计 paper 收益分开，昨收缺失时保持不可用。当前尚未接交易所节假日日历。
 - **SuperMind 模拟盘信号桥** —— `/api/integrations/supermind/signal-package` 将本地 paper 操作计划转换为可人工复核的 SuperMind 信号 CSV 和云端策略模板；该接口不登录同花顺、不保存密码/Cookie/Token，也不会自动提交订单。
 - **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
 - **真实板块与历史日线桥接** —— AkShare 桥接新增真实行业板块、行业日线和个股前复权日线接口；行业快照优先东方财富并回退到同花顺行业一览，行业历史优先东方财富并回退到同花顺行业指数，个股历史依次尝试东方财富、腾讯和新浪。请求限制为最多 20 个板块、12 只股票和 60 至 500 个交易日，返回实际来源、抓取时间、复权语义与部分失败警告。
@@ -68,7 +68,7 @@
 - **真实板块研究前端** —— 市场页新增“板块展望 / 形态识别”模块；旧 `FlowPanel` 不再读取静态 `sectorFlows`，上游不可用时显示降级原因。桌面与手机宽表格将横向滚动限制在模块内部。
 - **市场状态自适应策略路由** —— `AdaptiveStrategyRouter` 使用真实行业 20/60 日收益、均线斜率、波动率、板块宽度和个股形态宽度，确定性输出六类市场状态、置信度、允许/禁用策略、仓位姿态、现金储备和新增仓位缩放。它只在 AkShare 只读行情模式下参与本地 paper 计划；Mock 模式继续保留原有确定性演示行为。
 - **策略路由 1.1 明确操作手册** —— 六类市场状态现在分别输出优先策略、适用条件、回避条件、复核触发器以及开盘/上午/下午/尾盘最大 paper 仓位；可用的市场宽度必须确认上升趋势，宽度偏弱会进入风险标记。该手册是确定性研究规则，不是校准后的盈利概率。
-- **分时资金节奏与执行前预检** —— 本地 paper 自动执行器在 09:30、10:15、13:00 和 14:15 四个阶段重新评估，先完成每日/单轮笔数、幂等、行情、现金储备和买入后总仓位检查，再形成精确的本轮模拟动作；降风险卖出不受买入仓位上限限制。
+- **分时资金节奏与执行前预检** —— 本地 paper 自动执行器在 09:30、10:15、13:00 和 14:15 四个阶段重新评估，先完成每日/阶段/单轮笔数、幂等、行情、现金储备和买入后总仓位检查，再形成精确的本轮模拟动作；普通降风险卖出不受买入仓位上限限制，但仍受阶段订单预算约束。
 - **预算化 WxPusher 盘中简报** —— 默认每天最多尝试 8 条并硬限制为 10 条，正常发送四个阶段简报，包含当前/计划后 paper 持仓、精确模拟动作、现金、仓位、策略条件、前三板块和风险/数据警告。同阶段实质变化默认冷却 20 分钟，价格变化不触发重发，发送失败也计入额度且审计不保存凭据。
 - **全市场偏弱明确提醒** —— 当前配置股票池至少 10 只、平均涨跌幅不高于 -0.8% 且上涨/下跌家数比不高于 0.67 时，WxPusher 阶段简报标题和正文明确显示“市场不宜操作”，提示暂停新增 paper 仓位；该状态进入通知签名和审计，转弱可绕过同阶段冷却，但仍受每日消息预算限制。
 - **真实新股申购研究** —— AkShare 桥接新增东方财富新股申购表只读端点，Fastify `/api/research/ipo-subscriptions` 按北京时间筛选前后 30 天的今日/即将申购、待上市和近期上市记录；只用发行价与发行/行业市盈率形成 0-100 启发式规则分，未定价时等待定价，上市后涨幅不参与历史建议。市场页提供三个标签和来源/风险展示，不读取账户资格或自动申购。
@@ -83,7 +83,7 @@
 - **持仓优先的历史形态研究** —— 生成市场状态前会把当前 paper 持仓放在个股历史研究队列前部，去重后仍限制最多 12 只，避免候选池挤掉真正需要退出判断的已有仓位。
 - **趋势恶化减仓与现金观察** —— `risk-off` 下，高置信度“趋势恶化”且 T+1 可卖的持仓会生成有上限的半仓减仓计划；原有 3% 亏损退出仍是更严格的全量止损。健康趋势和洗盘候选明确保持观察；从计划开始就没有任何一手可负担候选时，只生成一条现金观察，不再重复列出十条注定资金不足的买入。
 - **风险收缩日内减仓纪律** —— 普通市场状态减仓和风险仓位再平衡按持久化订单限制为同一标的每个交易日最多一轮，避免多次“减半”突破原风险预算；3% 硬止损仍可覆盖该限制。`risk-off` 且仓位高于现金目标时，计划优先对趋势恶化、信号不清或数据不足且 T+1 可卖的持仓执行最多四分之一仓位的一手级分阶段减仓，不机械卖出健康趋势或洗盘候选。
-- **盘外自动执行降噪** —— `PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY=true` 时，定时器只在 A 股交易时段运行；启动和手动触发仍各自保留一条盘外原因审计，但盘前、午休、盘后和周末不再每分钟写入重复跳过记录，降低本地 JSON 增长和无效研究请求。
+- **自动执行审计降噪** —— `PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY=true` 时，定时器只在 A 股交易时段运行；盘前、午休、盘后和周末不再每分钟写入重复跳过记录。交易时段内相同的无订单 timer 结果只在状态变化或 15 分钟心跳时持久化；订单提交、拒绝、manual、startup 和决策审计仍逐笔保留。
 - **策略状态前端解释** —— 研究管线页显示当前市场状态、路由置信度、仓位姿态、现金储备、选中策略、允许策略数量和是否允许新增 paper 仓位，不把启发式置信度描述为盈利概率。
 - **开发服务异常恢复** —— `npm run dev` 与 `npm run dev:a-share` 以 `concurrently` 监督前台 API，并对非零退出无限重启；`npm run dev:api:watch` 单独保留代码热重载。这样 API 子进程退出后不会只留下一个仍存活但无法提供 `8787` 的 watcher 父进程。
 - **移动导航状态修复** —— 980px 以下未打开的侧栏保持隐藏，菜单按钮打开抽屉、关闭按钮关闭抽屉；390px 页面无横向溢出，不再同时显示旧顶部侧栏和抽屉导航。
@@ -146,6 +146,27 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-18 weekend review, phased order budget, and audit coalescing
+D:\conda\python.exe -m pytest akshare-bridge -q
+82 bridge and research-cache tests passed, 1 dependency deprecation warning
+
+npm test
+40 server test files passed
+686 server tests passed
+5 web test files passed
+24 web tests passed
+
+npm run build
+TypeScript checks and Vite production build passed; 2,303 modules transformed
+
+Runtime review: 2026-07-18 was Saturday, so no new local paper order was expected or created. The upgraded report automatically reviewed Friday 2026-07-17: the configured 100-stock snapshot was risk-off with 25 advancers, 74 decliners, and -2.37% average change. Four local paper sells filled between 09:31 and 09:35, with 2,505 yuan gross sell notional and 20 yuan commission.
+
+The mark-to-market reconstruction used current cash, current positions, Friday fills, and previous closes. It reported opening equity 10,129 yuan, closing equity 10,198 yuan, review-day paper PnL +69 yuan (+0.68%), and cumulative paper PnL +198 yuan (+1.98%). Closing cash was 4,416 yuan, market value 5,782 yuan, cash ratio 43.3%, and invested ratio 56.7%. These are local simulation results, not real returns.
+
+The review correctly flagged that all four daily automatic order slots were consumed during the opening phase. The executor now limits cumulative opening/morning/afternoon/closing use to 50%/75%/100%/100% of the daily cap, while hard-stop reductions can bypass only the phase budget. Unchanged timer audits are persisted on state changes or a 15-minute heartbeat; decisions, submissions, rejections, manual runs, and startup runs remain complete.
+
+The existing 2.6 MB JSON state still contains 2,965 historical audit events created before this change; it is not rewritten destructively and will shrink through the configured seven-day retention window. Authenticated browser checks showed the desktop body at 1265/1265 and the 390 x 844 body at 375/375; the review panel was 353/353, all three summary cards fit, and a clean tab recorded no application console errors.
+
 2026-07-17 real A-share robustness, domestic futures, and cross-market strategy context
 D:\conda\python.exe -m pytest akshare-bridge\test_bridge.py -q
 76 bridge tests passed, 1 dependency deprecation warning

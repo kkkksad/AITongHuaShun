@@ -318,6 +318,8 @@ describe("buildDailyMarketReview", () => {
         filledSells: 1,
       },
     });
+    expect(report.strategyReview.summary).toContain("2026-07-17");
+    expect(report.strategyReview.summary).not.toContain("今日");
   });
 
   it("does not substitute cumulative pnl when previous-close inputs are missing", () => {

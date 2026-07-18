@@ -538,8 +538,8 @@ export function buildDailyMarketReview(
     strategyReview: {
       grade,
       summary: issues.length > 0
-        ? `今日本地 paper 流程发现 ${issues.length} 项需要改进的问题，先修执行纪律，再评价策略收益。`
-        : "今日本地 paper 执行未发现明显纪律问题，仍需继续积累样本。",
+        ? `${tradingDate} 本地 paper 流程发现 ${issues.length} 项需要改进的问题，先修执行纪律，再评价策略收益。`
+        : `${tradingDate} 本地 paper 执行未发现明显纪律问题，仍需继续积累样本。`,
       strengths,
       issues,
       nextActions,

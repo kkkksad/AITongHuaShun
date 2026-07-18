@@ -1,5 +1,7 @@
 # 休市复盘与自动执行节奏升级实施计划
 
+**状态：** 已完成（2026-07-18）
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 让周末复盘自动指向最近交易日，提供可解释的复盘日盯市收益，并防止开盘数分钟内耗尽全天自动订单额度和重复写入无变化审计。
@@ -23,9 +25,9 @@
 - Modify: `server/research/dailyMarketReview.test.ts`
 - Modify: `server/research/dailyMarketReview.ts`
 
-- [ ] 增加周六 `2026-07-18` 自动回退到周五 `2026-07-17` 的测试，并确认周五订单进入报告。
-- [ ] 增加盯市收益测试：从当前现金反推开盘现金，从当前持仓和当日买卖反推开盘持仓，以昨收计算开盘权益。
-- [ ] 缺少开盘持仓昨收时断言 `performanceBasis="unavailable"` 和缺失代码，不使用累计收益替代。
+- [x] 增加周六 `2026-07-18` 自动回退到周五 `2026-07-17` 的测试，并确认周五订单进入报告。
+- [x] 增加盯市收益测试：从当前现金反推开盘现金，从当前持仓和当日买卖反推开盘持仓，以昨收计算开盘权益。
+- [x] 缺少开盘持仓昨收时断言 `performanceBasis="unavailable"` 和缺失代码，不使用累计收益替代。
 
 目标契约：
 
@@ -49,10 +51,10 @@ dateBasis: "current-weekday" | "weekend-previous-weekday";
 - Modify: `server/trading/paperAutoExecutor.test.ts`
 - Modify: `server/trading/paperAutoExecutor.ts`
 
-- [ ] 断言全天上限 4 笔时，开盘/上午/下午/尾盘累计预算分别为 2/3/4/4。
-- [ ] 断言同签名 timer 运行在 15 分钟内不重复落盘，状态变化、心跳、订单提交、manual 和 startup 必须落盘。
-- [ ] 在预检中应用阶段累计预算，并允许 `回撤控制` 仅绕过阶段预算。
-- [ ] 状态接口返回当前阶段累计上限和剩余额度。
+- [x] 断言全天上限 4 笔时，开盘/上午/下午/尾盘累计预算分别为 2/3/4/4。
+- [x] 断言同签名 timer 运行在 15 分钟内不重复落盘，状态变化、心跳、订单提交、manual 和 startup 必须落盘。
+- [x] 在预检中应用阶段累计预算，并允许 `回撤控制` 仅绕过阶段预算。
+- [x] 状态接口返回当前阶段累计上限和剩余额度。
 
 核心规则：
 
@@ -71,10 +73,10 @@ if (!isHardStop && todaySubmitted >= phaseLimit) {
 - Modify: `src/lib/tradingApi.ts`
 - Modify: `src/components/LearningPipeline.tsx`
 
-- [ ] Fastify 将 `PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS` 传给复盘构建器。
-- [ ] API 契约测试覆盖日期依据、复盘日收益口径和累计收益字段。
-- [ ] 前端在周末显示“最近交易日复盘”，无订单文案引用报告日期。
-- [ ] 前端把复盘日收益和累计 paper 收益分开显示，不再把累计收益标成“当日”。
+- [x] Fastify 将 `PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS` 传给复盘构建器。
+- [x] API 契约测试覆盖日期依据、复盘日收益口径和累计收益字段。
+- [x] 前端在周末显示“最近交易日复盘”，无订单文案引用报告日期。
+- [x] 前端把复盘日收益和累计 paper 收益分开显示，不再把累计收益标成“当日”。
 
 ## Task 4：文档与验证
 
@@ -84,10 +86,10 @@ if (!isHardStop && todaySubmitted >= phaseLimit) {
 - Modify: `docs/product/future-optimization.md`
 - Modify: `docs/plans/2026-07-18-daily-review-and-execution-pacing.md`
 
-- [ ] 记录 2026-07-18 为周六无交易，最近交易日 2026-07-17 有 4 笔卖出且 09:35 前用完额度。
-- [ ] 记录当前账户现金、持仓、复盘日/累计收益口径和 15 分钟审计心跳边界。
-- [ ] 运行聚焦 Vitest、`npm test`、`npm run build`、`git diff --check` 和凭据扫描。
-- [ ] 在认证桌面和 390 x 844 页面核验复盘日期、收益标签、无溢出和控制台。
+- [x] 记录 2026-07-18 为周六无交易，最近交易日 2026-07-17 有 4 笔卖出且 09:35 前用完额度。
+- [x] 记录当前账户现金、持仓、复盘日/累计收益口径和 15 分钟审计心跳边界。
+- [x] 运行聚焦 Vitest、`npm test`、`npm run build`、`git diff --check` 和凭据扫描。
+- [x] 在认证桌面和 390 x 844 页面核验复盘日期、收益标签、无溢出和控制台。
 
 标准命令：
 
@@ -97,3 +99,11 @@ npm test
 npm run build
 git diff --check
 ```
+
+## 完成结果
+
+- 2026-07-18 为周六，没有本地 paper 订单；报告自动回看 2026-07-17，工作日开盘前也使用同一最近工作日规则。
+- 7 月 17 日复盘日 paper 盯市收益为 +69 元（+0.68%），累计 paper 收益为 +198 元（+1.98%）；两种口径已经分开。
+- 开盘/上午/下午/尾盘累计自动订单预算为全天上限的 50%/75%/100%/100%；硬止损只能绕过阶段预算。
+- 无变化 timer 审计改为状态变化或 15 分钟心跳落盘；历史 2,965 条审计不做破坏性重写，继续按七天规则淘汰。
+- Python 桥与研究缓存 82 个测试、服务端 686 个测试、前端 24 个测试和 2,303 模块生产构建通过；桌面与 390 x 844 认证页面无溢出，干净页面无应用控制台错误。
