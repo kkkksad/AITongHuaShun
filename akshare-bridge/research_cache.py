@@ -55,6 +55,17 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
         self._entries[key] = entry
         return entry
 
+    def prune_expired(self) -> int:
+        """Remove entries whose stale fallback window has elapsed."""
+        now = self._now()
+        expired_keys = [
+            key
+            for key, entry in self._entries.items()
+            if now >= entry.stale_until and key not in self._in_flight
+        ]
+        for key in expired_keys:
+            self._entries.pop(key, None)
+        return len(expired_keys)
     async def get_or_fetch(
         self,
         key: HistoryCacheKey,

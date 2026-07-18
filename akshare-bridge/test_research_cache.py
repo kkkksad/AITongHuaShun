@@ -318,3 +318,38 @@ def test_expired_cache_blocks_until_new_value_is_fetched():
         assert cache.get_fresh(key) == refreshed_value
 
     run(scenario())
+
+
+def test_prune_expired_removes_only_entries_past_stale_window():
+    clock = {"now": 1_000.0}
+    cache = ResearchHistoryCache(now=lambda: clock["now"])
+    expired_key = HistoryCacheKey(
+        market="a-share",
+        symbol="600519",
+        adjustment="qfq",
+        end_date="2026-07-17",
+        days=120,
+    )
+    stale_key = HistoryCacheKey(
+        market="hong-kong",
+        symbol="00700",
+        adjustment="qfq",
+        end_date="2026-07-17",
+        days=180,
+    )
+    fresh_key = HistoryCacheKey(
+        market="a-share",
+        symbol="300750",
+        adjustment="qfq",
+        end_date="2026-07-17",
+        days=120,
+    )
+
+    cache.set(expired_key, "expired", fresh_ttl_sec=5, stale_ttl_sec=10)
+    cache.set(stale_key, "stale", fresh_ttl_sec=5, stale_ttl_sec=30)
+    clock["now"] = 1_015.0
+    cache.set(fresh_key, "fresh", fresh_ttl_sec=10, stale_ttl_sec=20)
+
+    assert cache.prune_expired() == 1
+    assert expired_key not in cache._entries
+    assert cache._entries[stale_key].value == "stale"
