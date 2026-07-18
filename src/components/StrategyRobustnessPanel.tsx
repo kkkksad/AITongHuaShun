@@ -1,18 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  Database,
-  RefreshCw,
-  ShieldCheck,
-} from "lucide-react";
+import { AlertTriangle, Database, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   fetchStrategyRobustness,
   type StrategyRobustnessFamily,
 } from "../lib/tradingApi";
-import {
-  formatResearchDataTime,
-  getResearchRefreshState,
-} from "../lib/researchQueryPresentation";
+import { ResearchQueryState } from "./ResearchQueryState";
 
 const familyLabels: Record<StrategyRobustnessFamily, string> = {
   trend: "趋势",
@@ -40,10 +32,6 @@ export function StrategyRobustnessPanel() {
     gcTime: 30 * 60_000,
   });
   const report = reportQuery.data;
-  const refreshState = getResearchRefreshState({
-    hasData: Boolean(report),
-    isError: reportQuery.isError,
-  });
   const entries = report?.entries ?? [];
   const passCount = entries.filter((entry) => entry.stabilityGate === "pass").length;
 
@@ -66,28 +54,17 @@ export function StrategyRobustnessPanel() {
         </button>
       </div>
 
-      {reportQuery.isLoading && (
-        <div className="research-empty">正在读取真实前复权日线并运行分窗回测...</div>
-      )}
-
-      {refreshState.showBlockingError && (
-        <div className="research-alert">
-          <AlertTriangle size={16} />
-          <span>真实历史稳健性验证暂时不可用，请检查后端与 AkShare 桥接。</span>
-        </div>
-      )}
+      <ResearchQueryState
+        dataUpdatedAt={reportQuery.dataUpdatedAt}
+        hasData={Boolean(report)}
+        isError={reportQuery.isError}
+        isLoading={reportQuery.isLoading}
+        loadingText="正在读取真实前复权日线并运行分窗回测..."
+        unavailableText="真实历史稳健性验证暂时不可用，请检查后端与 AkShare 桥接。"
+      />
 
       {report && (
         <>
-          {refreshState.showStaleWarning && (
-            <div className="research-alert regime-warning">
-              <AlertTriangle size={16} />
-              <span>
-                后台刷新失败，继续显示缓存结果（最后成功更新：
-                {formatResearchDataTime(reportQuery.dataUpdatedAt)}）。
-              </span>
-            </div>
-          )}
           <div className="research-summary-grid">
             <article>
               <span>历史股票</span>
