@@ -683,6 +683,18 @@ select:focus-visible {
   color: var(--brand-mark-color);
 }
 
+.overview-banner .overview-status-note {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--warning) 36%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  color: var(--brand-mark-color);
+  font-size: 0.78rem;
+}
+
 .quick-nav {
   position: relative;
 }

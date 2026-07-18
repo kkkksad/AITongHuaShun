@@ -12,6 +12,10 @@ import {
   type SectorOutlookDirection,
   type StockRegime,
 } from "../lib/tradingApi";
+import {
+  formatResearchDataTime,
+  getResearchRefreshState,
+} from "../lib/researchQueryPresentation";
 
 type RegimeView = "sectors" | "stocks";
 
@@ -69,6 +73,10 @@ export function MarketRegimePanel() {
     staleTime: 10 * 60_000,
   });
   const report = regimeQuery.data;
+  const refreshState = getResearchRefreshState({
+    hasData: Boolean(report),
+    isError: regimeQuery.isError,
+  });
 
   return (
     <section className="panel market-regime-panel">
@@ -116,10 +124,18 @@ export function MarketRegimePanel() {
         <div className="research-empty">正在读取行业板块与 180 日历史行情…</div>
       )}
 
-      {regimeQuery.isError && (
+      {refreshState.showBlockingError && (
         <div className="research-alert">
           <AlertTriangle size={16} />
           <span>真实历史研究暂不可用，请检查 API 与 AkShare 行情桥接。</span>
+        </div>
+      )}
+      {refreshState.showStaleWarning && (
+        <div className="research-alert regime-warning">
+          <AlertTriangle size={16} />
+          <span>
+            本次刷新失败，继续显示缓存数据 · 上次成功更新 {formatResearchDataTime(regimeQuery.dataUpdatedAt)}
+          </span>
         </div>
       )}
 

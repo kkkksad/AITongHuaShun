@@ -372,7 +372,7 @@ export function useTradingBackend(
 
   const bootstrap = enabled ? bootstrapQuery.data : undefined;
   const backendError = enabled
-    ? transportError ?? errorMessage(bootstrapQuery.error, "交易后端不可用")
+    ? transportError ?? (bootstrap ? undefined : errorMessage(bootstrapQuery.error, "交易后端不可用"))
     : undefined;
   const pendingAction =
     submitMutation.isPending ||

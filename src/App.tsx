@@ -230,8 +230,12 @@ function App() {
           <h2>今日研究与模拟账户</h2>
           <p>
             {providerLabel} · {trading.mode} · 真实交易关闭
-            {trading.error ? ` · ${trading.error}` : ""}
           </p>
+          {trading.error && (
+            <p className="overview-status-note" role="status">
+              {trading.connectionState === "connected" ? "最近状态" : "连接异常"}：{trading.error}
+            </p>
+          )}
           <div className="overview-actions" aria-label="核心工作流">
             <button onClick={() => navigate("/market")} type="button">
               <ChartNoAxesCombined size={16} /><span>市场研判</span><ArrowRight size={14} />
@@ -338,20 +342,40 @@ function App() {
               <span>正常</span>
             </div>
             <div>
-              <span className="status-dot amber" />
+              <span
+                className={
+                  trading.connectionState !== "connected"
+                    ? "status-dot red"
+                    : trading.marketDataProvider === "akshare"
+                      ? "status-dot"
+                      : "status-dot amber"
+                }
+              />
               <div>
                 <strong>行情数据</strong>
-                <p>本地模拟快照</p>
+                <p>
+                  {trading.connectionState !== "connected"
+                    ? "等待后端与行情快照"
+                    : trading.marketDataProvider === "akshare"
+                      ? `AkShare 只读 · ${marketAsOf}`
+                      : "本地确定性模拟快照"}
+                </p>
               </div>
-              <span>模拟</span>
+              <span>
+                {trading.connectionState !== "connected"
+                  ? "离线"
+                  : trading.marketDataProvider === "akshare"
+                    ? "真实只读"
+                    : "模拟"}
+              </span>
             </div>
             <div>
               <span className="status-dot" />
               <div>
                 <strong>订单执行</strong>
-                <p>仅限本地撮合</p>
+                <p>PaperBroker 本地撮合，真实订单关闭</p>
               </div>
-              <span>隔离</span>
+              <span>Paper</span>
             </div>
           </div>
         </section>

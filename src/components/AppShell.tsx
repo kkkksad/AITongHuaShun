@@ -204,7 +204,9 @@ export function AppShell({
           </div>
           <p>
             {connectionState === "connected"
-              ? t("sidebar.note.connected")
+              ? marketDataProvider === "akshare"
+                ? t("sidebar.note.connected.akshare")
+                : t("sidebar.note.connected")
               : t("sidebar.note.offline")}
           </p>
         </div>

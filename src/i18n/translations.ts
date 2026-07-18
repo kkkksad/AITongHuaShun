@@ -31,7 +31,8 @@ export const translations = {
 
     "brand.subtitle": "AI A股研究系统",
     "sidebar.note.title": "研究环境",
-    "sidebar.note.connected": "行情与账户来自本地模拟后端，真实交易保持关闭。",
+    "sidebar.note.connected": "本地模拟行情与 paper 账户已连接，真实交易保持关闭。",
+    "sidebar.note.connected.akshare": "AkShare 真实只读行情与本地 paper 账户已连接，真实交易保持关闭。",
     "sidebar.note.offline": "后端未连接，页面保留静态研究数据作为降级展示。",
     "profile.name": "Research Desk",
     "profile.role": "本地工作区",
@@ -157,7 +158,9 @@ export const translations = {
     "brand.subtitle": "AI A-share Research",
     "sidebar.note.title": "Research Environment",
     "sidebar.note.connected":
-      "Market data and account from local simulation backend. Live trading is disabled.",
+      "Local simulated market data and paper account are connected. Live trading is disabled.",
+    "sidebar.note.connected.akshare":
+      "AkShare read-only market data and the local paper account are connected. Live trading is disabled.",
     "sidebar.note.offline":
       "Backend disconnected. Static research data shown as fallback.",
     "profile.name": "Research Desk",
