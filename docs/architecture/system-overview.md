@@ -45,6 +45,7 @@ server/
   broker/        PaperBroker 模拟撮合、受控纸面适配器与只读行情原型
   market/        MockMarket、HTTP 与 AkShare 只读行情适配器
   research/      策略排行、真实稳健性、跨市场状态、候选池、板块/形态研究、纸面计划与 SuperMind 信号包
+  notifications/ WxPusher 四时点简报、重要事件去重与十条发送预算
   trading/       本地 paper 自动执行器
   realtime/      WebSocket 连接与广播
   risk/          风险规则
@@ -83,6 +84,8 @@ shared/
 8. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
 9. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
 10. 新账户、持仓和订单状态再次通过已认证 WebSocket 推送。
+
+WxPusher 通知属于 paper 观察域，不属于订单执行域。自动执行器在四个盘中阶段生成上下文，通知器只在 09:35、10:30、13:30、14:50 开放固定简报；`risk-off`、数据降级、paper 拒单或暂停可以使用事件预留。同类事件按交易日审计去重，多种事件同轮合并，全部成功/失败请求共享每天十条硬上限。
 
 Fastify 使用 Helmet 设置基础安全响应头，并使用 Rate Limit 对 HTTP 请求进行全局限流。统一错误处理必须保留插件产生的 4xx 状态，不能把 429 改写为 500。
 Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabilities` 声明只读行情与纸面执行边界。

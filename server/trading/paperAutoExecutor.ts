@@ -1,7 +1,10 @@
 import type { OrderRecord, OrderRequest } from "../../shared/trading";
 import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
-import type { PaperPlanNotifier } from "../notifications/paperPlanNotifier";
+import {
+  summarizePaperOrders,
+  type PaperPlanNotifier,
+} from "../notifications/paperPlanNotifier";
 import { buildCurrentPaperTradingPlan } from "../research/paperTradingPlanService";
 import { assessMarketSnapshot } from "../research/dailyMarketReview";
 import type {
@@ -337,6 +340,10 @@ export class PaperAutoExecutor {
         account: this.options.system.broker.getAccount(),
         positions: this.options.system.broker.getPositions(),
         executableOperations: preparedOperations.map(({ operation }) => operation),
+        executionSummary: summarizePaperOrders(
+          this.options.system.broker.getOrders(10_000),
+          plan.tradingDate,
+        ),
         policy,
         marketContext: {
           sourceStatus:
@@ -360,6 +367,15 @@ export class PaperAutoExecutor {
             realResearchDataFeed.news.warning,
             realResearchDataFeed.globalMarkets.warning,
           ].filter((warning): warning is string => Boolean(warning)))],
+          newsHighlights: realResearchDataFeed.news.items.slice(0, 2).map((item) => ({
+            source: item.source,
+            title: item.title,
+          })),
+          globalImpact: {
+            direction: realResearchDataFeed.impact.direction,
+            summary: realResearchDataFeed.impact.summary,
+            drivers: realResearchDataFeed.impact.drivers.slice(0, 3),
+          },
         },
       });
 

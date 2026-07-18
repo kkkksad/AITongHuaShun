@@ -398,7 +398,6 @@ export async function buildTradingApp(
     sender: wxPusherSender,
     store: system.store,
     dailyMessageLimit: options.config.WXPUSHER_DAILY_MESSAGE_LIMIT,
-    materialCooldownMs: options.config.WXPUSHER_MATERIAL_COOLDOWN_MS,
     clock: options.clock,
   });
   const paperAutoExecutor = new PaperAutoExecutor({

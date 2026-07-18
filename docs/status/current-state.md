@@ -69,8 +69,8 @@
 - **市场状态自适应策略路由** —— `AdaptiveStrategyRouter` 使用真实行业 20/60 日收益、均线斜率、波动率、板块宽度和个股形态宽度，确定性输出六类市场状态、置信度、允许/禁用策略、仓位姿态、现金储备和新增仓位缩放。它只在 AkShare 只读行情模式下参与本地 paper 计划；Mock 模式继续保留原有确定性演示行为。
 - **策略路由 1.1 明确操作手册** —— 六类市场状态现在分别输出优先策略、适用条件、回避条件、复核触发器以及开盘/上午/下午/尾盘最大 paper 仓位；可用的市场宽度必须确认上升趋势，宽度偏弱会进入风险标记。该手册是确定性研究规则，不是校准后的盈利概率。
 - **分时资金节奏与执行前预检** —— 本地 paper 自动执行器在 09:30、10:15、13:00 和 14:15 四个阶段重新评估，先完成每日/阶段/单轮笔数、幂等、行情、现金储备和买入后总仓位检查，再形成精确的本轮模拟动作；普通降风险卖出不受买入仓位上限限制，但仍受阶段订单预算约束。
-- **预算化 WxPusher 盘中简报** —— 默认每天最多尝试 8 条并硬限制为 10 条，正常发送四个阶段简报，包含当前/计划后 paper 持仓、精确模拟动作、现金、仓位、策略条件、前三板块和风险/数据警告。同阶段实质变化默认冷却 20 分钟，价格变化不触发重发，发送失败也计入额度且审计不保存凭据。
-- **全市场偏弱明确提醒** —— 当前配置股票池至少 10 只、平均涨跌幅不高于 -0.8% 且上涨/下跌家数比不高于 0.67 时，WxPusher 阶段简报标题和正文明确显示“市场不宜操作”，提示暂停新增 paper 仓位；该状态进入通知签名和审计，转弱可绕过同阶段冷却，但仍受每日消息预算限制。
+- **十条预算化 WxPusher 简报** —— 每天最多 10 次提供商请求；09:35、10:30、13:30、14:50 四条固定简报承担开盘定调、上午确认、午后风控和尾盘复核，其余最多六条只预留给重要事件。标题和正文显示“今日第 N/10 条”、固定简报序号、本条职责和下一时点；内容按结论、数字、动作、持仓、策略盘面、前三板块、两条有效新闻、外围影响、模拟执行和风险数据分层，尾盘条额外汇总当日成交、拒单、手续费、Paper 盈亏和明日复核条件。
+- **重要事件合并去重** —— 当前配置股票池进入 `risk-off`、真实数据源降级、本地 paper 出现拒单或交易暂停时可使用事件预留；同类事件同一交易日只提醒一次，多类事件同轮合并。普通参考价、候选排序和计划数量变化不发，同阶段固定简报或失败请求不循环重试，所有尝试共享十条预算且审计不保存凭据。
 - **真实新股申购研究** —— AkShare 桥接新增东方财富新股申购表只读端点，Fastify `/api/research/ipo-subscriptions` 按北京时间筛选前后 30 天的今日/即将申购、待上市和近期上市记录；只用发行价与发行/行业市盈率形成 0-100 启发式规则分，未定价时等待定价，上市后涨幅不参与历史建议。市场页提供三个标签和来源/风险展示，不读取账户资格或自动申购。
 - **按名称/代码的个股趋势研判** —— AkShare 桥复用全 A 股内存行情缓存解析代码、完整名称和模糊名称；Fastify `/api/research/stock-trend` 读取单股默认 360 日前复权日线，基于均线、5/20/60 日动量、RSI、波动、ATR 和量能输出 3/5/10 个交易日规则分，并严格滚动验证过去同方向信号。市场页显示真实 Close/MA20/MA60 图、经验涨跌/震荡概率、阶段高低点中位交易日和幅度、支撑压力、依据与风险；规则分和经验频率都不是校准后的未来概率，也不会触发订单。
 - **A 股五日变盘雷达** —— `/api/research/turning-points` 使用决策时点冻结的 20 日区间和 ATR 阈值定义之后 5 个交易日的向上、向下或不变盘，并按历史相似压缩状态统计条件频率；至少 20 个样本才返回概率，样本不足时明确留空。准备度综合历史频率、压缩、边界、量能和样本置信度，仅用于排序，当前只扫描最多 12 只受控观察池且不会直接生成 paper 或真实订单。
@@ -174,6 +174,15 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-18 WxPusher ten-message budget and four scheduled briefings
+paperPlanNotifier.test.ts: 18 tests passed
+config.test.ts: 82 tests passed
+Server Vitest: 42 files, 711 tests passed
+Web Vitest: 21 files, 63 tests passed
+TypeScript checks and Vite production build passed; 2,313 modules transformed
+
+The local ignored .env.local now uses WXPUSHER_DAILY_MESSAGE_LIMIT=10. No real WxPusher test message was sent, so verification did not consume the provider allowance.
+
 2026-07-18 cache and runtime storage guardrails
 D:\conda\python.exe -m pytest akshare-bridge/test_research_cache.py akshare-bridge/test_bridge.py -q
 88 tests passed; 1 FastAPI/httpx dependency deprecation warning
