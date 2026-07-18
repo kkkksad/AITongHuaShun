@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Clock3,
   Globe2,
   RefreshCw,
   ShieldCheck,
@@ -9,6 +10,7 @@ import {
   fetchHongKongMarketResearch,
   type HongKongTrend,
 } from "../lib/tradingApi";
+import { formatResearchDataTime, getResearchRefreshState } from "../lib/researchQueryPresentation";
 
 const trendLabels: Record<HongKongTrend, string> = {
   uptrend: "上升趋势",
@@ -53,6 +55,7 @@ export function HongKongMarketPanel() {
     staleTime: 10 * 60_000,
   });
   const report = query.data;
+  const refreshState = getResearchRefreshState({ hasData: Boolean(report), isError: query.isError });
 
   return (
     <section className="panel hong-kong-panel">
@@ -76,10 +79,16 @@ export function HongKongMarketPanel() {
       {query.isLoading && (
         <div className="research-empty">正在读取港股快照与前复权日线…</div>
       )}
-      {query.isError && (
+      {refreshState.showBlockingError && (
         <div className="research-alert">
           <AlertTriangle size={16} />
           <span>港股研究暂不可用，请检查 API 与 AkShare 行情桥接。</span>
+        </div>
+      )}
+      {refreshState.showStaleWarning && (
+        <div className="research-alert regime-warning">
+          <Clock3 size={16} />
+          <span>本次刷新失败，继续显示缓存数据 · 上次成功更新 {formatResearchDataTime(query.dataUpdatedAt)}</span>
         </div>
       )}
 
