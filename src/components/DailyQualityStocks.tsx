@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, RefreshCw, ShieldCheck, Star } from "lucide-react";
+import { RefreshCw, ShieldCheck, Star } from "lucide-react";
 import { fetchDailyQualityStocks } from "../lib/tradingApi";
 import type { DailyQualityStock, QualityStockAction } from "../lib/tradingApi";
+import { ResearchQueryState } from "./ResearchQueryState";
 
 function formatPercent(value: number): string {
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
@@ -77,16 +78,14 @@ export function DailyQualityStocks() {
         </button>
       </div>
 
-      {qualityQuery.isLoading && (
-        <div className="research-empty">正在计算每日优质股评分…</div>
-      )}
-
-      {qualityQuery.isError && (
-        <div className="research-alert">
-          <AlertTriangle size={16} />
-          <span>每日优质股暂时不可用，请确认后端服务和行情桥接已启动。</span>
-        </div>
-      )}
+      <ResearchQueryState
+        dataUpdatedAt={qualityQuery.dataUpdatedAt}
+        hasData={Boolean(report)}
+        isError={qualityQuery.isError}
+        isLoading={qualityQuery.isLoading}
+        loadingText="正在计算每日优质股评分…"
+        unavailableText="每日优质股暂时不可用，请确认后端服务和行情桥接已启动。"
+      />
 
       {report && (
         <>
