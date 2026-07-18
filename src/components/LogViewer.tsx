@@ -2,6 +2,8 @@ import {
   AlertTriangle,
   CheckCircle,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Download,
   FileText,
@@ -10,7 +12,7 @@ import {
   Search,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useI18n } from "../i18n";
 import { apiRequest } from "../lib/tradingApi";
 
@@ -29,6 +31,13 @@ interface LogsResponse {
   date: string;
   total: number;
   filtered: number;
+  returned: number;
+  offset: number;
+  limit: number;
+  page: number;
+  pageCount: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
   entries: LogEntry[];
 }
 
@@ -37,6 +46,8 @@ interface DatesResponse {
 }
 
 type LogLevel = "debug" | "info" | "warn" | "error";
+
+const LOG_PAGE_SIZE = 50;
 
 // ── Level config ───────────────────────────────────────────
 
@@ -85,7 +96,7 @@ function formatDateLabel(dateStr: string, locale: string): string {
 // ── Component ──────────────────────────────────────────────
 
 export function LogViewer() {
-  const { t, locale } = useI18n();
+  const { locale } = useI18n();
   const iszh = locale === "zh";
 
   const [entries, setEntries] = useState<LogEntry[]>([]);
@@ -96,8 +107,12 @@ export function LogViewer() {
   );
   const [dates, setDates] = useState<string[]>([]);
   const [levelFilter, setLevelFilter] = useState<LogLevel | "">("");
+  const [moduleInput, setModuleInput] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
-  const [expandedEntry, setExpandedEntry] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
+  const [offset, setOffset] = useState(0);
+  const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -109,6 +124,7 @@ export function LogViewer() {
       setDates(data.dates);
       if (data.dates.length > 0 && !data.dates.includes(currentDate)) {
         setCurrentDate(data.dates[0]);
+        setPage(1);
       }
     } catch {
       // 静默失败
@@ -121,7 +137,8 @@ export function LogViewer() {
     setError(null);
     try {
       const params = new URLSearchParams({
-        limit: "200",
+        limit: String(LOG_PAGE_SIZE),
+        offset: String((page - 1) * LOG_PAGE_SIZE),
         date: currentDate,
       });
       if (levelFilter) params.set("level", levelFilter);
@@ -131,12 +148,16 @@ export function LogViewer() {
       setEntries(data.entries);
       setTotal(data.total);
       setFiltered(data.filtered);
+      setOffset(data.offset);
+      setPageCount(data.pageCount);
+      if (data.page !== page) setPage(data.page);
+      setExpandedEntry(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "获取日志失败");
     } finally {
       setLoading(false);
     }
-  }, [currentDate, levelFilter, moduleFilter]);
+  }, [currentDate, levelFilter, moduleFilter, page]);
 
   useEffect(() => {
     fetchDates();
@@ -146,12 +167,20 @@ export function LogViewer() {
     fetchLogs();
   }, [fetchLogs]);
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPage(1);
+      setModuleFilter(moduleInput.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [moduleInput]);
+
   // 自动刷新
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || page !== 1) return;
     const timer = setInterval(fetchLogs, 10_000);
     return () => clearInterval(timer);
-  }, [autoRefresh, fetchLogs]);
+  }, [autoRefresh, fetchLogs, page]);
 
   // 导出日志
   const handleExport = useCallback(() => {
@@ -164,17 +193,28 @@ export function LogViewer() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "kairos-logs-" + currentDate + ".json";
+    a.download = `kairos-logs-${currentDate}-page-${page}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [entries, currentDate]);
+  }, [entries, currentDate, page]);
 
-  // 可用模块列表
-  const modules = useMemo(() => {
-    const modSet = new Set<string>();
-    entries.forEach((e) => modSet.add(e.module));
-    return Array.from(modSet).sort();
-  }, [entries]);
+  const rangeStart = filtered === 0 ? 0 : offset + 1;
+  const rangeEnd = filtered === 0 ? 0 : offset + entries.length;
+
+  function changePage(nextPage: number) {
+    setExpandedEntry(null);
+    setAutoRefresh(false);
+    setPage(Math.min(Math.max(1, nextPage), pageCount));
+  }
+
+  function toggleAutoRefresh() {
+    if (autoRefresh) {
+      setAutoRefresh(false);
+      return;
+    }
+    setPage(1);
+    setAutoRefresh(true);
+  }
 
   return (
     <div className="log-viewer">
@@ -186,7 +226,11 @@ export function LogViewer() {
             <Clock size={16} />
             <select
               aria-label={iszh ? "选择日期" : "Select date"}
-              onChange={(e) => setCurrentDate(e.target.value)}
+              onChange={(e) => {
+                setCurrentDate(e.target.value);
+                setPage(1);
+                setExpandedEntry(null);
+              }}
               value={currentDate}
             >
               {dates.length === 0 && (
@@ -206,7 +250,11 @@ export function LogViewer() {
           <div className="log-level-select">
             <select
               aria-label={iszh ? "日志级别" : "Log level"}
-              onChange={(e) => setLevelFilter(e.target.value as LogLevel | "")}
+              onChange={(e) => {
+                setLevelFilter(e.target.value as LogLevel | "");
+                setPage(1);
+                setExpandedEntry(null);
+              }}
               value={levelFilter}
             >
               <option value="">
@@ -219,50 +267,35 @@ export function LogViewer() {
             </select>
           </div>
 
-          {/* 模块过滤 */}
-          {modules.length > 0 && (
-            <div className="log-level-select">
-              <select
-                aria-label={iszh ? "模块" : "Module"}
-                onChange={(e) => setModuleFilter(e.target.value)}
-                value={moduleFilter}
-              >
-                <option value="">
-                  {iszh ? "全部模块" : "All Modules"}
-                </option>
-                {modules.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
 
         <div className="log-toolbar-right">
           <span className="log-count">
             {iszh
-              ? "显示 " + filtered + " / " + total + " 条"
-              : "Showing " + filtered + " / " + total}
+              ? `显示 ${rangeStart}-${rangeEnd} / ${filtered} 条`
+              : `Showing ${rangeStart}-${rangeEnd} of ${filtered}`}
           </span>
 
           <button
             aria-label={iszh ? "自动刷新" : "Auto refresh"}
-            className={"log-action-btn" + (autoRefresh ? " active" : "")}
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            title={iszh ? "自动刷新（10秒）" : "Auto refresh (10s)"}
+            className={"log-action-btn" + (autoRefresh && page === 1 ? " active" : "")}
+            onClick={toggleAutoRefresh}
+            title={
+              autoRefresh && page === 1
+                ? (iszh ? "自动刷新已开启（10秒）" : "Auto refresh enabled (10s)")
+                : (iszh ? "开启自动刷新并返回第一页" : "Enable auto refresh and return to page one")
+            }
             type="button"
           >
             <RefreshCw size={16} />
           </button>
 
           <button
-            aria-label={iszh ? "导出日志" : "Export logs"}
+            aria-label={iszh ? "导出当前页日志" : "Export current log page"}
             className="log-action-btn"
             disabled={entries.length === 0}
             onClick={handleExport}
-            title={iszh ? "导出为 JSON" : "Export as JSON"}
+            title={iszh ? "导出当前页 JSON" : "Export current page as JSON"}
             type="button"
           >
             <Download size={16} />
@@ -275,10 +308,10 @@ export function LogViewer() {
         <Search size={16} />
         <input
           aria-label={iszh ? "搜索日志" : "Search logs"}
-          onChange={(e) => setModuleFilter(e.target.value)}
+          onChange={(e) => setModuleInput(e.target.value)}
           placeholder={iszh ? "搜索模块名..." : "Search module name..."}
           type="text"
-          value={moduleFilter}
+          value={moduleInput}
         />
       </div>
 
@@ -320,7 +353,8 @@ export function LogViewer() {
           {entries.map((entry, idx) => {
             const config = levelConfig[entry.level] ?? levelConfig.info;
             const LevelIcon = config.icon;
-            const isExpanded = expandedEntry === idx;
+            const entryKey = `${entry.timestamp}-${entry.module}-${entry.message}-${idx}`;
+            const isExpanded = expandedEntry === entryKey;
 
             return (
               <div
@@ -329,12 +363,12 @@ export function LogViewer() {
                   (isExpanded ? " expanded" : "") +
                   " log-level-" + entry.level
                 }
-                key={idx}
+                key={entryKey}
               >
                 <button
                   className="log-entry-header"
                   onClick={() =>
-                    setExpandedEntry(isExpanded ? null : idx)
+                    setExpandedEntry(isExpanded ? null : entryKey)
                   }
                   type="button"
                 >
@@ -400,14 +434,48 @@ export function LogViewer() {
         </div>
       )}
 
+      <nav aria-label={iszh ? "系统日志分页" : "System log pagination"} className="log-pagination">
+        <span>
+          {iszh ? `第 ${page} / ${pageCount} 页` : `Page ${page} of ${pageCount}`}
+        </span>
+        <div>
+          <button
+            aria-label={iszh ? "日志上一页" : "Previous log page"}
+            className="log-action-btn"
+            disabled={page <= 1 || loading}
+            onClick={() => changePage(page - 1)}
+            title={iszh ? "上一页" : "Previous page"}
+            type="button"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            aria-label={iszh ? "日志下一页" : "Next log page"}
+            className="log-action-btn"
+            disabled={page >= pageCount || loading}
+            onClick={() => changePage(page + 1)}
+            title={iszh ? "下一页" : "Next page"}
+            type="button"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </nav>
+
       {/* 底部状态栏 */}
       <div className="log-statusbar">
         <CheckCircle size={14} />
         <span>
           {iszh
-            ? "共 " + total + " 条，过滤后 " + filtered + " 条"
-            : total + " total, " + filtered + " filtered"}
+            ? `原始 ${total} 条 · 过滤后 ${filtered} 条 · 当前页 ${entries.length} 条`
+            : `${total} total · ${filtered} filtered · ${entries.length} on this page`}
         </span>
+        {loading && <span className="log-refresh-state">{iszh ? "刷新中…" : "Refreshing…"}</span>}
+        {page > 1 && !loading && (
+          <span className="log-refresh-state">
+            {iszh ? "历史页已暂停自动刷新" : "Auto refresh paused on history pages"}
+          </span>
+        )}
       </div>
     </div>
   );

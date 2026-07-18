@@ -33,6 +33,39 @@ describe("trading API", () => {
     });
   });
 
+  it("returns bounded system log pagination metadata", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/logs?limit=50&offset=0",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      total: expect.any(Number),
+      filtered: expect.any(Number),
+      returned: expect.any(Number),
+      offset: 0,
+      limit: 50,
+      page: 1,
+      pageCount: expect.any(Number),
+      hasPrevious: false,
+      hasNext: expect.any(Boolean),
+      entries: expect.any(Array),
+    });
+
+    const excessiveLimit = await app.inject({
+      method: "GET",
+      url: "/api/logs?limit=201",
+    });
+    const negativeOffset = await app.inject({
+      method: "GET",
+      url: "/api/logs?offset=-1",
+    });
+
+    expect(excessiveLimit.statusCode).toBe(400);
+    expect(negativeOffset.statusCode).toBe(400);
+  });
+
   it("declares read-only market data and paper-only execution capabilities", async () => {
     const response = await app.inject({
       method: "GET",

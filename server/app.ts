@@ -41,6 +41,8 @@ import {
   exportOrdersToCsv,
 } from "./monitoring/exportUtils";
 import type { ExportFormat } from "./monitoring/exportUtils";
+import { queryLogEntries } from "./monitoring/logQuery";
+import type { LogEntry } from "./logger";
 import { PaperPlanNotifier } from "./notifications/paperPlanNotifier";
 import { WxPusherClient } from "./notifications/wxPusherClient";
 import { buildDailyCandidates } from "./research/dailyCandidates";
@@ -87,7 +89,8 @@ const exportQuerySchema = z.object({
 });
 
 const logsQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(2000).default(200),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
   level: z.enum(["debug", "info", "warn", "error"]).optional(),
   module: z.string().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -1239,11 +1242,12 @@ export async function buildTradingApp(
     schema: {
       tags: ["日志"],
       summary: "获取系统日志",
-      description: "按日期、级别和模块过滤系统日志条目。默认返回最近 200 条。",
+      description: "按日期、级别和模块过滤系统日志条目，返回有界分页结果。默认每页 50 条。",
       querystring: {
         type: "object",
         properties: {
-          limit: { type: "integer", default: 200, description: "返回条数上限" },
+          limit: { type: "integer", default: 50, maximum: 200, description: "每页返回条数" },
+          offset: { type: "integer", default: 0, minimum: 0, description: "过滤结果偏移量" },
           level: { type: "string", enum: ["debug", "info", "warn", "error"], description: "日志级别过滤" },
           module: { type: "string", description: "模块名过滤（模糊匹配）" },
           date: { type: "string", description: "日期过滤，格式 YYYY-MM-DD" },
@@ -1258,14 +1262,7 @@ export async function buildTradingApp(
     const logFile = path.join(logDir, `app-${date}.log`);
 
     // 收集所有日志条目
-    const entries: Array<{
-      timestamp: string;
-      level: string;
-      module: string;
-      message: string;
-      data?: Record<string, unknown>;
-      error?: string;
-    }> = [];
+    const entries: LogEntry[] = [];
 
     // 读取指定日期的日志文件
     if (fs.existsSync(logFile)) {
@@ -1274,7 +1271,7 @@ export async function buildTradingApp(
         const lines = content.split("\n").filter((line) => line.trim());
         for (const line of lines) {
           try {
-            const entry = JSON.parse(line);
+            const entry = JSON.parse(line) as LogEntry;
             entries.push(entry);
           } catch {
             // 跳过无法解析的行
@@ -1294,7 +1291,7 @@ export async function buildTradingApp(
           const lines = content.split("\n").filter((line) => line.trim());
           for (const line of lines) {
             try {
-              const entry = JSON.parse(line);
+              const entry = JSON.parse(line) as LogEntry;
               entries.push(entry);
             } catch {
               // 跳过
@@ -1306,29 +1303,9 @@ export async function buildTradingApp(
       }
     }
 
-    // 过滤
-    let filtered = entries;
-    if (query.level) {
-      const levelWeights: Record<string, number> = { debug: 0, info: 1, warn: 2, error: 3 };
-      const minWeight = levelWeights[query.level];
-      filtered = filtered.filter((e) => (levelWeights[e.level] ?? 0) >= minWeight);
-    }
-    if (query.module) {
-      const modLower = query.module.toLowerCase();
-      filtered = filtered.filter((e) => e.module.toLowerCase().includes(modLower));
-    }
-
-    // 倒序：最新的在前
-    filtered.reverse();
-
-    // 截断
-    const limited = filtered.slice(0, query.limit);
-
     return {
       date,
-      total: entries.length,
-      filtered: limited.length,
-      entries: limited,
+      ...queryLogEntries(entries, query),
     };
   });
 
