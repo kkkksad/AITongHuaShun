@@ -75,7 +75,7 @@
 - **按名称/代码的个股趋势研判** —— AkShare 桥复用全 A 股内存行情缓存解析代码、完整名称和模糊名称；Fastify `/api/research/stock-trend` 读取单股默认 360 日前复权日线，基于均线、5/20/60 日动量、RSI、波动、ATR 和量能输出 3/5/10 个交易日规则分，并严格滚动验证过去同方向信号。市场页显示真实 Close/MA20/MA60 图、经验涨跌/震荡概率、阶段高低点中位交易日和幅度、支撑压力、依据与风险；规则分和经验频率都不是校准后的未来概率，也不会触发订单。
 - **A 股五日变盘雷达** —— `/api/research/turning-points` 使用决策时点冻结的 20 日区间和 ATR 阈值定义之后 5 个交易日的向上、向下或不变盘，并按历史相似压缩状态统计条件频率；至少 20 个样本才返回概率，样本不足时明确留空。准备度综合历史频率、压缩、边界、量能和样本置信度，仅用于排序，当前只扫描最多 12 只受控观察池且不会直接生成 paper 或真实订单。
 - **港股真实只读研究** —— AkShare 桥新增 `/api/market/hk/quotes` 与 `/api/market/hk/history`，Fastify `/api/research/hong-kong-market` 输出真实港股快照、前复权日线、5/20/60 日趋势、波动、回撤、量能和同趋势历史验证。快照优先新浪并回退东方财富，历史优先东方财富并回退新浪；港股不读取账户，不继承 A 股 T+1、100 股整手或费用规则，也不进入当前 A 股 paper。
-- **真实 A 股多窗口稳健性验证** —— `/api/research/strategy-robustness` 从真实可交易快照按流动性选取最多 8 只 A 股，读取每只最多 500 根前复权日线，以预先固定参数在三个互不重叠窗口独立回测 10 个代表策略。报告交易数、盈利窗口、中位/最差收益、平均/最差回撤和平均胜率；不在验证样本上重新调参，并与合成参数排行榜分开展示。
+- **真实 A 股多窗口稳健性验证** —— `/api/research/strategy-robustness` 从真实可交易快照按流动性选取最多 12 只 A 股，读取每只最多 500 根前复权日线，以预先固定参数在三个互不重叠窗口独立回测 14 个代表策略。报告交易数、盈利窗口、中位/最差收益、平均/最差回撤和平均胜率；不在验证样本上重新调参，并与合成参数排行榜分开展示。
 - **国内期货只读研究桥** —— AkShare 桥接和 Fastify 提供 16 个白名单主连代码的快照与有界历史接口，覆盖股指、贵金属、有色、黑色、能源化工和农产品。历史序列明确标记 `continuous-main`；上游失败返回空结果和警告，不返回静态价格，也不读取期货账户或生成期货订单。
 - **跨市场策略上下文** —— `/api/research/cross-market-strategy-context` 组合全球指数、股指期货、工业品和贵金属的真实只读数据，输出 `risk-on / neutral / risk-off / mixed`、优先与降权策略族、仓位姿态、证据和降级信息。该结果只解释当前适用策略，不直接修改 A 股 paper 计划或提交订单。
 - **市场研究七页签** —— 市场页按 A 股概览、变盘雷达、个股研判、板块形态、港股观察、期货观察和事件资讯拆分，历史研究只在激活页签时加载；页签支持方向键和 Home/End，390px 下两列排列，宽表横向滚动限制在模块内部。
@@ -98,6 +98,7 @@
 - **个股趋势研判刷新降级保护** —— 按名称或代码查询的个股趋势研判已有成功报告时，后台刷新失败继续显示缓存图表、周期研判和最后成功更新时间；首次查询失败仍显示阻断错误。
 - **订单名称语义补全** —— 新建本地 paper 订单在创建时保存行情名称；旧版 JSON 订单继续兼容，并可由当前行情或持仓名称补全。订单列表、名称/代码搜索和浏览器 CSV 导出统一展示名称与代码，服务端 CSV 导出也包含名称列。
 - **顶部快速页面跳转** —— 顶部搜索框支持总览、市场、策略、模拟账户、研究管线和设置，可按页面名称或“行情、回测、下单、订单、配置”等工作流关键词过滤；回车进入首个匹配页面，Esc 关闭结果。
+- **工作台事实一致性与响应式收口** —— 总览、侧栏、顶栏和研究环境统一读取实时后端连接、AkShare/Mock 行情源与本地 paper 执行状态，不再同时显示“已连接”和“交易后端不可用”或把 AkShare 写成模拟行情。1440×900 与 390×844 验证无页面级横向溢出，手机账户分组导航不再出现滚动箭头。
 
 ## 仍为静态或合成的数据
 
@@ -130,7 +131,7 @@ GET  /api/research/market-regime?sectorLimit=10&stockLimit=8&days=180
 GET  /api/research/ipo-subscriptions?limit=40
 GET  /api/research/turning-points?limit=12&days=360
 GET  /api/research/hong-kong-market?limit=10&days=180
-GET  /api/research/strategy-robustness?limit=8&days=500
+GET  /api/research/strategy-robustness?limit=12&days=500
 GET  /api/research/cross-market-strategy-context?limit=12&days=180
 GET  /api/market/futures/quotes?limit=16
 GET  /api/market/futures/history?symbols=IF0,CU0&days=180
