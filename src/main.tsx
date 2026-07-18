@@ -5,7 +5,6 @@ import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider } from "./hooks/useTheme";
 import { I18nProvider } from "./i18n";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { shouldRetryQuery } from "./lib/apiError";
 import "./styles/index.css";
 import "./styles/trading-strategies.css";
 
@@ -24,8 +23,7 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: shouldRetryQuery,
-      retryDelay: (attemptIndex) => Math.min(750 * 2 ** attemptIndex, 3_000),
+      retry: 2,
       staleTime: 30_000,
     },
   },
