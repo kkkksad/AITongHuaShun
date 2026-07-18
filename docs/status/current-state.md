@@ -78,8 +78,10 @@
 - **真实 A 股多窗口稳健性验证** —— `/api/research/strategy-robustness` 从真实可交易快照按流动性选取最多 12 只 A 股，读取每只最多 500 根前复权日线，以预先固定参数在三个互不重叠窗口独立回测 14 个代表策略。报告交易数、盈利窗口、中位/最差收益、平均/最差回撤和平均胜率；不在验证样本上重新调参，并与合成参数排行榜分开展示。
 - **国内期货只读研究桥** —— AkShare 桥接和 Fastify 提供 16 个白名单主连代码的快照与有界历史接口，历史单次查询上限与受控观察池一致为 16，覆盖股指、贵金属、有色、黑色、能源化工和农产品。历史序列明确标记 `continuous-main`；Fastify 会透传有界的桥接错误详情，上游失败返回空结果和警告，不返回静态价格，也不读取期货账户或生成期货订单。
 - **跨市场策略上下文** —— `/api/research/cross-market-strategy-context` 组合全球指数、股指期货、工业品和贵金属的真实只读数据，输出 `risk-on / neutral / risk-off / mixed`、优先与降权策略族、仓位姿态、证据和降级信息。该结果只解释当前适用策略，不直接修改 A 股 paper 计划或提交订单。
-- **市场研究七页签** —— 市场页按 A 股概览、变盘雷达、个股研判、板块形态、港股观察、期货观察和事件资讯拆分，历史研究只在激活页签时加载；页签支持方向键和 Home/End，390px 下两列排列，宽表横向滚动限制在模块内部。
-- **市场页按需加载与真实指数图表** —— 七个市场研究内容已拆为独立 `React.lazy` 异步块，并在悬停、聚焦或触屏按下页签时预取；当前 `MarketPage` 构建块为 4.19 KiB，期货观察块为 5.40 KiB。指数图表修复了已计算真实 `chartData` 却仍传入静态分时数组的问题，现在使用当前真实指数快照的昨收、今开、最低、最新和最高点。
+- **外部市场对 A 股影响研究** —— AkShare 桥新增受控全球指数快照/历史、A 股指数历史和 BTC/ETH 快照端点；Fastify `/api/research/external-market-impact?days=500` 按美股隔夜、亚洲市场和数字资产分组，并只使用严格早于 A 股目标交易日的外部收盘验证沪深 300 条件统计。少于 60 个样本不显示命中率，BTC/ETH 不能独立产生方向，所有结果均为只读观察。
+- **外盘 shadow 与紧凑特征** —— 外盘历史至少达到 250 个样本、三个窗口和 3 个百分点方向命中改善时才生成最多 5% 的 shadow 修正；正式策略置信度、`allowNewPositions` 和仓位上限不变。可选采样器默认关闭且只允许 `paper + akshare`，09:20/15:10 更新每日同一行，默认最多 750 行，不保存原始响应、tick 或分钟线。
+- **市场研究八页签** —— 市场页按 A 股概览、变盘雷达、个股研判、板块形态、港股观察、期货研判、全球影响和事件资讯拆分，历史研究只在激活页签时加载；页签支持方向键和 Home/End，390px 下两列排列，宽表横向滚动限制在模块内部。
+- **市场页按需加载与真实指数图表** —— 八个市场研究内容已拆为独立 `React.lazy` 异步块，并在悬停、聚焦或触屏按下页签时预取；全球影响页也保持独立异步块。指数图表使用当前真实指数快照的昨收、今开、最低、最新和最高点，不再显示静态模拟分时数组。
 - **持仓优先的历史形态研究** —— 生成市场状态前会把当前 paper 持仓放在个股历史研究队列前部，去重后仍限制最多 12 只，避免候选池挤掉真正需要退出判断的已有仓位。
 - **趋势恶化减仓与现金观察** —— `risk-off` 下，高置信度“趋势恶化”且 T+1 可卖的持仓会生成有上限的半仓减仓计划；原有 3% 亏损退出仍是更严格的全量止损。健康趋势和洗盘候选明确保持观察；从计划开始就没有任何一手可负担候选时，只生成一条现金观察，不再重复列出十条注定资金不足的买入。
 - **风险收缩日内减仓纪律** —— 普通市场状态减仓和风险仓位再平衡按持久化订单限制为同一标的每个交易日最多一轮，避免多次“减半”突破原风险预算；3% 硬止损仍可覆盖该限制。`risk-off` 且仓位高于现金目标时，计划优先对趋势恶化、信号不清或数据不足且 T+1 可卖的持仓执行最多四分之一仓位的一手级分阶段减仓，不机械卖出健康趋势或洗盘候选。
@@ -149,6 +151,7 @@ GET  /api/research/turning-points?limit=12&days=360
 GET  /api/research/hong-kong-market?limit=10&days=180
 GET  /api/research/strategy-robustness?limit=12&days=500
 GET  /api/research/cross-market-strategy-context?limit=12&days=180
+GET  /api/research/external-market-impact?days=500
 GET  /api/market/futures/quotes?limit=16
 GET  /api/market/futures/history?symbols=IF0,CU0&days=180
 GET  /api/trading/auto-paper-execution/status
@@ -174,6 +177,20 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-18 external-market impact research (runtime checked 2026-07-19 00:26 Asia/Shanghai)
+D:\conda\python.exe -m pytest akshare-bridge/test_bridge.py -q
+84 tests passed; 1 FastAPI/httpx dependency deprecation warning
+
+Server Vitest: 45 files, 734 tests passed
+Web Vitest: 21 files, 64 tests passed
+TypeScript checks and Vite production build passed; 2,314 modules transformed
+MarketPage chunk: 4.54 KiB; ExternalMarketImpactPanel chunk: 6.98 KiB
+git diff --check passed with line-ending conversion warnings only
+
+Fresh services listened on 4173, 8787, and 8800. The bridge returned 9 controlled global snapshots, 5 global history series with 500 bars each, one 500-bar SH000300 series, and one BTCUSD snapshot. HSI history and ETHUSD were unavailable and remained explicit warnings. Fastify returned live-read-only / observation-only with 197 strictly aligned samples, 3 windows, 57.87% directional hit rate, restrictive bias, and allowPositionIncrease=false; the 250-sample shadow gate was not met.
+
+Authenticated browser checks showed the desktop body at 1265/1265 and the 390px viewport body at 375/375. The external panel was 353/353 on mobile, its 940px table remained inside a 325px internal scroller, all eight tabs fit without page-level overflow, and the console had no warnings or errors.
+
 2026-07-18 WxPusher ten-message budget and four scheduled briefings
 paperPlanNotifier.test.ts: 18 tests passed
 config.test.ts: 82 tests passed

@@ -2,6 +2,7 @@ import type { OrderRecord, OrderRequest } from "../../shared/trading";
 import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
 import {
+  buildExternalMarketNotificationImpact,
   summarizePaperOrders,
   type PaperPlanNotifier,
 } from "../notifications/paperPlanNotifier";
@@ -323,6 +324,7 @@ export class PaperAutoExecutor {
         plan,
         marketRegimeResearch,
         realResearchDataFeed,
+        externalMarketImpact,
       } = await buildCurrentPaperTradingPlan({
         system: this.options.system,
         config: this.options.config,
@@ -371,11 +373,16 @@ export class PaperAutoExecutor {
             source: item.source,
             title: item.title,
           })),
-          globalImpact: {
-            direction: realResearchDataFeed.impact.direction,
-            summary: realResearchDataFeed.impact.summary,
-            drivers: realResearchDataFeed.impact.drivers.slice(0, 3),
-          },
+          globalImpact: buildExternalMarketNotificationImpact({
+            bias: externalMarketImpact.aShareImpact.bias,
+            evidenceGrade: externalMarketImpact.aShareImpact.evidenceGrade,
+            samples: externalMarketImpact.validation.samples,
+            groups: externalMarketImpact.groups.map((group) => ({
+              key: group.key,
+              tone: group.tone,
+            })),
+            rationale: externalMarketImpact.aShareImpact.rationale,
+          }),
         },
       });
 

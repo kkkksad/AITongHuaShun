@@ -48,6 +48,56 @@ export interface PaperPlanNotificationContext {
   };
 }
 
+export interface ExternalMarketNotificationInput {
+  bias: "supportive" | "neutral" | "restrictive" | "conflicted";
+  evidenceGrade: "snapshot-only" | "historically-observed" | "walk-forward-validated";
+  samples: number;
+  groups: Array<{
+    key: "us-overnight" | "asia" | "crypto";
+    tone: "positive" | "neutral" | "negative" | "unavailable";
+  }>;
+  rationale: string[];
+}
+
+export function buildExternalMarketNotificationImpact(
+  input: ExternalMarketNotificationInput,
+): NonNullable<PaperPlanNotificationContext["marketContext"]["globalImpact"]> {
+  const toneLabels = {
+    positive: "偏强",
+    neutral: "中性",
+    negative: "偏弱",
+    unavailable: "不可用",
+  } as const;
+  const biasLabels = {
+    supportive: "偏支持",
+    neutral: "中性",
+    restrictive: "偏约束",
+    conflicted: "方向冲突",
+  } as const;
+  const evidenceLabels = {
+    "snapshot-only": "快照观察",
+    "historically-observed": "历史观察",
+    "walk-forward-validated": "滚动验证",
+  } as const;
+  const tone = (key: ExternalMarketNotificationInput["groups"][number]["key"]) =>
+    toneLabels[input.groups.find((group) => group.key === key)?.tone ?? "unavailable"];
+  return {
+    direction: input.bias === "supportive"
+      ? "risk-on"
+      : input.bias === "restrictive"
+        ? "risk-off"
+        : "neutral",
+    summary: [
+      `美股隔夜${tone("us-overnight")}`,
+      `亚洲${tone("asia")}`,
+      `BTC/ETH${tone("crypto")}`,
+    ].join("；") +
+      `｜对A股：${biasLabels[input.bias]}（${evidenceLabels[input.evidenceGrade]}，样本${input.samples}）`,
+    drivers: [...new Set(input.rationale.map((item) => item.trim()).filter(Boolean))]
+      .slice(0, 3),
+  };
+}
+
 export interface PaperPlanNotifierOptions {
   enabled: boolean;
   sender?: PaperPlanMessageSender;

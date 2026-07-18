@@ -60,6 +60,16 @@ RESEARCH_STORE_RAW_NEWS=false
 
 当前 `/api/research/self-optimization` 只声明 paper-only 自优化和留存策略；后续接入授权历史 K 线时，应只保存紧凑日线/特征、新闻元数据和全球市场特征，不默认保存原始 tick、完整新闻正文或无上限临时数据。
 
+外盘 point-in-time 特征采样默认关闭。确实需要从交易日开始积累每日样本时，只能在 `MARKET_MODE=paper`、`MARKET_DATA_PROVIDER=akshare` 下增加：
+
+```text
+EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED=true
+EXTERNAL_MARKET_FEATURE_MAX_ROWS=750
+EXTERNAL_MARKET_FEATURE_FILE=./data/research/external-market-features.json
+```
+
+采样器在北京时间 09:20 记录当时可见的外盘紧凑特征，15:10 给同一行补沪深 300 标签。默认最多 750 行，不保存原始响应、tick、分钟线或凭据；损坏文件会单独隔离，不会覆盖 paper 账户状态。Mock 模式或非 paper 模式打开该开关会拒绝启动。
+
 AkShare 桥接的板块与历史日线只保存在进程内短期缓存。普通研究响应默认保留 15 分钟且最多 64 个 key；单序列历史缓存最多 128 个 key，15 分钟内直接命中，最多 60 分钟可作为 stale-while-revalidate 回退：
 
 ```text
@@ -221,6 +231,8 @@ TRADING_SEED_PORTFOLIO=false
 
 AkShare 桥接还提供只读财经新闻和全球主要指数接口。Fastify 会通过 `/api/research/real-data-feed` 聚合这些数据，生成真实新闻、全球市场驱动和 A 股影响摘要；前端新闻面板优先展示该接口结果。若新闻或全球指数源暂不可用，页面会明确显示降级状态，不会使用静态模拟新闻冒充真实来源。
 
+独立的 `/api/research/external-market-impact?days=500` 会读取受控美股、日股、韩股、港股与欧洲指数，以及 BTC/ETH 当前快照，并用严格早于 A 股目标日期的外部收盘与沪深 300 历史对齐。BTC/ETH 当前没有同口径历史，只作为 24 小时风险偏好参考；少于 60 个对齐样本时不显示命中率。该报告即使通过 shadow 门槛，也不会提高正式 A 股 paper 仓位或产生外盘订单。
+
 AkShare 桥接的 `/api/research/ipo-subscriptions` 读取真实新股申购表；Fastify 的同名受保护接口按北京时间保留前后 30 天记录，并只用申购时可见的发行价、发行市盈率和行业市盈率形成启发式规则分。市场页分为可申购、待上市和近期上市三个标签；未定价时显示等待定价，上游不可用时明确降级，不使用静态新股数据替代。
 
 AkShare 桥接的 `/api/market/stock-search` 使用内存中的全 A 股行情按名称或代码返回最多 20 个匹配；Fastify `/api/research/stock-trend` 默认读取选中股票 360 日、最多 500 日前复权日线，生成 3/5/10 个交易日趋势规则分和同向滚动验证。该接口要求登录，只读，不会提交 paper 或真实订单。
@@ -332,6 +344,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-quality-stocks -WebSe
 Invoke-RestMethod http://127.0.0.1:8787/api/integrations/supermind/signal-package -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/real-data-feed -WebSession $KairosSession
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/external-market-impact?days=500" -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/ipo-subscriptions -WebSession $KairosSession
 
 Invoke-RestMethod "http://127.0.0.1:8787/api/research/stock-trend?query=600519&days=360" -WebSession $KairosSession
@@ -364,11 +377,12 @@ Invoke-RestMethod "http://127.0.0.1:8787/api/research/daily-quality-stocks?limit
 ```powershell
 Invoke-RestMethod "http://127.0.0.1:8787/api/research/real-data-feed" -WebSession $KairosSession
 Invoke-RestMethod "http://127.0.0.1:8787/api/research/market-regime?sectorLimit=10&stockLimit=8&days=180" -WebSession $KairosSession
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/external-market-impact?days=500" -WebSession $KairosSession
 ```
 
 板块与形态研究接口会返回 `sourceStatus`、实际数据源、复权方式、滚动验证样本数和警告。`growthProbability3d/5d` 是启发式 0-100 研究评分，不是经过校准的获利概率；当 `sourceStatus=degraded` 时，应先处理 `warnings`，不得用旧静态数据补位。
 
-该端点只读。它不会读取账户、不会提交订单，也不会连接同花顺或中信账户；全球市场对 A 股的影响摘要只是研究信号，需要后续历史样本验证。
+这些端点只读。它们不会读取账户、不会提交订单，也不会连接同花顺或中信账户；全球市场对 A 股的影响摘要明确区分快照观察、历史条件统计和 shadow 验证，不能描述为校准后的未来概率或真实收益。
 
 本地开发不必须部署到服务器。只有需要无人值守长期运行、远程访问、固定公网/内网地址、监控告警或后续接入模拟盘网关时，才建议部署到服务器。部署前仍必须保持 `MARKET_MODE=paper`、`REAL_TRADING_ENABLED=false`，并把真实账户凭据留在独立服务端密钥系统中。
 

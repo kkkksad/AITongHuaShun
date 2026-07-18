@@ -97,7 +97,13 @@ class BoundedTTLCache(MutableMapping[CacheKey, CacheValue], Generic[CacheKey, Ca
 
 @dataclass(frozen=True, slots=True)
 class HistoryCacheKey:
-    market: Literal["a-share", "hong-kong", "futures"]
+    market: Literal[
+        "a-share",
+        "a-share-index",
+        "hong-kong",
+        "futures",
+        "global-index",
+    ]
     symbol: str
     adjustment: str
     end_date: str

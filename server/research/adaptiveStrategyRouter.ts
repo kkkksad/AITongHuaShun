@@ -1,4 +1,5 @@
 import type { MarketRegimeResearchReport } from "./marketRegimeResearch";
+import type { ExternalImpactBias } from "./externalMarketImpact";
 
 export type AdaptiveMarketRegime =
   | "trend-up-low-volatility"
@@ -24,6 +25,21 @@ export interface AdaptiveCapitalPacing {
   closingMaxInvestedRatio: number;
 }
 
+export interface ExternalMarketShadowInput {
+  bias: ExternalImpactBias;
+  samples: number;
+  windows: number;
+  directionalHitRate: number | null;
+}
+
+export interface ExternalMarketShadowResult extends ExternalMarketShadowInput {
+  status: "inactive" | "collecting" | "eligible";
+  proposedConfidenceModifier: number;
+  proposedConfidence: number;
+  proposedAllowNewPositions: boolean;
+  rationale: string;
+}
+
 export interface AdaptiveStrategyRouting {
   version: "1.1.0";
   generatedAt: string;
@@ -37,6 +53,9 @@ export interface AdaptiveStrategyRouting {
   disabledStrategyKeys: string[];
   strategyPlaybook: AdaptiveStrategyPlaybook;
   capitalPacing: AdaptiveCapitalPacing;
+  shadow?: {
+    externalMarket: ExternalMarketShadowResult;
+  };
   evidence: string[];
   riskFlags: string[];
   metrics: {
@@ -183,6 +202,45 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+export function evaluateExternalMarketShadow(
+  input: ExternalMarketShadowInput & {
+    officialConfidence: number;
+    officialAllowNewPositions: boolean;
+  },
+): ExternalMarketShadowResult {
+  const directionalImprovement = (input.directionalHitRate ?? 0) - 0.5;
+  const eligible = input.samples >= 250 &&
+    input.windows >= 3 &&
+    directionalImprovement >= 0.03;
+  let modifier = 0;
+  if (eligible) {
+    if (input.bias === "supportive") modifier = 0.05;
+    if (input.bias === "restrictive") modifier = -0.05;
+    if (input.bias === "conflicted") modifier = -0.03;
+  }
+  const status = input.samples === 0
+    ? "inactive"
+    : eligible
+      ? "eligible"
+      : "collecting";
+  return {
+    bias: input.bias,
+    samples: input.samples,
+    windows: input.windows,
+    directionalHitRate: input.directionalHitRate,
+    status,
+    proposedConfidenceModifier: modifier,
+    proposedConfidence: round(
+      clamp(input.officialConfidence + modifier, 0, 0.9),
+      2,
+    ),
+    proposedAllowNewPositions: input.officialAllowNewPositions,
+    rationale: eligible
+      ? "外盘样本通过 shadow 门槛，仅记录置信度假设，不修改正式路由或仓位。"
+      : "外盘样本尚未通过 250 样本、3 窗口和 3 个百分点增量门槛。",
+  };
+}
+
 function average(values: number[]): number {
   if (values.length === 0) return 0;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -244,6 +302,7 @@ function riskProfile(regime: AdaptiveMarketRegime): Pick<
 
 export function routeAdaptiveStrategies(
   report: MarketRegimeResearchReport,
+  externalMarket?: ExternalMarketShadowInput,
 ): AdaptiveStrategyRouting {
   const sectors = report.sectorOutlooks;
   const stocks = report.stockRegimes.filter(
@@ -366,12 +425,21 @@ export function routeAdaptiveStrategies(
   const confidence = regime === "unclear"
     ? 0
     : clamp(0.45 + sampleConfidence + agreement * 0.2, 0, 0.9);
+  const officialConfidence = round(confidence, 2);
+  const externalMarketShadow = evaluateExternalMarketShadow({
+    bias: externalMarket?.bias ?? "neutral",
+    samples: externalMarket?.samples ?? 0,
+    windows: externalMarket?.windows ?? 0,
+    directionalHitRate: externalMarket?.directionalHitRate ?? null,
+    officialConfidence,
+    officialAllowNewPositions: profile.allowNewPositions,
+  });
 
   return {
     version: "1.1.0",
     generatedAt: new Date().toISOString(),
     regime,
-    confidence: round(confidence, 2),
+    confidence: officialConfidence,
     ...profile,
     eligibleStrategyKeys,
     disabledStrategyKeys,
@@ -381,6 +449,9 @@ export function routeAdaptiveStrategies(
       recheckTriggers: [...STRATEGY_PLAYBOOKS[regime].recheckTriggers],
     },
     capitalPacing: { ...CAPITAL_PACING[regime] },
+    shadow: {
+      externalMarket: externalMarketShadow,
+    },
     evidence,
     riskFlags,
     metrics,

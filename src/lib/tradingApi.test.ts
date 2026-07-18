@@ -3,6 +3,7 @@ import {
   AUTH_EXPIRED_EVENT,
   fetchAuditEvents,
   fetchCrossMarketStrategyContext,
+  fetchExternalMarketImpact,
   fetchIpoSubscriptionResearch,
   fetchHongKongMarketResearch,
   fetchMarketRegimeResearch,
@@ -145,6 +146,27 @@ describe("session-aware trading API", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(
         /\/api\/research\/cross-market-strategy-context\?limit=16&days=500$/,
+      ),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("requests bounded external-market impact with the session cookie", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        sourceStatus: "live-read-only",
+        influenceMode: "observation-only",
+        markets: [],
+        crypto: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchExternalMarketImpact(999);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/api\/research\/external-market-impact\?days=500$/,
       ),
       expect.objectContaining({ credentials: "include" }),
     );

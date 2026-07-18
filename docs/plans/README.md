@@ -30,6 +30,7 @@ YYYY-MM-DD-short-task-name.md
 - [前后端框架与交易边界加固](2026-07-11-framework-and-trading-boundary-hardening.md)
 - [只读真实行情与 API 契约](2026-07-11-read-only-market-and-api-contracts.md)
 - [东方财富只读行情与统一纸面执行边界](2026-07-11-eastmoney-paper-boundary-hardening.md)
+- [外部市场对 A 股影响研究](2026-07-18-external-market-a-share-impact.md)
 
 ## 进行中计划
 

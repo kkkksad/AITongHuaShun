@@ -9,6 +9,7 @@ import { InMemoryTradingStore } from "../store/inMemoryTradingStore";
 import type { IntradayExecutionPolicy } from "../trading/intradayExecutionPolicy";
 import {
   PaperPlanNotifier,
+  buildExternalMarketNotificationImpact,
   formatPaperPlanMessage,
   getPaperPlanBriefingSlot,
   summarizePaperOrders,
@@ -234,6 +235,26 @@ function createNotifier(input: {
 }
 
 describe("PaperPlanNotifier", () => {
+  it("compresses external markets into one precise fixed-briefing line", () => {
+    const impact = buildExternalMarketNotificationImpact({
+      bias: "restrictive",
+      evidenceGrade: "historically-observed",
+      samples: 126,
+      groups: [
+        { key: "us-overnight", tone: "negative" },
+        { key: "asia", tone: "neutral" },
+        { key: "crypto", tone: "positive" },
+      ],
+      rationale: ["美股隔夜偏弱，亚洲市场中性。"],
+    });
+
+    expect(impact.direction).toBe("risk-off");
+    expect(impact.summary).toBe(
+      "美股隔夜偏弱；亚洲中性；BTC/ETH偏强｜对A股：偏约束（历史观察，样本126）",
+    );
+    expect(impact.drivers).toEqual(["美股隔夜偏弱，亚洲市场中性。"]);
+  });
+
   it.each([
     ["2026-07-17T09:34:00+08:00", "opening", null],
     ["2026-07-17T09:35:00+08:00", "opening", 1],

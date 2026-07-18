@@ -22,6 +22,7 @@ FastAPI + AkShare :8800
         ├─ 全 A 股名称/代码搜索（内存行情缓存）
         ├─ 新闻与全球指数
         ├─ 行业板块、行业日线与个股日线
+        ├─ 受控全球指数历史、A 股指数历史与 BTC/ETH 快照
         ├─ 国内期货主连快照与连续日线
         └─ 新股申购与上市记录（只读，无账户和订单接口）
 ```
@@ -44,7 +45,7 @@ src/
 server/
   broker/        PaperBroker 模拟撮合、受控纸面适配器与只读行情原型
   market/        MockMarket、HTTP 与 AkShare 只读行情适配器
-  research/      策略排行、真实稳健性、跨市场状态、候选池、板块/形态研究、纸面计划与 SuperMind 信号包
+  research/      策略排行、真实稳健性、跨市场状态、外盘影响/紧凑特征、候选池、板块/形态研究、纸面计划与 SuperMind 信号包
   notifications/ WxPusher 四时点简报、重要事件去重与十条发送预算
   trading/       本地 paper 自动执行器
   realtime/      WebSocket 连接与广播
@@ -77,7 +78,7 @@ shared/
 1. React 启动时验证服务端会话；未登录时只渲染登录页，不启动业务 REST 或 WebSocket。
 2. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
 3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
-4. `/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
+4. `/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/external-market-impact` 严格用早于 A 股目标日期的美股/亚洲指数日线和沪深 300 对齐，并把 BTC/ETH 限制为快照参考；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
 5. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
 6. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
 7. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
@@ -101,6 +102,10 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 运行日志与交易状态属于不同存储边界。开发启动前的清理器只处理仓库内 `logs/*.log`，按保留天数、单文件大小和目录总大小执行；`data/` 下的 paper 账户、持仓、开放订单和审计留存继续由 `TradingStore` 独立管理，日志清理器不得访问。
 
 国内期货只允许服务端白名单中的 16 个主连代码。快照优先使用 AkShare 新浪批量接口，当前版本字段不兼容时回退到同一新浪结构化接口；历史使用主力连续日线并标记 `continuous-main`。Fastify 只把这些数据组合成风险基调和策略族上下文，浏览器不直接访问桥接，结果也不进入订单域。
+
+外部市场影响模块按“美股隔夜、亚洲市场、数字资产”分组。历史对齐只选择严格早于 A 股目标交易日的外部收盘，防止用同日尚未完成的亚洲收盘解释盘前决策；BTC/ETH 没有同口径历史时只保留当前 24 小时快照，不能独立产生 A 股方向。至少 60 个样本才展示历史统计，至少 250 个样本、三个窗口和方向命中改善门槛通过后也只产生 `shadow` 对比字段，正式路由的置信度、新增仓位许可和仓位上限保持不变。
+
+可选的外盘特征采样器只允许在 `paper + akshare` 模式启用：北京时间 09:20 写入当时可见的紧凑特征，15:10 给同一交易日补沪深 300 日标签。文件默认最多 750 行，采用临时文件加原子重命名，损坏 JSON 会隔离为 `.corrupt-<timestamp>`；不保存原始响应、tick、分钟线或凭据。
 
 单股趋势研究由 `server/research/stockTrendForecast.ts` 独立负责。每个历史决策点只使用当时及之前的收盘、均线、动量、RSI、波动、ATR 和量能特征，再读取之后 3/5/10 个交易日收盘做验证；当前规则分与历史命中率是两个独立字段，不得把命中率回填为当前上涨概率。前端只通过受保护 Fastify 接口访问，不直接调用 AkShare 桥。
 

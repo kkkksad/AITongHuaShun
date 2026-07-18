@@ -285,6 +285,87 @@ export interface CrossMarketStrategyContextReport {
   guardrails: string[];
 }
 
+export type ExternalSignalTone = "positive" | "neutral" | "negative" | "unavailable";
+export type ExternalImpactBias = "supportive" | "neutral" | "restrictive" | "conflicted";
+export type ExternalEvidenceGrade =
+  | "snapshot-only"
+  | "historically-observed"
+  | "walk-forward-validated";
+
+export interface ExternalMarketItem {
+  symbol: string;
+  name: string;
+  region: string;
+  price: number;
+  changePercent: number;
+  updatedAt: string;
+  source: string;
+  sessionDate: string | null;
+  timezone: string;
+  quoteKind: "snapshot" | "daily-close";
+}
+
+export interface ExternalCryptoItem {
+  symbol: string;
+  name: string;
+  priceUsd: number;
+  change24hPercent: number;
+  high24h: number | null;
+  low24h: number | null;
+  volume24h: number | null;
+  updatedAt: string;
+  source: string;
+}
+
+export interface ExternalMarketGroup {
+  key: "us-overnight" | "asia" | "crypto";
+  tone: ExternalSignalTone;
+  coverage: number;
+  averageChangePercent: number | null;
+  asOf: string | null;
+  symbols: string[];
+}
+
+export interface ExternalMarketImpactReport {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+  influenceMode: "observation-only" | "shadow-validated";
+  source: {
+    globalSnapshotSources: string[];
+    globalHistorySource: string;
+    benchmarkHistorySource: string;
+    cryptoSource: string;
+    fetchedAt: string | null;
+    requestedDays: number;
+    globalSnapshotCount: number;
+    globalHistoryCount: number;
+    cryptoCount: number;
+  };
+  groups: ExternalMarketGroup[];
+  markets: ExternalMarketItem[];
+  crypto: ExternalCryptoItem[];
+  aShareImpact: {
+    bias: ExternalImpactBias;
+    confidence: number;
+    evidenceGrade: ExternalEvidenceGrade;
+    allowPositionIncrease: false;
+    rationale: string[];
+  };
+  validation: {
+    benchmark: "SH000300";
+    samples: number;
+    windows: number;
+    directionalHitRate: number | null;
+    averageNextDayReturn: number | null;
+    unconditionalAverageReturn: number | null;
+    incrementalReturn: number | null;
+  };
+  warnings: string[];
+  guardrails: string[];
+}
+
 export type DailyCandidateAction = "watch" | "paper-buy" | "avoid";
 
 export interface DailyCandidate {
@@ -1492,6 +1573,15 @@ export function fetchCrossMarketStrategyContext(
   return authApiRequest<CrossMarketStrategyContextReport>(
     "/api/research/cross-market-strategy-context" +
       `?limit=${boundedLimit}&days=${boundedDays}`,
+  );
+}
+
+export function fetchExternalMarketImpact(
+  days = 500,
+): Promise<ExternalMarketImpactReport> {
+  const boundedDays = Math.min(500, Math.max(60, Math.round(days)));
+  return authApiRequest<ExternalMarketImpactReport>(
+    `/api/research/external-market-impact?days=${boundedDays}`,
   );
 }
 

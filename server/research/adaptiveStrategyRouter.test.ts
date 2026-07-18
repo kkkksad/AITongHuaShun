@@ -4,7 +4,10 @@ import type {
   SectorOutlook,
   StockRegimeResult,
 } from "./marketRegimeResearch";
-import { routeAdaptiveStrategies } from "./adaptiveStrategyRouter";
+import {
+  evaluateExternalMarketShadow,
+  routeAdaptiveStrategies,
+} from "./adaptiveStrategyRouter";
 
 function sector(overrides: Partial<SectorOutlook> = {}): SectorOutlook {
   return {
@@ -129,6 +132,56 @@ function report(input: {
 }
 
 describe("routeAdaptiveStrategies", () => {
+  it("keeps external-market research inactive before the shadow gate", () => {
+    const shadow = evaluateExternalMarketShadow({
+      bias: "restrictive",
+      samples: 249,
+      windows: 3,
+      directionalHitRate: 0.58,
+      officialConfidence: 0.72,
+      officialAllowNewPositions: true,
+    });
+
+    expect(shadow.status).toBe("collecting");
+    expect(shadow.proposedConfidenceModifier).toBe(0);
+    expect(shadow.proposedConfidence).toBe(0.72);
+  });
+
+  it("records a bounded restrictive modifier without changing the official route", () => {
+    const result = routeAdaptiveStrategies(report(), {
+      bias: "restrictive",
+      samples: 300,
+      windows: 3,
+      directionalHitRate: 0.55,
+    });
+
+    expect(result.confidence).toBeGreaterThanOrEqual(0.6);
+    expect(result.allowNewPositions).toBe(true);
+    expect(result.shadow?.externalMarket).toMatchObject({
+      status: "eligible",
+      proposedConfidenceModifier: -0.05,
+      proposedAllowNewPositions: true,
+    });
+    expect(result.shadow!.externalMarket.proposedConfidence).toBeLessThan(
+      result.confidence,
+    );
+  });
+
+  it("never lets a supportive shadow signal enable forbidden positions", () => {
+    const shadow = evaluateExternalMarketShadow({
+      bias: "supportive",
+      samples: 300,
+      windows: 3,
+      directionalHitRate: 0.55,
+      officialConfidence: 0,
+      officialAllowNewPositions: false,
+    });
+
+    expect(shadow.status).toBe("eligible");
+    expect(shadow.proposedConfidenceModifier).toBe(0.05);
+    expect(shadow.proposedAllowNewPositions).toBe(false);
+  });
+
   it("enables trend strategies in a constructive low-volatility market", () => {
     const result = routeAdaptiveStrategies(report());
 

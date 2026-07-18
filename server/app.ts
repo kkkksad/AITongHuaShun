@@ -49,6 +49,12 @@ import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
 import { buildCrossMarketStrategyContext } from "./research/crossMarketStrategyContext";
+import { buildExternalMarketImpact } from "./research/externalMarketImpact";
+import {
+  ExternalMarketFeatureCapture,
+  fetchHs300CloseReturnFromBridge,
+} from "./research/externalMarketFeatureCapture";
+import { ExternalMarketFeatureStore } from "./research/externalMarketFeatureStore";
 import { buildHongKongMarketResearch } from "./research/hongKongMarketResearch";
 import { buildMarketRegimeResearch } from "./research/marketRegimeResearch";
 import { buildIpoSubscriptionResearch } from "./research/ipoSubscriptionResearch";
@@ -108,6 +114,10 @@ const strategyRobustnessQuerySchema = z.object({
 const crossMarketStrategyContextQuerySchema = z.object({
   limit: z.coerce.number().int().min(4).max(16).default(12),
   days: z.coerce.number().int().min(60).max(500).default(180),
+});
+
+const externalMarketImpactQuerySchema = z.object({
+  days: z.coerce.number().int().min(60).max(500).default(500),
 });
 
 const dailyCandidatesQuerySchema = z.object({
@@ -415,6 +425,32 @@ export async function buildTradingApp(
       broadcastPositions(system.market.getSnapshot());
     },
   });
+  const externalMarketFeatureCapture = options.config.EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED
+    ? new ExternalMarketFeatureCapture({
+        store: new ExternalMarketFeatureStore({
+          filePath: options.config.EXTERNAL_MARKET_FEATURE_FILE,
+          maxRows: options.config.EXTERNAL_MARKET_FEATURE_MAX_ROWS,
+          now: options.clock,
+        }),
+        buildReport: () => buildExternalMarketImpact({
+          bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+          bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+          marketDataProvider: system.marketDataProvider,
+          mode: options.config.MARKET_MODE,
+          days: 60,
+          timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+        }),
+        fetchHs300CloseReturn: () => fetchHs300CloseReturnFromBridge({
+          bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+          bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+          timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+        }),
+        clock: options.clock,
+        onError: (error) => {
+          app.log.warn({ err: error }, "external market feature capture failed");
+        },
+      })
+    : null;
 
   // ── Error handler ───────────────────────────────────────
 
@@ -690,6 +726,37 @@ export async function buildTradingApp(
       marketDataProvider: system.marketDataProvider,
       mode: options.config.MARKET_MODE,
       limit,
+      days,
+      timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+    });
+  });
+
+  app.get("/api/research/external-market-impact", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取外部市场对 A 股的只读影响研究",
+      description:
+        "组合美股隔夜、日股、韩股、港股和 BTC/ETH 真实只读数据，以严格早于 A 股交易日的历史收盘做条件统计。结果不直接生成订单，也不能提高 A 股仓位。",
+      querystring: {
+        type: "object",
+        properties: {
+          days: {
+            type: "integer",
+            minimum: 60,
+            maximum: 500,
+            default: 500,
+            description: "全球指数和沪深300历史交易日上限",
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { days } = externalMarketImpactQuerySchema.parse(request.query);
+    return buildExternalMarketImpact({
+      bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
       days,
       timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
     });
@@ -1466,6 +1533,7 @@ export async function buildTradingApp(
 
   app.addHook("onClose", async () => {
     sessions?.clear();
+    externalMarketFeatureCapture?.stop();
     paperAutoExecutor.stop();
     system.market.stop();
   });
@@ -1473,6 +1541,7 @@ export async function buildTradingApp(
   if (options.startMarket !== false) {
     system.market.start();
     paperAutoExecutor.start();
+    externalMarketFeatureCapture?.start();
   }
 
   return app;

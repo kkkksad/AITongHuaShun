@@ -18,6 +18,7 @@ from main import (
     app,
     FUTURES_WATCHLIST,
     history_cache,
+    research_cache,
     GlobalMarketsResponse,
     GlobalMarketQuote,
     FuturesQuote,
@@ -70,8 +71,10 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def clear_history_cache_between_tests():
     history_cache.clear()
+    research_cache.clear()
     yield
     history_cache.clear()
+    research_cache.clear()
 
 
 class TestHealthEndpoint:
@@ -225,6 +228,37 @@ class TestIndicesEndpoint:
         response = client.get(f"/api/market/indices?symbols={symbols}")
         assert response.status_code == 400
         assert "50" in response.json()["detail"]
+
+    def test_index_history_accepts_controlled_a_share_indices(self):
+        frame = pd.DataFrame([{
+            "date": "2026-07-17",
+            "open": 4000,
+            "high": 4050,
+            "low": 3980,
+            "close": 4030,
+            "volume": 100000,
+        }])
+        with patch(
+            "main.fetch_a_share_index_history_dataframe",
+            return_value=(frame, "eastmoney-a-share-index-history"),
+            create=True,
+        ) as fetch:
+            response = client.get(
+                "/api/market/index-history"
+                "?symbols=SH000001,SZ399001,SZ399006,SH000300&days=180",
+            )
+
+        assert response.status_code == 200
+        assert len(response.json()["series"]) == 4
+        assert fetch.call_count == 4
+
+    def test_index_history_rejects_unknown_indices(self):
+        response = client.get(
+            "/api/market/index-history?symbols=SH000001,SH999999&days=180",
+        )
+
+        assert response.status_code == 400
+        assert "受控 A 股指数" in response.json()["detail"]
 
 
 class TestHongKongMarketEndpoints:
@@ -499,6 +533,98 @@ class TestGlobalMarketsEndpoint:
         assert data["provider"] == "akshare"
         assert data["markets"] == []
         assert "全球市场源暂不可用" in data["warning"]
+
+    def test_global_history_accepts_complete_watchlist(self):
+        frame = pd.DataFrame([{
+            "date": "2026-07-17",
+            "open": 100,
+            "high": 103,
+            "low": 99,
+            "close": 102,
+            "volume": 100000,
+        }])
+        symbols = "DJI,SPX,IXIC,HSI,N225,KOSPI,SX5E"
+        with patch(
+            "main.fetch_global_history_dataframe",
+            return_value=(frame, "eastmoney-global-history"),
+            create=True,
+        ) as fetch:
+            response = client.get(
+                f"/api/market/global/history?symbols={symbols}&days=500",
+            )
+
+        assert response.status_code == 200
+        assert len(response.json()["series"]) == 7
+        assert fetch.call_count == 7
+
+    def test_global_history_rejects_unknown_indices(self):
+        response = client.get(
+            "/api/market/global/history?symbols=SPX,UNKNOWN&days=180",
+        )
+
+        assert response.status_code == 400
+        assert "受控全球指数" in response.json()["detail"]
+
+
+class TestCryptoMarketEndpoint:
+    def test_crypto_quotes_only_return_controlled_btc_and_eth(self):
+        frame = pd.DataFrame([
+            {
+                "市场": "crypto",
+                "交易品种": "BTCUSD",
+                "最近报价": 68000,
+                "涨跌幅": 1.5,
+                "24小时最高": 69000,
+                "24小时最低": 66000,
+                "24小时成交量": 120000,
+                "更新时间": "2026-07-18 23:20:00",
+            },
+            {
+                "市场": "crypto",
+                "交易品种": "ETHUSD",
+                "最近报价": 3600,
+                "涨跌幅": -0.8,
+                "24小时最高": 3700,
+                "24小时最低": 3500,
+                "24小时成交量": 240000,
+                "更新时间": "2026-07-18 23:20:00",
+            },
+            {
+                "市场": "crypto",
+                "交易品种": "DOGEUSD",
+                "最近报价": 0.2,
+                "涨跌幅": 8,
+                "24小时最高": 0.21,
+                "24小时最低": 0.18,
+                "24小时成交量": 999999,
+                "更新时间": "2026-07-18 23:20:00",
+            },
+        ])
+        with patch(
+            "main.fetch_crypto_spot_dataframe",
+            return_value=(frame, "jin10-crypto-spot"),
+            create=True,
+        ):
+            response = client.get("/api/market/crypto/quotes")
+
+        assert response.status_code == 200
+        assert [item["symbol"] for item in response.json()["items"]] == [
+            "BTCUSD",
+            "ETHUSD",
+        ]
+
+    def test_crypto_quotes_do_not_fabricate_prices_on_failure(self):
+        with patch(
+            "main.fetch_crypto_spot_dataframe",
+            side_effect=RuntimeError("offline"),
+            create=True,
+        ):
+            response = client.get("/api/market/crypto/quotes")
+
+        assert response.status_code == 200
+        assert response.json()["source"] == "unavailable"
+        assert response.json()["items"] == []
+        assert "数字资产行情源暂不可用" in response.json()["warning"]
 
 
 class TestDomesticFuturesEndpoints:
@@ -944,27 +1070,43 @@ class TestQuoteCache:
         assert provider == "sina-global-history-latest"
 
     def test_sina_global_snapshot_uses_supported_index_names(self):
-        requested_names = []
+        requested_global_names = []
+        requested_us_symbols = []
 
         def fetch_history(*, symbol):
-            requested_names.append(symbol)
+            requested_global_names.append(symbol)
             return pd.DataFrame([
-                {"close": 100.0},
-                {"close": 102.0},
+                {"date": "2026-07-16", "close": 100.0},
+                {"date": "2026-07-17", "close": 102.0},
+            ])
+
+        def fetch_us(*, symbol):
+            requested_us_symbols.append(symbol)
+            return pd.DataFrame([
+                {"date": "2026-07-16", "close": 100.0},
+                {"date": "2026-07-17", "close": 102.0},
             ])
 
         with patch("main.ak.index_global_hist_sina", side_effect=fetch_history):
-            df = fetch_global_market_sina_snapshot_dataframe()
+            with patch("main.ak.index_us_stock_sina", side_effect=fetch_us):
+                df = fetch_global_market_sina_snapshot_dataframe()
 
-        assert requested_names == [
+        assert set(requested_us_symbols) == {".DJI", ".INX", ".IXIC"}
+        assert set(requested_global_names) == {
+            "恒生指数",
             "日经225指数",
+            "首尔综合指数",
             "英国富时100指数",
             "德国DAX 30种股价指数",
             "法CAC40指数",
             "欧洲Stoxx50指数",
+        }
+        assert df["代码"].tolist() == [
+            "DJI", "SPX", "IXIC", "HSI", "N225",
+            "KOSPI", "FTSE", "GDAXI", "FCHI", "SX5E",
         ]
-        assert df["代码"].tolist() == ["NKY", "UKX", "DAX", "CAC", "SX5E"]
-        assert df["涨跌幅"].tolist() == pytest.approx([2.0] * 5)
+        assert df["市场日期"].tolist() == ["2026-07-17"] * 10
+        assert df["涨跌幅"].tolist() == pytest.approx([2.0] * 10)
 
     def test_fetch_news_uses_public_source(self):
         news_df = MagicMock()
@@ -1063,6 +1205,8 @@ class TestResearchDataNormalization:
         assert len(markets) == 4
         assert markets[0].symbol == "IXIC"
         assert markets[0].region == "US"
+        assert markets[0].timezone == "America/New_York"
+        assert markets[0].quoteKind == "snapshot"
         assert markets[1].symbol == "HSI"
         assert markets[1].region == "HK"
         assert markets[2].symbol == "FCHI"
@@ -1239,12 +1383,17 @@ class TestMarketQuoteModel:
                     changePercent=1.2,
                     updatedAt="2026-07-11T00:00:00Z",
                     source="global-index-em",
+                    sessionDate="2026-07-10",
+                    timezone="America/New_York",
+                    quoteKind="daily-close",
                 ),
             ],
         )
         data = response.model_dump()
         assert data["markets"][0]["symbol"] == "IXIC"
         assert data["markets"][0]["region"] == "US"
+        assert data["markets"][0]["sessionDate"] == "2026-07-10"
+        assert data["markets"][0]["timezone"] == "America/New_York"
 
     def test_sector_and_history_models_serialize_source_metadata(self):
         sector_response = SectorSnapshotResponse(

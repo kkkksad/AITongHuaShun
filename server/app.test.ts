@@ -511,6 +511,41 @@ describe("trading API", () => {
     expect(invalidDays.statusCode).toBe(400);
   });
 
+  it("does not fabricate external-market impact in mock mode", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/external-market-impact?days=500",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      sourceStatus: "mock-disabled",
+      influenceMode: "observation-only",
+      markets: [],
+      crypto: [],
+      aShareImpact: {
+        bias: "neutral",
+        allowPositionIncrease: false,
+      },
+      source: {
+        requestedDays: 500,
+        globalSnapshotCount: 0,
+        cryptoCount: 0,
+      },
+    });
+    expect(response.json().guardrails.join(" ")).toContain("不能提高 A 股仓位");
+  });
+
+  it("validates external-market impact query bounds", async () => {
+    const invalidDays = await app.inject({
+      method: "GET",
+      url: "/api/research/external-market-impact?days=59",
+    });
+
+    expect(invalidDays.statusCode).toBe(400);
+  });
+
   it("does not replace unavailable market-regime history with static data", async () => {
     const response = await app.inject({
       method: "GET",

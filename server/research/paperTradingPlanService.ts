@@ -8,6 +8,8 @@ import { routeAdaptiveStrategies } from "./adaptiveStrategyRouter";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
 import { buildMarketRegimeResearch } from "./marketRegimeResearch";
 import type { MarketRegimeResearchReport } from "./marketRegimeResearch";
+import { buildExternalMarketImpact } from "./externalMarketImpact";
+import type { ExternalMarketImpactReport } from "./externalMarketImpact";
 import { buildPaperTradingPlan } from "./paperTradingPlan";
 import type { PaperTradingPlan } from "./paperTradingPlan";
 import { buildRealResearchDataFeed } from "./realResearchData";
@@ -23,6 +25,7 @@ export interface CurrentPaperTradingPlanResult {
   qualityStocks: DailyQualityStockReport;
   marketRegimeResearch: MarketRegimeResearchReport;
   realResearchDataFeed: RealResearchDataFeed;
+  externalMarketImpact: ExternalMarketImpactReport;
   adaptiveRouting: AdaptiveStrategyRouting;
 }
 
@@ -43,6 +46,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     qualityStocks,
     marketRegimeResearch,
     realResearchDataFeed,
+    externalMarketImpact,
   ] = await Promise.all([
     buildStrategyLeaderboard(
       snapshot,
@@ -82,8 +86,21 @@ export async function buildCurrentPaperTradingPlan(input: {
       snapshot,
       timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
     }),
+    buildExternalMarketImpact({
+      bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: input.system.marketDataProvider,
+      mode: input.config.MARKET_MODE,
+      days: 500,
+      timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
+    }),
   ]);
-  const adaptiveRouting = routeAdaptiveStrategies(marketRegimeResearch);
+  const adaptiveRouting = routeAdaptiveStrategies(marketRegimeResearch, {
+    bias: externalMarketImpact.aShareImpact.bias,
+    samples: externalMarketImpact.validation.samples,
+    windows: externalMarketImpact.validation.windows,
+    directionalHitRate: externalMarketImpact.validation.directionalHitRate,
+  });
 
   input.researchStore?.recordMarketSnapshot(snapshot, input.system.marketDataProvider);
   input.researchStore?.recordStrategyLeaderboard(leaderboard);
@@ -121,6 +138,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     qualityStocks,
     marketRegimeResearch,
     realResearchDataFeed,
+    externalMarketImpact,
     adaptiveRouting,
   };
 }

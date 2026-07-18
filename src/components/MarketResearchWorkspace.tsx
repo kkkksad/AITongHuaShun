@@ -26,6 +26,7 @@ const loadStockPanel = () => import("./StockTrendForecastPanel");
 const loadRegimePanel = () => import("./MarketRegimePanel");
 const loadHongKongPanel = () => import("./HongKongMarketPanel");
 const loadFuturesPanel = () => import("./FuturesMarketPanel");
+const loadExternalPanel = () => import("./ExternalMarketImpactPanel");
 const loadEventsPanel = () => import("./MarketEventsPanel");
 
 const MarketAshareOverviewPanel = lazy(async () => ({
@@ -46,6 +47,9 @@ const HongKongMarketPanel = lazy(async () => ({
 const FuturesMarketPanel = lazy(async () => ({
   default: (await loadFuturesPanel()).FuturesMarketPanel,
 }));
+const ExternalMarketImpactPanel = lazy(async () => ({
+  default: (await loadExternalPanel()).ExternalMarketImpactPanel,
+}));
 const MarketEventsPanel = lazy(async () => ({
   default: (await loadEventsPanel()).MarketEventsPanel,
 }));
@@ -57,6 +61,7 @@ type MarketWorkspaceTab =
   | "regime"
   | "hong-kong"
   | "futures"
+  | "external"
   | "events";
 
 interface MarketResearchWorkspaceProps {
@@ -75,6 +80,7 @@ const tabs: Array<{
   { id: "regime", label: "板块形态", icon: Layers3, preload: loadRegimePanel },
   { id: "hong-kong", label: "港股观察", icon: Globe2, preload: loadHongKongPanel },
   { id: "futures", label: "期货研判", icon: Activity, preload: loadFuturesPanel },
+  { id: "external", label: "全球影响", icon: Globe2, preload: loadExternalPanel },
   { id: "events", label: "事件资讯", icon: Newspaper, preload: loadEventsPanel },
 ];
 
@@ -156,6 +162,7 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
             {activeTab === "regime" && <MarketRegimePanel />}
             {activeTab === "hong-kong" && <HongKongMarketPanel />}
             {activeTab === "futures" && <FuturesMarketPanel />}
+            {activeTab === "external" && <ExternalMarketImpactPanel />}
             {activeTab === "events" && <MarketEventsPanel />}
           </Suspense>
         </div>

@@ -18,6 +18,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -171,12 +172,35 @@ class GlobalMarketQuote(BaseModel):
     changePercent: float
     updatedAt: str
     source: str
+    sessionDate: str | None = None
+    timezone: str
+    quoteKind: Literal["snapshot", "daily-close"] = "snapshot"
 
 
 class GlobalMarketsResponse(BaseModel):
     provider: str
     fetchedAt: str
     markets: list[GlobalMarketQuote]
+    warning: str | None = None
+
+
+class CryptoQuote(BaseModel):
+    symbol: str
+    name: str
+    priceUsd: float
+    change24hPercent: float
+    high24h: float | None = None
+    low24h: float | None = None
+    volume24h: float | None = None
+    updatedAt: str
+    source: str
+
+
+class CryptoQuotesResponse(BaseModel):
+    provider: str
+    source: str
+    fetchedAt: str
+    items: list[CryptoQuote] = Field(default_factory=list)
     warning: str | None = None
 
 
@@ -296,16 +320,123 @@ INDEX_SYMBOL_MAP = {
     "000300": "SH000300",  # 沪深300
 }
 
+A_SHARE_INDEX_WATCHLIST = {
+    "SH000001": ("sh000001", "上证指数"),
+    "SZ399001": ("sz399001", "深证成指"),
+    "SZ399006": ("sz399006", "创业板指"),
+    "SH000300": ("sh000300", "沪深300"),
+}
+
+GLOBAL_INDEX_WATCHLIST = {
+    "DJI": {
+        "name": "道琼斯指数",
+        "region": "US",
+        "timezone": "America/New_York",
+        "eastmoney": "道琼斯",
+        "sina": ".DJI",
+        "sina_api": "us",
+        "aliases": ("道琼斯", "道琼斯指数", "道琼斯工业平均指数"),
+    },
+    "SPX": {
+        "name": "标普500",
+        "region": "US",
+        "timezone": "America/New_York",
+        "eastmoney": "标普500",
+        "sina": ".INX",
+        "sina_api": "us",
+        "aliases": ("标普500", "标普500指数", "标准普尔500指数"),
+    },
+    "IXIC": {
+        "name": "纳斯达克指数",
+        "region": "US",
+        "timezone": "America/New_York",
+        "eastmoney": "纳斯达克",
+        "sina": ".IXIC",
+        "sina_api": "us",
+        "aliases": ("纳斯达克", "纳斯达克指数", "纳斯达克综合指数"),
+    },
+    "HSI": {
+        "name": "恒生指数",
+        "region": "HK",
+        "timezone": "Asia/Hong_Kong",
+        "eastmoney": "恒生指数",
+        "sina": "恒生指数",
+        "sina_api": "global",
+        "aliases": ("恒生指数",),
+    },
+    "N225": {
+        "name": "日经225",
+        "region": "JP",
+        "timezone": "Asia/Tokyo",
+        "eastmoney": "日经225",
+        "sina": "日经225指数",
+        "sina_api": "global",
+        "aliases": ("日经225", "日经225指数"),
+    },
+    "KOSPI": {
+        "name": "韩国KOSPI",
+        "region": "KR",
+        "timezone": "Asia/Seoul",
+        "eastmoney": "韩国KOSPI",
+        "sina": "首尔综合指数",
+        "sina_api": "global",
+        "aliases": ("韩国KOSPI", "韩国综合指数", "首尔综合指数"),
+    },
+    "FTSE": {
+        "name": "英国富时100",
+        "region": "EU",
+        "timezone": "Europe/London",
+        "eastmoney": "英国富时100",
+        "sina": "英国富时100指数",
+        "sina_api": "global",
+        "aliases": ("英国富时100", "英国富时100指数"),
+    },
+    "GDAXI": {
+        "name": "德国DAX30",
+        "region": "EU",
+        "timezone": "Europe/Berlin",
+        "eastmoney": "德国DAX30",
+        "sina": "德国DAX 30种股价指数",
+        "sina_api": "global",
+        "aliases": ("德国DAX30", "德国DAX 30", "德国DAX 30种股价指数"),
+    },
+    "FCHI": {
+        "name": "法国CAC40",
+        "region": "EU",
+        "timezone": "Europe/Paris",
+        "eastmoney": "法国CAC40",
+        "sina": "法CAC40指数",
+        "sina_api": "global",
+        "aliases": ("法国CAC40", "法国CAC40指数", "法CAC40指数"),
+    },
+    "SX5E": {
+        "name": "欧洲Stoxx50",
+        "region": "EU",
+        "timezone": "Europe/Berlin",
+        "eastmoney": "欧洲斯托克50",
+        "sina": "欧洲Stoxx50指数",
+        "sina_api": "global",
+        "aliases": ("欧洲Stoxx50", "欧洲Stoxx50指数", "欧洲斯托克50"),
+    },
+}
+
 GLOBAL_MARKET_ALIASES = {
-    "道琼斯": ("DJI", "道琼斯指数", "US"),
-    "纳斯达克": ("IXIC", "纳斯达克指数", "US"),
-    "标普500": ("SPX", "标普500", "US"),
-    "恒生指数": ("HSI", "恒生指数", "HK"),
-    "日经225": ("N225", "日经225", "JP"),
-    "英国富时100": ("FTSE", "英国富时100", "EU"),
-    "德国DAX30": ("GDAXI", "德国DAX30", "EU"),
-    "法国CAC40": ("FCHI", "法国CAC40", "EU"),
-    "欧洲Stoxx50": ("SX5E", "欧洲Stoxx50", "EU"),
+    alias: symbol
+    for symbol, metadata in GLOBAL_INDEX_WATCHLIST.items()
+    for alias in metadata["aliases"]
+}
+
+CRYPTO_WATCHLIST = {
+    "BTCUSD": "比特币",
+    "ETHUSD": "以太坊",
+}
+
+CRYPTO_SYMBOL_ALIASES = {
+    "BTCUSD": "BTCUSD",
+    "BTCUSDT": "BTCUSD",
+    "XBTUSD": "BTCUSD",
+    "ETHUSD": "ETHUSD",
+    "ETHUSDT": "ETHUSD",
 }
 
 FUTURES_WATCHLIST = {
@@ -701,6 +832,51 @@ def fetch_a_share_index_dataframe():
     raise last_error
 
 
+def fetch_a_share_index_history_dataframe(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+):
+    """Fetch a controlled A-share index daily series with public fallbacks."""
+    provider_symbol, _ = A_SHARE_INDEX_WATCHLIST[symbol]
+    providers = (
+        (
+            "eastmoney-a-share-index-history",
+            lambda: ak.stock_zh_index_daily_em(
+                symbol=provider_symbol,
+                start_date=start_date,
+                end_date=end_date,
+            ),
+        ),
+        (
+            "tencent-a-share-index-history",
+            lambda: ak.stock_zh_index_daily_tx(
+                symbol=provider_symbol,
+                start_date=start_date,
+                end_date=end_date,
+            ),
+        ),
+        (
+            "sina-a-share-index-history",
+            lambda: ak.stock_zh_index_daily(symbol=provider_symbol),
+        ),
+    )
+    last_error: Exception | None = None
+    for provider_name, provider in providers:
+        try:
+            return provider(), provider_name
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "A 股指数历史源 %s 获取 %s 失败，尝试下一个来源: %s",
+                provider_name,
+                symbol,
+                exc,
+            )
+    assert last_error is not None
+    raise last_error
+
+
 def fetch_hk_spot_dataframe():
     """Fetch the real read-only Hong Kong stock snapshot."""
     providers = (
@@ -749,6 +925,51 @@ def fetch_global_market_dataframe():
 
     assert last_error is not None
     raise last_error
+
+
+def fetch_global_history_dataframe(
+    symbol: str,
+    _start_date: str,
+    _end_date: str,
+):
+    """Fetch one controlled global index history with a region-aware fallback."""
+    metadata = GLOBAL_INDEX_WATCHLIST[symbol]
+    providers = [
+        (
+            "eastmoney-global-history",
+            lambda: ak.index_global_hist_em(symbol=metadata["eastmoney"]),
+        ),
+    ]
+    if metadata["sina_api"] == "us":
+        providers.append((
+            "sina-us-index-history",
+            lambda: ak.index_us_stock_sina(symbol=metadata["sina"]),
+        ))
+    else:
+        providers.append((
+            "sina-global-index-history",
+            lambda: ak.index_global_hist_sina(symbol=metadata["sina"]),
+        ))
+
+    last_error: Exception | None = None
+    for provider_name, provider in providers:
+        try:
+            return provider(), provider_name
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "全球指数历史源 %s 获取 %s 失败，尝试下一个来源: %s",
+                provider_name,
+                symbol,
+                exc,
+            )
+    assert last_error is not None
+    raise last_error
+
+
+def fetch_crypto_spot_dataframe():
+    """Fetch the Jin10 crypto snapshot exposed by the installed AkShare version."""
+    return ak.crypto_js_spot(), "jin10-crypto-spot"
 
 
 def fetch_futures_spot_dataframe(symbols: list[str]):
@@ -859,39 +1080,59 @@ def fetch_futures_history_dataframe(
 
 
 def fetch_global_market_sina_snapshot_dataframe():
-    """Build a small real global snapshot from Sina's latest two daily bars."""
-    symbols = (
-        ("日经225指数", "NKY", "日经225"),
-        ("英国富时100指数", "UKX", "英国富时100"),
-        ("德国DAX 30种股价指数", "DAX", "德国DAX30"),
-        ("法CAC40指数", "CAC", "法国CAC40"),
-        ("欧洲Stoxx50指数", "SX5E", "欧洲Stoxx50"),
-    )
-    rows: list[dict[str, object]] = []
+    """Build a controlled global snapshot from each index's latest daily bars."""
+
+    def fetch_one(symbol: str) -> dict[str, object]:
+        metadata = GLOBAL_INDEX_WATCHLIST[symbol]
+        if metadata["sina_api"] == "us":
+            df = ak.index_us_stock_sina(symbol=metadata["sina"])
+        else:
+            df = ak.index_global_hist_sina(symbol=metadata["sina"])
+        if len(df) < 2:
+            raise RuntimeError("历史不足")
+        latest = df.iloc[-1]
+        previous = df.iloc[-2]
+        close = parse_float(first_existing(latest, ("close", "收盘"), 0))
+        previous_close = parse_float(first_existing(previous, ("close", "收盘"), 0))
+        if close <= 0 or previous_close <= 0:
+            raise RuntimeError("收盘价无效")
+        session_date = normalize_date_only(first_existing(
+            latest,
+            ("date", "日期"),
+            None,
+        ))
+        return {
+            "代码": symbol,
+            "名称": metadata["name"],
+            "最新价": close,
+            "涨跌幅": (close / previous_close - 1) * 100,
+            "市场日期": session_date,
+            "报价类型": "daily-close",
+        }
+
+    rows_by_symbol: dict[str, dict[str, object]] = {}
     errors: list[str] = []
-    for query_name, symbol, name in symbols:
-        try:
-            df = ak.index_global_hist_sina(symbol=query_name)
-            if len(df) < 2:
-                errors.append(f"{symbol}: 历史不足")
-                continue
-            latest = df.iloc[-1]
-            previous = df.iloc[-2]
-            close = parse_float(latest.get("close"), 0)
-            previous_close = parse_float(previous.get("close"), 0)
-            if close <= 0 or previous_close <= 0:
-                errors.append(f"{symbol}: 收盘价无效")
-                continue
-            rows.append({
-                "代码": symbol,
-                "名称": name,
-                "最新价": close,
-                "涨跌幅": (close / previous_close - 1) * 100,
-            })
-        except Exception as exc:
-            errors.append(f"{symbol}: {exc}")
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(fetch_one, symbol): symbol
+            for symbol in GLOBAL_INDEX_WATCHLIST
+        }
+        for future in as_completed(futures):
+            symbol = futures[future]
+            try:
+                rows_by_symbol[symbol] = future.result()
+            except Exception as exc:
+                errors.append(f"{symbol}: {exc}")
+
+    rows = [
+        rows_by_symbol[symbol]
+        for symbol in GLOBAL_INDEX_WATCHLIST
+        if symbol in rows_by_symbol
+    ]
     if not rows:
-        raise RuntimeError("新浪全球指数回退不可用: " + "; ".join(errors[:5]))
+        raise RuntimeError("新浪全球指数回退不可用: " + "; ".join(errors[:8]))
+    if errors:
+        logger.warning("新浪全球指数回退部分失败: %s", "; ".join(errors[:8]))
     return pd.DataFrame(rows)
 
 
@@ -1250,30 +1491,105 @@ def normalize_ipo_subscriptions_dataframe(
 
 def normalize_global_market_dataframe(df, provider_name: str, limit: int) -> list[GlobalMarketQuote]:
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    markets: list[GlobalMarketQuote] = []
+    markets_by_symbol: dict[str, GlobalMarketQuote] = {}
 
     for _, row in df.iterrows():
         raw_name = str(first_existing(row, ("名称", "指数名称", "name"), "")).strip()
-        raw_symbol = str(first_existing(row, ("代码", "symbol"), raw_name)).strip()
-        alias = GLOBAL_MARKET_ALIASES.get(raw_name)
-        symbol, name, region = alias if alias else (raw_symbol or raw_name, raw_name or raw_symbol, "GLOBAL")
+        raw_symbol = str(first_existing(row, ("代码", "symbol"), "")).strip().upper()
+        symbol = GLOBAL_MARKET_ALIASES.get(raw_name, raw_symbol)
+        metadata = GLOBAL_INDEX_WATCHLIST.get(symbol)
+        if metadata is None or symbol in markets_by_symbol:
+            continue
         price = parse_float(first_existing(row, ("最新价", "最新", "price", "收盘"), 0))
         change_pct = parse_float(first_existing(row, ("涨跌幅", "涨幅", "changePercent"), 0))
-        if not name or price <= 0:
+        if price <= 0:
             continue
-        markets.append(GlobalMarketQuote(
+        quote_kind = str(first_existing(
+            row,
+            ("报价类型", "quoteKind"),
+            "daily-close" if "history-latest" in provider_name else "snapshot",
+        )).strip()
+        if quote_kind not in {"snapshot", "daily-close"}:
+            quote_kind = "snapshot"
+        markets_by_symbol[symbol] = GlobalMarketQuote(
             symbol=symbol,
-            name=name,
-            region=region,
+            name=str(metadata["name"]),
+            region=str(metadata["region"]),
             price=price,
             changePercent=change_pct,
             updatedAt=fetched_at,
             source=provider_name,
-        ))
-        if len(markets) >= limit:
-            break
+            sessionDate=normalize_date_only(first_existing(
+                row,
+                ("市场日期", "日期", "date", "sessionDate"),
+                None,
+            )),
+            timezone=str(metadata["timezone"]),
+            quoteKind=quote_kind,
+        )
 
-    return markets
+    return [
+        markets_by_symbol[symbol]
+        for symbol in GLOBAL_INDEX_WATCHLIST
+        if symbol in markets_by_symbol
+    ][:limit]
+
+
+def normalize_crypto_quote_dataframe(
+    df,
+    provider_name: str,
+) -> list[CryptoQuote]:
+    items_by_symbol: dict[str, CryptoQuote] = {}
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    for _, row in df.iterrows():
+        raw_symbol = re.sub(
+            r"[^A-Z]",
+            "",
+            str(first_existing(row, ("交易品种", "代码", "symbol"), "")).upper(),
+        )
+        symbol = CRYPTO_SYMBOL_ALIASES.get(raw_symbol)
+        if symbol is None or symbol in items_by_symbol:
+            continue
+        price = parse_float(first_existing(row, ("最近报价", "最新价", "price"), 0))
+        if price <= 0:
+            continue
+        updated_value = first_existing(row, ("更新时间", "updatedAt"), None)
+        items_by_symbol[symbol] = CryptoQuote(
+            symbol=symbol,
+            name=CRYPTO_WATCHLIST[symbol],
+            priceUsd=price,
+            change24hPercent=parse_float(first_existing(
+                row,
+                ("涨跌幅", "change24hPercent"),
+                0,
+            )),
+            high24h=parse_optional_float(first_existing(
+                row,
+                ("24小时最高", "high24h"),
+                None,
+            )),
+            low24h=parse_optional_float(first_existing(
+                row,
+                ("24小时最低", "low24h"),
+                None,
+            )),
+            volume24h=parse_optional_float(first_existing(
+                row,
+                ("24小时成交量", "volume24h"),
+                None,
+            )),
+            updatedAt=(
+                normalize_datetime(updated_value)
+                if updated_value is not None
+                else fetched_at
+            ),
+            source=provider_name,
+        )
+    return [
+        items_by_symbol[symbol]
+        for symbol in CRYPTO_WATCHLIST
+        if symbol in items_by_symbol
+    ]
 
 
 def normalize_futures_quote_dataframe(
@@ -1785,6 +2101,38 @@ async def get_indices(
     return QuotesResponse(quotes=quotes)
 
 
+@app.get("/api/market/index-history", response_model=HistoricalBarsResponse)
+async def get_a_share_index_history(
+    symbols: str = Query(..., description="逗号分隔的受控 A 股指数代码"),
+    days: int = Query(180, ge=60, le=500, description="交易日数量上限"),
+):
+    """获取受控 A 股指数不复权日线，作为外部市场影响研究基准。"""
+    symbol_list = [symbol.upper() for symbol in parse_query_values(symbols)]
+    if not symbol_list:
+        raise HTTPException(status_code=400, detail="symbols 参数不能为空")
+    if len(symbol_list) > len(A_SHARE_INDEX_WATCHLIST):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"单次最多查询 {len(A_SHARE_INDEX_WATCHLIST)} 个受控 A 股指数"
+            ),
+        )
+    if any(symbol not in A_SHARE_INDEX_WATCHLIST for symbol in symbol_list):
+        raise HTTPException(status_code=400, detail="symbols 必须来自受控 A 股指数观察池")
+
+    response = await build_history_response(
+        identifiers=symbol_list,
+        days=days,
+        source="eastmoney-a-share-index-history",
+        adjustment="none",
+        fetcher=fetch_a_share_index_history_dataframe,
+        market="a-share-index",
+    )
+    for series in response.series:
+        series.name = A_SHARE_INDEX_WATCHLIST[series.symbol][1]
+    return response
+
+
 @app.get("/api/market/stock-search", response_model=StockSearchResponse)
 async def search_stocks(
     query: str = Query(..., min_length=1, max_length=40),
@@ -2118,15 +2466,28 @@ async def get_global_markets(
     limit: int = Query(12, ge=1, le=40, description="返回全球指数数量上限"),
 ):
     """获取全球主要指数行情，用于只读跨市场影响研究。"""
+    cache_key = f"global-markets:{limit}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     try:
         loop = asyncio.get_running_loop()
         df, provider_name = await loop.run_in_executor(None, fetch_global_market_dataframe)
-        return GlobalMarketsResponse(
+        markets = normalize_global_market_dataframe(df, provider_name, limit)
+        expected_count = min(limit, len(GLOBAL_INDEX_WATCHLIST))
+        response = GlobalMarketsResponse(
             provider="akshare",
             fetchedAt=fetched_at,
-            markets=normalize_global_market_dataframe(df, provider_name, limit),
+            markets=markets,
+            warning=(
+                f"请求 {expected_count} 个全球指数，仅取得 {len(markets)} 个有效真实快照。"
+                if len(markets) < expected_count
+                else None
+            ),
         )
+        return set_cached_research(cache_key, response) if markets else response
     except Exception as e:
         logger.error("获取全球市场失败: %s", e)
         return GlobalMarketsResponse(
@@ -2134,6 +2495,75 @@ async def get_global_markets(
             fetchedAt=fetched_at,
             markets=[],
             warning=f"全球市场源暂不可用: {e}",
+        )
+
+
+@app.get("/api/market/global/history", response_model=HistoricalBarsResponse)
+async def get_global_market_history(
+    symbols: str = Query(..., description="逗号分隔的受控全球指数代码"),
+    days: int = Query(180, ge=60, le=500, description="交易日数量上限"),
+):
+    """获取受控全球指数日线，用于时间安全的 A 股影响研究。"""
+    symbol_list = [symbol.upper() for symbol in parse_query_values(symbols)]
+    if not symbol_list:
+        raise HTTPException(status_code=400, detail="symbols 参数不能为空")
+    if len(symbol_list) > len(GLOBAL_INDEX_WATCHLIST):
+        raise HTTPException(
+            status_code=400,
+            detail=f"单次最多查询 {len(GLOBAL_INDEX_WATCHLIST)} 个受控全球指数",
+        )
+    if any(symbol not in GLOBAL_INDEX_WATCHLIST for symbol in symbol_list):
+        raise HTTPException(status_code=400, detail="symbols 必须来自受控全球指数观察池")
+
+    response = await build_history_response(
+        identifiers=symbol_list,
+        days=days,
+        source="eastmoney-global-history",
+        adjustment="none",
+        fetcher=fetch_global_history_dataframe,
+        market="global-index",
+    )
+    for series in response.series:
+        series.name = str(GLOBAL_INDEX_WATCHLIST[series.symbol]["name"])
+    return response
+
+
+@app.get("/api/market/crypto/quotes", response_model=CryptoQuotesResponse)
+async def get_crypto_quotes():
+    """获取受控 BTC/ETH 美元快照，仅作为外部风险偏好观察。"""
+    cache_key = "crypto-quotes:BTCUSD,ETHUSD"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+
+    fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    try:
+        loop = asyncio.get_running_loop()
+        dataframe, source = await loop.run_in_executor(
+            None,
+            fetch_crypto_spot_dataframe,
+        )
+        items = normalize_crypto_quote_dataframe(dataframe, source)
+        response = CryptoQuotesResponse(
+            provider="akshare",
+            source=source,
+            fetchedAt=fetched_at,
+            items=items,
+            warning=(
+                f"请求 {len(CRYPTO_WATCHLIST)} 个数字资产，仅取得 {len(items)} 个有效真实快照。"
+                if len(items) < len(CRYPTO_WATCHLIST)
+                else None
+            ),
+        )
+        return set_cached_research(cache_key, response) if items else response
+    except Exception as exc:
+        logger.error("获取 BTC/ETH 行情失败: %s", exc)
+        return CryptoQuotesResponse(
+            provider="akshare",
+            source="unavailable",
+            fetchedAt=fetched_at,
+            items=[],
+            warning=f"数字资产行情源暂不可用: {exc}",
         )
 
 

@@ -124,6 +124,20 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  EXTERNAL_MARKET_FEATURE_MAX_ROWS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(5000)
+    .default(750),
+  EXTERNAL_MARKET_FEATURE_FILE: z
+    .string()
+    .min(1)
+    .default("./data/research/external-market-features.json"),
   CIRCUIT_MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().min(1).max(50).default(5),
   CIRCUIT_MAX_DAILY_DRAWDOWN: z.coerce.number().min(0.01).max(0.5).default(0.08),
   CIRCUIT_COOLDOWN_MINUTES: z.coerce.number().int().min(5).max(480).default(15),
@@ -158,6 +172,17 @@ export function parseServerConfig(environment: NodeJS.ProcessEnv) {
     !/^SPT_[A-Za-z0-9]{8,}$/.test(config.WXPUSHER_SPT)
   ) {
     throw new Error("WXPUSHER_ENABLED=true requires a valid WXPUSHER_SPT");
+  }
+  if (
+    config.EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED &&
+    (
+      config.MARKET_MODE !== "paper" ||
+      config.MARKET_DATA_PROVIDER !== "akshare"
+    )
+  ) {
+    throw new Error(
+      "EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED=true requires paper + akshare mode",
+    );
   }
   return config;
 }

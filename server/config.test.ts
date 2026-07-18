@@ -116,6 +116,20 @@ const envSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  EXTERNAL_MARKET_FEATURE_MAX_ROWS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(5000)
+    .default(750),
+  EXTERNAL_MARKET_FEATURE_FILE: z
+    .string()
+    .min(1)
+    .default("./data/research/external-market-features.json"),
   CIRCUIT_MAX_CONSECUTIVE_LOSSES: z.coerce.number().int().min(1).max(50).default(5),
   CIRCUIT_MAX_DAILY_DRAWDOWN: z.coerce.number().min(0.01).max(0.5).default(0.08),
   CIRCUIT_COOLDOWN_MINUTES: z.coerce.number().int().min(5).max(480).default(15),
@@ -175,6 +189,11 @@ describe("ServerConfig", () => {
       expect(config.RESEARCH_HISTORY_DAYS).toBe(756);
       expect(config.RESEARCH_MAX_CACHE_MB).toBe(512);
       expect(config.RESEARCH_STORE_RAW_NEWS).toBe(false);
+      expect(config.EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED).toBe(false);
+      expect(config.EXTERNAL_MARKET_FEATURE_MAX_ROWS).toBe(750);
+      expect(config.EXTERNAL_MARKET_FEATURE_FILE).toBe(
+        "./data/research/external-market-features.json",
+      );
     });
 
     it("has default market symbols as comma-separated string", () => {
@@ -715,6 +734,63 @@ describe("WxPusher configuration", () => {
     expect(() => parseServerConfig({
       ...baseEnvironment,
       WXPUSHER_DAILY_MESSAGE_LIMIT: "11",
+    })).toThrow();
+  });
+});
+
+describe("external market feature capture configuration", () => {
+  const baseEnvironment = {
+    NODE_ENV: "test",
+    AUTH_ENABLED: "false",
+  };
+
+  it("keeps compact external feature capture disabled by default", () => {
+    const config = parseServerConfig(baseEnvironment);
+
+    expect(config.EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED).toBe(false);
+    expect(config.EXTERNAL_MARKET_FEATURE_MAX_ROWS).toBe(750);
+    expect(config.EXTERNAL_MARKET_FEATURE_FILE).toBe(
+      "./data/research/external-market-features.json",
+    );
+  });
+
+  it("only allows capture in paper plus AkShare mode", () => {
+    expect(() => parseServerConfig({
+      ...baseEnvironment,
+      EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED: "true",
+      MARKET_MODE: "mock",
+      MARKET_DATA_PROVIDER: "akshare",
+    })).toThrow("paper + akshare");
+    expect(() => parseServerConfig({
+      ...baseEnvironment,
+      EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED: "true",
+      MARKET_MODE: "paper",
+      MARKET_DATA_PROVIDER: "mock",
+    })).toThrow("paper + akshare");
+
+    const config = parseServerConfig({
+      ...baseEnvironment,
+      EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED: "true",
+      MARKET_MODE: "paper",
+      MARKET_DATA_PROVIDER: "akshare",
+      EXTERNAL_MARKET_FEATURE_MAX_ROWS: "500",
+      EXTERNAL_MARKET_FEATURE_FILE: "./data/research/external-test.json",
+    });
+    expect(config.EXTERNAL_MARKET_FEATURE_CAPTURE_ENABLED).toBe(true);
+    expect(config.EXTERNAL_MARKET_FEATURE_MAX_ROWS).toBe(500);
+    expect(config.EXTERNAL_MARKET_FEATURE_FILE).toBe(
+      "./data/research/external-test.json",
+    );
+  });
+
+  it("rejects an external feature row cap outside 60 to 5000", () => {
+    expect(() => parseServerConfig({
+      ...baseEnvironment,
+      EXTERNAL_MARKET_FEATURE_MAX_ROWS: "59",
+    })).toThrow();
+    expect(() => parseServerConfig({
+      ...baseEnvironment,
+      EXTERNAL_MARKET_FEATURE_MAX_ROWS: "5001",
     })).toThrow();
   });
 });
