@@ -265,13 +265,14 @@ export class JsonFileTradingStore implements TradingStore {
     return this.orders.find((order) => order.id === id);
   }
 
-  createOrder(request: OrderRequest, requestedPrice: number): OrderRecord {
+  createOrder(request: OrderRequest, requestedPrice: number, name?: string): OrderRecord {
     this.orderSequence += 1;
     const timestamp = this.now();
     const now = timestamp.toISOString();
     const isLimitOrder = request.type === "limit";
     const order: OrderRecord = {
       ...request,
+      ...(name ? { name } : {}),
       id: `PO-${timestamp.getTime()}-${String(this.orderSequence).padStart(4, "0")}`,
       status: isLimitOrder ? "pending" : "accepted",
       requestedPrice,

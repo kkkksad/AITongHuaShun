@@ -228,13 +228,14 @@ export class InMemoryTradingStore implements TradingStore {
     return this.orders.find((order) => order.id === id);
   }
 
-  createOrder(request: OrderRequest, requestedPrice: number): OrderRecord {
+  createOrder(request: OrderRequest, requestedPrice: number, name?: string): OrderRecord {
     this.orderSequence += 1;
     const now = this.now().toISOString();
     const isLimitOrder = request.type === "limit";
 
     const order: OrderRecord = {
       ...request,
+      ...(name ? { name } : {}),
       id: `PO-${this.now().getTime()}-${String(this.orderSequence).padStart(4, "0")}`,
       status: isLimitOrder ? "pending" : "accepted",
       requestedPrice,

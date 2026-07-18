@@ -115,6 +115,8 @@ export interface OrderRequest {
 
 export interface OrderRecord extends OrderRequest {
   id: string;
+  /** 下单时的标的名称；旧版持久化订单可能不存在。 */
+  name?: string;
   status: OrderStatus;
   requestedPrice: number;
   filledPrice?: number;

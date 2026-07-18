@@ -54,6 +54,8 @@ export function AppShell({
   const { theme, toggle: toggleTheme } = useTheme();
   const { t, locale, setLocale } = useI18n();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [quickQuery, setQuickQuery] = useState("");
+  const [quickOpen, setQuickOpen] = useState(false);
 
   const handleNavClick = (view: ViewId) => {
     onViewChange(view);
@@ -64,13 +66,28 @@ export function AppShell({
     setLocale(locale === "zh" ? "en" : "zh");
   }, [locale, setLocale]);
 
-  const navigation = [
-    { id: "overview" as const, label: t("nav.overview"), icon: LayoutDashboard },
-    { id: "strategy" as const, label: t("nav.strategy"), icon: FlaskConical },
-    { id: "market" as const, label: t("nav.market"), icon: ChartNoAxesCombined },
-    { id: "account" as const, label: t("nav.account"), icon: BriefcaseBusiness },
-    { id: "learning" as const, label: t("nav.learning"), icon: BookOpenCheck },
-    { id: "settings" as const, label: t("nav.settings"), icon: Settings },
+  const navigationGroups = [
+    {
+      label: locale === "zh" ? "工作台" : "Workspace",
+      items: [
+        { id: "overview" as const, label: t("nav.overview"), icon: LayoutDashboard },
+      ],
+    },
+    {
+      label: locale === "zh" ? "研究" : "Research",
+      items: [
+        { id: "market" as const, label: t("nav.market"), icon: ChartNoAxesCombined },
+        { id: "strategy" as const, label: t("nav.strategy"), icon: FlaskConical },
+        { id: "learning" as const, label: t("nav.learning"), icon: BookOpenCheck },
+      ],
+    },
+    {
+      label: locale === "zh" ? "交易与管理" : "Trading & admin",
+      items: [
+        { id: "account" as const, label: t("nav.account"), icon: BriefcaseBusiness },
+        { id: "settings" as const, label: t("nav.settings"), icon: Settings },
+      ],
+    },
   ];
 
   const titles: Record<ViewId, { eyebrow: string; title: string }> = {
@@ -86,6 +103,23 @@ export function AppShell({
     connected: t("connection.connected"),
     connecting: t("connection.connecting"),
     offline: t("connection.offline"),
+  };
+  const quickItems = navigationGroups.flatMap((group) => group.items.map((item) => ({
+    ...item,
+    group: group.label,
+  })));
+  const normalizedQuickQuery = quickQuery.trim().toLocaleLowerCase();
+  const quickMatches = quickItems.filter((item) => (
+    !normalizedQuickQuery ||
+    `${item.label} ${item.group} ${titles[item.id].title}`
+      .toLocaleLowerCase()
+      .includes(normalizedQuickQuery)
+  ));
+
+  const handleQuickSelect = (view: ViewId) => {
+    handleNavClick(view);
+    setQuickQuery("");
+    setQuickOpen(false);
   };
   const realtimeLabels: Record<ConnectionState, string> = {
     connected: t("connection.realtime.connected"),
@@ -133,16 +167,21 @@ export function AppShell({
         </div>
 
         <nav className="primary-nav" aria-label={locale === "zh" ? "主导航" : "Main navigation"}>
-          {navigation.map(({ id, label, icon: Icon }) => (
-            <button
-              className={activeView === id ? "nav-item active" : "nav-item"}
-              key={id}
-              onClick={() => handleNavClick(id)}
-              type="button"
-            >
-              <Icon size={18} />
-              <span>{label}</span>
-            </button>
+          {navigationGroups.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <span className="nav-group-label">{group.label}</span>
+              {group.items.map(({ id, label, icon: Icon }) => (
+                <button
+                  className={activeView === id ? "nav-item active" : "nav-item"}
+                  key={id}
+                  onClick={() => handleNavClick(id)}
+                  type="button"
+                >
+                  <Icon size={18} />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -197,15 +236,66 @@ export function AppShell({
             </div>
           </div>
           <div className="topbar-actions">
-            <label className="search-box">
-              <Search size={17} />
-              <input
-                aria-label={locale === "zh" ? "搜索" : "Search"}
-                id="global-search"
-                name="global-search"
-                placeholder={t("search.placeholder")}
-              />
-            </label>
+            <div
+              className="quick-nav"
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  setQuickOpen(false);
+                }
+              }}
+            >
+              <div className="search-box">
+                <Search size={17} />
+                <input
+                  aria-controls="quick-nav-results"
+                  aria-expanded={quickOpen}
+                  aria-label={locale === "zh" ? "快速跳转" : "Quick navigation"}
+                  autoComplete="off"
+                  id="global-search"
+                  name="global-search"
+                  onChange={(event) => {
+                    setQuickQuery(event.target.value);
+                    setQuickOpen(true);
+                  }}
+                  onFocus={() => setQuickOpen(true)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setQuickOpen(false);
+                      return;
+                    }
+                    if (event.key === "Enter" && quickMatches[0]) {
+                      event.preventDefault();
+                      handleQuickSelect(quickMatches[0].id);
+                    }
+                  }}
+                  placeholder={locale === "zh" ? "快速跳转页面" : "Go to page"}
+                  role="combobox"
+                  value={quickQuery}
+                />
+              </div>
+              {quickOpen && (
+                <div className="quick-nav-results" id="quick-nav-results" role="listbox">
+                  {quickMatches.length === 0 ? (
+                    <span className="quick-nav-empty">没有匹配页面</span>
+                  ) : quickMatches.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <button
+                        className={activeView === item.id ? "active" : ""}
+                        key={item.id}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => handleQuickSelect(item.id)}
+                        role="option"
+                        type="button"
+                      >
+                        <Icon size={16} />
+                        <span><strong>{item.label}</strong><small>{item.group}</small></span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             {/* Language switcher */}
             <button
               aria-label={t("lang.label")}

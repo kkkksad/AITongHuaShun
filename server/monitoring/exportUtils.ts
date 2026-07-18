@@ -28,7 +28,7 @@ export function exportAuditToCsv(events: AuditEvent[]): string {
 /** 将订单记录数组导出为 CSV 字符串 */
 export function exportOrdersToCsv(orders: OrderRecord[]): string {
   const header =
-    "id,symbol,side,type,status,quantity,filledQuantity,requestedPrice,filledPrice,notional,commission,rejectionReason,clientOrderId,createdAt,updatedAt";
+    "id,symbol,name,side,type,status,quantity,filledQuantity,requestedPrice,filledPrice,notional,commission,rejectionReason,clientOrderId,createdAt,updatedAt";
   const rows = orders.map((o) => {
     const reason = o.rejectionReason
       ? `"${o.rejectionReason.replace(/"/g, '""')}"`
@@ -36,6 +36,7 @@ export function exportOrdersToCsv(orders: OrderRecord[]): string {
     return [
       o.id,
       o.symbol,
+      o.name ?? "",
       o.side,
       o.type,
       o.status,

@@ -13,6 +13,7 @@ describe("exportUtils", () => {
     {
       id: "order-1",
       symbol: "600519",
+      name: "贵州茅台",
       side: "buy",
       type: "market",
       status: "filled",
@@ -70,6 +71,7 @@ describe("exportUtils", () => {
       const lines = csv.split("\n");
       expect(lines[0]).toContain("id");
       expect(lines[0]).toContain("symbol");
+      expect(lines[0]).toContain("name");
       expect(lines[0]).toContain("side");
       expect(lines[0]).toContain("status");
       expect(lines.length).toBe(3);
@@ -78,6 +80,7 @@ describe("exportUtils", () => {
     it("should include order data in CSV rows", () => {
       const csv = exportOrdersToCsv(sampleOrders);
       expect(csv).toContain("600519");
+      expect(csv).toContain("贵州茅台");
       expect(csv).toContain("buy");
       expect(csv).toContain("filled");
       expect(csv).toContain("150050");
@@ -131,7 +134,7 @@ describe("exportUtils", () => {
       const csv = exportOrdersToCsv(orders);
       const lines = csv.split("\n");
       const fields = lines[1].split(",");
-      const filledPriceIdx = 8;
+      const filledPriceIdx = 9;
       expect(fields[filledPriceIdx]).toBe("");
     });
 

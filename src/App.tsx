@@ -1,5 +1,21 @@
 import { useEffect, useMemo, useState, type ReactNode, lazy, Suspense } from "react";
-import { Activity, CircleAlert, Database, Gauge, TrendingUp } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  ChartNoAxesCombined,
+  CircleAlert,
+  ClipboardList,
+  Database,
+  FlaskConical,
+  ChartPie,
+  BookOpenCheck,
+  Landmark,
+  MonitorCog,
+  ScrollText,
+  ShieldCheck,
+  ShoppingCart,
+  WalletCards,
+} from "lucide-react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { AppShell, type ViewId } from "./components/AppShell";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -61,14 +77,33 @@ function percent(value: number): string {
   return (value >= 0 ? "+" : "") + (value * 100).toFixed(2) + "%";
 }
 
-const accountTabs: { id: AccountTab; label: string }[] = [
-  { id: "portfolio", label: "持仓分析" },
-  { id: "trading", label: "交易下单" },
-  { id: "strategies", label: "交易策略" },
-  { id: "orders", label: "订单历史" },
-  { id: "risk", label: "风控面板" },
-  { id: "monitor", label: "系统监控" },
-  { id: "logs", label: "系统日志" },
+function currency(value?: number): string {
+  if (value === undefined) return "—";
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+const accountTabGroups = [
+  {
+    label: "资产与交易",
+    tabs: [
+      { id: "portfolio" as const, label: "持仓", icon: ChartPie },
+      { id: "trading" as const, label: "下单", icon: ShoppingCart },
+      { id: "orders" as const, label: "订单", icon: ClipboardList },
+      { id: "risk" as const, label: "风控", icon: ShieldCheck },
+    ],
+  },
+  {
+    label: "研究与系统",
+    tabs: [
+      { id: "strategies" as const, label: "策略", icon: BookOpenCheck },
+      { id: "monitor" as const, label: "监控", icon: MonitorCog },
+      { id: "logs" as const, label: "日志", icon: ScrollText },
+    ],
+  },
 ];
 
 const viewPaths: Record<ViewId, string> = {
@@ -113,9 +148,11 @@ function App() {
       })),
     [committedParameters],
   );
+  const orderSymbolNames = useMemo(() => new Map([
+    ...(trading.market?.quotes ?? []).map((quote) => [quote.symbol, quote.name] as const),
+    ...trading.positions.map((position) => [position.symbol, position.name] as const),
+  ]), [trading.market, trading.positions]);
 
-  const currentStrategy =
-    strategies.find((strategy) => strategy.id === committedStrategy) ?? strategies[0];
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
   const activeView = pathViews[normalizedPath] ?? "overview";
 
@@ -174,41 +211,54 @@ function App() {
     return <LoginPage onAuthenticated={setAuthUser} />;
   }
 
+  const pendingOrderCount = trading.orders.filter((order) => order.status === "pending").length;
+  const investedRatio = trading.account && trading.account.equity > 0
+    ? trading.account.marketValue / trading.account.equity
+    : 0;
+  const marketAsOf = trading.market?.marketTime
+    ? new Date(trading.market.marketTime).toLocaleString("zh-CN", { hour12: false })
+    : "尚未取得行情时间";
+  const providerLabel = trading.marketDataProvider === "akshare"
+    ? "AkShare 真实只读"
+    : "本地模拟";
+
   const overview = (
     <div className="page-stack">
       <section className="overview-banner">
-        <div>
-          <span className="section-kicker">2026 年 7 月 11 日 · 模拟收盘</span>
-          <h2>
-            研究组合保持正向，
-            <br />
-            风险预算仍有余量。
-          </h2>
+        <div className="overview-command">
+          <span className="section-kicker">{marketAsOf}</span>
+          <h2>今日研究与模拟账户</h2>
           <p>
-            当前运行 <strong>{currentStrategy.name}</strong>，结果基于固定种子模拟数据，
-            不构成投资建议。
+            {providerLabel} · {trading.mode} · 真实交易关闭
+            {trading.error ? ` · ${trading.error}` : ""}
           </p>
+          <div className="overview-actions" aria-label="核心工作流">
+            <button onClick={() => navigate("/market")} type="button">
+              <ChartNoAxesCombined size={16} /><span>市场研判</span><ArrowRight size={14} />
+            </button>
+            <button onClick={() => { setAccountTab("trading"); navigate("/account"); }} type="button">
+              <ShoppingCart size={16} /><span>模拟下单</span><ArrowRight size={14} />
+            </button>
+            <button onClick={() => { setAccountTab("orders"); navigate("/account"); }} type="button">
+              <ClipboardList size={16} /><span>订单复核</span><ArrowRight size={14} />
+            </button>
+            <button onClick={() => navigate("/strategy")} type="button">
+              <FlaskConical size={16} /><span>策略验证</span><ArrowRight size={14} />
+            </button>
+          </div>
         </div>
         <div className="banner-summary">
           <div>
-            <span>组合权益</span>
-            <strong>
-              {trading.account
-                ? new Intl.NumberFormat("zh-CN", {
-                    style: "currency",
-                    currency: "CNY",
-                    maximumFractionDigits: 0,
-                  }).format(trading.account.equity)
-                : "等待连接"}
-            </strong>
+            <span>后端</span>
+            <strong>{trading.connectionState === "connected" ? "已连接" : trading.connectionState === "connecting" ? "连接中" : "离线"}</strong>
           </div>
           <div>
-            <span>本期策略收益</span>
-            <strong className="positive">{percent(result.metrics.totalReturn)}</strong>
+            <span>持仓 / 仓位</span>
+            <strong>{trading.positions.length} 只 / {(investedRatio * 100).toFixed(0)}%</strong>
           </div>
           <div>
-            <span>风险状态</span>
-            <strong className="risk-normal">正常</strong>
+            <span>待处理挂单</span>
+            <strong>{pendingOrderCount}</strong>
           </div>
         </div>
       </section>
@@ -216,37 +266,37 @@ function App() {
       <section className="summary-grid">
         <article>
           <div className="summary-icon blue">
-            <TrendingUp size={19} />
+            <WalletCards size={19} />
           </div>
-          <span>年化收益</span>
-          <strong>{percent(result.metrics.annualizedReturn)}</strong>
-          <small>90 日确定性回测</small>
+          <span>Paper 权益</span>
+          <strong>{currency(trading.account?.equity)}</strong>
+          <small>{trading.account?.accountId ?? "等待账户快照"}</small>
         </article>
         <article>
           <div className="summary-icon teal">
-            <Gauge size={19} />
+            <Landmark size={19} />
           </div>
-          <span>夏普比率</span>
-          <strong>{result.metrics.sharpe.toFixed(2)}</strong>
-          <small>无风险利率暂按 0</small>
+          <span>可用现金</span>
+          <strong>{currency(trading.account?.cash)}</strong>
+          <small>{pendingOrderCount} 笔挂单占用资金</small>
         </article>
         <article>
           <div className="summary-icon amber">
             <Activity size={19} />
           </div>
-          <span>最大回撤</span>
-          <strong className="negative">
-            -{(result.metrics.maxDrawdown * 100).toFixed(2)}%
+          <span>今日 Paper 盈亏</span>
+          <strong className={(trading.account?.dailyPnl ?? 0) >= 0 ? "positive" : "negative"}>
+            {currency(trading.account?.dailyPnl)}
           </strong>
-          <small>低于 12% 观察线</small>
+          <small>{trading.account ? percent(trading.account.dailyPnlPercent) : "等待账户快照"}</small>
         </article>
         <article>
           <div className="summary-icon violet">
             <Database size={19} />
           </div>
           <span>数据状态</span>
-          <strong>模拟</strong>
-          <small>最后更新 15:00</small>
+          <strong>{providerLabel}</strong>
+          <small>{marketAsOf}</small>
         </article>
       </section>
 
@@ -371,6 +421,7 @@ function App() {
       <Suspense fallback={<LazyFallback />}>
         <OrderHistory
           orders={trading.orders}
+          symbolNames={orderSymbolNames}
           onCancelOrder={async (orderId: string) => {
             await trading.cancelOrder(orderId);
           }}
@@ -425,15 +476,26 @@ function App() {
       )}
 
       <nav className="account-tabs" aria-label="账户子页面">
-        {accountTabs.map((tab) => (
-          <button
-            className={accountTab === tab.id ? "account-tab active" : "account-tab"}
-            key={tab.id}
-            onClick={() => setAccountTab(tab.id)}
-            type="button"
-          >
-            {tab.label}
-          </button>
+        {accountTabGroups.map((group) => (
+          <div className="account-tab-group" key={group.label}>
+            <span className="account-tab-group-label">{group.label}</span>
+            <div className="account-tab-buttons">
+              {group.tabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    className={accountTab === tab.id ? "account-tab active" : "account-tab"}
+                    key={tab.id}
+                    onClick={() => setAccountTab(tab.id)}
+                    type="button"
+                  >
+                    <Icon size={15} />
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         ))}
       </nav>
 

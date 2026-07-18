@@ -16,6 +16,7 @@ describe("PaperBroker", () => {
     const after = system.broker.getAccount();
 
     expect(order.status).toBe("filled");
+    expect(order.name).toBe("宁德时代");
     expect(order.filledQuantity).toBe(100);
     expect(order.commission).toBeGreaterThan(0);
     expect(after.cash).toBeLessThan(before.cash);
@@ -36,7 +37,19 @@ describe("PaperBroker", () => {
     const second = system.broker.submitOrder(request);
 
     expect(second.id).toBe(first.id);
+    expect(second.name).toBe("宁德时代");
     expect(system.broker.getOrders()).toHaveLength(1);
+  });
+
+  it("backfills names for legacy orders from current quotes", () => {
+    const system = createTradingSystem(createTestConfig());
+    const legacy = system.store.createOrder(
+      { symbol: "601318", side: "buy", type: "limit", quantity: 100, limitPrice: 40 },
+      50,
+    );
+
+    expect(legacy.name).toBeUndefined();
+    expect(system.broker.getOrders()[0].name).toBe("中国平安");
   });
 
   it("records a risk rejection without changing positions", () => {
@@ -69,6 +82,7 @@ describe("PaperBroker", () => {
     });
 
     expect(order.status).toBe("pending");
+    expect(order.name).toBe("中国平安");
     expect(order.limitPrice).toBe(50);
     expect(order.filledQuantity).toBe(0);
 

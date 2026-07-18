@@ -54,14 +54,32 @@ function sideLabel(side: OrderSide): string {
 
 interface OrderHistoryProps {
   orders: OrderRecord[];
+  symbolNames?: ReadonlyMap<string, string>;
   onCancelOrder?: (orderId: string) => Promise<void>;
   pendingAction?: boolean;
+}
+
+export function resolveOrderName(
+  order: OrderRecord,
+  symbolNames: ReadonlyMap<string, string>,
+): string | undefined {
+  return order.name?.trim() || symbolNames.get(order.symbol)?.trim() || undefined;
+}
+
+function csvCell(value: string | number): string {
+  const text = String(value);
+  return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 type StatusFilter = OrderStatus | "all";
 type SideFilter = OrderSide | "all";
 
-export function OrderHistory({ orders, onCancelOrder, pendingAction }: OrderHistoryProps) {
+export function OrderHistory({
+  orders,
+  symbolNames = new Map(),
+  onCancelOrder,
+  pendingAction,
+}: OrderHistoryProps) {
   const [searchSymbol, setSearchSymbol] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sideFilter, setSideFilter] = useState<SideFilter>("all");
@@ -79,7 +97,10 @@ export function OrderHistory({ orders, onCancelOrder, pendingAction }: OrderHist
     }
     if (searchSymbol.trim()) {
       const upper = searchSymbol.trim().toUpperCase();
-      result = result.filter((o) => o.symbol.toUpperCase().includes(upper));
+      result = result.filter((order) => (
+        order.symbol.toUpperCase().includes(upper) ||
+        resolveOrderName(order, symbolNames)?.toUpperCase().includes(upper)
+      ));
     }
 
     result.sort((a, b) => {
@@ -89,7 +110,7 @@ export function OrderHistory({ orders, onCancelOrder, pendingAction }: OrderHist
     });
 
     return result;
-  }, [orders, statusFilter, sideFilter, searchSymbol, sortOrder]);
+  }, [orders, statusFilter, sideFilter, searchSymbol, sortOrder, symbolNames]);
 
   const stats = useMemo(() => {
     const total = orders.length;
@@ -110,11 +131,12 @@ export function OrderHistory({ orders, onCancelOrder, pendingAction }: OrderHist
   const pageOrders = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const handleExport = () => {
-    const header = "ID,标的,方向,类型,状态,数量,价格,成交价,成交数量,金额,手续费,创建时间,更新时间\n";
+    const header = "ID,代码,名称,方向,类型,状态,数量,价格,成交价,成交数量,金额,手续费,创建时间,更新时间\n";
     const rows = filtered.map((o) =>
       [
         o.id,
         o.symbol,
+        resolveOrderName(o, symbolNames) ?? "",
         sideLabel(o.side),
         o.type === "limit" ? "限价" : "市价",
         statusLabel(o.status),
@@ -126,7 +148,7 @@ export function OrderHistory({ orders, onCancelOrder, pendingAction }: OrderHist
         o.commission,
         o.createdAt,
         o.updatedAt,
-      ].join(","),
+      ].map(csvCell).join(","),
     ).join("\n");
     const blob = new Blob(["\uFEFF" + header + rows], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -215,7 +237,7 @@ export function OrderHistory({ orders, onCancelOrder, pendingAction }: OrderHist
           <label className="search-label">
             <Search size={15} />
             <input
-              placeholder="搜索标的代码..."
+              placeholder="搜索股票名称或代码..."
               value={searchSymbol}
               onChange={(e) => {
                 setSearchSymbol(e.target.value);
@@ -288,7 +310,10 @@ export function OrderHistory({ orders, onCancelOrder, pendingAction }: OrderHist
                   })}
                 </td>
                 <td className="symbol-cell">
-                  <strong>{order.symbol}</strong>
+                  <strong>{resolveOrderName(order, symbolNames) ?? order.symbol}</strong>
+                  <span className="table-subline">
+                    {resolveOrderName(order, symbolNames) ? order.symbol : "名称未记录"}
+                  </span>
                 </td>
                 <td>
                   <span className={order.side === "buy" ? "side buy" : "side sell"}>

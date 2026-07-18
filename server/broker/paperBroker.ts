@@ -59,14 +59,14 @@ export class PaperBroker extends EventEmitter {
 
     if (!decision.allowed || !quote) {
       // Create a minimal rejected order record
-      const order = this.store.createOrder(request, quote?.price ?? 0);
+      const order = this.store.createOrder(request, quote?.price ?? 0, quote?.name);
       const rejected = this.store.rejectOrder(order, decision.message, decision.code);
       this.emit("order.updated", rejected);
       return rejected;
     }
 
     // Now create the order (cash will be blocked for limit orders)
-    const order = this.store.createOrder(request, quote.price);
+    const order = this.store.createOrder(request, quote.price, quote.name);
 
     // Marketable limit orders fill immediately; otherwise they remain pending.
     if (request.type === "limit") {
@@ -151,7 +151,17 @@ export class PaperBroker extends EventEmitter {
   }
 
   getOrders(limit?: number): OrderRecord[] {
-    return this.store.listOrders(limit);
+    const quoteNames = new Map(
+      this.market.getSnapshot().quotes.map((quote) => [quote.symbol, quote.name]),
+    );
+    const positionNames = new Map(
+      this.getPositions().map((position) => [position.symbol, position.name]),
+    );
+    return this.store.listOrders(limit).map((order) => ({
+      ...order,
+      name:
+        order.name ?? quoteNames.get(order.symbol) ?? positionNames.get(order.symbol),
+    }));
   }
 
   private fillOrder(
