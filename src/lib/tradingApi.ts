@@ -8,6 +8,7 @@ import type {
   RiskLimits,
   TradingMode,
 } from "../../shared/trading";
+import { ApiRequestError } from "./apiError";
 
 export interface HealthSnapshot {
   ok: boolean;
@@ -1320,10 +1321,16 @@ function formatNonJsonError(path: string, response: Response, body: string): Err
   const preview = body.trim().replace(/\s+/g, " ").slice(0, 140);
   const looksLikeHtml = /^<!doctype html/i.test(preview) || /^<html/i.test(preview);
   if (looksLikeHtml) {
-    return new Error(API_PROXY_MISS_HINT);
+    return new ApiRequestError(
+      API_PROXY_MISS_HINT,
+      response.status,
+      response.status >= 500,
+    );
   }
-  return new Error(
+  return new ApiRequestError(
     `API ${path} 返回了非 JSON 响应（HTTP ${response.status}）：${preview || "空响应"}`,
+    response.status,
+    response.status >= 500,
   );
 }
 
@@ -1346,13 +1353,17 @@ export async function apiRequest<T>(
     });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "未知网络错误";
-    throw new Error(`无法连接交易 API：${url}（${detail}）`);
+    throw new ApiRequestError(`无法连接交易 API：${url}（${detail}）`, null, true);
   }
 
   const text = await response.text();
   if (!text.trim()) {
     if (!response.ok) {
-      throw new Error(`请求失败：HTTP ${response.status}`);
+      throw new ApiRequestError(
+        `请求失败：HTTP ${response.status}`,
+        response.status,
+        response.status >= 500,
+      );
     }
     return undefined as T;
   }
@@ -1366,7 +1377,11 @@ export async function apiRequest<T>(
   try {
     payload = JSON.parse(text);
   } catch {
-    throw new Error(`API ${path} 返回了无法解析的 JSON 响应。`);
+    throw new ApiRequestError(
+      `API ${path} 返回了无法解析的 JSON 响应。`,
+      response.status,
+      false,
+    );
   }
 
   if (!response.ok) {
@@ -1377,7 +1392,11 @@ export async function apiRequest<T>(
     ) {
       notifyAuthExpired();
     }
-    throw new Error(getPayloadMessage(payload) ?? `请求失败：HTTP ${response.status}`);
+    throw new ApiRequestError(
+      getPayloadMessage(payload) ?? `请求失败：HTTP ${response.status}`,
+      response.status,
+      response.status >= 500,
+    );
   }
 
   return payload as T;
