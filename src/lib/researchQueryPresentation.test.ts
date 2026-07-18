@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getResearchRefreshState } from "./researchQueryPresentation";
+import { formatResearchDataTime, getResearchRefreshState } from "./researchQueryPresentation";
 
 describe("research query presentation", () => {
   it("keeps successful data visible when a background refresh fails", () => {
@@ -14,5 +14,10 @@ describe("research query presentation", () => {
       showBlockingError: true,
       showStaleWarning: false,
     });
+  });
+
+  it("formats the retained result update time and handles an unknown timestamp", () => {
+    expect(formatResearchDataTime(0)).toBe("未知");
+    expect(formatResearchDataTime(Date.parse("2026-07-18T03:04:05Z"))).toContain("2026");
   });
 });

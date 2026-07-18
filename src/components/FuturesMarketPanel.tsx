@@ -6,6 +6,7 @@ import {
   type FuturesMarketResearchItem,
   type StrategyRobustnessFamily,
 } from "../lib/tradingApi";
+import { formatResearchDataTime, getResearchRefreshState } from "../lib/researchQueryPresentation";
 
 const riskToneLabels: Record<CrossMarketRiskTone, string> = {
   "risk-on": "风险偏好",
@@ -83,11 +84,12 @@ export function FuturesMarketPanel() {
     staleTime: 10 * 60_000,
   });
   const report = query.data;
+  const refreshState = getResearchRefreshState({ hasData: Boolean(report), isError: query.isError });
   const forecastItems = [...(report?.futures ?? [])]
     .filter((item) => item.forecast.direction !== "insufficient")
     .sort((left, right) => forecastConviction(right) - forecastConviction(left))
     .slice(0, 6);
-  const sourceState = query.isError && report ? "缓存" : report?.sourceStatus === "live-read-only" ? "真实只读" : report ? "降级" : "离线";
+  const sourceState = refreshState.showStaleWarning ? "缓存" : report?.sourceStatus === "live-read-only" ? "真实只读" : report ? "降级" : "离线";
 
   return (
     <section className="panel futures-market-panel">
@@ -102,8 +104,8 @@ export function FuturesMarketPanel() {
       </div>
 
       {query.isLoading && <div className="research-empty">正在读取全球指数、国内期货主连与 500 日历史...</div>}
-      {query.isError && !report && <div className="research-alert"><AlertTriangle size={16} /><span>当前没有可保留的期货研究数据，请检查后端与 AkShare 桥接。</span></div>}
-      {query.isError && report && <div className="research-alert regime-warning"><Clock3 size={16} /><span>本次刷新失败，页面保留上次成功结果；请以来源时间为准。</span></div>}
+      {refreshState.showBlockingError && <div className="research-alert"><AlertTriangle size={16} /><span>当前没有可保留的期货研究数据，请检查后端与 AkShare 桥接。</span></div>}
+      {refreshState.showStaleWarning && <div className="research-alert regime-warning"><Clock3 size={16} /><span>本次刷新失败，继续显示缓存数据 · 上次成功更新 {formatResearchDataTime(query.dataUpdatedAt)}</span></div>}
 
       {report && <>
         <div className="regime-meta-strip hk-meta-strip">
