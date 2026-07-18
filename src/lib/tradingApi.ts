@@ -1466,10 +1466,10 @@ export function fetchStrategyLeaderboard(
 }
 
 export function fetchStrategyRobustness(
-  limit = 8,
+  limit = 12,
   days = 500,
 ): Promise<StrategyRobustnessReport> {
-  const boundedLimit = Math.min(8, Math.max(2, Math.round(limit)));
+  const boundedLimit = Math.min(12, Math.max(2, Math.round(limit)));
   const boundedDays = Math.min(500, Math.max(360, Math.round(days)));
   return authApiRequest<StrategyRobustnessReport>(
     `/api/research/strategy-robustness?limit=${boundedLimit}&days=${boundedDays}`,

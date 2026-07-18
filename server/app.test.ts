@@ -407,7 +407,7 @@ describe("trading API", () => {
   it("does not replace real strategy robustness history with synthetic data", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/research/strategy-robustness?limit=8&days=500",
+      url: "/api/research/strategy-robustness?limit=12&days=500",
     });
 
     expect(response.statusCode).toBe(200);
@@ -431,11 +431,11 @@ describe("trading API", () => {
   it("validates strategy robustness query bounds", async () => {
     const invalidLimit = await app.inject({
       method: "GET",
-      url: "/api/research/strategy-robustness?limit=9&days=500",
+      url: "/api/research/strategy-robustness?limit=13&days=500",
     });
     const invalidDays = await app.inject({
       method: "GET",
-      url: "/api/research/strategy-robustness?limit=8&days=359",
+      url: "/api/research/strategy-robustness?limit=12&days=359",
     });
 
     expect(invalidLimit.statusCode).toBe(400);

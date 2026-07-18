@@ -124,7 +124,7 @@ describe("session-aware trading API", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(
-        /\/api\/research\/strategy-robustness\?limit=8&days=500$/,
+        /\/api\/research\/strategy-robustness\?limit=12&days=500$/,
       ),
       expect.objectContaining({ credentials: "include" }),
     );

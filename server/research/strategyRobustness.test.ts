@@ -70,6 +70,19 @@ describe("splitChronologicalWindows", () => {
 });
 
 describe("evaluateFixedStrategyProfiles", () => {
+  it("covers fourteen distinct strategy logics with fixed parameters", () => {
+    const keys = STRATEGY_ROBUSTNESS_PROFILES.map((profile) => profile.strategyKey);
+
+    expect(keys).toHaveLength(14);
+    expect(new Set(keys).size).toBe(14);
+    expect(keys).toEqual(expect.arrayContaining([
+      "macd",
+      "aSharePullback",
+      "gridTrading",
+      "dca",
+    ]));
+  });
+
   it("reports real multi-window metrics without searching parameters", async () => {
     const snapshots = buildAlignedHistoricalSnapshots([
       series("600001", bars(420, 0.025)),
@@ -109,7 +122,7 @@ describe("buildStrategyRobustnessReport", () => {
         marketTime: "2026-07-16T07:00:00.000Z",
         quotes: [],
       },
-      limit: 8,
+      limit: 12,
       days: 500,
       timeoutMs: 500,
       fetchImpl: fetchImpl as unknown as typeof fetch,

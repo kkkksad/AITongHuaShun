@@ -199,6 +199,44 @@ export const STRATEGY_ROBUSTNESS_PROFILES: StrategyRobustnessProfile[] = [
     factory: builtInFactories.movingAverageCross,
     fixedParams: { fastPeriod: 10, slowPeriod: 30, targetWeight: 0.2 },
   },
+  {
+    strategyKey: "macd",
+    strategyFamily: "trend",
+    factory: builtInFactories.macd,
+    fixedParams: {
+      fastPeriod: 12,
+      slowPeriod: 26,
+      signalPeriod: 9,
+      targetWeight: 0.18,
+    },
+  },
+  {
+    strategyKey: "aSharePullback",
+    strategyFamily: "pullback",
+    factory: builtInFactories.aSharePullback,
+    fixedParams: {
+      trendPeriod: 30,
+      pullbackPeriod: 8,
+      maxPullbackPercent: 0.07,
+      minReboundPercent: 0.008,
+      volumeMultiplier: 1.15,
+      takeProfitPercent: 0.05,
+      stopLossPercent: 0.03,
+      targetWeight: 0.2,
+    },
+  },
+  {
+    strategyKey: "gridTrading",
+    strategyFamily: "mean-reversion",
+    factory: builtInFactories.gridTrading,
+    fixedParams: { gridCount: 6, gridSpacingPercent: 2, lotsPerGrid: 100 },
+  },
+  {
+    strategyKey: "dca",
+    strategyFamily: "defensive",
+    factory: builtInFactories.dca,
+    fixedParams: { intervalBars: 10, investAmount: 10_000, takeProfitPercent: 15 },
+  },
 ];
 
 function round(value: number, digits = 4): number {
@@ -443,7 +481,7 @@ function baseReport(input: BuildStrategyRobustnessInput): StrategyRobustnessRepo
 export async function buildStrategyRobustnessReport(
   input: BuildStrategyRobustnessInput,
 ): Promise<StrategyRobustnessReport> {
-  const limit = Math.min(8, Math.max(2, Math.round(input.limit)));
+  const limit = Math.min(12, Math.max(2, Math.round(input.limit)));
   const days = Math.min(500, Math.max(360, Math.round(input.days)));
   const normalized = { ...input, limit, days };
   const base = baseReport(normalized);

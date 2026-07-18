@@ -30,8 +30,8 @@ function formatPercent(value: number): string {
 
 export function StrategyRobustnessPanel() {
   const reportQuery = useQuery({
-    queryKey: ["strategy-robustness", 8, 500],
-    queryFn: () => fetchStrategyRobustness(8, 500),
+    queryKey: ["strategy-robustness", 12, 500],
+    queryFn: () => fetchStrategyRobustness(12, 500),
     staleTime: 15 * 60_000,
     gcTime: 30 * 60_000,
   });
@@ -85,7 +85,7 @@ export function StrategyRobustnessPanel() {
             <article>
               <span>固定策略</span>
               <strong>{entries.length}</strong>
-              <small>{report.source.windowCount} 个互不重叠验证窗口</small>
+              <small>每策略 {report.source.windowCount} 窗 · 合计 {entries.length * report.source.windowCount} 次验证</small>
             </article>
             <article>
               <span>稳健性通过</span>

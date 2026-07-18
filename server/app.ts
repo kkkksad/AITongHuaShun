@@ -98,7 +98,7 @@ const strategyLeaderboardQuerySchema = z.object({
 });
 
 const strategyRobustnessQuerySchema = z.object({
-  limit: z.coerce.number().int().min(2).max(8).default(8),
+  limit: z.coerce.number().int().min(2).max(12).default(12),
   days: z.coerce.number().int().min(360).max(500).default(500),
 });
 
@@ -626,8 +626,8 @@ export async function buildTradingApp(
           limit: {
             type: "integer",
             minimum: 2,
-            maximum: 8,
-            default: 8,
+            maximum: 12,
+            default: 12,
             description: "按当前成交额选取的股票数量上限",
           },
           days: {
