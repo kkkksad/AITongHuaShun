@@ -40,4 +40,19 @@ describe("ResearchQueryState", () => {
     const html = renderToStaticMarkup(<ResearchQueryState dataUpdatedAt={0} hasData={false} isError={false} isLoading loadingText="正在加载" unavailableText="研究暂不可用" />);
     expect(html).toContain("正在加载");
   });
+
+  it("does not cover retained content with the initial loading state during a refresh", () => {
+    const html = renderToStaticMarkup(
+      <ResearchQueryState
+        dataUpdatedAt={Date.parse("2026-07-18T03:04:05Z")}
+        hasData
+        isError={false}
+        isLoading
+        loadingText="正在加载期货研究"
+        unavailableText="期货研究暂不可用"
+      />,
+    );
+
+    expect(html).toBe("");
+  });
 });
