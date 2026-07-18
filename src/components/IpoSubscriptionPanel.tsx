@@ -12,6 +12,10 @@ import {
   type IpoRecommendation,
   type IpoSubscriptionResearchItem,
 } from "../lib/tradingApi";
+import {
+  formatResearchDataTime,
+  getResearchRefreshState,
+} from "../lib/researchQueryPresentation";
 
 type IpoView = "subscribe" | "awaiting" | "listed";
 
@@ -80,6 +84,10 @@ export function IpoSubscriptionPanel() {
     staleTime: 15 * 60_000,
   });
   const report = ipoQuery.data;
+  const refreshState = getResearchRefreshState({
+    hasData: Boolean(report),
+    isError: ipoQuery.isError,
+  });
   const visibleItems = report ? itemsForView(report.items, view) : [];
 
   return (
@@ -138,10 +146,19 @@ export function IpoSubscriptionPanel() {
         <div className="research-empty">正在读取真实新股申购与上市数据…</div>
       )}
 
-      {ipoQuery.isError && (
+      {refreshState.showBlockingError && (
         <div className="research-alert">
           <AlertTriangle size={16} />
           <span>新股研究暂不可用，请检查 API 与 AkShare 行情桥接。</span>
+        </div>
+      )}
+
+      {refreshState.showStaleWarning && (
+        <div className="research-alert regime-warning">
+          <AlertTriangle size={16} />
+          <span>
+            本次刷新失败，继续显示缓存数据 · 上次成功更新 {formatResearchDataTime(ipoQuery.dataUpdatedAt)}
+          </span>
         </div>
       )}
 

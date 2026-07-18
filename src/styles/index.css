@@ -7014,6 +7014,10 @@ select:focus-visible {
 }
 
 @media (max-width: 560px) {
+  .account-tabs {
+    overflow: visible;
+  }
+
   .account-tab-group {
     grid-template-columns: 1fr;
     gap: 3px;
@@ -7024,13 +7028,14 @@ select:focus-visible {
   }
 
   .account-tab-buttons {
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+    overflow: visible;
   }
 
   .account-tab {
-    flex: 1 0 auto;
-    min-width: 74px;
-    padding-inline: 10px;
+    min-width: 0;
+    padding-inline: 4px;
   }
 }
 
