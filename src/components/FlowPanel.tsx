@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, RefreshCw, Waves } from "lucide-react";
+import { RefreshCw, Waves } from "lucide-react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fetchMarketRegimeResearch } from "../lib/tradingApi";
+import { ResearchQueryState } from "./ResearchQueryState";
 
 export function FlowPanel() {
   const regimeQuery = useQuery({
@@ -36,13 +37,14 @@ export function FlowPanel() {
         </button>
       </div>
 
-      {regimeQuery.isLoading && <div className="research-empty">读取真实板块历史…</div>}
-      {regimeQuery.isError && (
-        <div className="research-alert">
-          <AlertTriangle size={16} />
-          <span>板块历史研究暂不可用。</span>
-        </div>
-      )}
+      <ResearchQueryState
+        dataUpdatedAt={regimeQuery.dataUpdatedAt}
+        hasData={Boolean(regimeQuery.data)}
+        isError={regimeQuery.isError}
+        isLoading={regimeQuery.isLoading}
+        loadingText="读取真实板块历史…"
+        unavailableText="板块历史研究暂不可用。"
+      />
       {regimeQuery.data && sectors.length === 0 && (
         <div className="research-empty">
           {regimeQuery.data.warnings[0] ?? "没有满足历史样本要求的板块。"}
