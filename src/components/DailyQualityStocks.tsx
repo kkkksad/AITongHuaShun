@@ -56,7 +56,7 @@ export function DailyQualityStocks() {
   const [page, setPage] = useState(1);
   const qualityQuery = useQuery({
     queryKey: ["daily-quality-stocks", 30],
-    queryFn: () => fetchDailyQualityStocks(30),
+    queryFn: ({ signal }) => fetchDailyQualityStocks(30, signal),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });

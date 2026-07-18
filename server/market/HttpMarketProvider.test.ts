@@ -330,6 +330,51 @@ describe("HttpMarketProvider.start / stop", () => {
     expect(snapshot).toBeDefined();
     provider.stop();
   });
+
+  it("上一轮尚未完成时不会创建重叠轮询", async () => {
+    let resolveRequest!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>((resolve) => {
+      resolveRequest = resolve;
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new HttpMarketProvider(
+      makeConfig({ tickMs: 20, symbols: ["600519"], indexSymbols: [] }),
+    );
+
+    provider.start();
+    await new Promise((resolve) => setTimeout(resolve, 75));
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveRequest(mockFetchResponse([]));
+    provider.stop();
+  });
+
+  it("整轮失败后指数退避，成功后恢复正常轮询周期", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("bridge unavailable"))
+      .mockResolvedValue(mockFetchResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new HttpMarketProvider(
+      makeConfig({ tickMs: 100, symbols: ["600519"], indexSymbols: [] }),
+    );
+
+    provider.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(199);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    provider.stop();
+    vi.useRealTimers();
+  });
 });
 
 // ═══════════════════════════════════════════════

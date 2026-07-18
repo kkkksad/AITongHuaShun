@@ -73,7 +73,7 @@ function compactNumber(value: number | null): string {
 export function ExternalMarketImpactPanel() {
   const query = useQuery({
     queryKey: ["external-market-impact", 500],
-    queryFn: () => fetchExternalMarketImpact(500),
+    queryFn: ({ signal }) => fetchExternalMarketImpact(500, signal),
     refetchInterval: 15 * 60_000,
     staleTime: 10 * 60_000,
   });

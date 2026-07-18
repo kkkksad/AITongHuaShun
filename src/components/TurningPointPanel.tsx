@@ -62,7 +62,7 @@ export function TurningPointPanel() {
   const [sortBy, setSortBy] = useState<TurningSort>("readiness");
   const query = useQuery({
     queryKey: ["turning-points", 12, 360],
-    queryFn: () => fetchTurningPointResearch(12, 360),
+    queryFn: ({ signal }) => fetchTurningPointResearch(12, 360, signal),
     refetchInterval: 15 * 60_000,
     staleTime: 10 * 60_000,
   });

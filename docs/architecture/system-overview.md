@@ -73,6 +73,8 @@ shared/
 - React 组件只能通过 `tradingApi` 和 `useTradingBackend` 访问服务端，不直接依赖存储或券商实现。
 - React Router 只负责视图 URL；TanStack Query 保存 REST 快照，WebSocket 和交易 mutation 增量更新同一缓存。
 - `src/lib/researchQueries.ts` 是重复研究请求的 Query Key、stale 时间和轮询策略唯一入口；展示位置不得再进入同参数请求的缓存键。
+- 浏览器研究 GET 必须把 TanStack Query 的 `AbortSignal` 传给 `tradingApi`；取消只终止已经离开视图的浏览器读取，不得影响服务端行情轮询、外盘采样或 paper 自动执行器。
+- `server/research/bridgeRequest.ts` 是研究域访问 AkShare 桥的唯一请求实现，统一负责 Token 头、超时、HTTP `detail` 截断、网络错误和 JSON 校验；领域模块只把稳定错误语义写入自己的降级报告。
 - `PaperBroker` 依赖行情、风险和仓储，不依赖 HTTP、WebSocket 或 React。
 - `PaperAutoExecutor` 只读取纸面计划并向 `PaperBroker` 提交本地模拟订单；它不能调用真实券商、同花顺、SuperMind 或浏览器自动化能力。
 - `RiskEngine` 只依赖共享领域数据，不产生网络或存储副作用。
@@ -85,7 +87,7 @@ shared/
 
 1. React 启动时验证服务端会话；未登录时只渲染登录页，不启动业务 REST 或 WebSocket。
 2. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
-3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
+3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。Fastify 行情提供者最多执行一轮在途请求，本轮完成后才安排下一轮；整轮失败有界退避并保留最后成功快照，任一路恢复后回到正常轮询周期。
 4. `/api/market/quality` 对当前内存快照生成只读质量报告，使用私有 5 秒缓存和 15 秒 stale-while-revalidate；它不触发新的行情请求，也不写入策略或订单状态。
 5. Fastify 在请求完成时同时更新 Prometheus 累计指标和应用实例级有限遥测；`/api/system/performance` 自身、健康检查、认证和指标端点不进入业务性能窗口。
 6. `/api/research/real-data-feed` 优先选择当前持仓，再按实时成交额补足最多 8 只新闻观察标的，并聚合最多 80 条多源新闻；`/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/external-market-impact` 严格用早于 A 股目标日期的美股/亚洲指数日线和沪深 300 对齐，并把 BTC/ETH 限制为快照参考；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
@@ -109,7 +111,7 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 
 质量报告中的完整度以请求标的数量为分母，缺失和无效报价都会扣分；新鲜度取低 10% 分位而不是整批最大值。合法涨跌停只记录市场状态，超出对应板块涨跌停范围的非停牌价格才进入越界异常。`healthy / degraded / unusable` 只用于界面诊断，不能改变 `AdaptiveStrategyRouter`、`PaperAutoExecutor`、风险限额或订单审批。
 
-历史研究接口按请求即时读取并在 Python 进程内短期缓存，不会把无上限原始日线写入本地磁盘。普通研究响应和历史单序列分别使用有界 TTL/LRU，默认最多 64 和 128 个 key；读写路径主动清理过期项，历史 single-flight 请求完成前受淘汰保护。行业日线明确为不复权，个股日线明确为前复权；单次请求受板块数、股票数和交易日数限制。多个公开源只用于可用性回退，每条历史序列保留实际命中的来源。
+全市场股票与指数快照缓存以刷新完成时间计算默认 10 秒 TTL；失败时保留旧快照并进入最长 60 秒冷却，避免慢抓取完成后立即过期形成重试风暴。历史研究接口按请求即时读取并在 Python 进程内短期缓存，不会把无上限原始日线写入本地磁盘。普通研究响应和历史单序列分别使用有界 TTL/LRU，默认最多 64 和 128 个 key；读写路径主动清理过期项，历史 single-flight 请求完成前受淘汰保护。行业日线明确为不复权，个股日线明确为前复权；单次请求受板块数、股票数和交易日数限制。多个公开源只用于可用性回退，每条历史序列保留实际命中的来源。
 
 运行日志与交易状态属于不同存储边界。开发启动前的清理器只处理仓库内 `logs/*.log`，按保留天数、单文件大小和目录总大小执行；`data/` 下的 paper 账户、持仓、开放订单和审计留存继续由 `TradingStore` 独立管理，日志清理器不得访问。
 

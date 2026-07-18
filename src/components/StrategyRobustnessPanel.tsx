@@ -27,7 +27,7 @@ function formatPercent(value: number): string {
 export function StrategyRobustnessPanel() {
   const reportQuery = useQuery({
     queryKey: ["strategy-robustness", 12, 500],
-    queryFn: () => fetchStrategyRobustness(12, 500),
+    queryFn: ({ signal }) => fetchStrategyRobustness(12, 500, signal),
     staleTime: 15 * 60_000,
     gcTime: 30 * 60_000,
   });

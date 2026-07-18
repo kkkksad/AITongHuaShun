@@ -7,7 +7,7 @@ import { ResearchQueryState } from "./ResearchQueryState";
 export function FlowPanel() {
   const regimeQuery = useQuery({
     queryKey: ["market-regime", 10, 8, 180],
-    queryFn: () => fetchMarketRegimeResearch(10, 8, 180),
+    queryFn: ({ signal }) => fetchMarketRegimeResearch(10, 8, 180, signal),
     refetchInterval: 15 * 60_000,
     staleTime: 10 * 60_000,
   });

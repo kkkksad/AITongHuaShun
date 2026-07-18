@@ -1,4 +1,5 @@
 import type { MarketSnapshot, TradingMode } from "../../shared/trading";
+import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 
 export type ResearchSentiment = "positive" | "neutral" | "negative";
 export type ResearchNewsCategory = "macro" | "market" | "company";
@@ -243,31 +244,6 @@ function normalizeGlobalMarket(item: GlobalMarketSignal): GlobalMarketSignal {
   };
 }
 
-async function fetchJson<T>(
-  url: string,
-  token: string | undefined,
-  timeoutMs: number,
-  fetchImpl: typeof fetch,
-): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      headers: {
-        Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return (await response.json()) as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function buildImpact(
   markets: GlobalMarketSignal[],
   snapshot: MarketSnapshot,
@@ -359,18 +335,18 @@ export async function buildRealResearchDataFeed(
   newsUrl.searchParams.set("limit", String(NEWS_ITEM_LIMIT));
   newsUrl.searchParams.set("symbols", requestedNewsSymbols.join(","));
   const [newsResult, globalResult] = await Promise.allSettled([
-    fetchJson<BridgeNewsResponse>(
-      newsUrl.toString(),
-      input.bridgeToken,
-      input.timeoutMs,
+    fetchBridgeJson<BridgeNewsResponse>({
+      url: newsUrl.toString(),
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs,
       fetchImpl,
-    ),
-    fetchJson<BridgeGlobalResponse>(
-      `${baseUrl}/api/market/global?limit=12`,
-      input.bridgeToken,
-      input.timeoutMs,
+    }),
+    fetchBridgeJson<BridgeGlobalResponse>({
+      url: `${baseUrl}/api/market/global?limit=12`,
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs,
       fetchImpl,
-    ),
+    }),
   ]);
 
   const news =
@@ -413,7 +389,7 @@ export async function buildRealResearchDataFeed(
           rawCount: 0,
           availableCount: 0,
           deduplicatedCount: 0,
-          warning: `真实新闻源暂不可用: ${newsResult.reason}`,
+          warning: `真实新闻源暂不可用: ${bridgeErrorMessage(newsResult.reason)}`,
         };
 
   const globalMarkets =
@@ -428,7 +404,7 @@ export async function buildRealResearchDataFeed(
           provider: "akshare",
           fetchedAt: null,
           markets: [],
-          warning: `全球市场源暂不可用: ${globalResult.reason}`,
+          warning: `全球市场源暂不可用: ${bridgeErrorMessage(globalResult.reason)}`,
         };
 
   const degraded =

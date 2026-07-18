@@ -73,13 +73,14 @@ EXTERNAL_MARKET_FEATURE_FILE=./data/research/external-market-features.json
 AkShare 桥接的板块与历史日线只保存在进程内短期缓存。普通研究响应默认保留 15 分钟且最多 64 个 key；单序列历史缓存最多 128 个 key，15 分钟内直接命中，最多 60 分钟可作为 stale-while-revalidate 回退：
 
 ```text
+AKSHARE_BRIDGE_CACHE_TTL=10
 AKSHARE_BRIDGE_RESEARCH_CACHE_TTL=900
 AKSHARE_BRIDGE_RESEARCH_CACHE_STALE_TTL=3600
 AKSHARE_BRIDGE_RESEARCH_CACHE_MAX_ENTRIES=64
 AKSHARE_BRIDGE_HISTORY_CACHE_MAX_ENTRIES=128
 ```
 
-读写缓存时会主动清除过期项，超过容量后按 LRU 淘汰；正在拉取的历史序列不会在请求完成前被淘汰。`http://127.0.0.1:8800/health` 的 `researchCache` 和 `historyCache` 会返回当前条目数、上限、淘汰数和过期清理数。单次历史研究请求最多读取 20 个行业板块、12 只股票和 60 至 500 个交易日。行业日线为不复权，个股日线为前复权；该缓存不会在 `data/` 中长期堆积原始日线。
+全市场股票与指数缓存只在成功刷新完成后更新年龄，默认完成后 10 秒内复用；失败时保留旧数据并进入最长 60 秒冷却，不会因一次抓取本身超过 TTL 而立即再次重打上游。读写研究缓存时会主动清除过期项，超过容量后按 LRU 淘汰；正在拉取的历史序列不会在请求完成前被淘汰。`http://127.0.0.1:8800/health` 的 `researchCache` 和 `historyCache` 会返回当前条目数、上限、淘汰数和过期清理数。单次历史研究请求最多读取 20 个行业板块、12 只股票和 60 至 500 个交易日。行业日线为不复权，个股日线为前复权；该缓存不会在 `data/` 中长期堆积原始日线。
 
 开发日志在执行 `npm run dev` 或 `npm run dev:a-share` 前自动清理，默认预算为：
 
@@ -209,6 +210,8 @@ Invoke-WebRequest http://127.0.0.1:4173/api/health -Headers @{ Accept = "applica
 第二条命令应该返回 JSON，而不是 `index.html`。如果返回 HTML，说明 4173 当前服务没有使用 `config/vite.app.config.js` 的代理配置；停止旧终端后重新执行 `npm run dev` 或 `npm run dev:a-share`。开发环境下前端会自动注销 PWA Service Worker 并清理当前站点缓存，避免旧 JS/CSS 继续渲染。
 
 顶栏状态分为 REST 后端连接和 WebSocket 实时通道两层。若浏览器控制台在开发模式下偶发 `WebSocket is closed before the connection is established`，但 `/api/health`、`/api/market/snapshot` 与顶栏 REST 状态正常，通常是 React StrictMode 首次 effect 预演关闭了临时连接，不代表交易后端离线；应以顶栏的“交易后端已连接 · paper · AkShare 真实只读行情”以及 `npm run check:a-share` 为准。
+
+行情桥尚未启动或暂时断开时，Fastify 日志只应出现每轮一条 `行情轮询降级`，重试间隔按 10、20、40、60 秒增长；桥恢复后自动回到 `MARKET_TICK_MS`。研究模块的 warning 应显示“行情桥连接失败 / 请求超时 / HTTP 状态 / 响应格式错误”等稳定语义，不应出现原始 `fetch failed`。已有成功数据的页面刷新失败时继续显示缓存并标注最后成功时间；首次请求失败才显示阻断状态。
 
 只想单独启动前端并连接已有 API 时，可以在未提交的 `.env.local` 中显式指定：
 

@@ -1,4 +1,5 @@
 import type { TradingMode } from "../../shared/trading";
+import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 import type {
   HistoricalBar,
   HistoricalBarsResponse,
@@ -323,10 +324,6 @@ export function buildFuturesForecast(inputBars: HistoricalBar[]): FuturesForecas
   };
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 export function summarizeGlobalMarkets(
   markets: Array<{ changePercent: number }>,
 ): CrossMarketGlobalSignal {
@@ -500,47 +497,6 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-async function httpErrorMessage(response: Response): Promise<string> {
-  let detail: string | null = null;
-  try {
-    const payload = await response.json() as unknown;
-    if (typeof payload === "string") {
-      detail = payload;
-    } else if (payload && typeof payload === "object") {
-      const record = payload as Record<string, unknown>;
-      const candidate = record.detail ?? record.message;
-      if (typeof candidate === "string") detail = candidate;
-    }
-  } catch {
-    // Some upstream failures have no JSON body; the status remains actionable.
-  }
-  const normalized = detail?.replace(/\s+/g, " ").trim().slice(0, 240);
-  return `HTTP ${response.status}${normalized ? `: ${normalized}` : ""}`;
-}
-
-async function fetchJson<T>(
-  url: string,
-  token: string | undefined,
-  timeoutMs: number,
-  fetchImpl: typeof fetch,
-): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      headers: {
-        Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(await httpErrorMessage(response));
-    return await response.json() as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function emptySignals() {
   const group: CrossMarketSignalGroup = {
     tone: "neutral",
@@ -609,28 +565,28 @@ export async function buildCrossMarketStrategyContext(
   const globalUrl = `${baseUrl}/api/market/global?limit=${limit}`;
   const futuresUrl = `${baseUrl}/api/market/futures/quotes?limit=${limit}`;
   const [globalResult, futuresResult] = await Promise.allSettled([
-    fetchJson<BridgeGlobalResponse>(
-      globalUrl,
-      input.bridgeToken,
-      input.timeoutMs * 4,
+    fetchBridgeJson<BridgeGlobalResponse>({
+      url: globalUrl,
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 4,
       fetchImpl,
-    ),
-    fetchJson<BridgeFuturesResponse>(
-      futuresUrl,
-      input.bridgeToken,
-      input.timeoutMs * 4,
+    }),
+    fetchBridgeJson<BridgeFuturesResponse>({
+      url: futuresUrl,
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 4,
       fetchImpl,
-    ),
+    }),
   ]);
 
   const warnings: string[] = [];
   const globalResponse = globalResult.status === "fulfilled" ? globalResult.value : null;
   const futuresResponse = futuresResult.status === "fulfilled" ? futuresResult.value : null;
   if (globalResult.status === "rejected") {
-    warnings.push(`全球指数暂不可用: ${errorMessage(globalResult.reason)}`);
+    warnings.push(`全球指数暂不可用: ${bridgeErrorMessage(globalResult.reason)}`);
   }
   if (futuresResult.status === "rejected") {
-    warnings.push(`国内期货快照暂不可用: ${errorMessage(futuresResult.reason)}`);
+    warnings.push(`国内期货快照暂不可用: ${bridgeErrorMessage(futuresResult.reason)}`);
   }
   if (globalResponse?.warning) warnings.push(globalResponse.warning);
   if (futuresResponse?.warning) warnings.push(futuresResponse.warning);
@@ -642,15 +598,15 @@ export async function buildCrossMarketStrategyContext(
     historyUrl.searchParams.set("symbols", symbols.join(","));
     historyUrl.searchParams.set("days", String(days));
     try {
-      historyResponse = await fetchJson<HistoricalBarsResponse>(
-        historyUrl.toString(),
-        input.bridgeToken,
-        input.timeoutMs * 12,
+      historyResponse = await fetchBridgeJson<HistoricalBarsResponse>({
+        url: historyUrl.toString(),
+        token: input.bridgeToken,
+        timeoutMs: input.timeoutMs * 12,
         fetchImpl,
-      );
+      });
       if (historyResponse.warning) warnings.push(historyResponse.warning);
     } catch (error) {
-      warnings.push(`国内期货连续历史暂不可用: ${errorMessage(error)}`);
+      warnings.push(`国内期货连续历史暂不可用: ${bridgeErrorMessage(error)}`);
     }
   } else {
     warnings.push("国内期货快照为空，未请求连续历史。");

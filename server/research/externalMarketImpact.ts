@@ -1,4 +1,5 @@
 import type { TradingMode } from "../../shared/trading";
+import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 import type {
   HistoricalBarsResponse,
   HistoricalSeries,
@@ -352,48 +353,6 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-async function httpErrorMessage(response: Response): Promise<string> {
-  let detail: string | null = null;
-  try {
-    const payload = await response.json() as unknown;
-    if (payload && typeof payload === "object") {
-      const candidate = (payload as Record<string, unknown>).detail;
-      if (typeof candidate === "string") detail = candidate;
-    }
-  } catch {
-    // A status code still identifies failures without a JSON body.
-  }
-  const normalized = detail?.replace(/\s+/g, " ").trim().slice(0, 240);
-  return `HTTP ${response.status}${normalized ? `: ${normalized}` : ""}`;
-}
-
-async function fetchJson<T>(
-  url: string,
-  token: string | undefined,
-  timeoutMs: number,
-  fetchImpl: typeof fetch,
-): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      headers: {
-        Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(await httpErrorMessage(response));
-    return await response.json() as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 function emptyValidation(): ExternalImpactValidation {
   return {
     benchmark: "SH000300",
@@ -473,30 +432,30 @@ export async function buildExternalMarketImpact(
   benchmarkUrl.searchParams.set("symbols", "SH000300");
   benchmarkUrl.searchParams.set("days", String(days));
   const requests = await Promise.allSettled([
-    fetchJson<BridgeGlobalResponse>(
-      `${baseUrl}/api/market/global?limit=10`,
-      input.bridgeToken,
-      input.timeoutMs * 4,
+    fetchBridgeJson<BridgeGlobalResponse>({
+      url: `${baseUrl}/api/market/global?limit=10`,
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 4,
       fetchImpl,
-    ),
-    fetchJson<HistoricalBarsResponse>(
-      globalHistoryUrl.toString(),
-      input.bridgeToken,
-      input.timeoutMs * 12,
+    }),
+    fetchBridgeJson<HistoricalBarsResponse>({
+      url: globalHistoryUrl.toString(),
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 12,
       fetchImpl,
-    ),
-    fetchJson<HistoricalBarsResponse>(
-      benchmarkUrl.toString(),
-      input.bridgeToken,
-      input.timeoutMs * 6,
+    }),
+    fetchBridgeJson<HistoricalBarsResponse>({
+      url: benchmarkUrl.toString(),
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 6,
       fetchImpl,
-    ),
-    fetchJson<BridgeCryptoResponse>(
-      `${baseUrl}/api/market/crypto/quotes`,
-      input.bridgeToken,
-      input.timeoutMs * 4,
+    }),
+    fetchBridgeJson<BridgeCryptoResponse>({
+      url: `${baseUrl}/api/market/crypto/quotes`,
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 4,
       fetchImpl,
-    ),
+    }),
   ]);
   const [globalResult, globalHistoryResult, benchmarkResult, cryptoResult] = requests;
   const warnings: string[] = [];
@@ -511,7 +470,7 @@ export async function buildExternalMarketImpact(
   const labels = ["全球指数快照", "全球指数历史", "A 股指数历史", "BTC/ETH 快照"];
   requests.forEach((result, index) => {
     if (result.status === "rejected") {
-      warnings.push(`${labels[index]}暂不可用: ${errorMessage(result.reason)}`);
+      warnings.push(`${labels[index]}暂不可用: ${bridgeErrorMessage(result.reason)}`);
     }
   });
   if (globalResponse?.warning) warnings.push(globalResponse.warning);

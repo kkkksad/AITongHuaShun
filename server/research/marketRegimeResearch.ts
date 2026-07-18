@@ -1,4 +1,5 @@
 import type { MarketSnapshot, TradingMode } from "../../shared/trading";
+import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 
 export interface HistoricalBar {
   date: string;
@@ -760,29 +761,6 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-async function fetchJson<T>(
-  url: string,
-  token: string | undefined,
-  timeoutMs: number,
-  fetchImpl: typeof fetch,
-): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      headers: {
-        Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return (await response.json()) as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function failedHistory(source: string, warning: string): HistoricalBarsResponse {
   return {
     provider: "akshare",
@@ -802,19 +780,19 @@ export async function buildMarketRegimeResearch(
   const baseUrl = trimTrailingSlash(input.bridgeUrl);
   let sectorResponse: SectorSnapshotResponse;
   try {
-    sectorResponse = await fetchJson<SectorSnapshotResponse>(
-      `${baseUrl}/api/market/sectors?limit=80`,
-      input.bridgeToken,
-      input.timeoutMs,
+    sectorResponse = await fetchBridgeJson<SectorSnapshotResponse>({
+      url: `${baseUrl}/api/market/sectors?limit=80`,
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs,
       fetchImpl,
-    );
+    });
   } catch (error) {
     sectorResponse = {
       provider: "akshare",
       source: "unavailable",
       fetchedAt: "",
       sectors: [],
-      warning: `行业板块快照暂不可用: ${error}`,
+      warning: `行业板块快照暂不可用: ${bridgeErrorMessage(error)}`,
     };
   }
 
@@ -845,20 +823,20 @@ export async function buildMarketRegimeResearch(
 
   const [sectorHistoryResult, stockHistoryResult] = await Promise.allSettled([
     sectorNames.length > 0
-      ? fetchJson<HistoricalBarsResponse>(
-          sectorUrl.toString(),
-          input.bridgeToken,
-          input.timeoutMs * 4,
+      ? fetchBridgeJson<HistoricalBarsResponse>({
+          url: sectorUrl.toString(),
+          token: input.bridgeToken,
+          timeoutMs: input.timeoutMs * 4,
           fetchImpl,
-        )
+        })
       : Promise.resolve(failedHistory("unavailable", "没有可查询的行业板块。")),
     stockSymbols.length > 0
-      ? fetchJson<HistoricalBarsResponse>(
-          stockUrl.toString(),
-          input.bridgeToken,
-          input.timeoutMs * 4,
+      ? fetchBridgeJson<HistoricalBarsResponse>({
+          url: stockUrl.toString(),
+          token: input.bridgeToken,
+          timeoutMs: input.timeoutMs * 4,
           fetchImpl,
-        )
+        })
       : Promise.resolve(failedHistory("unavailable", "当前快照没有可查询股票。")),
   ]);
 
@@ -867,14 +845,14 @@ export async function buildMarketRegimeResearch(
       ? sectorHistoryResult.value
       : failedHistory(
           "eastmoney-industry-history",
-          `行业历史日线暂不可用: ${sectorHistoryResult.reason}`,
+          `行业历史日线暂不可用: ${bridgeErrorMessage(sectorHistoryResult.reason)}`,
         );
   const stockHistory =
     stockHistoryResult.status === "fulfilled"
       ? stockHistoryResult.value
       : failedHistory(
           "eastmoney-stock-history",
-          `股票历史日线暂不可用: ${stockHistoryResult.reason}`,
+          `股票历史日线暂不可用: ${bridgeErrorMessage(stockHistoryResult.reason)}`,
         );
 
   return analyzeMarketRegimeData({

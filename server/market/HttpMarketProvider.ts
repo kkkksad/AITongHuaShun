@@ -35,6 +35,28 @@ interface QuoteApiResponse {
   }>;
 }
 
+interface QuoteFetchResult {
+  attempted: boolean;
+  error: string | null;
+  quotes: MarketQuote[];
+  success: boolean;
+}
+
+interface QuoteBatchResult {
+  errors: string[];
+  quotes: MarketQuote[];
+  success: boolean;
+}
+
+const MAX_POLL_BACKOFF_MS = 60_000;
+
+function connectionFailureMessage(endpoint: string, error: unknown): string {
+  if (error instanceof Error && error.name === "AbortError") {
+    return `${endpoint}请求超时`;
+  }
+  return `${endpoint}无法连接行情桥`;
+}
+
 export class HttpMarketProvider
   extends EventEmitter
   implements MarketDataProvider
@@ -48,6 +70,7 @@ export class HttpMarketProvider
   private sequence = 0;
   private timer?: NodeJS.Timeout;
   private running = false;
+  private consecutiveFailures = 0;
   /** 最近一次 fetch 成功的时间戳（毫秒），用于新鲜度评估 */
   private lastFetchSuccessMs = 0;
 
@@ -88,19 +111,9 @@ export class HttpMarketProvider
   }
 
   start(): void {
-    if (this.timer) return;
+    if (this.running) return;
     this.running = true;
-    this.fetchAndEmit().catch((err) => {
-      console.error("[HttpMarketProvider] initial fetch failed:", err);
-    });
-    this.timer = setInterval(() => {
-      if (this.running) {
-        this.fetchAndEmit().catch((err) => {
-          console.error("[HttpMarketProvider] poll failed:", err);
-        });
-      }
-    }, this.cfg.tickMs);
-    this.timer.unref();
+    void this.runPollingCycle();
   }
 
   stop(): void {
@@ -135,31 +148,50 @@ export class HttpMarketProvider
   }
 
   private async fetchAndEmit(): Promise<void> {
-    const quotes = await this.fetchQuotes();
-    if (quotes.length === 0) return;
+    const result = await this.fetchQuotes();
+    if (result.success) {
+      this.consecutiveFailures = 0;
+    } else {
+      this.consecutiveFailures += 1;
+    }
+    if (result.errors.length > 0) {
+      const retryMs = this.nextPollDelayMs();
+      console.warn(
+        `[HttpMarketProvider] 行情轮询降级: ${result.errors.join("；")}；` +
+        `保留最近成功快照，${Math.round(retryMs / 1000)} 秒后重试`,
+      );
+    }
+    if (!this.running || result.quotes.length === 0) return;
     this.lastFetchSuccessMs = Date.now();
     const now = new Date().toISOString();
-    for (const quote of quotes) {
+    for (const quote of result.quotes) {
       this.quotes.set(quote.symbol, { ...quote, updatedAt: quote.updatedAt || now });
     }
     this.sequence += 1;
     this.emitSnapshot();
   }
 
-  private async fetchQuotes(): Promise<MarketQuote[]> {
-    const [stockQuotes, indexQuotes] = await Promise.all([
-      this.fetchQuoteEndpoint("/api/market/quotes", this.cfg.symbols),
-      this.fetchQuoteEndpoint("/api/market/indices", this.cfg.indexSymbols),
+  private async fetchQuotes(): Promise<QuoteBatchResult> {
+    const [stockResult, indexResult] = await Promise.all([
+      this.fetchQuoteEndpoint("/api/market/quotes", "个股行情", this.cfg.symbols),
+      this.fetchQuoteEndpoint("/api/market/indices", "指数行情", this.cfg.indexSymbols),
     ]);
-    return [...stockQuotes, ...indexQuotes];
+    const results = [stockResult, indexResult];
+    const attempted = results.filter((result) => result.attempted);
+    return {
+      errors: attempted.flatMap((result) => result.error ? [result.error] : []),
+      quotes: results.flatMap((result) => result.quotes),
+      success: attempted.length === 0 || attempted.some((result) => result.success),
+    };
   }
 
   private async fetchQuoteEndpoint(
     endpoint: string,
+    label: string,
     symbols: string[],
-  ): Promise<MarketQuote[]> {
+  ): Promise<QuoteFetchResult> {
     if (symbols.length === 0) {
-      return [];
+      return { attempted: false, error: null, quotes: [], success: true };
     }
 
     const symbolQuery = symbols.join(",");
@@ -180,40 +212,75 @@ export class HttpMarketProvider
     try {
       const response = await fetch(url, { headers, signal: controller.signal });
       if (!response.ok) {
-        console.error(`[HttpMarketProvider] API error: ${response.status}`);
-        return [];
+        return {
+          attempted: true,
+          error: `${label}返回 HTTP ${response.status}`,
+          quotes: [],
+          success: false,
+        };
       }
       const data = (await response.json()) as QuoteApiResponse;
       if (!data.quotes || !Array.isArray(data.quotes)) {
-        console.error("[HttpMarketProvider] unexpected response format");
-        return [];
+        return {
+          attempted: true,
+          error: `${label}响应格式错误`,
+          quotes: [],
+          success: false,
+        };
       }
-      return data.quotes.map((q) => ({
-        symbol: q.symbol,
-        name: q.name ?? q.symbol,
-        tradable: q.tradable ?? true,
-        price: Number(q.price),
-        previousClose: Number(q.previousClose),
-        changePercent: Number(q.changePercent),
-        volume: Number(q.volume),
-        updatedAt: q.updatedAt ?? new Date().toISOString(),
-        open: q.open != null ? Number(q.open) : undefined,
-        high: q.high != null ? Number(q.high) : undefined,
-        low: q.low != null ? Number(q.low) : undefined,
-        amount: q.amount != null ? Number(q.amount) : undefined,
-        turnover: q.turnover != null ? Number(q.turnover) : undefined,
-        amplitude: q.amplitude != null ? Number(q.amplitude) : undefined,
-      }));
+      return {
+        attempted: true,
+        error: null,
+        quotes: data.quotes.map((q) => ({
+          symbol: q.symbol,
+          name: q.name ?? q.symbol,
+          tradable: q.tradable ?? true,
+          price: Number(q.price),
+          previousClose: Number(q.previousClose),
+          changePercent: Number(q.changePercent),
+          volume: Number(q.volume),
+          updatedAt: q.updatedAt ?? new Date().toISOString(),
+          open: q.open != null ? Number(q.open) : undefined,
+          high: q.high != null ? Number(q.high) : undefined,
+          low: q.low != null ? Number(q.low) : undefined,
+          amount: q.amount != null ? Number(q.amount) : undefined,
+          turnover: q.turnover != null ? Number(q.turnover) : undefined,
+          amplitude: q.amplitude != null ? Number(q.amplitude) : undefined,
+        })),
+        success: true,
+      };
     } catch (err: unknown) {
-      if (err instanceof Error && err.name === "AbortError") {
-        console.error("[HttpMarketProvider] request timeout");
-      } else if (err instanceof Error) {
-        console.error(`[HttpMarketProvider] request failed: ${err.message}`);
-      }
-      return [];
+      return {
+        attempted: true,
+        error: connectionFailureMessage(label, err),
+        quotes: [],
+        success: false,
+      };
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  private async runPollingCycle(): Promise<void> {
+    if (!this.running) return;
+    try {
+      await this.fetchAndEmit();
+    } catch {
+      this.consecutiveFailures += 1;
+      console.warn("[HttpMarketProvider] 行情轮询异常；保留最近成功快照");
+    }
+    if (!this.running) return;
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      void this.runPollingCycle();
+    }, this.nextPollDelayMs());
+    this.timer.unref();
+  }
+
+  private nextPollDelayMs(): number {
+    if (this.consecutiveFailures === 0) return this.cfg.tickMs;
+    const exponent = Math.min(this.consecutiveFailures, 10);
+    return Math.min(MAX_POLL_BACKOFF_MS, this.cfg.tickMs * 2 ** exponent);
   }
 
   private emitSnapshot(): MarketSnapshot {

@@ -55,7 +55,7 @@ export function DailyTaskCenter({
   const reviewQuery = useQuery(dailyMarketReviewQueryOptions());
   const executionQuery = useQuery({
     queryKey: ["paper-auto-execution-status"],
-    queryFn: fetchPaperAutoExecutionStatus,
+    queryFn: ({ signal }) => fetchPaperAutoExecutionStatus(signal),
     refetchInterval: 30_000,
     staleTime: 15_000,
   });

@@ -4,11 +4,20 @@ import {
   fetchApiPerformance,
   fetchAuditEvents,
   fetchCrossMarketStrategyContext,
+  fetchDailyCandidates,
+  fetchDailyMarketReview,
+  fetchDailyQualityStocks,
   fetchExternalMarketImpact,
+  fetchLearningState,
   fetchIpoSubscriptionResearch,
   fetchHongKongMarketResearch,
   fetchMarketDataQuality,
   fetchMarketRegimeResearch,
+  fetchPaperAutoExecutionStatus,
+  fetchPaperTradingPlan,
+  fetchRealResearchDataFeed,
+  fetchSelfOptimizationStatus,
+  fetchStrategyLeaderboard,
   fetchStrategyRobustness,
   fetchStockTrendForecast,
   fetchTurningPointResearch,
@@ -295,5 +304,38 @@ describe("session-aware trading API", () => {
       expect.stringMatching(/\/api\/research\/hong-kong-market\?limit=12&days=500$/),
       expect.objectContaining({ credentials: "include" }),
     );
+  });
+
+  it("forwards cancellation to every read-only research request", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const requests = [
+      () => fetchStrategyLeaderboard(120, signal),
+      () => fetchStrategyRobustness(12, 500, signal),
+      () => fetchCrossMarketStrategyContext(16, 500, signal),
+      () => fetchExternalMarketImpact(500, signal),
+      () => fetchDailyCandidates(24, signal),
+      () => fetchDailyQualityStocks(30, signal),
+      () => fetchLearningState(signal),
+      () => fetchPaperTradingPlan(signal),
+      () => fetchDailyMarketReview(signal),
+      () => fetchPaperAutoExecutionStatus(signal),
+      () => fetchRealResearchDataFeed(signal),
+      () => fetchMarketRegimeResearch(10, 8, 180, signal),
+      () => fetchIpoSubscriptionResearch(40, signal),
+      () => fetchStockTrendForecast("600519", 360, signal),
+      () => fetchTurningPointResearch(12, 360, signal),
+      () => fetchHongKongMarketResearch(10, 180, signal),
+      () => fetchSelfOptimizationStatus(signal),
+    ];
+
+    for (const request of requests) await request();
+
+    expect(fetchMock).toHaveBeenCalledTimes(requests.length);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init).toEqual(expect.objectContaining({ signal }));
+    }
   });
 });

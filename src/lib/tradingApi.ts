@@ -1576,66 +1576,84 @@ export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> 
 
 export function fetchStrategyLeaderboard(
   bars = 90,
+  signal?: AbortSignal,
 ): Promise<StrategyLeaderboardReport> {
   return authApiRequest<StrategyLeaderboardReport>(
     `/api/research/strategy-leaderboard?bars=${bars}`,
+    { signal },
   );
 }
 
 export function fetchStrategyRobustness(
   limit = 12,
   days = 500,
+  signal?: AbortSignal,
 ): Promise<StrategyRobustnessReport> {
   const boundedLimit = Math.min(12, Math.max(2, Math.round(limit)));
   const boundedDays = Math.min(500, Math.max(360, Math.round(days)));
   return authApiRequest<StrategyRobustnessReport>(
     `/api/research/strategy-robustness?limit=${boundedLimit}&days=${boundedDays}`,
+    { signal },
   );
 }
 
 export function fetchCrossMarketStrategyContext(
   limit = 12,
   days = 180,
+  signal?: AbortSignal,
 ): Promise<CrossMarketStrategyContextReport> {
   const boundedLimit = Math.min(16, Math.max(4, Math.round(limit)));
   const boundedDays = Math.min(500, Math.max(60, Math.round(days)));
   return authApiRequest<CrossMarketStrategyContextReport>(
     "/api/research/cross-market-strategy-context" +
       `?limit=${boundedLimit}&days=${boundedDays}`,
+    { signal },
   );
 }
 
 export function fetchExternalMarketImpact(
   days = 500,
+  signal?: AbortSignal,
 ): Promise<ExternalMarketImpactReport> {
   const boundedDays = Math.min(500, Math.max(60, Math.round(days)));
   return authApiRequest<ExternalMarketImpactReport>(
     `/api/research/external-market-impact?days=${boundedDays}`,
+    { signal },
   );
 }
 
-export function fetchDailyCandidates(limit = 8): Promise<DailyCandidateReport> {
+export function fetchDailyCandidates(
+  limit = 8,
+  signal?: AbortSignal,
+): Promise<DailyCandidateReport> {
   return authApiRequest<DailyCandidateReport>(
     `/api/research/daily-candidates?limit=${limit}`,
+    { signal },
   );
 }
 
-export function fetchDailyQualityStocks(limit = 10): Promise<DailyQualityStockReport> {
+export function fetchDailyQualityStocks(
+  limit = 10,
+  signal?: AbortSignal,
+): Promise<DailyQualityStockReport> {
   return authApiRequest<DailyQualityStockReport>(
     `/api/research/daily-quality-stocks?limit=${limit}`,
+    { signal },
   );
 }
 
-export function fetchLearningState(): Promise<LearningState> {
-  return authApiRequest<LearningState>("/api/research/learning-state");
+export function fetchLearningState(signal?: AbortSignal): Promise<LearningState> {
+  return authApiRequest<LearningState>("/api/research/learning-state", { signal });
 }
 
-export function fetchPaperTradingPlan(): Promise<PaperTradingPlan> {
-  return authApiRequest<PaperTradingPlan>("/api/research/paper-trading-plan");
+export function fetchPaperTradingPlan(signal?: AbortSignal): Promise<PaperTradingPlan> {
+  return authApiRequest<PaperTradingPlan>("/api/research/paper-trading-plan", {
+    signal,
+  });
 }
 
-export function fetchDailyMarketReview(): Promise<DailyMarketReview> {
-  return authApiRequest<DailyMarketReview>("/api/research/daily-review");
+export function fetchDailyMarketReview(signal?: AbortSignal): Promise<DailyMarketReview> {
+  return authApiRequest<DailyMarketReview>("/api/research/daily-review", { signal });
 }
 
 export function fetchSuperMindSignalPackage(): Promise<SuperMindSignalPackage> {
@@ -1644,9 +1662,12 @@ export function fetchSuperMindSignalPackage(): Promise<SuperMindSignalPackage> {
   );
 }
 
-export function fetchPaperAutoExecutionStatus(): Promise<PaperAutoExecutionStatus> {
+export function fetchPaperAutoExecutionStatus(
+  signal?: AbortSignal,
+): Promise<PaperAutoExecutionStatus> {
   return authApiRequest<PaperAutoExecutionStatus>(
     "/api/trading/auto-paper-execution/status",
+    { signal },
   );
 }
 
@@ -1657,14 +1678,19 @@ export function runPaperAutoExecutionOnce(): Promise<PaperAutoExecutionRunRespon
   );
 }
 
-export function fetchRealResearchDataFeed(): Promise<RealResearchDataFeed> {
-  return authApiRequest<RealResearchDataFeed>("/api/research/real-data-feed");
+export function fetchRealResearchDataFeed(
+  signal?: AbortSignal,
+): Promise<RealResearchDataFeed> {
+  return authApiRequest<RealResearchDataFeed>("/api/research/real-data-feed", {
+    signal,
+  });
 }
 
 export function fetchMarketRegimeResearch(
   sectorLimit = 10,
   stockLimit = 8,
   days = 180,
+  signal?: AbortSignal,
 ): Promise<MarketRegimeResearchReport> {
   const boundedSectorLimit = Math.min(20, Math.max(1, Math.round(sectorLimit)));
   const boundedStockLimit = Math.min(12, Math.max(1, Math.round(stockLimit)));
@@ -1674,21 +1700,25 @@ export function fetchMarketRegimeResearch(
       `?sectorLimit=${boundedSectorLimit}` +
       `&stockLimit=${boundedStockLimit}` +
       `&days=${boundedDays}`,
+    { signal },
   );
 }
 
 export function fetchIpoSubscriptionResearch(
   limit = 40,
+  signal?: AbortSignal,
 ): Promise<IpoSubscriptionResearchReport> {
   const boundedLimit = Math.min(80, Math.max(1, Math.round(limit)));
   return authApiRequest<IpoSubscriptionResearchReport>(
     `/api/research/ipo-subscriptions?limit=${boundedLimit}`,
+    { signal },
   );
 }
 
 export function fetchStockTrendForecast(
   query: string,
   days = 360,
+  signal?: AbortSignal,
 ): Promise<StockTrendForecastReport> {
   const boundedDays = Math.min(500, Math.max(120, Math.round(days)));
   const params = new URLSearchParams({
@@ -1697,33 +1727,42 @@ export function fetchStockTrendForecast(
   });
   return authApiRequest<StockTrendForecastReport>(
     `/api/research/stock-trend?${params.toString()}`,
+    { signal },
   );
 }
 
 export function fetchTurningPointResearch(
   limit = 12,
   days = 360,
+  signal?: AbortSignal,
 ): Promise<TurningPointReport> {
   const boundedLimit = Math.min(12, Math.max(1, Math.round(limit)));
   const boundedDays = Math.min(500, Math.max(180, Math.round(days)));
   return authApiRequest<TurningPointReport>(
     `/api/research/turning-points?limit=${boundedLimit}&days=${boundedDays}`,
+    { signal },
   );
 }
 
 export function fetchHongKongMarketResearch(
   limit = 10,
   days = 180,
+  signal?: AbortSignal,
 ): Promise<HongKongMarketResearchReport> {
   const boundedLimit = Math.min(12, Math.max(1, Math.round(limit)));
   const boundedDays = Math.min(500, Math.max(60, Math.round(days)));
   return authApiRequest<HongKongMarketResearchReport>(
     `/api/research/hong-kong-market?limit=${boundedLimit}&days=${boundedDays}`,
+    { signal },
   );
 }
 
-export function fetchSelfOptimizationStatus(): Promise<SelfOptimizationStatus> {
-  return authApiRequest<SelfOptimizationStatus>("/api/research/self-optimization");
+export function fetchSelfOptimizationStatus(
+  signal?: AbortSignal,
+): Promise<SelfOptimizationStatus> {
+  return authApiRequest<SelfOptimizationStatus>("/api/research/self-optimization", {
+    signal,
+  });
 }
 
 export function cancelPaperOrder(orderId: string): Promise<OrderSubmission> {

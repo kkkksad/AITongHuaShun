@@ -49,7 +49,7 @@ function trendClass(trend: HongKongTrend): string {
 export function HongKongMarketPanel() {
   const query = useQuery({
     queryKey: ["hong-kong-market", 10, 180],
-    queryFn: () => fetchHongKongMarketResearch(10, 180),
+    queryFn: ({ signal }) => fetchHongKongMarketResearch(10, 180, signal),
     refetchInterval: 15 * 60_000,
     staleTime: 10 * 60_000,
   });

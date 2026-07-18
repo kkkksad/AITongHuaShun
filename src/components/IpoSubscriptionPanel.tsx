@@ -76,7 +76,7 @@ export function IpoSubscriptionPanel() {
   const [view, setView] = useState<IpoView>("subscribe");
   const ipoQuery = useQuery({
     queryKey: ["ipo-subscriptions", 40],
-    queryFn: () => fetchIpoSubscriptionResearch(40),
+    queryFn: ({ signal }) => fetchIpoSubscriptionResearch(40, signal),
     refetchInterval: 30 * 60_000,
     staleTime: 15 * 60_000,
   });

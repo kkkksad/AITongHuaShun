@@ -1,4 +1,5 @@
 import type { TradingMode } from "../../shared/trading";
+import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 import type {
   HistoricalBar,
   HistoricalBarsResponse,
@@ -621,29 +622,6 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-async function fetchJson<T>(
-  url: string,
-  token: string | undefined,
-  timeoutMs: number,
-  fetchImpl: typeof fetch,
-): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      headers: {
-        Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json() as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export async function buildStockTrendForecast(
   input: BuildStockTrendForecastInput,
 ): Promise<StockTrendForecastReport> {
@@ -671,17 +649,19 @@ export async function buildStockTrendForecast(
     const searchUrl = new URL(`${baseUrl}/api/market/stock-search`);
     searchUrl.searchParams.set("query", query);
     searchUrl.searchParams.set("limit", "8");
-    search = await fetchJson<StockSearchResponse>(
-      searchUrl.toString(),
-      input.bridgeToken,
-      input.timeoutMs,
+    search = await fetchBridgeJson<StockSearchResponse>({
+      url: searchUrl.toString(),
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs,
       fetchImpl,
-    );
+    });
   } catch (error) {
     return {
       ...base,
       resolution: "degraded",
-      warnings: [`股票名称与代码搜索暂不可用: ${error}`],
+      warnings: [
+        `股票名称与代码搜索暂不可用: ${bridgeErrorMessage(error)}`,
+      ],
     };
   }
 
@@ -720,12 +700,12 @@ export async function buildStockTrendForecast(
     const historyUrl = new URL(`${baseUrl}/api/market/stock-history`);
     historyUrl.searchParams.set("symbols", selected.symbol);
     historyUrl.searchParams.set("days", String(days));
-    const history = await fetchJson<HistoricalBarsResponse>(
-      historyUrl.toString(),
-      input.bridgeToken,
-      input.timeoutMs * 4,
+    const history = await fetchBridgeJson<HistoricalBarsResponse>({
+      url: historyUrl.toString(),
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 4,
       fetchImpl,
-    );
+    });
     const series = history.series.find((item) => item.symbol === selected.symbol);
     if (!series) {
       return {
@@ -753,7 +733,10 @@ export async function buildStockTrendForecast(
       ...withSearch,
       resolution: "degraded",
       selected,
-      warnings: [...withSearch.warnings, `股票历史日线暂不可用: ${error}`],
+      warnings: [
+        ...withSearch.warnings,
+        `股票历史日线暂不可用: ${bridgeErrorMessage(error)}`,
+      ],
     };
   }
 }

@@ -12,6 +12,7 @@ import type {
   HistoricalBarsResponse,
   HistoricalSeries,
 } from "./marketRegimeResearch";
+import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 
 export type StrategyFamily =
   | "trend"
@@ -420,29 +421,6 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-async function fetchJson<T>(
-  url: string,
-  token: string | undefined,
-  timeoutMs: number,
-  fetchImpl: typeof fetch,
-): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      headers: {
-        Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json() as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function baseReport(input: BuildStrategyRobustnessInput): StrategyRobustnessReport {
   return {
     generatedAt: new Date().toISOString(),
@@ -514,12 +492,12 @@ export async function buildStrategyRobustnessReport(
   historyUrl.searchParams.set("days", String(days));
 
   try {
-    const history = await fetchJson<HistoricalBarsResponse>(
-      historyUrl.toString(),
-      input.bridgeToken,
-      input.timeoutMs * 12,
-      input.fetchImpl ?? fetch,
-    );
+    const history = await fetchBridgeJson<HistoricalBarsResponse>({
+      url: historyUrl.toString(),
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 12,
+      fetchImpl: input.fetchImpl ?? fetch,
+    });
     const names = new Map(universe.map((quote) => [quote.symbol, quote.name]));
     const validSeries = history.series
       .filter((series) => series.bars.length >= MINIMUM_ALIGNED_DAYS)
@@ -567,7 +545,9 @@ export async function buildStrategyRobustnessReport(
     return {
       ...base,
       source: { ...base.source, requestedSymbols: universe.length },
-      warnings: [`真实策略历史样本暂不可用: ${error}`],
+      warnings: [
+        `真实策略历史样本暂不可用: ${bridgeErrorMessage(error)}`,
+      ],
     };
   }
 }

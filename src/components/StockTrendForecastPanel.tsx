@@ -198,7 +198,7 @@ export function StockTrendForecastPanel() {
   const [submittedQuery, setSubmittedQuery] = useState("");
   const trendQuery = useQuery({
     queryKey: ["stock-trend-forecast", submittedQuery, 360],
-    queryFn: () => fetchStockTrendForecast(submittedQuery, 360),
+    queryFn: ({ signal }) => fetchStockTrendForecast(submittedQuery, 360, signal),
     enabled: submittedQuery.length > 0,
     staleTime: 10 * 60_000,
   });

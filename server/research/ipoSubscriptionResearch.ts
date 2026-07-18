@@ -1,4 +1,5 @@
 import type { TradingMode } from "../../shared/trading";
+import { fetchBridgeJson } from "./bridgeRequest";
 
 export type IpoSubscriptionStatus =
   | "open-today"
@@ -279,21 +280,15 @@ export async function buildIpoSubscriptionResearch(
 
   const limit = Math.min(80, Math.max(1, Math.round(input.limit ?? 40)));
   const bridgeLimit = Math.min(200, Math.max(80, limit * 2));
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), input.timeoutMs);
   try {
-    const response = await (input.fetchImpl ?? fetch)(
-      `${trimTrailingSlash(input.bridgeUrl)}/api/research/ipo-subscriptions?limit=${bridgeLimit}`,
-      {
-        headers: {
-          Accept: "application/json",
-          ...(input.bridgeToken ? { Authorization: `Bearer ${input.bridgeToken}` } : {}),
-        },
-        signal: controller.signal,
-      },
-    );
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const bridge = await response.json() as BridgeIpoSubscriptionsResponse;
+    const bridge = await fetchBridgeJson<BridgeIpoSubscriptionsResponse>({
+      url:
+        `${trimTrailingSlash(input.bridgeUrl)}` +
+        `/api/research/ipo-subscriptions?limit=${bridgeLimit}`,
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs,
+      fetchImpl: input.fetchImpl ?? fetch,
+    });
     const todayDay = dateDay(chinaDate(now))!;
     const statusOrder: Record<IpoSubscriptionStatus, number> = {
       "open-today": 0,
@@ -351,7 +346,5 @@ export async function buildIpoSubscriptionResearch(
       items: [],
       warning: "真实新股申购源暂不可用，请稍后重试。",
     };
-  } finally {
-    clearTimeout(timer);
   }
 }

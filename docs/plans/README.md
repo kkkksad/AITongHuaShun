@@ -34,6 +34,7 @@ YYYY-MM-DD-short-task-name.md
 - [有界多源真实新闻升级](2026-07-19-bounded-multi-source-news.md)
 - [行情数据质量与市场页可信度升级](2026-07-19-market-data-quality-experience.md)
 - [API 可观测性与加载性能升级](2026-07-19-api-observability-performance.md)
+- [全链路 Fetch 可靠性加固](2026-07-19-fetch-reliability-hardening.md)
 
 ## 进行中计划
 

@@ -15,7 +15,7 @@ export function strategyLeaderboardQueryOptions(bars = 120) {
   const boundedBars = boundedInteger(bars, 30, 240);
   return queryOptions({
     queryKey: ["strategy-leaderboard", boundedBars] as const,
-    queryFn: () => fetchStrategyLeaderboard(boundedBars),
+    queryFn: ({ signal }) => fetchStrategyLeaderboard(boundedBars, signal),
     staleTime: 60_000,
   });
 }
@@ -24,7 +24,7 @@ export function dailyCandidatesQueryOptions(limit = 24) {
   const boundedLimit = boundedInteger(limit, 1, 80);
   return queryOptions({
     queryKey: ["daily-candidates", boundedLimit] as const,
-    queryFn: () => fetchDailyCandidates(boundedLimit),
+    queryFn: ({ signal }) => fetchDailyCandidates(boundedLimit, signal),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -33,7 +33,7 @@ export function dailyCandidatesQueryOptions(limit = 24) {
 export function paperTradingPlanQueryOptions() {
   return queryOptions({
     queryKey: ["paper-trading-plan"] as const,
-    queryFn: fetchPaperTradingPlan,
+    queryFn: ({ signal }) => fetchPaperTradingPlan(signal),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -42,7 +42,7 @@ export function paperTradingPlanQueryOptions() {
 export function dailyMarketReviewQueryOptions() {
   return queryOptions({
     queryKey: ["daily-market-review"] as const,
-    queryFn: fetchDailyMarketReview,
+    queryFn: ({ signal }) => fetchDailyMarketReview(signal),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });

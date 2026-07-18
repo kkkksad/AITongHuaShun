@@ -1,5 +1,6 @@
 import type { ExternalMarketImpactReport } from "./externalMarketImpact";
 import type { ExternalMarketFeatureUpdate } from "./externalMarketFeatureStore";
+import { fetchBridgeJson } from "./bridgeRequest";
 
 interface ExternalMarketFeatureCaptureOptions {
   store: {
@@ -46,33 +47,17 @@ function percentToDecimal(value: number | null | undefined): number | null {
 export async function fetchHs300CloseReturnFromBridge(
   input: FetchHs300CloseReturnInput,
 ): Promise<number | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), input.timeoutMs);
   const baseUrl = input.bridgeUrl.replace(/\/+$/, "");
-  try {
-    const response = await (input.fetchImpl ?? fetch)(
-      `${baseUrl}/api/market/indices?symbols=SH000300`,
-      {
-        headers: {
-          Accept: "application/json",
-          ...(input.bridgeToken
-            ? { Authorization: `Bearer ${input.bridgeToken}` }
-            : {}),
-        },
-        signal: controller.signal,
-      },
-    );
-    if (!response.ok) {
-      throw new Error(`HS300 bridge HTTP ${response.status}`);
-    }
-    const payload = await response.json() as BridgeIndexResponse;
-    const quote = payload.quotes.find((item) => item.symbol === "SH000300");
-    return quote && Number.isFinite(quote.changePercent)
-      ? percentToDecimal(quote.changePercent)
-      : null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const payload = await fetchBridgeJson<BridgeIndexResponse>({
+    url: `${baseUrl}/api/market/indices?symbols=SH000300`,
+    token: input.bridgeToken,
+    timeoutMs: input.timeoutMs,
+    fetchImpl: input.fetchImpl ?? fetch,
+  });
+  const quote = payload.quotes.find((item) => item.symbol === "SH000300");
+  return quote && Number.isFinite(quote.changePercent)
+    ? percentToDecimal(quote.changePercent)
+    : null;
 }
 
 export class ExternalMarketFeatureCapture {

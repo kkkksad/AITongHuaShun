@@ -4,6 +4,7 @@ AkShare 桥接微服务单元测试
 或:   python test_bridge.py
 """
 
+import asyncio
 import sys
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -1067,6 +1068,49 @@ class TestQuoteCache:
                 with pytest.raises(RuntimeError, match="offline"):
                     fetch_a_share_spot_dataframe()
 
+    def test_success_ttl_starts_when_refresh_finishes(self):
+        clock = {"now": 100.0}
+        frame = pd.DataFrame(columns=["代码", "名称"])
+        cache = QuoteCache(ttl_sec=3.0)
+
+        def slow_fetch():
+            clock["now"] = 122.0
+            return frame
+
+        with patch("main.time.time", side_effect=lambda: clock["now"]):
+            with patch("main.fetch_a_share_spot_dataframe", side_effect=slow_fetch):
+                asyncio.run(cache.refresh())
+                assert cache.age_sec == 0
+                assert cache._needs_refresh() is False
+
+    def test_failed_refresh_cools_down_before_retrying_stale_cache(self):
+        clock = {"now": 100.0}
+        cache = QuoteCache(ttl_sec=3.0)
+        cache._data["600519"] = MarketQuote(
+            symbol="600519",
+            name="贵州茅台",
+            tradable=True,
+            price=1500,
+            previousClose=1490,
+            changePercent=0.67,
+            volume=1_000,
+            updatedAt="2026-07-19T02:00:00.000Z",
+        )
+        cache._last_update = 90.0
+
+        with patch("main.time.time", side_effect=lambda: clock["now"]):
+            with patch(
+                "main.fetch_a_share_spot_dataframe",
+                side_effect=RuntimeError("offline"),
+            ) as fetch:
+                asyncio.run(cache.refresh())
+                clock["now"] = 101.0
+                quotes = asyncio.run(cache.get_quotes(["600519"]))
+
+        assert fetch.call_count == 1
+        assert [quote.symbol for quote in quotes] == ["600519"]
+        assert cache.last_error == "offline"
+
     def test_symbol_normalization_accepts_market_prefixes(self):
         assert normalize_a_share_symbol("sh600519") == "600519"
         assert normalize_a_share_symbol("sz000001") == "000001"
@@ -1078,6 +1122,21 @@ class TestQuoteCache:
         cache = IndexCache(ttl_sec=3.0)
         assert cache.count == 0
         assert cache.age_sec == float("inf")
+
+    def test_index_success_ttl_starts_when_refresh_finishes(self):
+        clock = {"now": 200.0}
+        frame = pd.DataFrame(columns=["代码", "名称"])
+        cache = IndexCache(ttl_sec=3.0)
+
+        def slow_fetch():
+            clock["now"] = 207.0
+            return frame
+
+        with patch("main.time.time", side_effect=lambda: clock["now"]):
+            with patch("main.fetch_a_share_index_dataframe", side_effect=slow_fetch):
+                asyncio.run(cache.refresh())
+                assert cache.age_sec == 0
+                assert cache._needs_refresh() is False
 
     def test_fetch_index_uses_eastmoney_source(self):
         index_df = MagicMock()

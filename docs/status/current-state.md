@@ -51,6 +51,7 @@
 - **行情质量与真实指数空状态** —— `/api/market/quality` 按请求股票池计算有效覆盖，使用整批报价低 10% 分位新鲜度，并区分合法创业板/科创板 20%、北交所 30% 涨跌停与越界价格异常；A 股概览每 30 秒显示 `healthy / degraded / unusable` 只读状态，接口使用私有 5 秒短缓存。主要指数缺失时不再使用静态指数数值补位。质量状态不参与策略路由、风险限额或订单。
 - **有界 API 性能诊断** —— `/api/system/performance` 按 Fastify 路由模板聚合业务请求，最多保留 64 条路由、每路由 128 个耗时样本，输出滚动 P50/P95、平均/最大耗时、`429/5xx` 失败率、慢请求、在途数和当前行情质量；不记录查询值、正文或凭据，不写磁盘，也不影响策略和订单。模拟账户“运维 > 监控”已升级为 15 秒轮询的诊断台。
 - **研究请求去重** —— `src/lib/researchQueries.ts` 统一策略榜、候选扫描、Paper 计划和每日复盘的 Query Key、stale 时间及轮询周期；研究管线不再用 `pipeline` 展示位置拆分相同参数缓存，减少重复 REST 请求和后端计算。
+- **全链路请求可靠性** —— Fastify 行情轮询改为单飞串行调度，整轮失败按 10/20/40/60 秒有界退避并保留最后成功快照；AkShare 全市场股票/指数缓存以刷新完成时间计算默认 10 秒 TTL，失败后进入有限冷却并继续返回旧数据。服务端研究模块统一通过 `bridgeRequest` 处理超时、HTTP 详情、网络断开和无效 JSON，不再向界面暴露原始 `fetch failed`；前端研究 GET 消费 TanStack Query 的 `AbortSignal`，切走页签时取消过期浏览器请求。
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
 - **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 新增 `qualitySummary`，返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额和现金使用比例；研究管线页面展示该诊断，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1 或持仓约束保持观望。
@@ -182,6 +183,16 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-19 full-chain fetch reliability hardening
+Python pytest: 103 tests passed; 1 FastAPI/httpx dependency deprecation warning
+Server Vitest: 48 files, 758 tests passed
+Web Vitest: 25 files, 83 tests passed
+TypeScript checks and Vite production build passed; 2,316 modules transformed in 4.40s
+
+Authenticated paper + akshare runtime loaded 5,527 A-share quotes and 562 indices. Starting Fastify before the bridge produced one readable degradation line per failed round with 10/20/40-second backoff, zero raw `fetch failed` messages, then recovered without a process restart. During the observation window Fastify made 63 quote and 63 index reads while the bridge performed only 9 stock and 17 index upstream refreshes; refresh completion was followed by the configured cache TTL instead of immediately expiring.
+
+Browser checks completed A-share overview in 20.4s, turning points in 12.2s, sector research from shared cache in 2.1s, Hong Kong research in 58.9s, futures in 4.1s, global impact in 4.1s, and news in 6.1s. No module exposed `fetch failed` or remained loading. Global impact correctly stayed degraded because the upstream batch returned 9/10 global indices, lacked HSI history, and returned 1/2 crypto snapshots; available real data remained visible and no static values replaced the gaps.
+
 2026-07-19 bounded API observability and query reuse upgrade
 Server Vitest: 47 files, 750 tests passed
 Web Vitest: 25 files, 82 tests passed

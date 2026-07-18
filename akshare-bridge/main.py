@@ -33,7 +33,7 @@ from research_cache import BoundedTTLCache, HistoryCacheKey, ResearchHistoryCach
 
 HOST = os.getenv("AKSHARE_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.getenv("AKSHARE_BRIDGE_PORT", "8800"))
-CACHE_TTL_SEC = float(os.getenv("AKSHARE_BRIDGE_CACHE_TTL", "3.0"))
+CACHE_TTL_SEC = float(os.getenv("AKSHARE_BRIDGE_CACHE_TTL", "10.0"))
 RESEARCH_CACHE_TTL_SEC = float(
     os.getenv("AKSHARE_BRIDGE_RESEARCH_CACHE_TTL", "900.0")
 )
@@ -542,33 +542,49 @@ class QuoteCache:
         self._data: dict[str, MarketQuote] = {}
         self._last_update: float = 0
         self._last_error: str | None = None
+        self._next_refresh_at: float = 0
+        self._consecutive_failures: int = 0
         self._lock = asyncio.Lock()
         self._refresh_task: asyncio.Task | None = None
 
     async def refresh(self) -> None:
         async with self._lock:
             now = time.time()
-            if now - self._last_update < self.ttl_sec:
+            if now < max(self._next_refresh_at, self._last_update + self.ttl_sec):
                 return
             try:
                 loop = asyncio.get_running_loop()
                 df = await loop.run_in_executor(None, fetch_a_share_spot_dataframe)
                 self._parse_dataframe(df)
-                self._last_update = now
+                completed_at = time.time()
+                self._last_update = completed_at
+                self._next_refresh_at = completed_at + self.ttl_sec
+                self._consecutive_failures = 0
                 self._last_error = None
                 logger.info(
                     "stock cache refreshed, %d symbols, %.1fs",
                     len(self._data),
-                    time.time() - now,
+                    completed_at - now,
                 )
             except Exception as exc:
+                self._consecutive_failures += 1
+                retry_delay = min(
+                    60.0,
+                    max(self.ttl_sec, 2 ** min(self._consecutive_failures, 5)),
+                )
+                self._next_refresh_at = time.time() + retry_delay
                 self._last_error = str(exc)
-                logger.error("stock quote refresh failed: %s", exc)
+                logger.error(
+                    "stock quote refresh failed: %s; retry in %.0fs",
+                    exc,
+                    retry_delay,
+                )
                 if not self._data:
                     raise
 
     def _needs_refresh(self) -> bool:
-        return time.time() - self._last_update >= self.ttl_sec
+        now = time.time()
+        return now >= max(self._next_refresh_at, self._last_update + self.ttl_sec)
 
     def _schedule_refresh(self) -> None:
         if self._refresh_task and not self._refresh_task.done():
@@ -672,33 +688,49 @@ class IndexCache:
         self._data: dict[str, MarketQuote] = {}
         self._last_update: float = 0
         self._last_error: str | None = None
+        self._next_refresh_at: float = 0
+        self._consecutive_failures: int = 0
         self._lock = asyncio.Lock()
         self._refresh_task: asyncio.Task | None = None
 
     async def refresh(self) -> None:
         async with self._lock:
             now = time.time()
-            if now - self._last_update < self.ttl_sec:
+            if now < max(self._next_refresh_at, self._last_update + self.ttl_sec):
                 return
             try:
                 loop = asyncio.get_running_loop()
                 df = await loop.run_in_executor(None, fetch_a_share_index_dataframe)
                 self._parse_dataframe(df)
-                self._last_update = now
+                completed_at = time.time()
+                self._last_update = completed_at
+                self._next_refresh_at = completed_at + self.ttl_sec
+                self._consecutive_failures = 0
                 self._last_error = None
                 logger.info(
                     "index cache refreshed, %d indices, %.1fs",
                     len(self._data),
-                    time.time() - now,
+                    completed_at - now,
                 )
             except Exception as exc:
+                self._consecutive_failures += 1
+                retry_delay = min(
+                    60.0,
+                    max(self.ttl_sec, 2 ** min(self._consecutive_failures, 5)),
+                )
+                self._next_refresh_at = time.time() + retry_delay
                 self._last_error = str(exc)
-                logger.error("index quote refresh failed: %s", exc)
+                logger.error(
+                    "index quote refresh failed: %s; retry in %.0fs",
+                    exc,
+                    retry_delay,
+                )
                 if not self._data:
                     raise
 
     def _needs_refresh(self) -> bool:
-        return time.time() - self._last_update >= self.ttl_sec
+        now = time.time()
+        return now >= max(self._next_refresh_at, self._last_update + self.ttl_sec)
 
     def _schedule_refresh(self) -> None:
         if self._refresh_task and not self._refresh_task.done():

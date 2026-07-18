@@ -72,7 +72,7 @@ export function NewsPanel() {
   const [page, setPage] = useState(1);
   const realDataQuery = useQuery({
     queryKey: ["real-research-data-feed"],
-    queryFn: fetchRealResearchDataFeed,
+    queryFn: ({ signal }) => fetchRealResearchDataFeed(signal),
     refetchInterval: 180_000,
     staleTime: 120_000,
   });

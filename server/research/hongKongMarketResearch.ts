@@ -1,4 +1,5 @@
 import type { TradingMode } from "../../shared/trading";
+import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 import type {
   HistoricalBar,
   HistoricalBarsResponse,
@@ -331,29 +332,6 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-async function fetchJson<T>(
-  url: string,
-  token: string | undefined,
-  timeoutMs: number,
-  fetchImpl: typeof fetch,
-): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetchImpl(url, {
-      headers: {
-        Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return await response.json() as T;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function baseReport(input: BuildHongKongMarketResearchInput): HongKongMarketResearchReport {
   return {
     generatedAt: new Date().toISOString(),
@@ -406,16 +384,16 @@ export async function buildHongKongMarketResearch(
   const baseUrl = trimTrailingSlash(input.bridgeUrl);
   let quotes: HongKongQuotesResponse;
   try {
-    quotes = await fetchJson<HongKongQuotesResponse>(
-      `${baseUrl}/api/market/hk/quotes?limit=${limit}`,
-      input.bridgeToken,
-      input.timeoutMs * 8,
+    quotes = await fetchBridgeJson<HongKongQuotesResponse>({
+      url: `${baseUrl}/api/market/hk/quotes?limit=${limit}`,
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 8,
       fetchImpl,
-    );
+    });
   } catch (error) {
     return {
       ...base,
-      warnings: [`港股快照暂不可用: ${error}`],
+      warnings: [`港股快照暂不可用: ${bridgeErrorMessage(error)}`],
     };
   }
   if (quotes.items.length === 0) {
@@ -434,12 +412,12 @@ export async function buildHongKongMarketResearch(
   historyUrl.searchParams.set("symbols", quotes.items.map((item) => item.symbol).join(","));
   historyUrl.searchParams.set("days", String(days));
   try {
-    const history = await fetchJson<HistoricalBarsResponse>(
-      historyUrl.toString(),
-      input.bridgeToken,
-      input.timeoutMs * 24,
+    const history = await fetchBridgeJson<HistoricalBarsResponse>({
+      url: historyUrl.toString(),
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs * 24,
       fetchImpl,
-    );
+    });
     const quoteBySymbol = new Map(quotes.items.map((item) => [item.symbol, item]));
     const items = history.series
       .map((series) => analyzeHongKongSeries(series, quoteBySymbol.get(series.symbol) ?? null))
@@ -478,7 +456,10 @@ export async function buildHongKongMarketResearch(
         fetchedAt: quotes.fetchedAt || null,
         quoteCount: quotes.items.length,
       },
-      warnings: [quotes.warning, `港股历史日线暂不可用: ${error}`]
+      warnings: [
+        quotes.warning,
+        `港股历史日线暂不可用: ${bridgeErrorMessage(error)}`,
+      ]
         .filter((warning): warning is string => Boolean(warning)),
     };
   }

@@ -80,7 +80,7 @@ function FuturesForecastRow({ item }: { item: FuturesMarketResearchItem }) {
 export function FuturesMarketPanel() {
   const query = useQuery({
     queryKey: ["cross-market-strategy-context", 16, 500],
-    queryFn: () => fetchCrossMarketStrategyContext(16, 500),
+    queryFn: ({ signal }) => fetchCrossMarketStrategyContext(16, 500, signal),
     refetchInterval: 15 * 60_000,
     staleTime: 10 * 60_000,
   });

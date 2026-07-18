@@ -40,7 +40,7 @@ export default function LearningPipeline() {
   const candidatesQuery = useQuery(dailyCandidatesQueryOptions(24));
   const learningStateQuery = useQuery({
     queryKey: ["learning-state"],
-    queryFn: fetchLearningState,
+    queryFn: ({ signal }) => fetchLearningState(signal),
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
@@ -48,7 +48,7 @@ export default function LearningPipeline() {
   const dailyReviewQuery = useQuery(dailyMarketReviewQueryOptions());
   const selfOptimizationQuery = useQuery({
     queryKey: ["self-optimization-status"],
-    queryFn: fetchSelfOptimizationStatus,
+    queryFn: ({ signal }) => fetchSelfOptimizationStatus(signal),
     refetchInterval: 120_000,
     staleTime: 60_000,
   });
