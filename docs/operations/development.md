@@ -229,7 +229,7 @@ TRADING_SEED_PORTFOLIO=false
 
 然后先运行 `python akshare-bridge/main.py`，或直接使用 `npm run dev:a-share` 同时启动行情桥、API 和前端。真实行情只替换行情提供者，订单仍由本地 `PaperBroker` 模拟执行。AkShare 模式会分别读取个股行情和主要指数行情；指数使用 `SH000001`、`SZ399001`、`SZ399006`、`SH000300`，避免和个股代码冲突。
 
-AkShare 桥接还提供只读财经新闻和全球主要指数接口。Fastify 会通过 `/api/research/real-data-feed` 聚合这些数据，生成真实新闻、全球市场驱动和 A 股影响摘要；前端新闻面板优先展示该接口结果。若新闻或全球指数源暂不可用，页面会明确显示降级状态，不会使用静态模拟新闻冒充真实来源。
+AkShare 桥接还提供有界多源只读新闻和全球主要指数接口。新闻会聚合财新市场新闻、最近可用日期的央视宏观新闻，以及最多 8 只 A 股的东方财富个股新闻；Fastify 优先放入当前持仓，再按实时成交额补齐观察标的，单次最多读取 80 条。桥接按链接/规范标题去重并缓存非空响应 15 分钟，Fastify 再做兼容性去重；前端按全部/宏观/市场/个股分类，每页展示 10 条。若部分源不可用，页面保留其他真实新闻并显示警告，不会使用静态模拟新闻冒充。
 
 独立的 `/api/research/external-market-impact?days=500` 会读取受控美股、日股、韩股、港股与欧洲指数，以及 BTC/ETH 当前快照，并用严格早于 A 股目标日期的外部收盘与沪深 300 历史对齐。BTC/ETH 当前没有同口径历史，只作为 24 小时风险偏好参考；少于 60 个对齐样本时不显示命中率。该报告即使通过 shadow 门槛，也不会提高正式 A 股 paper 仓位或产生外盘订单。
 
@@ -379,6 +379,14 @@ Invoke-RestMethod "http://127.0.0.1:8787/api/research/real-data-feed" -WebSessio
 Invoke-RestMethod "http://127.0.0.1:8787/api/research/market-regime?sectorLimit=10&stockLimit=8&days=180" -WebSession $KairosSession
 Invoke-RestMethod "http://127.0.0.1:8787/api/research/external-market-impact?days=500" -WebSession $KairosSession
 ```
+
+如需单独检查桥接新闻聚合，可运行：
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:8800/api/research/news?limit=80&symbols=600519,000001,300750"
+```
+
+响应中的 `rawCount` 是归一化前有效候选数，`deduplicatedCount` 是重复数量，`availableCount` 是去重后可用总数，`items` 最多 80 条。新闻只保留短摘要和元数据，不写入本地原始新闻正文；关键词情绪不直接改变 paper 计划。
 
 板块与形态研究接口会返回 `sourceStatus`、实际数据源、复权方式、滚动验证样本数和警告。`growthProbability3d/5d` 是启发式 0-100 研究评分，不是经过校准的获利概率；当 `sourceStatus=degraded` 时，应先处理 `warnings`，不得用旧静态数据补位。
 

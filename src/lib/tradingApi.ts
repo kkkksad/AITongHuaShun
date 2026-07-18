@@ -831,6 +831,7 @@ export type RealResearchSourceStatus =
   | "degraded";
 
 export type RealResearchSentiment = "positive" | "neutral" | "negative";
+export type RealNewsCategory = "macro" | "market" | "company";
 export type GlobalImpactDirection = "risk-on" | "neutral" | "risk-off";
 
 export interface RealNewsItem {
@@ -843,6 +844,13 @@ export interface RealNewsItem {
   symbols: string[];
   sentiment: RealResearchSentiment;
   summary: string | null;
+  category: RealNewsCategory;
+}
+
+export interface RealNewsSourceCoverage {
+  source: string;
+  category: RealNewsCategory;
+  itemCount: number;
 }
 
 export interface GlobalMarketSignal {
@@ -865,6 +873,11 @@ export interface RealResearchDataFeed {
     source: string;
     fetchedAt: string | null;
     items: RealNewsItem[];
+    sources: RealNewsSourceCoverage[];
+    requestedSymbols: string[];
+    rawCount: number;
+    availableCount: number;
+    deduplicatedCount: number;
     warning: string | null;
   };
   globalMarkets: {

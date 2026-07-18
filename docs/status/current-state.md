@@ -1,6 +1,6 @@
 # 当前状态
 
-**核对日期：** 2026-07-18
+**核对日期：** 2026-07-19
 
 ## 已实现
 
@@ -60,7 +60,7 @@
 - **逐笔交易理由审计** —— 新自动订单会写入 `paper-auto-execution.decision`，保留策略名称、买卖理由、规则检查、预计金额和最终状态；修复前缺失的历史理由明确标注缺失，不做事后推测。
 - **每日盘面与交易复盘** —— `/api/research/daily-review` 聚合观察池涨跌家数、主要指数、账户权益、持仓、订单、手续费和逐笔理由，并在研究管线页展示策略优点、问题和下一步改进。周末及工作日开盘前自动回看最近工作日；复盘日收益由开盘现金、开盘持仓昨收、当日成交和手续费重建，与累计 paper 收益分开，昨收缺失时保持不可用。当前尚未接交易所节假日日历。
 - **SuperMind 模拟盘信号桥** —— `/api/integrations/supermind/signal-package` 将本地 paper 操作计划转换为可人工复核的 SuperMind 信号 CSV 和云端策略模板；该接口不登录同花顺、不保存密码/Cookie/Token，也不会自动提交订单。
-- **真实新闻与全球市场只读研究流** —— AkShare 桥接新增 `/api/research/news` 与 `/api/market/global`；Fastify 新增 `/api/research/real-data-feed` 聚合真实新闻、全球主要指数和 A 股影响摘要。前端新闻面板优先展示该真实只读研究流，源不可用时明确显示降级，不再用静态模拟新闻替代真实来源。
+- **有界多源真实新闻与全球市场流** —— AkShare `/api/research/news` 聚合财新市场、央视宏观和最多 8 只 A 股的东方财富个股新闻，最多返回 80 条，使用稳定 SHA-256 ID 按链接/规范标题去重并缓存非空响应 15 分钟。Fastify `/api/research/real-data-feed` 优先覆盖当前持仓、再按成交额补齐标的并做第二层兼容去重；前端按全部/宏观/市场/个股分类、每页 10 条展示来源覆盖、标的覆盖和去重数量。部分源失败保留其他真实新闻和警告，不使用静态新闻，也不直接修改策略或订单。
 - **真实板块与历史日线桥接** —— AkShare 桥接新增真实行业板块、行业日线和个股前复权日线接口；行业快照优先东方财富并回退到同花顺行业一览，行业历史优先东方财富并回退到同花顺行业指数，个股历史依次尝试东方财富、腾讯和新浪。请求限制为最多 20 个板块、12 只股票和 60 至 500 个交易日，返回实际来源、抓取时间、复权语义与部分失败警告。
 - **板块 3/5 日展望与滚动验证** —— `/api/research/market-regime` 使用真实板块日线、当前板块涨跌/广度/资金流计算启发式增长评分，并逐日滚动比较之后 3/5 个交易日结果，返回样本数、方向命中率和平均前瞻收益。板块快照读取 80 个行业后等距抽取强、中、弱样本，降低只研究当日领涨行业的选择偏差。评分不是校准概率，也不代表确定收益。
 - **洗盘候选与趋势恶化识别** —— 同一研究接口使用 180 日个股前复权日线，基于 20/60 日收益、均线斜率、回撤深度和量能变化区分“缩量洗盘候选、趋势恶化、健康趋势、信号不清、数据不足”；洗盘只作为待确认解释，不做必然拉升断言。
@@ -177,6 +177,20 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-19 bounded multi-source news upgrade
+D:\conda\python.exe -m pytest akshare-bridge/test_bridge.py -q
+89 tests passed; 1 FastAPI/httpx dependency deprecation warning
+
+Server Vitest: 46 files, 736 tests passed
+Web Vitest: 21 files, 66 tests passed
+TypeScript checks and Vite production build passed; 2,314 modules transformed
+NewsPanel chunk: 5.47 KiB
+git diff --check passed with line-ending conversion warnings only
+
+Fresh bridge result for 8 A-share symbols: 80 returned from 193 raw and 180 available items, with 13 duplicates removed; categories were 34 company, 33 market, and 13 macro across 16 sources, with no news warning. Fastify dynamically selected 300308, 300502, 688256, 688008, 300750, 000725, 688981, and 000938; it returned 80 items from 193 raw and 181 available items, removed 12 duplicates, covered 13 sources, and reported no news warning. The overall real-data source status remained degraded only because the separate global-index source returned 9 of 10 requested indices.
+
+Authenticated browser checks showed the desktop body at 1265/1265 and the 390px viewport body at 375/375. The mobile news panel was 353/353, category controls and coverage strip were both 324/324, macro filtering showed 13 items over pages of 10 and 3, original-source links were visible, and the console had no warnings or errors.
+
 2026-07-18 external-market impact research (runtime checked 2026-07-19 00:26 Asia/Shanghai)
 D:\conda\python.exe -m pytest akshare-bridge/test_bridge.py -q
 84 tests passed; 1 FastAPI/httpx dependency deprecation warning

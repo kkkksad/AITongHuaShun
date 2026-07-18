@@ -84,6 +84,7 @@ export async function buildCurrentPaperTradingPlan(input: {
       marketDataProvider: input.system.marketDataProvider,
       mode: input.config.MARKET_MODE,
       snapshot,
+      preferredSymbols: positions.map((position) => position.symbol),
       timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
     }),
     buildExternalMarketImpact({

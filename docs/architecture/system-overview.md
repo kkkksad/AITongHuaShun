@@ -20,7 +20,7 @@ Fastify + TypeScript :8787
 FastAPI + AkShare :8800
         ├─ 实时个股与指数快照
         ├─ 全 A 股名称/代码搜索（内存行情缓存）
-        ├─ 新闻与全球指数
+        ├─ 财新/央视/东方财富多源新闻与全球指数
         ├─ 行业板块、行业日线与个股日线
         ├─ 受控全球指数历史、A 股指数历史与 BTC/ETH 快照
         ├─ 国内期货主连快照与连续日线
@@ -78,7 +78,7 @@ shared/
 1. React 启动时验证服务端会话；未登录时只渲染登录页，不启动业务 REST 或 WebSocket。
 2. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
 3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
-4. `/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/external-market-impact` 严格用早于 A 股目标日期的美股/亚洲指数日线和沪深 300 对齐，并把 BTC/ETH 限制为快照参考；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
+4. `/api/research/real-data-feed` 优先选择当前持仓，再按实时成交额补足最多 8 只新闻观察标的，并聚合最多 80 条多源新闻；`/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/external-market-impact` 严格用早于 A 股目标日期的美股/亚洲指数日线和沪深 300 对齐，并把 BTC/ETH 限制为快照参考；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
 5. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
 6. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
 7. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
@@ -111,7 +111,7 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 
 ### `NewsProvider`
 
-未来提供原始来源、发布时间、抓取时间、关联标的和去重依据。
+当前桥接尚未抽成独立 `NewsProvider` 接口，但已用统一新闻契约归一化财新、央视和东方财富：每条保留来源、发布时间、抓取时间、关联标的、分类、短摘要、URL 和稳定去重 ID。Fastify 会对滚动升级期间的旧桥接响应做第二层去重，并优先排列当前持仓相关新闻。非空批次只在 Python 进程内缓存 15 分钟，不保存全文；正式 Provider 契约、授权记录、历史 point-in-time 新闻数据集和实体识别仍待后续实现。
 
 ### `IpoResearchProvider`
 

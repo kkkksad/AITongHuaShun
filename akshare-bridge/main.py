@@ -11,13 +11,14 @@ AkShare A股实时行情桥接微服务
 """
 
 import asyncio
+import hashlib
 import logging
 import os
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query
@@ -154,6 +155,13 @@ class NewsItem(BaseModel):
     symbols: list[str] = []
     sentiment: str = "neutral"
     summary: str | None = None
+    category: Literal["macro", "market", "company"] = "market"
+
+
+class NewsSourceCoverage(BaseModel):
+    source: str
+    category: Literal["macro", "market", "company"]
+    itemCount: int
 
 
 class NewsResponse(BaseModel):
@@ -161,6 +169,11 @@ class NewsResponse(BaseModel):
     source: str
     fetchedAt: str
     items: list[NewsItem]
+    sources: list[NewsSourceCoverage] = Field(default_factory=list)
+    requestedSymbols: list[str] = Field(default_factory=list)
+    rawCount: int = 0
+    availableCount: int = 0
+    deduplicatedCount: int = 0
     warning: str | None = None
 
 
@@ -1136,30 +1149,126 @@ def fetch_global_market_sina_snapshot_dataframe():
     return pd.DataFrame(rows)
 
 
-def fetch_financial_news_dataframe():
-    """Fetch public financial news with provider fallback."""
-    providers = (
-        ("eastmoney-financial-news", lambda: ak.stock_news_em()),
-    )
-    last_error: Exception | None = None
+NEWS_MAX_SYMBOLS = 8
+DEFAULT_NEWS_SYMBOLS = (
+    "600519",
+    "000858",
+    "300750",
+    "601318",
+    "000001",
+    "600036",
+    "002594",
+    "688981",
+)
 
-    for provider_name, provider in providers:
-        started_at = time.time()
-        try:
-            df = provider()
+
+def current_china_date():
+    return (datetime.now(timezone.utc) + timedelta(hours=8)).date()
+
+
+def fetch_financial_news_batches(symbols: list[str]):
+    """Fetch bounded market, macro, and per-symbol public news batches."""
+    batches: list[dict[str, object]] = []
+    warnings: list[str] = []
+
+    started_at = time.time()
+    try:
+        dataframe = ak.stock_news_main_cx()
+        if dataframe is not None and not dataframe.empty:
+            batches.append({
+                "provider": "caixin-market-news",
+                "category": "market",
+                "symbol": None,
+                "dataframe": dataframe,
+            })
             logger.info(
-                "新闻源 %s 返回 %d 行，耗时 %.1fs",
-                provider_name,
-                len(df),
+                "新闻源 caixin-market-news 返回 %d 行，耗时 %.1fs",
+                len(dataframe),
                 time.time() - started_at,
             )
-            return df, provider_name
-        except Exception as exc:
-            last_error = exc
-            logger.warning("新闻源 %s 失败，尝试下一个来源: %s", provider_name, exc)
+        else:
+            warnings.append("caixin-market-news 返回空结果")
+    except Exception as exc:
+        warnings.append(f"caixin-market-news: {exc}")
+        logger.warning("新闻源 caixin-market-news 失败: %s", exc)
 
-    assert last_error is not None
-    raise last_error
+    cctv_errors: list[str] = []
+    cctv_candidates: list[tuple[str, pd.DataFrame]] = []
+    cctv_date = current_china_date()
+    for offset in (0, 1):
+        requested_date = (cctv_date - timedelta(days=offset)).strftime("%Y%m%d")
+        started_at = time.time()
+        try:
+            dataframe = ak.news_cctv(date=requested_date)
+            if dataframe is None or dataframe.empty:
+                cctv_errors.append(f"{requested_date} 返回空结果")
+                continue
+            cctv_candidates.append((requested_date, dataframe))
+            logger.info(
+                "新闻源 cctv-macro-news(%s) 返回 %d 行，耗时 %.1fs",
+                requested_date,
+                len(dataframe),
+                time.time() - started_at,
+            )
+            if len(dataframe) >= 5:
+                break
+        except Exception as exc:
+            cctv_errors.append(f"{requested_date}: {exc}")
+    if cctv_candidates:
+        _, dataframe = max(cctv_candidates, key=lambda item: len(item[1]))
+        batches.append({
+            "provider": "cctv-macro-news",
+            "category": "macro",
+            "symbol": None,
+            "dataframe": dataframe,
+        })
+    else:
+        warnings.append("cctv-macro-news: " + "; ".join(cctv_errors[:2]))
+        logger.warning("新闻源 cctv-macro-news 失败: %s", "; ".join(cctv_errors[:2]))
+
+    def fetch_stock_news(symbol: str):
+        started = time.time()
+        dataframe = ak.stock_news_em(symbol=symbol)
+        logger.info(
+            "新闻源 eastmoney-stock-news(%s) 返回 %d 行，耗时 %.1fs",
+            symbol,
+            len(dataframe),
+            time.time() - started,
+        )
+        return symbol, dataframe
+
+    if symbols:
+        with ThreadPoolExecutor(max_workers=min(4, len(symbols))) as executor:
+            futures = {
+                executor.submit(fetch_stock_news, symbol): symbol
+                for symbol in symbols
+            }
+            for future in as_completed(futures):
+                symbol = futures[future]
+                try:
+                    resolved_symbol, dataframe = future.result()
+                    if dataframe is None or dataframe.empty:
+                        warnings.append(
+                            f"eastmoney-stock-news({resolved_symbol}) 返回空结果"
+                        )
+                        continue
+                    batches.append({
+                        "provider": "eastmoney-stock-news",
+                        "category": "company",
+                        "symbol": resolved_symbol,
+                        "dataframe": dataframe,
+                    })
+                except Exception as exc:
+                    warnings.append(f"eastmoney-stock-news({symbol}): {exc}")
+                    logger.warning(
+                        "新闻源 eastmoney-stock-news(%s) 失败: %s",
+                        symbol,
+                        exc,
+                    )
+
+    if not batches:
+        raise RuntimeError("所有真实新闻源均不可用: " + "; ".join(warnings[:6]))
+    return batches, warnings
 
 
 def fetch_ipo_subscriptions_dataframe():
@@ -1350,6 +1459,8 @@ def parse_optional_int(value) -> int | None:
 
 
 def normalize_datetime(value: object) -> str:
+    if value is None or (not isinstance(value, (list, tuple, dict)) and pd.isna(value)):
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     text = str(value or "").strip()
     if not text:
         return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -1358,6 +1469,8 @@ def normalize_datetime(value: object) -> str:
         return text.replace(" ", "T")[:19] + "+08:00"
     if re.match(r"^\d{4}-\d{1,2}-\d{1,2}$", text):
         return text + "T00:00:00+08:00"
+    if re.match(r"^\d{8}$", text):
+        return datetime.strptime(text, "%Y%m%d").strftime("%Y-%m-%dT00:00:00+08:00")
     return text
 
 
@@ -1390,36 +1503,187 @@ def infer_sentiment(title: str) -> str:
 
 def extract_symbols(text: str) -> list[str]:
     symbols = re.findall(r"(?<!\d)(\d{6})(?!\d)", text)
-    return list(dict.fromkeys(symbols))[:8]
+    valid_prefixes = (
+        "000", "001", "002", "003", "300", "301",
+        "430", "600", "601", "603", "605", "688", "689",
+        "831", "832", "833", "834", "835", "836", "837", "838", "839",
+        "870", "871", "872", "873", "874", "875", "876", "877", "878", "879",
+        "920",
+    )
+    return list(dict.fromkeys(
+        symbol for symbol in symbols if symbol.startswith(valid_prefixes)
+    ))[:8]
 
 
-def normalize_news_dataframe(df, provider_name: str, limit: int) -> list[NewsItem]:
+def normalize_optional_news_text(value: object) -> str | None:
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "null", "-"}:
+        return None
+    return text
+
+
+def canonical_news_title(value: str) -> str:
+    return re.sub(r"[\W_]+", "", value.lower(), flags=re.UNICODE)
+
+
+def canonical_news_url(value: str | None) -> str | None:
+    if not value:
+        return None
+    return re.sub(r"[?#].*$", "", value.strip()) or None
+
+
+def news_date_from_url(value: str | None) -> str | None:
+    if not value:
+        return None
+    match = re.search(r"/(\d{4})-(\d{2})-(\d{2})/", value)
+    if match is None:
+        return None
+    return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+
+
+def normalize_news_batches(
+    batches: list[dict[str, object]],
+    limit: int,
+) -> tuple[list[NewsItem], int, int, list[NewsSourceCoverage]]:
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    items: list[NewsItem] = []
+    provider_sources = {
+        "caixin-market-news": "财新数据通",
+        "cctv-macro-news": "央视新闻联播",
+        "eastmoney-stock-news": "东方财富",
+    }
+    unique_items: dict[str, NewsItem] = {}
+    raw_count = 0
 
-    for index, row in df.head(limit).iterrows():
-        title = str(first_existing(row, ("新闻标题", "标题", "title", "内容"), "")).strip()
-        if not title:
+    for batch in batches:
+        provider = str(batch["provider"])
+        category = str(batch["category"])
+        symbol = normalize_optional_news_text(batch.get("symbol"))
+        dataframe = batch["dataframe"]
+        if category not in {"macro", "market", "company"}:
             continue
-        source = str(first_existing(row, ("文章来源", "来源", "source"), provider_name)).strip()
-        published = first_existing(row, ("发布时间", "时间", "日期", "datetime", "time"), fetched_at)
-        url = first_existing(row, ("新闻链接", "链接", "url", "地址"), None)
-        summary = first_existing(row, ("新闻内容", "摘要", "summary"), None)
-        text_for_symbols = f"{title} {summary or ''}"
+        if not isinstance(dataframe, pd.DataFrame):
+            continue
 
-        items.append(NewsItem(
-            id=f"{provider_name}-{index}-{abs(hash(title)) % 1000000}",
-            source=source or provider_name,
-            title=title,
-            publishedAt=normalize_datetime(published),
-            fetchedAt=fetched_at,
-            url=str(url).strip() if url else None,
-            symbols=extract_symbols(text_for_symbols),
-            sentiment=infer_sentiment(title),
-            summary=str(summary).strip()[:240] if summary else None,
-        ))
+        for _, row in dataframe.head(100).iterrows():
+            url = normalize_optional_news_text(
+                first_existing(row, ("新闻链接", "链接", "url", "地址"), None)
+            )
+            summary = normalize_optional_news_text(
+                first_existing(row, ("新闻内容", "内容", "摘要", "summary"), None)
+            )
+            title = normalize_optional_news_text(
+                first_existing(row, ("新闻标题", "标题", "title"), None)
+            )
+            if not title:
+                title = summary
+            if not title:
+                continue
+            raw_count += 1
 
-    return items
+            full_title = title
+            title = full_title[:180]
+            if summary == full_title and len(full_title) <= 180:
+                summary = None
+            published = first_existing(
+                row,
+                ("发布时间", "时间", "日期", "date", "datetime", "time"),
+                None,
+            )
+            if normalize_optional_news_text(published) is None:
+                published = news_date_from_url(url) or fetched_at
+            published_at = normalize_datetime(published)
+            if provider == "cctv-macro-news" and not url:
+                date_value = normalize_optional_news_text(
+                    first_existing(row, ("date", "日期"), None)
+                )
+                if date_value and re.fullmatch(r"\d{8}", date_value):
+                    url = f"https://tv.cctv.com/lm/xwlb/day/{date_value}.shtml"
+
+            source = normalize_optional_news_text(
+                first_existing(row, ("文章来源", "来源", "source"), None)
+            ) or provider_sources.get(provider, provider)
+            extracted_symbols = extract_symbols(f"{title} {summary or ''}")
+            if symbol and re.fullmatch(r"\d{6}", symbol):
+                extracted_symbols = list(
+                    dict.fromkeys([symbol, *extracted_symbols])
+                )[:8]
+            normalized_url = canonical_news_url(url)
+            title_key = canonical_news_title(title)
+            if not title_key:
+                continue
+            shared_page_url = provider == "cctv-macro-news"
+            deduplication_key = (
+                title_key if shared_page_url else normalized_url or title_key
+            )
+            stable_material = (
+                f"{title_key}|{published_at[:10]}"
+                if shared_page_url
+                else normalized_url or f"{title_key}|{published_at[:10]}"
+            )
+            item = NewsItem(
+                id="news-" + hashlib.sha256(
+                    stable_material.encode("utf-8")
+                ).hexdigest()[:16],
+                source=source,
+                title=title,
+                publishedAt=published_at,
+                fetchedAt=fetched_at,
+                url=url,
+                symbols=extracted_symbols,
+                sentiment=infer_sentiment(f"{title} {summary or ''}"),
+                summary=summary[:240] if summary else None,
+                category=category,
+            )
+            existing = unique_items.get(deduplication_key)
+            if existing is None:
+                unique_items[deduplication_key] = item
+                continue
+            existing.symbols = list(
+                dict.fromkeys([*existing.symbols, *item.symbols])
+            )[:8]
+            if not existing.summary and item.summary:
+                existing.summary = item.summary
+
+    available_items = list(unique_items.values())
+    grouped = {
+        category: sorted(
+            (item for item in available_items if item.category == category),
+            key=lambda item: item.publishedAt,
+            reverse=True,
+        )
+        for category in ("company", "market", "macro")
+    }
+    selected: list[NewsItem] = []
+    offsets = {category: 0 for category in grouped}
+    while len(selected) < limit:
+        added = False
+        for category in ("company", "market", "macro"):
+            offset = offsets[category]
+            if offset >= len(grouped[category]):
+                continue
+            selected.append(grouped[category][offset])
+            offsets[category] += 1
+            added = True
+            if len(selected) >= limit:
+                break
+        if not added:
+            break
+
+    coverage: dict[tuple[str, str], int] = {}
+    for item in selected:
+        key = (item.source, item.category)
+        coverage[key] = coverage.get(key, 0) + 1
+    sources = [
+        NewsSourceCoverage(source=source, category=category, itemCount=count)
+        for (source, category), count in sorted(
+            coverage.items(),
+            key=lambda entry: (-entry[1], entry[0][0], entry[0][1]),
+        )
+    ]
+    deduplicated_count = raw_count - len(available_items)
+    return selected, raw_count, deduplicated_count, sources
 
 
 def normalize_ipo_subscriptions_dataframe(
@@ -2402,19 +2666,58 @@ async def get_stock_history(
 
 @app.get("/api/research/news", response_model=NewsResponse)
 async def get_research_news(
-    limit: int = Query(20, ge=1, le=80, description="返回新闻数量上限"),
+    limit: int = Query(80, ge=1, le=80, description="返回新闻数量上限"),
+    symbols: str = Query(
+        ",".join(DEFAULT_NEWS_SYMBOLS),
+        description="逗号分隔的受控 6 位 A 股新闻观察代码",
+    ),
 ):
     """获取真实只读财经新闻，保留来源和抓取时间。"""
+    symbol_list = parse_query_values(symbols)
+    if not symbol_list:
+        raise HTTPException(status_code=400, detail="symbols 参数不能为空")
+    if len(symbol_list) > NEWS_MAX_SYMBOLS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"单次最多查询 {NEWS_MAX_SYMBOLS} 只股票的相关新闻",
+        )
+    if any(re.fullmatch(r"\d{6}", symbol) is None for symbol in symbol_list):
+        raise HTTPException(status_code=400, detail="symbols 必须是 6 位 A 股代码")
+
+    cache_key = f"news:{limit}:{','.join(symbol_list)}"
+    cached = get_cached_research(cache_key)
+    if cached is not None:
+        return cached
+
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     try:
         loop = asyncio.get_running_loop()
-        df, provider_name = await loop.run_in_executor(None, fetch_financial_news_dataframe)
-        return NewsResponse(
-            provider="akshare",
-            source=provider_name,
-            fetchedAt=fetched_at,
-            items=normalize_news_dataframe(df, provider_name, limit),
+        batches, warnings = await loop.run_in_executor(
+            None,
+            fetch_financial_news_batches,
+            symbol_list,
         )
+        items, raw_count, deduplicated_count, sources = normalize_news_batches(
+            batches,
+            limit,
+        )
+        response = NewsResponse(
+            provider="akshare",
+            source="multi-source-financial-news",
+            fetchedAt=fetched_at,
+            items=items,
+            sources=sources,
+            requestedSymbols=symbol_list,
+            rawCount=raw_count,
+            availableCount=raw_count - deduplicated_count,
+            deduplicatedCount=deduplicated_count,
+            warning=(
+                "部分新闻源暂不可用: " + "; ".join(warnings[:6])
+                if warnings
+                else None
+            ),
+        )
+        return set_cached_research(cache_key, response) if response.items else response
     except Exception as e:
         logger.error("获取财经新闻失败: %s", e)
         return NewsResponse(
@@ -2422,6 +2725,7 @@ async def get_research_news(
             source="unavailable",
             fetchedAt=fetched_at,
             items=[],
+            requestedSymbols=symbol_list,
             warning=f"真实新闻源暂不可用: {e}",
         )
 

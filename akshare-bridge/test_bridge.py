@@ -5,6 +5,7 @@ AkShare 桥接微服务单元测试
 """
 
 import sys
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
@@ -31,6 +32,7 @@ from main import (
     IpoSubscriptionItem,
     IpoSubscriptionsResponse,
     NewsResponse,
+    NewsSourceCoverage,
     NewsItem,
     QuotesResponse,
     MarketQuote,
@@ -42,7 +44,8 @@ from main import (
     StockSearchResponse,
     fetch_a_share_spot_dataframe,
     fetch_a_share_index_dataframe,
-    fetch_financial_news_dataframe,
+    extract_symbols,
+    fetch_financial_news_batches,
     fetch_global_market_dataframe,
     fetch_global_market_sina_snapshot_dataframe,
     fetch_futures_history_dataframe,
@@ -58,7 +61,7 @@ from main import (
     normalize_sector_snapshot_dataframes,
     normalize_global_market_dataframe,
     normalize_futures_quote_dataframe,
-    normalize_news_dataframe,
+    normalize_news_batches,
     normalize_a_share_symbol,
     normalize_index_symbol,
     normalize_ipo_subscriptions_dataframe,
@@ -420,7 +423,7 @@ class TestResearchNewsEndpoint:
         assert response.status_code == 401
 
     def test_news_endpoint_returns_degraded_payload_when_source_fails(self):
-        with patch("main.fetch_financial_news_dataframe", side_effect=RuntimeError("offline")):
+        with patch("main.fetch_financial_news_batches", side_effect=RuntimeError("offline")):
             response = client.get("/api/research/news?limit=3")
 
         assert response.status_code == 200
@@ -429,6 +432,68 @@ class TestResearchNewsEndpoint:
         assert data["source"] == "unavailable"
         assert data["items"] == []
         assert "真实新闻源暂不可用" in data["warning"]
+
+    def test_news_endpoint_rejects_invalid_or_excessive_symbols(self):
+        invalid = client.get("/api/research/news?symbols=600519,UNKNOWN")
+        excessive = client.get(
+            "/api/research/news?symbols="
+            "600519,000001,000858,300750,601318,600036,002594,688981,601899"
+        )
+
+        assert invalid.status_code == 400
+        assert excessive.status_code == 400
+
+    def test_news_endpoint_aggregates_deduplicates_and_caches_non_empty_results(self):
+        company = pd.DataFrame([{
+            "新闻标题": "贵州茅台上调产品价格",
+            "新闻内容": "贵州茅台（600519）发布价格调整公告。",
+            "发布时间": "2026-07-18 09:30:00",
+            "文章来源": "证券时报",
+            "新闻链接": "https://example.com/maotai",
+        }])
+        duplicate = company.copy()
+        market = pd.DataFrame([{
+            "tag": "市场",
+            "summary": "全球能源市场出现新的供需变化",
+            "url": "https://database.caixin.com/2026-07-18/100001.html",
+        }])
+        macro = pd.DataFrame([{
+            "date": "20260718",
+            "title": "宏观政策继续支持科技创新",
+            "content": "政策提出支持人工智能与先进制造。",
+        }])
+        batches = [
+            {"provider": "eastmoney-stock-news", "category": "company", "symbol": "600519", "dataframe": company},
+            {"provider": "eastmoney-stock-news", "category": "company", "symbol": "000001", "dataframe": duplicate},
+            {"provider": "caixin-market-news", "category": "market", "symbol": None, "dataframe": market},
+            {"provider": "cctv-macro-news", "category": "macro", "symbol": None, "dataframe": macro},
+        ]
+
+        with patch(
+            "main.fetch_financial_news_batches",
+            return_value=(batches, ["一个次要来源暂不可用"]),
+        ) as fetcher:
+            first = client.get(
+                "/api/research/news?limit=80&symbols=600519,000001"
+            )
+            second = client.get(
+                "/api/research/news?limit=80&symbols=600519,000001"
+            )
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        data = first.json()
+        assert data["source"] == "multi-source-financial-news"
+        assert data["requestedSymbols"] == ["600519", "000001"]
+        assert data["rawCount"] == 4
+        assert data["deduplicatedCount"] == 1
+        assert len(data["items"]) == 3
+        assert {item["category"] for item in data["items"]} == {
+            "macro", "market", "company",
+        }
+        assert sum(source["itemCount"] for source in data["sources"]) == 3
+        assert "部分新闻源暂不可用" in data["warning"]
+        fetcher.assert_called_once_with(["600519", "000001"])
 
 
 class TestIpoSubscriptionsEndpoint:
@@ -1108,13 +1173,102 @@ class TestQuoteCache:
         assert df["市场日期"].tolist() == ["2026-07-17"] * 10
         assert df["涨跌幅"].tolist() == pytest.approx([2.0] * 10)
 
-    def test_fetch_news_uses_public_source(self):
-        news_df = MagicMock()
-        news_df.__len__.return_value = 3
-        with patch("main.ak.stock_news_em", return_value=news_df):
-            df, provider = fetch_financial_news_dataframe()
-        assert df is news_df
-        assert provider == "eastmoney-financial-news"
+    def test_fetch_news_combines_market_macro_and_bounded_stock_sources(self):
+        caixin = pd.DataFrame([{"summary": "市场新闻", "url": "https://example.com/a"}])
+        cctv = pd.DataFrame([{"date": "20260719", "title": "宏观新闻", "content": "正文"}])
+        stock = pd.DataFrame([{"新闻标题": "公司新闻"}])
+        with patch("main.current_china_date", return_value=datetime(2026, 7, 19).date()):
+            with patch("main.ak.stock_news_main_cx", return_value=caixin):
+                with patch("main.ak.news_cctv", return_value=cctv) as cctv_fetch:
+                    with patch("main.ak.stock_news_em", return_value=stock) as stock_fetch:
+                        batches, warnings = fetch_financial_news_batches(
+                            ["600519", "000001"],
+                        )
+
+        assert warnings == []
+        assert {batch["provider"] for batch in batches} == {
+            "caixin-market-news",
+            "cctv-macro-news",
+            "eastmoney-stock-news",
+        }
+        assert sorted(
+            batch["symbol"] for batch in batches if batch["symbol"] is not None
+        ) == ["000001", "600519"]
+        assert cctv_fetch.call_count == 2
+        assert cctv_fetch.call_args_list[0].kwargs == {"date": "20260719"}
+        assert cctv_fetch.call_args_list[1].kwargs == {"date": "20260718"}
+        assert stock_fetch.call_count == 2
+
+    def test_normalize_news_batches_uses_stable_ids_and_balances_categories(self):
+        batches = [
+            {
+                "provider": "eastmoney-stock-news",
+                "category": "company",
+                "symbol": "600519",
+                "dataframe": pd.DataFrame([{
+                    "新闻标题": "贵州茅台上调价格",
+                    "新闻内容": "公司公告显示产品价格调整。",
+                    "发布时间": "2026-07-18 09:30:00",
+                    "文章来源": "证券时报",
+                    "新闻链接": "https://example.com/1",
+                }]),
+            },
+            {
+                "provider": "caixin-market-news",
+                "category": "market",
+                "symbol": None,
+                "dataframe": pd.DataFrame([{
+                    "tag": "市场",
+                    "summary": "全球能源市场出现新的供需变化",
+                    "url": "https://database.caixin.com/2026-07-18/100001.html",
+                }]),
+            },
+            {
+                "provider": "cctv-macro-news",
+                "category": "macro",
+                "symbol": None,
+                "dataframe": pd.DataFrame([{
+                    "date": "20260718",
+                    "title": "宏观政策继续支持科技创新",
+                    "content": "政策提出支持人工智能与先进制造。",
+                }]),
+            },
+        ]
+
+        first = normalize_news_batches(batches, 80)
+        second = normalize_news_batches(batches, 80)
+
+        first_items, raw_count, deduplicated_count, sources = first
+        second_items = second[0]
+        assert raw_count == 3
+        assert deduplicated_count == 0
+        assert [item.category for item in first_items] == [
+            "company", "market", "macro",
+        ]
+        assert [item.id for item in first_items] == [item.id for item in second_items]
+        assert first_items[0].symbols == ["600519"]
+        assert sum(source.itemCount for source in sources) == 3
+
+    def test_cctv_items_sharing_a_daily_page_are_deduplicated_by_title(self):
+        batches = [{
+            "provider": "cctv-macro-news",
+            "category": "macro",
+            "symbol": None,
+            "dataframe": pd.DataFrame([
+                {"date": "20260718", "title": "宏观新闻一", "content": "内容一"},
+                {"date": "20260718", "title": "宏观新闻二", "content": "内容二"},
+            ]),
+        }]
+
+        items, raw_count, deduplicated_count, _ = normalize_news_batches(
+            batches,
+            80,
+        )
+
+        assert raw_count == 2
+        assert deduplicated_count == 0
+        assert [item.title for item in items] == ["宏观新闻一", "宏观新闻二"]
+        assert items[0].url == items[1].url
 
     def test_sector_snapshot_falls_back_to_ths(self):
         fallback_df = MagicMock()
@@ -1169,7 +1323,13 @@ class TestQuoteCache:
 
 
 class TestResearchDataNormalization:
-    def test_normalize_news_dataframe_preserves_source_time_and_symbols(self):
+    def test_extract_symbols_rejects_plain_six_digit_numbers(self):
+        assert extract_symbols("月份 202607，贵州茅台 600519，北交所 920001") == [
+            "600519",
+            "920001",
+        ]
+
+    def test_normalize_news_batches_preserves_source_time_and_symbols(self):
         rows = [
             {
                 "新闻标题": "600519 公司业绩预增",
@@ -1179,16 +1339,19 @@ class TestResearchDataNormalization:
                 "新闻内容": "贵州茅台 600519 披露增长信息",
             },
         ]
-        df = MagicMock()
-        df.head.return_value.iterrows.return_value = enumerate(rows)
-
-        items = normalize_news_dataframe(df, "eastmoney-financial-news", 5)
+        items, _, _, _ = normalize_news_batches([{
+            "provider": "eastmoney-stock-news",
+            "category": "company",
+            "symbol": "600519",
+            "dataframe": pd.DataFrame(rows),
+        }], 5)
 
         assert len(items) == 1
         assert items[0].source == "东方财富"
         assert items[0].sentiment == "positive"
         assert items[0].symbols == ["600519"]
         assert items[0].publishedAt == "2026-07-11T09:30:00+08:00"
+        assert items[0].category == "company"
 
     def test_normalize_global_market_dataframe_maps_core_indices(self):
         rows = [
@@ -1363,12 +1526,24 @@ class TestMarketQuoteModel:
                     fetchedAt="2026-07-11T01:30:00Z",
                     symbols=["600519"],
                     sentiment="neutral",
+                    category="company",
                 ),
             ],
+            sources=[
+                NewsSourceCoverage(
+                    source="东方财富",
+                    category="company",
+                    itemCount=1,
+                ),
+            ],
+            requestedSymbols=["600519"],
+            rawCount=1,
+            deduplicatedCount=0,
         )
         data = response.model_dump()
         assert data["items"][0]["source"] == "东方财富"
         assert data["items"][0]["symbols"] == ["600519"]
+        assert data["sources"][0]["itemCount"] == 1
 
     def test_global_markets_response_serialization(self):
         response = GlobalMarketsResponse(

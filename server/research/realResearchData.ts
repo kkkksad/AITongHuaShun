@@ -1,6 +1,7 @@
 import type { MarketSnapshot, TradingMode } from "../../shared/trading";
 
 export type ResearchSentiment = "positive" | "neutral" | "negative";
+export type ResearchNewsCategory = "macro" | "market" | "company";
 export type GlobalImpactDirection = "risk-on" | "neutral" | "risk-off";
 
 export interface RealNewsItem {
@@ -13,6 +14,13 @@ export interface RealNewsItem {
   symbols: string[];
   sentiment: ResearchSentiment;
   summary: string | null;
+  category: ResearchNewsCategory;
+}
+
+export interface RealNewsSourceCoverage {
+  source: string;
+  category: ResearchNewsCategory;
+  itemCount: number;
 }
 
 export interface GlobalMarketSignal {
@@ -35,6 +43,11 @@ export interface RealResearchDataFeed {
     source: string;
     fetchedAt: string | null;
     items: RealNewsItem[];
+    sources: RealNewsSourceCoverage[];
+    requestedSymbols: string[];
+    rawCount: number;
+    availableCount: number;
+    deduplicatedCount: number;
     warning: string | null;
   };
   globalMarkets: {
@@ -58,6 +71,11 @@ interface BridgeNewsResponse {
   source?: string;
   fetchedAt?: string;
   items?: RealNewsItem[];
+  sources?: RealNewsSourceCoverage[];
+  requestedSymbols?: string[];
+  rawCount?: number;
+  availableCount?: number;
+  deduplicatedCount?: number;
   warning?: string | null;
 }
 
@@ -75,8 +93,12 @@ export interface RealResearchDataInput {
   mode: TradingMode;
   snapshot: MarketSnapshot;
   timeoutMs: number;
+  preferredSymbols?: string[];
   fetchImpl?: typeof fetch;
 }
+
+const NEWS_ITEM_LIMIT = 80;
+const NEWS_SYMBOL_LIMIT = 8;
 
 const GLOBAL_RISK_WEIGHTS: Record<string, number> = {
   US: 1.2,
@@ -98,7 +120,19 @@ function normalizeSentiment(value: unknown): ResearchSentiment {
   return value === "positive" || value === "negative" ? value : "neutral";
 }
 
+function normalizeNewsCategory(
+  value: unknown,
+  symbols: string[],
+): ResearchNewsCategory {
+  if (value === "macro" || value === "company") return value;
+  if (value === "market") return value;
+  return symbols.length > 0 ? "company" : "market";
+}
+
 function normalizeNewsItem(item: RealNewsItem): RealNewsItem {
+  const symbols = Array.isArray(item.symbols)
+    ? item.symbols.map(String).filter(Boolean).slice(0, 8)
+    : [];
   return {
     id: String(item.id),
     source: String(item.source || "unknown"),
@@ -106,12 +140,95 @@ function normalizeNewsItem(item: RealNewsItem): RealNewsItem {
     publishedAt: String(item.publishedAt || item.fetchedAt || ""),
     fetchedAt: String(item.fetchedAt || ""),
     url: item.url ? String(item.url) : null,
-    symbols: Array.isArray(item.symbols)
-      ? item.symbols.map(String).filter(Boolean).slice(0, 8)
-      : [],
+    symbols,
     sentiment: normalizeSentiment(item.sentiment),
     summary: item.summary ? String(item.summary) : null,
+    category: normalizeNewsCategory(item.category, symbols),
   };
+}
+
+function canonicalNewsKey(item: RealNewsItem): string {
+  const normalizedTitle = item.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  if (item.category === "macro") return `title:${normalizedTitle}`;
+  const normalizedUrl = item.url?.trim().replace(/[?#].*$/, "");
+  if (normalizedUrl) return `url:${normalizedUrl}`;
+  return `title:${normalizedTitle}`;
+}
+
+function timestamp(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeAndDedupeNews(
+  items: RealNewsItem[],
+  preferredSymbols: string[],
+): { items: RealNewsItem[]; removed: number } {
+  const byKey = new Map<string, RealNewsItem>();
+  for (const rawItem of items) {
+    const item = normalizeNewsItem(rawItem);
+    if (!item.title.trim()) continue;
+    const key = canonicalNewsKey(item);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, item);
+      continue;
+    }
+    existing.symbols = [...new Set([...existing.symbols, ...item.symbols])].slice(0, 8);
+    if (!existing.summary && item.summary) existing.summary = item.summary;
+  }
+  const preferred = new Set(preferredSymbols);
+  const normalized = [...byKey.values()].sort((left, right) => {
+    const leftPreferred = left.symbols.some((symbol) => preferred.has(symbol));
+    const rightPreferred = right.symbols.some((symbol) => preferred.has(symbol));
+    if (leftPreferred !== rightPreferred) return leftPreferred ? -1 : 1;
+    return timestamp(right.publishedAt) - timestamp(left.publishedAt);
+  });
+  return {
+    items: normalized,
+    removed: Math.max(0, items.length - normalized.length),
+  };
+}
+
+function buildNewsSourceCoverage(items: RealNewsItem[]): RealNewsSourceCoverage[] {
+  const counts = new Map<string, RealNewsSourceCoverage>();
+  for (const item of items) {
+    const key = `${item.category}:${item.source}`;
+    const current = counts.get(key);
+    if (current) {
+      current.itemCount += 1;
+    } else {
+      counts.set(key, {
+        source: item.source,
+        category: item.category,
+        itemCount: 1,
+      });
+    }
+  }
+  return [...counts.values()].sort(
+    (left, right) => right.itemCount - left.itemCount ||
+      left.source.localeCompare(right.source, "zh-CN"),
+  );
+}
+
+export function selectNewsSymbols(
+  snapshot: MarketSnapshot,
+  preferredSymbols: string[] = [],
+  limit = NEWS_SYMBOL_LIMIT,
+): string[] {
+  const boundedLimit = Math.min(NEWS_SYMBOL_LIMIT, Math.max(1, Math.floor(limit)));
+  const selected = preferredSymbols
+    .map(String)
+    .filter((symbol) => /^\d{6}$/.test(symbol));
+  const liquid = snapshot.quotes
+    .filter((quote) => quote.tradable && /^\d{6}$/.test(quote.symbol))
+    .sort((left, right) =>
+      (right.amount ?? 0) - (left.amount ?? 0) ||
+      right.volume - left.volume ||
+      left.symbol.localeCompare(right.symbol),
+    )
+    .map((quote) => quote.symbol);
+  return [...new Set([...selected, ...liquid])].slice(0, boundedLimit);
 }
 
 function normalizeGlobalMarket(item: GlobalMarketSignal): GlobalMarketSignal {
@@ -203,6 +320,11 @@ function unavailableFeed(input: RealResearchDataInput): RealResearchDataFeed {
       source: "mock-disabled",
       fetchedAt: null,
       items: [],
+      sources: [],
+      requestedSymbols: [],
+      rawCount: 0,
+      availableCount: 0,
+      deduplicatedCount: 0,
       warning: "当前未启用 AkShare 真实只读数据源，新闻不会使用静态模拟数据替代。",
     },
     globalMarkets: {
@@ -229,9 +351,16 @@ export async function buildRealResearchDataFeed(
 
   const fetchImpl = input.fetchImpl ?? fetch;
   const baseUrl = trimTrailingSlash(input.bridgeUrl);
+  const requestedNewsSymbols = selectNewsSymbols(
+    input.snapshot,
+    input.preferredSymbols,
+  );
+  const newsUrl = new URL(`${baseUrl}/api/research/news`);
+  newsUrl.searchParams.set("limit", String(NEWS_ITEM_LIMIT));
+  newsUrl.searchParams.set("symbols", requestedNewsSymbols.join(","));
   const [newsResult, globalResult] = await Promise.allSettled([
     fetchJson<BridgeNewsResponse>(
-      `${baseUrl}/api/research/news?limit=20`,
+      newsUrl.toString(),
       input.bridgeToken,
       input.timeoutMs,
       fetchImpl,
@@ -246,18 +375,44 @@ export async function buildRealResearchDataFeed(
 
   const news =
     newsResult.status === "fulfilled"
-      ? {
-          provider: newsResult.value.provider ?? "akshare",
-          source: newsResult.value.source ?? "unknown",
-          fetchedAt: newsResult.value.fetchedAt ?? null,
-          items: (newsResult.value.items ?? []).map(normalizeNewsItem),
-          warning: newsResult.value.warning ?? null,
-        }
+      ? (() => {
+          const bridgeItems = newsResult.value.items ?? [];
+          const normalized = normalizeAndDedupeNews(
+            bridgeItems,
+            input.preferredSymbols ?? [],
+          );
+          const rawCount = Math.max(
+            bridgeItems.length,
+            Number(newsResult.value.rawCount) || 0,
+          );
+          const deduplicatedCount = Math.min(
+            rawCount,
+            Math.max(0, Number(newsResult.value.deduplicatedCount) || 0) +
+              normalized.removed,
+          );
+          return {
+            provider: newsResult.value.provider ?? "akshare",
+            source: newsResult.value.source ?? "unknown",
+            fetchedAt: newsResult.value.fetchedAt ?? null,
+            items: normalized.items,
+            sources: buildNewsSourceCoverage(normalized.items),
+            requestedSymbols: newsResult.value.requestedSymbols ?? requestedNewsSymbols,
+            rawCount,
+            availableCount: Math.max(0, rawCount - deduplicatedCount),
+            deduplicatedCount,
+            warning: newsResult.value.warning ?? null,
+          };
+        })()
       : {
           provider: "akshare",
           source: "unavailable",
           fetchedAt: null,
           items: [],
+          sources: [],
+          requestedSymbols: requestedNewsSymbols,
+          rawCount: 0,
+          availableCount: 0,
+          deduplicatedCount: 0,
           warning: `真实新闻源暂不可用: ${newsResult.reason}`,
         };
 
