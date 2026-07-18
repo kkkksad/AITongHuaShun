@@ -92,12 +92,13 @@ export function isSuspectedSuspended(quote: MarketQuote): boolean {
  */
 export function detectLimitHit(quote: MarketQuote): "limit_up" | "limit_down" | null {
   const boardLimit = getBoardLimit(quote.symbol);
+  const tolerance = 0.1;
 
-  // 允许 0.1% 的容差
-  if (quote.changePercent >= boardLimit - 0.1) {
+  // 只接受涨跌停阈值附近的报价；明显越界的值留给异常价格检测。
+  if (Math.abs(quote.changePercent - boardLimit) <= tolerance) {
     return "limit_up";
   }
-  if (quote.changePercent <= -boardLimit + 0.1) {
+  if (Math.abs(quote.changePercent + boardLimit) <= tolerance) {
     return "limit_down";
   }
   return null;
@@ -123,6 +124,9 @@ export function detectAdjustmentGap(quote: MarketQuote): boolean {
   }
   // 排除停牌
   if (isSuspectedSuspended(quote)) {
+    return false;
+  }
+  if (detectLimitHit(quote)) {
     return false;
   }
   const absChangePct = Math.abs(quote.changePercent);
@@ -172,7 +176,9 @@ export function detectPriceAnomaly(quote: MarketQuote): boolean {
  */
 export function computeFreshness(updatedAt: string, nowMs?: number): number {
   const now = nowMs ?? Date.now();
-  const ageSec = (now - new Date(updatedAt).getTime()) / 1000;
+  const updatedAtMs = new Date(updatedAt).getTime();
+  if (!Number.isFinite(updatedAtMs)) return 0;
+  const ageSec = (now - updatedAtMs) / 1000;
 
   if (ageSec <= 0) return 100;
   if (ageSec >= FRESHNESS_MAX_AGE_SEC + FRESHNESS_DECAY_SEC * 9) return 0;
@@ -185,19 +191,43 @@ export function computeFreshness(updatedAt: string, nowMs?: number): number {
 }
 
 /**
+ * 使用低 10% 分位评估整批报价新鲜度，避免一条最新报价掩盖大量陈旧报价，
+ * 同时容忍极少量孤立延迟。
+ */
+export function computeCoverageFreshness(
+  quotes: MarketQuote[],
+  nowMs: number = Date.now(),
+): number {
+  if (quotes.length === 0) return 0;
+  const scores = quotes
+    .map((quote) => computeFreshness(quote.updatedAt, nowMs))
+    .sort((a, b) => a - b);
+  const percentileIndex = Math.floor((scores.length - 1) * 0.1);
+  return scores[percentileIndex];
+}
+
+/**
  * 计算数据完整度评分 (0-100)
  * 有效的报价：价格 > 0 且成交量 >= 0
  */
 export function computeCompleteness(quotes: MarketQuote[]): number {
   if (quotes.length === 0) return 0;
-  const valid = quotes.filter((q) => q.price > 0 && q.volume >= 0).length;
+  const valid = quotes.filter((quote) =>
+    Number.isFinite(quote.price) &&
+    Number.isFinite(quote.volume) &&
+    quote.price > 0 &&
+    quote.volume >= 0
+  ).length;
   return Math.round((valid / quotes.length) * 100);
 }
 
 /**
  * 检测停牌、涨跌停、过期、复权缺口和异常数据
  */
-export function detectFlags(quotes: MarketQuote[]): DataQualityFlag[] {
+export function detectFlags(
+  quotes: MarketQuote[],
+  nowMs: number = Date.now(),
+): DataQualityFlag[] {
   const flags: DataQualityFlag[] = [];
 
   for (const quote of quotes) {
@@ -272,7 +302,10 @@ export function detectFlags(quotes: MarketQuote[]): DataQualityFlag[] {
     }
 
     // 数据过期（超过5分钟未更新）
-    const ageSec = (Date.now() - new Date(quote.updatedAt).getTime()) / 1000;
+    const updatedAtMs = new Date(quote.updatedAt).getTime();
+    const ageSec = Number.isFinite(updatedAtMs)
+      ? (nowMs - updatedAtMs) / 1000
+      : Number.POSITIVE_INFINITY;
     if (ageSec > 300) {
       flags.push({
         symbol: quote.symbol,
@@ -299,15 +332,20 @@ export function computeDataQuality(
   provider: string,
   requestedSymbols: string[] = [],
   cacheAgeSec: number | null = null,
+  nowMs: number = Date.now(),
 ): DataQualityReport {
   const quotes = snapshot.quotes;
+  const normalizedRequestedSymbols = Array.from(new Set(requestedSymbols));
 
   // 空快照：直接返回零分报告
   if (quotes.length === 0) {
     return {
-      timestamp: new Date().toISOString(),
+      timestamp: new Date(nowMs).toISOString(),
       provider,
       totalSymbols: 0,
+      requestedSymbols: normalizedRequestedSymbols.length,
+      validSymbols: 0,
+      qualityState: "unusable",
       score: {
         freshness: 0,
         completeness: 0,
@@ -316,26 +354,42 @@ export function computeDataQuality(
         limitDownCount: 0,
         adjustmentWarningCount: 0,
         anomalyPriceCount: 0,
+        staleCount: 0,
         overall: 0,
       },
       flags: [],
-      missingSymbols: [...requestedSymbols],
+      missingSymbols: normalizedRequestedSymbols,
       cacheAgeSec,
     };
   }
 
-  // 检测缺失符号
-  const availableSymbols = new Set(quotes.map((q) => q.symbol));
-  const missingSymbols = requestedSymbols.filter((s) => !availableSymbols.has(s));
+  const quoteBySymbol = new Map(quotes.map((quote) => [quote.symbol, quote]));
+  const evaluatedSymbols = normalizedRequestedSymbols.length > 0
+    ? normalizedRequestedSymbols
+    : Array.from(quoteBySymbol.keys());
+  const evaluatedQuotes = evaluatedSymbols
+    .map((symbol) => quoteBySymbol.get(symbol))
+    .filter((quote): quote is MarketQuote => Boolean(quote));
+  const missingSymbols = normalizedRequestedSymbols.filter(
+    (symbol) => !quoteBySymbol.has(symbol),
+  );
+  const validSymbols = evaluatedQuotes.filter((quote) =>
+    Number.isFinite(quote.price) &&
+    Number.isFinite(quote.volume) &&
+    quote.price > 0 &&
+    quote.volume >= 0
+  ).length;
 
-  // 新鲜度：取所有报价中最新时间
-  const freshness = Math.max(...quotes.map((q) => computeFreshness(q.updatedAt)));
+  // 新鲜度：使用整批报价低分位，不让单条最新报价掩盖陈旧数据
+  const freshness = computeCoverageFreshness(evaluatedQuotes, nowMs);
 
-  // 完整度
-  const completeness = computeCompleteness(quotes);
+  // 完整度：有明确请求池时把缺失和无效报价一起纳入分母
+  const completeness = evaluatedSymbols.length > 0
+    ? Math.round((validSymbols / evaluatedSymbols.length) * 100)
+    : 0;
 
   // 数据标记
-  const flags = detectFlags(quotes);
+  const flags = detectFlags(quotes, nowMs);
 
   // 停牌比例
   const suspendedCount = flags.filter((f) => f.flag === "suspended").length;
@@ -353,6 +407,7 @@ export function computeDataQuality(
 
   // 异常价格数量
   const anomalyPriceCount = flags.filter((f) => f.flag === "anomaly_price").length;
+  const staleCount = flags.filter((f) => f.flag === "stale").length;
 
   // 综合评分：zero_price 会影响 completeness 和 suspensionPenalty
   const suspensionPenalty = Math.max(0, 100 - (suspensionRate + zeroPriceCount / quotes.length) * 120);
@@ -389,13 +444,25 @@ export function computeDataQuality(
     limitDownCount,
     adjustmentWarningCount,
     anomalyPriceCount,
+    staleCount,
     overall,
   };
 
+  const qualityState: DataQualityReport["qualityState"] =
+    completeness < 50 || freshness < 25 || anomalyRate >= 0.5
+      ? "unusable"
+      : overall < 85 || missingSymbols.length > 0 || staleCount > 0 ||
+          adjustmentWarningCount > 0 || anomalyPriceCount > 0
+        ? "degraded"
+        : "healthy";
+
   return {
-    timestamp: new Date().toISOString(),
+    timestamp: new Date(nowMs).toISOString(),
     provider,
     totalSymbols: quotes.length,
+    requestedSymbols: evaluatedSymbols.length,
+    validSymbols,
+    qualityState,
     score,
     flags,
     missingSymbols,

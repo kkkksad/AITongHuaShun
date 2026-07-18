@@ -6,6 +6,7 @@ import {
   fetchExternalMarketImpact,
   fetchIpoSubscriptionResearch,
   fetchHongKongMarketResearch,
+  fetchMarketDataQuality,
   fetchMarketRegimeResearch,
   fetchStrategyRobustness,
   fetchStockTrendForecast,
@@ -109,6 +110,30 @@ describe("session-aware trading API", () => {
         /\/api\/research\/market-regime\?sectorLimit=20&stockLimit=1&days=500$/,
       ),
       expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("requests market data quality with cookie auth and forwards cancellation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        provider: "akshare",
+        requestedSymbols: 8,
+        validSymbols: 8,
+        qualityState: "healthy",
+        score: { overall: 96 },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await fetchMarketDataQuality(controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/market\/quality$/),
+      expect.objectContaining({
+        credentials: "include",
+        signal: controller.signal,
+      }),
     );
   });
 

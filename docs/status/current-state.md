@@ -48,6 +48,7 @@
 - **A 股链路健康检查** —— `npm run check:a-share` 通过临时 Cookie 会话验证 Fastify API、AkShare 桥接、Vite 代理、指数行情、个股行情和受保护的 KAIROS 行情快照是否处于同一套正在运行的服务；密码只从安全提示或当前进程环境变量读取。
 - **纸面账户纯现金启动配置** —— `TRADING_STARTING_CASH` 控制新建本地模拟账户初始资金，`TRADING_SEED_PORTFOLIO=false` 可关闭默认演示持仓种子，用于从 10000 元纯现金开始做本地 paper 观察。
 - **大盘指数展示修正** —— 主要指数卡片在 AkShare 模式下显示指数成交额，市场页指数图表改为使用当前后端指数快照，不再把静态模拟分时图伪装成实时大盘走势。
+- **行情质量与真实指数空状态** —— `/api/market/quality` 按请求股票池计算有效覆盖，使用整批报价低 10% 分位新鲜度，并区分合法创业板/科创板 20%、北交所 30% 涨跌停与越界价格异常；A 股概览每 30 秒显示 `healthy / degraded / unusable` 只读状态，接口使用私有 5 秒短缓存。主要指数缺失时不再使用静态指数数值补位。质量状态不参与策略路由、风险限额或订单。
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
 - **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 新增 `qualitySummary`，返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额和现金使用比例；研究管线页面展示该诊断，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1 或持仓约束保持观望。
@@ -137,6 +138,7 @@ GET  /api/health
 GET  /api/capabilities
 GET  /metrics                              (Prometheus 指标)
 GET  /api/market/snapshot
+GET  /api/market/quality
 GET  /api/research/strategy-leaderboard?bars=120
 GET  /api/research/daily-candidates?limit=24
 GET  /api/research/daily-quality-stocks?limit=30
@@ -177,6 +179,16 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-19 market data quality and market-page trust upgrade
+Server Vitest: 46 files, 740 tests passed
+Web Vitest: 23 files, 74 tests passed
+TypeScript checks and Vite production build passed; 2,315 modules transformed
+git diff --check passed with line-ending conversion warnings only
+
+Authenticated runtime used paper + akshare on ports 4173, 8787, and 8800. The quality endpoint reported healthy with overall 100/100, batch freshness 100/100, requested coverage 100/100, and zero key issues. It read the current Fastify market snapshot and did not trigger a bridge fetch.
+
+Authenticated browser checks showed the desktop body at 1265/1265 and the 390px viewport body at 375/375. The mobile quality strip was 355px wide, used a two-column metric grid, had no text overlap, and its refresh command worked. The console had no warnings or errors; a 360px CSS boundary provides a single-column metric grid.
+
 2026-07-19 bounded multi-source news upgrade
 D:\conda\python.exe -m pytest akshare-bridge/test_bridge.py -q
 89 tests passed; 1 FastAPI/httpx dependency deprecation warning
@@ -710,6 +722,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 登录保护默认强制开启，必须显式提供账号与有效 `scrypt` 密码散列；不存在默认账号或默认密码。`AUTH_ENABLED=false` 只允许测试环境。当前会话保存在单个 Fastify 进程内，服务重启会要求重新登录，多实例部署前需要共享会话存储。
 - `REAL_TRADING_ENABLED=true` 与 `MARKET_MODE=live` 都会拒绝启动。
 - AkShare 模式必须使用 `MARKET_MODE=paper`，真实行情不改变订单执行权限。
+- 行情质量 `healthy / degraded / unusable` 只描述当前内存快照的可读性，不代表策略胜率、可成交性或订单许可，也不会直接改变自适应路由、paper 仓位或风险限额。
 - 当前没有任何真实订单执行代码。
 - 新闻面板在 AkShare 模式下优先读取真实只读研究流；若源不可用会显示降级状态，不再用静态模拟新闻冒充真实来源。活跃板块面板使用公开行业快照及可用的公开主力净流入字段，但不属于授权 Level-2 资金流；主要指数卡片和指数快照图使用只读指数行情。当前仍未接入真实逐笔或完整分时历史曲线。
 

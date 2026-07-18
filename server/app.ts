@@ -45,6 +45,7 @@ import { queryLogEntries } from "./monitoring/logQuery";
 import type { LogEntry } from "./logger";
 import { PaperPlanNotifier } from "./notifications/paperPlanNotifier";
 import { WxPusherClient } from "./notifications/wxPusherClient";
+import { computeDataQuality } from "./market/dataQuality";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
@@ -297,8 +298,12 @@ export async function buildTradingApp(
   app.addHook("onSend", async (request, reply, payload) => {
     const pathname = request.url.split("?")[0] ?? request.url;
     if (pathname.startsWith("/api/") || pathname === "/metrics") {
-      reply.header("Cache-Control", "no-store");
-      reply.header("Pragma", "no-cache");
+      if (pathname === "/api/market/quality") {
+        reply.removeHeader("Pragma");
+      } else {
+        reply.header("Cache-Control", "no-store");
+        reply.header("Pragma", "no-cache");
+      }
     }
     return payload;
   });
@@ -597,8 +602,11 @@ export async function buildTradingApp(
       description:
         "返回数据新鲜度、完整度、停牌检测、涨跌停检测等质量评分。结果仅反映数据质量，不构成投资建议。",
     },
-  }, async () => {
-    const { computeDataQuality } = await import("./market/dataQuality");
+  }, async (_request, reply) => {
+    reply.header(
+      "Cache-Control",
+      "private, max-age=5, stale-while-revalidate=15",
+    );
     const snapshot = system.market.getSnapshot();
 
     let cacheAgeSec: number | null = null;

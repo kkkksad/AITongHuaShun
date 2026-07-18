@@ -1,6 +1,5 @@
 import { Activity, ArrowDownRight, ArrowUpRight } from "lucide-react";
 import type { MarketSnapshot } from "../../shared/trading";
-import { marketIndices } from "../data/mockData";
 import type { ConnectionState } from "../hooks/useTradingBackend";
 
 interface MarketOverviewProps {
@@ -20,10 +19,6 @@ function formatAmount(amount?: number): string {
 }
 
 export function MarketOverview({ market, connectionState }: MarketOverviewProps) {
-  const fallbackIndices = marketIndices.map((index) => ({
-    ...index,
-    metricLabel: "成交量",
-  }));
   const liveIndices = market?.quotes
     .filter((quote) => !quote.tradable && quote.price > 0)
     .map((quote) => ({
@@ -33,12 +28,11 @@ export function MarketOverview({ market, connectionState }: MarketOverviewProps)
       change: quote.changePercent,
       turnover: quote.amount ? formatAmount(quote.amount) : formatVolume(quote.volume),
       metricLabel: quote.amount ? "成交额" : "成交量",
-    }));
-  const indices = liveIndices && liveIndices.length > 0 ? liveIndices : fallbackIndices;
+    })) ?? [];
   const asOf = market
     ? new Date(market.marketTime).toLocaleString("zh-CN", { hour12: false })
-    : "静态演示快照";
-  const usingFallbackIndices = Boolean(market) && (!liveIndices || liveIndices.length === 0);
+    : "等待后端快照";
+  const hasIndices = liveIndices.length > 0;
 
   return (
     <section className="market-overview">
@@ -50,35 +44,47 @@ export function MarketOverview({ market, connectionState }: MarketOverviewProps)
         <div className="as-of">
           <Activity size={15} />
           {connectionState === "connected"
-            ? usingFallbackIndices
-              ? `${asOf} · 指数等待真实行情`
-              : asOf
-            : "后端离线 · 静态演示"}
+            ? hasIndices ? asOf : `${asOf} · 无指数报价`
+            : connectionState === "connecting" ? "正在连接后端" : "后端离线"}
         </div>
       </div>
 
-      <div className="index-grid">
-        {indices.map((index) => (
-          <article className="index-card" key={index.symbol}>
-            <div className="index-card-top">
-              <span>{index.name}</span>
-              <small>{index.symbol}</small>
-            </div>
-            <strong>{index.value.toLocaleString("zh-CN")}</strong>
-            <div className="index-card-bottom">
-              <span className={index.change >= 0 ? "positive" : "negative"}>
-                {index.change >= 0 ? (
-                  <ArrowUpRight size={14} />
-                ) : (
-                  <ArrowDownRight size={14} />
-                )}
-                {index.change.toFixed(2)}%
-              </span>
-              <span>{index.metricLabel ?? "成交量"} {index.turnover}</span>
-            </div>
-          </article>
-        ))}
-      </div>
+      {hasIndices ? (
+        <div className="index-grid">
+          {liveIndices.map((index) => (
+            <article className="index-card" key={index.symbol}>
+              <div className="index-card-top">
+                <span>{index.name}</span>
+                <small>{index.symbol}</small>
+              </div>
+              <strong>{index.value.toLocaleString("zh-CN")}</strong>
+              <div className="index-card-bottom">
+                <span className={index.change >= 0 ? "positive" : "negative"}>
+                  {index.change >= 0 ? (
+                    <ArrowUpRight size={14} />
+                  ) : (
+                    <ArrowDownRight size={14} />
+                  )}
+                  {index.change.toFixed(2)}%
+                </span>
+                <span>{index.metricLabel} {index.turnover}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div className="market-index-empty" role="status">
+          <Activity size={19} />
+          <div>
+            <strong>{connectionState === "connected" ? "指数行情暂未返回" : "等待指数行情连接"}</strong>
+            <span>
+              {connectionState === "connected"
+                ? "当前快照不使用静态指数补位"
+                : "后端连接后显示当前指数快照"}
+            </span>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

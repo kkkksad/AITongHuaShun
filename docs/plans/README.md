@@ -32,6 +32,7 @@ YYYY-MM-DD-short-task-name.md
 - [东方财富只读行情与统一纸面执行边界](2026-07-11-eastmoney-paper-boundary-hardening.md)
 - [外部市场对 A 股影响研究](2026-07-18-external-market-a-share-impact.md)
 - [有界多源真实新闻升级](2026-07-19-bounded-multi-source-news.md)
+- [行情数据质量与市场页可信度升级](2026-07-19-market-data-quality-experience.md)
 
 ## 进行中计划
 

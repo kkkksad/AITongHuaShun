@@ -155,7 +155,10 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
         >
           <Suspense fallback={<MarketTabLoading />}>
             {activeTab === "a-share" && (
-              <MarketAshareOverviewPanel market={trading.market} />
+              <MarketAshareOverviewPanel
+                connectionState={trading.connectionState}
+                market={trading.market}
+              />
             )}
             {activeTab === "turning" && <TurningPointPanel />}
             {activeTab === "stock" && <StockTrendForecastPanel />}

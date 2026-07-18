@@ -12,6 +12,7 @@ Fastify + TypeScript :8787
         ├─ MarketDataProvider
         │   ├─ MockMarket               确定性模拟行情
         │   └─ AkShareMarketProvider    只读外部行情
+        ├─ MarketDataQuality  行情覆盖、新鲜度与异常只读诊断
         ├─ PaperAutoExecutor  本地 paper 计划自动执行
         ├─ RiskEngine       下单前风险检查
         ├─ PaperBroker      模拟撮合与账户更新
@@ -28,6 +29,8 @@ FastAPI + AkShare :8800
 ```
 
 前后端共享 `shared/trading.ts` 中的行情、账户、持仓、订单、风险和实时事件契约。
+
+`server/market/dataQuality.ts` 是行情质量的唯一计算入口。它按请求股票池计算有效覆盖，使用整批报价低 10% 分位新鲜度避免单条最新报价掩盖陈旧批次，并把合法主板、创业板、科创板和北交所涨跌停与越界价格异常分开。`/api/market/quality` 只读取当前内存快照，不触发外部抓取；浏览器只在后端连接时轮询该接口。
 
 `server/broker/eastmoney/` 还包含未装配到主服务的东方财富公开行情原型。其行情提供者只读且拒绝 `live`；同目录的券商适配器仅模拟连接生命周期，所有纸面订单继续委托 `PaperBroker + RiskEngine`，不包含外部订单请求。`server/broker/tonghuashun/` 提供同花顺模拟盘纸面适配器骨架，同样只允许 `paper` 或 `sandbox`，用于后续接入同花顺模拟账户前验证连接、行情注入、风控和模拟订单事件。
 
@@ -78,13 +81,14 @@ shared/
 1. React 启动时验证服务端会话；未登录时只渲染登录页，不启动业务 REST 或 WebSocket。
 2. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
 3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。
-4. `/api/research/real-data-feed` 优先选择当前持仓，再按实时成交额补足最多 8 只新闻观察标的，并聚合最多 80 条多源新闻；`/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/external-market-impact` 严格用早于 A 股目标日期的美股/亚洲指数日线和沪深 300 对齐，并把 BTC/ETH 限制为快照参考；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
-5. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
-6. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
-7. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
-8. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
-9. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
-10. 新账户、持仓和订单状态再次通过已认证 WebSocket 推送。
+4. `/api/market/quality` 对当前内存快照生成只读质量报告，使用私有 5 秒缓存和 15 秒 stale-while-revalidate；它不触发新的行情请求，也不写入策略或订单状态。
+5. `/api/research/real-data-feed` 优先选择当前持仓，再按实时成交额补足最多 8 只新闻观察标的，并聚合最多 80 条多源新闻；`/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/external-market-impact` 严格用早于 A 股目标日期的美股/亚洲指数日线和沪深 300 对齐，并把 BTC/ETH 限制为快照参考；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
+6. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
+7. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
+8. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
+9. `PaperBroker` 只在检查通过后计算滑点、手续费和模拟成交。
+10. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
+11. 新账户、持仓和订单状态再次通过已认证 WebSocket 推送。
 
 WxPusher 通知属于 paper 观察域，不属于订单执行域。自动执行器在四个盘中阶段生成上下文，通知器只在 09:35、10:30、13:30、14:50 开放固定简报；`risk-off`、数据降级、paper 拒单或暂停可以使用事件预留。同类事件按交易日审计去重，多种事件同轮合并，全部成功/失败请求共享每天十条硬上限。
 
@@ -96,6 +100,8 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 ### `MarketDataProvider`
 
 当前可使用 MockMarket 或 AkShare 桥接。外部行情必须保留来源、授权、时间戳、交易日历、时区和复权语义；上层逻辑不得直接绑定单一供应商返回格式。
+
+质量报告中的完整度以请求标的数量为分母，缺失和无效报价都会扣分；新鲜度取低 10% 分位而不是整批最大值。合法涨跌停只记录市场状态，超出对应板块涨跌停范围的非停牌价格才进入越界异常。`healthy / degraded / unusable` 只用于界面诊断，不能改变 `AdaptiveStrategyRouter`、`PaperAutoExecutor`、风险限额或订单审批。
 
 历史研究接口按请求即时读取并在 Python 进程内短期缓存，不会把无上限原始日线写入本地磁盘。普通研究响应和历史单序列分别使用有界 TTL/LRU，默认最多 64 和 128 个 key；读写路径主动清理过期项，历史 single-flight 请求完成前受淘汰保护。行业日线明确为不复权，个股日线明确为前复权；单次请求受板块数、股票数和交易日数限制。多个公开源只用于可用性回退，每条历史序列保留实际命中的来源。
 
@@ -133,3 +139,4 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 - **权限隔离**：只读研究能力与订单执行能力分离。
 - **可替换性**：外部数据、持久化和券商通过边界明确的适配器替换。
 - **默认拒绝**：未实现或未授权的真实交易模式必须在启动和下单前失败。
+- **数据可观察性**：真实快照缺失、陈旧或异常时必须显式降级，不得用静态行情掩盖。

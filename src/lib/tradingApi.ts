@@ -1,6 +1,7 @@
 import type {
   AccountSnapshot,
   AuditEvent,
+  DataQualityReport,
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
@@ -1549,6 +1550,12 @@ export async function fetchTradingBootstrap(): Promise<TradingBootstrap> {
   ]);
 
   return { health, capabilities, market, account, positions, orders, limits };
+}
+
+export function fetchMarketDataQuality(
+  signal?: AbortSignal,
+): Promise<DataQualityReport> {
+  return authApiRequest<DataQualityReport>("/api/market/quality", { signal });
 }
 
 export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> {

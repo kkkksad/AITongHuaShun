@@ -43,6 +43,8 @@ export interface DataQualityScore {
   adjustmentWarningCount: number;
   /** 异常价格标的数（超出板块涨跌停限制的非停牌波动） */
   anomalyPriceCount: number;
+  /** 超过新鲜度阈值的标的数 */
+  staleCount: number;
   /** 0-100，综合质量 */
   overall: number;
 }
@@ -60,6 +62,9 @@ export interface DataQualityReport {
   timestamp: string;
   provider: string;
   totalSymbols: number;
+  requestedSymbols: number;
+  validSymbols: number;
+  qualityState: "healthy" | "degraded" | "unusable";
   score: DataQualityScore;
   flags: DataQualityFlag[];
   missingSymbols: string[];

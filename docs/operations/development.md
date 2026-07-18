@@ -161,6 +161,8 @@ npm run check:a-share
 
 该检查会同时验证 Fastify API、AkShare 桥接、Vite `/api` 代理、主要指数行情、个股行情和 KAIROS 行情快照。如果 4173、8787 或 8800 被旧进程占用，检查会明确标出失败项，避免页面看起来能打开但实际连到旧服务。
 
+A 股概览还会每 30 秒读取一次受保护的 `/api/market/quality`。该接口只计算当前内存快照，响应使用 `Cache-Control: private, max-age=5, stale-while-revalidate=15`，不会额外调用 AkShare。覆盖率按请求股票池计算，新鲜度取整批报价低 10% 分位；`healthy / degraded / unusable` 仅表示数据可用性。主要指数未返回时页面显示空状态，不用 `mockData.ts` 的静态指数补位。
+
 默认地址：
 
 - 前端：`http://127.0.0.1:4173/`
@@ -338,6 +340,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/health
 Invoke-RestMethod http://127.0.0.1:8787/api/capabilities -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/account -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/market/snapshot -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/market/quality -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/strategy-leaderboard -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-candidates -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-quality-stocks -WebSession $KairosSession

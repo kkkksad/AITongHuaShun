@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MarketQuote, MarketSnapshot } from "../../shared/trading";
 import {
   computeCompleteness,
+  computeCoverageFreshness,
   computeDataQuality,
   computeFreshness,
   detectAdjustmentGap,
@@ -202,6 +203,21 @@ describe("detectAdjustmentGap", () => {
     expect(detectAdjustmentGap(q)).toBe(false);
   });
 
+  it("创业板和北交所合法涨停不判定为复权缺口", () => {
+    expect(detectAdjustmentGap(makeQuote({
+      symbol: "300750",
+      price: 120,
+      previousClose: 100,
+      changePercent: 20,
+    }))).toBe(false);
+    expect(detectAdjustmentGap(makeQuote({
+      symbol: "830799",
+      price: 130,
+      previousClose: 100,
+      changePercent: 30,
+    }))).toBe(false);
+  });
+
   it("零价格不判定为复权缺口", () => {
     const q = makeQuote({ price: 0, previousClose: 100, changePercent: -100 });
     expect(detectAdjustmentGap(q)).toBe(false);
@@ -326,6 +342,19 @@ describe("computeFreshness", () => {
     const future = new Date(NOW + 60_000).toISOString();
     const score = computeFreshness(future);
     expect(score).toBe(100);
+  });
+
+  it("非法时间戳返回0而不是NaN", () => {
+    expect(computeFreshness("not-a-date", NOW)).toBe(0);
+  });
+
+  it("使用整批报价的低分位新鲜度而不是最优单条报价", () => {
+    const quotes = [
+      makeQuote({ symbol: "600519", updatedAt: RECENT_ISO }),
+      makeQuote({ symbol: "000858", updatedAt: STALE_ISO }),
+    ];
+
+    expect(computeCoverageFreshness(quotes, NOW)).toBeLessThan(100);
   });
 });
 
@@ -476,6 +505,10 @@ describe("computeDataQuality", () => {
     const report = computeDataQuality(snapshot, "akshare", ["600519", "000858", "300750"]);
 
     expect(report.missingSymbols).toEqual(["000858", "300750"]);
+    expect(report.requestedSymbols).toBe(3);
+    expect(report.validSymbols).toBe(1);
+    expect(report.score.completeness).toBe(33);
+    expect(report.qualityState).toBe("unusable");
   });
 
   it("含停牌标的的报告", () => {
@@ -574,11 +607,10 @@ describe("computeDataQuality", () => {
       makeQuote({ symbol: "000858", updatedAt: STALE_ISO }),
     ];
     const snapshot = makeSnapshot(quotes);
-    const report = computeDataQuality(snapshot, "akshare");
+    const report = computeDataQuality(snapshot, "akshare", [], null, NOW);
 
-    // 新鲜度取max，所以仍为100
-    expect(report.score.freshness).toBe(100);
-    // 但过期标记仍会出现
+    expect(report.score.freshness).toBeLessThan(100);
+    expect(report.score.staleCount).toBe(1);
     expect(report.flags.some((f) => f.flag === "stale" && f.symbol === "000858")).toBe(true);
   });
 

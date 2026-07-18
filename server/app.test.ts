@@ -106,6 +106,30 @@ describe("trading API", () => {
     expect(response.json().openApi).toBe("/documentation/json");
   });
 
+  it("returns coverage-aware market quality with short private cache semantics", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/market/quality",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe(
+      "private, max-age=5, stale-while-revalidate=15",
+    );
+    expect(response.json()).toMatchObject({
+      provider: "mock",
+      requestedSymbols: expect.any(Number),
+      validSymbols: expect.any(Number),
+      qualityState: expect.stringMatching(/healthy|degraded|unusable/),
+      score: {
+        freshness: expect.any(Number),
+        completeness: expect.any(Number),
+        staleCount: expect.any(Number),
+        overall: expect.any(Number),
+      },
+    });
+  });
+
   it("protects APIs, metrics, docs, and mutations with a server session", async () => {
     const password = "correct-horse-battery-staple";
     const authApp = await buildTradingApp({
@@ -395,6 +419,7 @@ describe("trading API", () => {
     });
     expect(response.json().paths).toHaveProperty("/api/orders");
     expect(response.json().paths).toHaveProperty("/api/capabilities");
+    expect(response.json().paths).toHaveProperty("/api/market/quality");
     expect(response.json().paths).toHaveProperty("/api/research/strategy-leaderboard");
     expect(response.json().paths).toHaveProperty("/api/research/strategy-robustness");
     expect(response.json().paths).toHaveProperty("/api/research/cross-market-strategy-context");
