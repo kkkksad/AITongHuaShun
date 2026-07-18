@@ -12,10 +12,7 @@ import {
   type SectorOutlookDirection,
   type StockRegime,
 } from "../lib/tradingApi";
-import {
-  formatResearchDataTime,
-  getResearchRefreshState,
-} from "../lib/researchQueryPresentation";
+import { ResearchQueryState } from "./ResearchQueryState";
 
 type RegimeView = "sectors" | "stocks";
 
@@ -73,11 +70,6 @@ export function MarketRegimePanel() {
     staleTime: 10 * 60_000,
   });
   const report = regimeQuery.data;
-  const refreshState = getResearchRefreshState({
-    hasData: Boolean(report),
-    isError: regimeQuery.isError,
-  });
-
   return (
     <section className="panel market-regime-panel">
       <div className="panel-header market-regime-header">
@@ -120,24 +112,14 @@ export function MarketRegimePanel() {
         </button>
       </div>
 
-      {regimeQuery.isLoading && (
-        <div className="research-empty">正在读取行业板块与 180 日历史行情…</div>
-      )}
-
-      {refreshState.showBlockingError && (
-        <div className="research-alert">
-          <AlertTriangle size={16} />
-          <span>真实历史研究暂不可用，请检查 API 与 AkShare 行情桥接。</span>
-        </div>
-      )}
-      {refreshState.showStaleWarning && (
-        <div className="research-alert regime-warning">
-          <AlertTriangle size={16} />
-          <span>
-            本次刷新失败，继续显示缓存数据 · 上次成功更新 {formatResearchDataTime(regimeQuery.dataUpdatedAt)}
-          </span>
-        </div>
-      )}
+      <ResearchQueryState
+        dataUpdatedAt={regimeQuery.dataUpdatedAt}
+        hasData={Boolean(report)}
+        isError={regimeQuery.isError}
+        isLoading={regimeQuery.isLoading}
+        loadingText="正在读取行业板块与 180 日历史行情…"
+        unavailableText="真实历史研究暂不可用，请检查 API 与 AkShare 行情桥接。"
+      />
 
       {report && (
         <>
