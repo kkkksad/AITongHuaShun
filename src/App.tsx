@@ -22,11 +22,16 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { PwaInstallPrompt, OfflineBanner } from "./components/PwaInstallPrompt";
 import { LazyFallback } from "./components/Skeleton";
 import { LoginPage } from "./components/LoginPage";
+import { StrategyWorkflow } from "./components/StrategyWorkflow";
 import { TradingStrategies } from "./components/TradingStrategies";
 import { SystemMonitor } from "./components/SystemMonitor";
 import { strategies } from "./data/mockData";
 import { runBacktest } from "./lib/backtest";
 import { buildOrderSymbolNames } from "./lib/orderPresentation";
+import {
+  getStrategyWorkflowState,
+  type StrategyWorkflowStage,
+} from "./lib/strategyWorkflow";
 import {
   AUTH_EXPIRED_EVENT,
   logout,
@@ -135,20 +140,21 @@ function App() {
     useState<StrategyParameters>(defaultParameters);
   const [committedStrategy, setCommittedStrategy] = useState<StrategyId>("momentum");
   const [isRunning, setIsRunning] = useState(false);
+  const [hasCompletedBacktest, setHasCompletedBacktest] = useState(false);
+  const [strategyStage, setStrategyStage] = useState<StrategyWorkflowStage>("configure");
 
   const result = useMemo(
     () => runBacktest(committedStrategy, committedParameters),
     [committedParameters, committedStrategy],
   );
 
-  const allStrategyResults = useMemo(
-    () =>
-      strategies.map((strategy) => ({
-        strategy,
-        result: runBacktest(strategy.id, committedParameters),
-      })),
-    [committedParameters],
-  );
+  const allStrategyResults = useMemo(() => {
+    if (!hasCompletedBacktest || strategyStage !== "backtest") return [];
+    return strategies.map((strategyDefinition) => ({
+      strategy: strategyDefinition,
+      result: runBacktest(strategyDefinition.id, committedParameters),
+    }));
+  }, [committedParameters, hasCompletedBacktest, strategyStage]);
   const orderSymbolNames = useMemo(
     () => buildOrderSymbolNames(trading.market, trading.positions),
     [trading.market, trading.positions],
@@ -156,12 +162,23 @@ function App() {
 
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
   const activeView = pathViews[normalizedPath] ?? "overview";
+  const strategyWorkflowState = getStrategyWorkflowState({
+    hasRun: hasCompletedBacktest,
+    selectedStrategy,
+    committedStrategy,
+    parameters,
+    committedParameters,
+  });
+  const selectedStrategyName = strategies.find((item) => item.id === selectedStrategy)?.name ?? selectedStrategy;
+  const committedStrategyName = strategies.find((item) => item.id === committedStrategy)?.name ?? committedStrategy;
 
   const handleRun = () => {
     setIsRunning(true);
     window.setTimeout(() => {
       setCommittedStrategy(selectedStrategy);
       setCommittedParameters({ ...parameters });
+      setHasCompletedBacktest(true);
+      setStrategyStage("backtest");
       setIsRunning(false);
     }, 420);
   };
@@ -385,39 +402,72 @@ function App() {
   );
 
   const strategy = (
-    <div className="page-stack">
-      <Suspense fallback={<LazyFallback />}>
-        <StrategyLab
-          isRunning={isRunning}
-          onParameterChange={(key: string, value: number) =>
-            setParameters((current) => ({ ...current, [key]: value }))
-          }
-          onReset={() => setParameters(defaultParameters)}
-          onRun={handleRun}
-          onStrategyChange={setSelectedStrategy}
-          parameters={parameters}
-          selectedStrategy={selectedStrategy}
-        />
-      </Suspense>
-      <Suspense fallback={<LazyFallback />}>
-        <BacktestResults result={result} />
-      </Suspense>
-      <Suspense fallback={<LazyFallback />}>
-        <StrategyLeaderboard />
-      </Suspense>
-      <Suspense fallback={<LazyFallback />}>
-        <StrategyRobustnessPanel />
-      </Suspense>
-      <Suspense fallback={<LazyFallback />}>
-        <DailyQualityStocks />
-      </Suspense>
-      <Suspense fallback={<LazyFallback />}>
-        <DailyCandidates />
-      </Suspense>
-      <Suspense fallback={<LazyFallback />}>
-        <StrategyCompare results={allStrategyResults} />
-      </Suspense>
-    </div>
+    <StrategyWorkflow
+      activeStage={strategyStage}
+      committedStrategyName={committedStrategyName}
+      hasPendingChanges={strategyWorkflowState.hasPendingChanges}
+      hasRun={strategyWorkflowState.backtestReady}
+      onStageChange={setStrategyStage}
+      selectedStrategyName={selectedStrategyName}
+    >
+      {strategyStage === "configure" && (
+        <Suspense fallback={<LazyFallback />}>
+          <StrategyLab
+            isRunning={isRunning}
+            onParameterChange={(key: string, value: number) =>
+              setParameters((current) => ({ ...current, [key]: value }))
+            }
+            onReset={() => setParameters(defaultParameters)}
+            onRun={handleRun}
+            onStrategyChange={setSelectedStrategy}
+            parameters={parameters}
+            selectedStrategy={selectedStrategy}
+          />
+        </Suspense>
+      )}
+      {strategyStage === "backtest" && strategyWorkflowState.backtestReady && (
+        <>
+          <Suspense fallback={<LazyFallback />}>
+            <BacktestResults result={result} />
+          </Suspense>
+          <Suspense fallback={<LazyFallback />}>
+            <StrategyCompare results={allStrategyResults} />
+          </Suspense>
+        </>
+      )}
+      {strategyStage === "validate" && (
+        <>
+          <Suspense fallback={<LazyFallback />}>
+            <StrategyLeaderboard />
+          </Suspense>
+          <Suspense fallback={<LazyFallback />}>
+            <StrategyRobustnessPanel />
+          </Suspense>
+        </>
+      )}
+      {strategyStage === "observe" && (
+        <>
+          <section className="strategy-observe-band">
+            <div>
+              <span className="section-kicker">Paper 观察</span>
+              <h2>候选池与研究管线</h2>
+              <p>候选结果需要人工复核；当前策略参数不会自动进入本地执行器。</p>
+            </div>
+            <button className="secondary-button" onClick={() => navigate("/learning")} type="button">
+              <BookOpenCheck size={16} />
+              打开研究管线
+              <ArrowRight size={14} />
+            </button>
+          </section>
+          <Suspense fallback={<LazyFallback />}>
+            <DailyQualityStocks />
+          </Suspense>
+          <Suspense fallback={<LazyFallback />}>
+            <DailyCandidates />
+          </Suspense>
+        </>
+      )}
+    </StrategyWorkflow>
   );
 
   const market = (

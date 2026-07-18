@@ -1230,6 +1230,191 @@ select:focus-visible {
 }
 
 /* ============================================================
+   Strategy Workflow
+   ============================================================ */
+.strategy-workflow-shell,
+.strategy-stage-content {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.strategy-workflow {
+  display: grid;
+  gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.strategy-workflow-heading,
+.strategy-observe-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.strategy-workflow-heading h2,
+.strategy-observe-band h2 {
+  margin: 4px 0 0;
+  color: var(--text-heading);
+  font-size: 19px;
+}
+
+.strategy-workflow-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 9px;
+  color: var(--text-secondary);
+  background: var(--bg-panel-hover);
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.strategy-workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.strategy-workflow-steps button {
+  display: grid;
+  grid-template-columns: 22px 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 76px;
+  padding: 11px 12px;
+  color: var(--text-secondary);
+  text-align: left;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+}
+
+.strategy-workflow-steps button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.strategy-workflow-steps button.active {
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  border-color: color-mix(in srgb, var(--color-primary) 42%, var(--border-default));
+  box-shadow: inset 0 -2px 0 var(--color-primary);
+}
+
+.strategy-workflow-steps button:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+}
+
+.strategy-workflow-steps button > span:last-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.strategy-workflow-steps strong,
+.strategy-workflow-steps small {
+  overflow-wrap: anywhere;
+}
+
+.strategy-workflow-steps strong {
+  color: currentColor;
+  font-size: 12px;
+}
+
+.strategy-workflow-steps small {
+  color: var(--text-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.strategy-step-index {
+  display: inline-grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  color: var(--text-muted);
+  background: var(--bg-panel-hover);
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.strategy-context {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  padding: 12px 14px;
+  color: var(--color-positive);
+  background: var(--bg-panel-hover);
+  border-left: 3px solid currentColor;
+}
+
+.strategy-context.warning {
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+}
+
+.strategy-context > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 9px;
+  min-width: 0;
+}
+
+.strategy-context span {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.strategy-context strong {
+  color: var(--text-heading);
+  font-size: 12px;
+}
+
+.strategy-context p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.strategy-context button {
+  min-height: 34px;
+  padding: 6px 10px;
+  color: var(--text-heading);
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.strategy-observe-band {
+  padding: 17px 0;
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.strategy-observe-band p {
+  margin: 5px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+/* ============================================================
    Strategy Cards
    ============================================================ */
 .strategy-grid {
@@ -7194,5 +7379,49 @@ select:focus-visible {
 
   .research-panel-header h2 {
     font-size: 1.03rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .strategy-workflow-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .strategy-context {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+
+  .strategy-context button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .strategy-observe-band {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .strategy-workflow-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .strategy-workflow-steps button {
+    grid-template-columns: 22px minmax(0, 1fr);
+    min-height: 88px;
+  }
+
+  .strategy-workflow-steps button > svg {
+    display: none;
+  }
+
+  .strategy-context > div {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-context p {
+    grid-column: 1;
   }
 }
