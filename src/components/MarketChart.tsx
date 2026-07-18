@@ -1,4 +1,4 @@
-import { BarChart3 } from "lucide-react";
+import { BarChart3, CircleDollarSign, Gauge, TrendingDown, TrendingUp } from "lucide-react";
 import {
   Bar,
   CartesianGrid,
@@ -22,19 +22,44 @@ function findPrimaryIndex(market?: MarketSnapshot): MarketQuote | undefined {
 }
 
 export function buildIndexSnapshotData(index?: MarketQuote) {
-  if (!index) {
-    return intradayData;
-  }
+  return index ? [] : intradayData;
+}
 
-  const points = [
-    { time: "昨收", price: index.previousClose, average: index.previousClose, volume: 0 },
-    { time: "今开", price: index.open ?? index.previousClose, average: index.previousClose, volume: 0 },
-    { time: "最低", price: index.low ?? index.price, average: index.previousClose, volume: 0 },
-    { time: "最新", price: index.price, average: index.previousClose, volume: index.amount ? index.amount / 100_000_000 : 0 },
-    { time: "最高", price: index.high ?? index.price, average: index.previousClose, volume: 0 },
-  ];
+function finitePrice(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) && Number(value) > 0 ? Number(value) : fallback;
+}
 
-  return points.filter((point) => Number.isFinite(point.price) && point.price > 0);
+function boundedPosition(value: number, minimum: number, maximum: number): number {
+  if (maximum <= minimum) return 50;
+  return Math.min(100, Math.max(0, ((value - minimum) / (maximum - minimum)) * 100));
+}
+
+export function buildIndexRangeSnapshot(index: MarketQuote) {
+  const latest = finitePrice(index.price, index.previousClose);
+  const previousClose = finitePrice(index.previousClose, latest);
+  const open = finitePrice(index.open, previousClose);
+  const low = finitePrice(index.low, latest);
+  const high = finitePrice(index.high, latest);
+  const rangeMinimum = Math.min(low, open, latest, previousClose);
+  const rangeMaximum = Math.max(high, open, latest, previousClose);
+
+  return {
+    previousClose,
+    open,
+    low,
+    latest,
+    high,
+    changePercent: index.changePercent,
+    amountBillions: index.amount && index.amount > 0
+      ? index.amount / 100_000_000
+      : null,
+    latestDayRangePercent: boundedPosition(latest, low, high),
+    markers: {
+      previousClose: boundedPosition(previousClose, rangeMinimum, rangeMaximum),
+      open: boundedPosition(open, rangeMinimum, rangeMaximum),
+      latest: boundedPosition(latest, rangeMinimum, rangeMaximum),
+    },
+  };
 }
 
 export function buildPriceDomain(data: Array<{ price: number; average: number }>): [number, number] {
@@ -58,18 +83,96 @@ function formatAsOf(value?: string): string {
 
 export function MarketChart({ market }: MarketChartProps) {
   const primaryIndex = findPrimaryIndex(market);
-  const chartData = buildIndexSnapshotData(primaryIndex);
-  const priceDomain = buildPriceDomain(chartData);
-  const title = primaryIndex ? `${primaryIndex.name} 日内快照` : "分时走势与成交量";
-  const kicker = primaryIndex ? primaryIndex.symbol : "静态演示";
   const asOf = formatAsOf(primaryIndex?.updatedAt ?? market?.marketTime);
+
+  if (primaryIndex) {
+    const snapshot = buildIndexRangeSnapshot(primaryIndex);
+    const isPositive = snapshot.changePercent >= 0;
+    const TrendIcon = isPositive ? TrendingUp : TrendingDown;
+    const priceClass = isPositive ? "positive" : "negative";
+
+    return (
+      <section className="panel market-chart-panel market-range-panel">
+        <div className="panel-header market-range-header">
+          <div>
+            <span className="section-kicker">{primaryIndex.symbol} · {asOf}</span>
+            <h2>{primaryIndex.name} 日内区间</h2>
+          </div>
+          <span className="market-snapshot-badge"><Gauge size={15} /> 行情快照</span>
+        </div>
+
+        <div className="market-range-summary">
+          <div className="market-range-price">
+            <span>最新点位</span>
+            <strong>{snapshot.latest.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}</strong>
+            <small className={priceClass}>
+              <TrendIcon size={15} />
+              {snapshot.changePercent >= 0 ? "+" : ""}{snapshot.changePercent.toFixed(2)}%
+            </small>
+          </div>
+          <div className="market-range-position">
+            <span>日内位置</span>
+            <strong>{snapshot.latestDayRangePercent.toFixed(0)}%</strong>
+            <small>0% 为日内最低，100% 为日内最高</small>
+          </div>
+        </div>
+
+        <div className="market-range-visual" aria-label={`${primaryIndex.name}日内价格区间`}>
+          <div className="market-range-scale">
+            <span>低 {snapshot.low.toFixed(2)}</span>
+            <span>高 {snapshot.high.toFixed(2)}</span>
+          </div>
+          <div className="market-range-track">
+            <span className="market-range-fill" style={{ width: `${snapshot.markers.latest}%` }} />
+            <span
+              aria-label={`昨收 ${snapshot.previousClose.toFixed(2)}`}
+              className="market-range-marker previous"
+              style={{ left: `${snapshot.markers.previousClose}%` }}
+              title={`昨收 ${snapshot.previousClose.toFixed(2)}`}
+            />
+            <span
+              aria-label={`今开 ${snapshot.open.toFixed(2)}`}
+              className="market-range-marker open"
+              style={{ left: `${snapshot.markers.open}%` }}
+              title={`今开 ${snapshot.open.toFixed(2)}`}
+            />
+            <span
+              aria-label={`最新 ${snapshot.latest.toFixed(2)}`}
+              className={`market-range-marker latest ${priceClass}`}
+              style={{ left: `${snapshot.markers.latest}%` }}
+              title={`最新 ${snapshot.latest.toFixed(2)}`}
+            />
+          </div>
+          <div className="market-range-legend">
+            <span><i className="previous" />昨收</span>
+            <span><i className="open" />今开</span>
+            <span><i className={`latest ${priceClass}`} />最新</span>
+          </div>
+        </div>
+
+        <div className="market-range-metrics">
+          <div><span>昨收</span><strong>{snapshot.previousClose.toFixed(2)}</strong></div>
+          <div><span>今开</span><strong>{snapshot.open.toFixed(2)}</strong></div>
+          <div><span>振幅区间</span><strong>{snapshot.low.toFixed(2)} - {snapshot.high.toFixed(2)}</strong></div>
+          <div>
+            <span><CircleDollarSign size={13} /> 成交额</span>
+            <strong>{snapshot.amountBillions === null ? "—" : `${snapshot.amountBillions.toFixed(1)} 亿`}</strong>
+          </div>
+        </div>
+        <p className="market-range-note">关键价位快照，不是按分钟连续的分时走势。</p>
+      </section>
+    );
+  }
+
+  const chartData = buildIndexSnapshotData();
+  const priceDomain = buildPriceDomain(chartData);
 
   return (
     <section className="panel market-chart-panel">
       <div className="panel-header">
         <div>
-          <span className="section-kicker">{kicker} · {asOf}</span>
-          <h2>{title}</h2>
+          <span className="section-kicker">静态演示 · {asOf}</span>
+          <h2>分时走势与成交量</h2>
         </div>
         <BarChart3 size={20} />
       </div>

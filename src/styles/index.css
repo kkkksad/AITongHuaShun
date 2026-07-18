@@ -886,6 +886,201 @@ select:focus-visible {
   height: 390px;
 }
 
+.market-range-panel {
+  min-height: 430px;
+}
+
+.market-range-header,
+.market-range-summary,
+.market-range-scale,
+.market-range-legend,
+.market-snapshot-badge {
+  display: flex;
+  align-items: center;
+}
+
+.market-range-header,
+.market-range-scale {
+  justify-content: space-between;
+}
+
+.market-snapshot-badge {
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  background: var(--bg-panel-hover);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.market-range-summary {
+  justify-content: space-between;
+  gap: 24px;
+  margin: 22px 0 30px;
+}
+
+.market-range-price > span,
+.market-range-position > span,
+.market-range-metrics span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.market-range-price > strong {
+  display: block;
+  margin: 3px 0 4px;
+  color: var(--text-heading);
+  font-size: 34px;
+  font-variant-numeric: tabular-nums;
+}
+
+.market-range-price small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+}
+
+.market-range-position {
+  min-width: 180px;
+  padding-left: 18px;
+  border-left: 1px solid var(--border-light);
+}
+
+.market-range-position strong,
+.market-range-position small {
+  display: block;
+}
+
+.market-range-position strong {
+  margin: 3px 0;
+  color: var(--text-heading);
+  font-size: 20px;
+}
+
+.market-range-position small,
+.market-range-note {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.market-range-visual {
+  padding: 0 4px;
+}
+
+.market-range-scale {
+  margin-bottom: 11px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.market-range-track {
+  position: relative;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border-light);
+}
+
+.market-range-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  max-width: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  opacity: 0.28;
+}
+
+.market-range-marker {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 22px;
+  transform: translate(-50%, -50%);
+  background: var(--text-muted);
+}
+
+.market-range-marker.open {
+  height: 16px;
+  background: var(--text-secondary);
+}
+
+.market-range-marker.latest {
+  width: 12px;
+  height: 12px;
+  border: 3px solid var(--bg-panel);
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 1px currentColor;
+}
+
+.market-range-legend {
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 11px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.market-range-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.market-range-legend i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.market-range-legend i.open {
+  background: var(--text-secondary);
+}
+
+.market-range-legend i.latest {
+  background: currentColor;
+}
+
+.market-range-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 24px;
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.market-range-metrics > div {
+  min-width: 0;
+  padding: 13px 11px;
+  border-right: 1px solid var(--border-light);
+}
+
+.market-range-metrics > div:last-child {
+  border-right: 0;
+}
+
+.market-range-metrics span,
+.market-range-metrics strong {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.market-range-metrics strong {
+  margin-top: 5px;
+  color: var(--text-heading);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.market-range-note {
+  margin: 10px 0 0;
+}
+
 .flow-chart {
   width: 100%;
   height: 275px;
