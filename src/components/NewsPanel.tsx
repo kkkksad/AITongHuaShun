@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, Newspaper, RadioTower } from "lucide-react";
+import { AlertTriangle, Clock3, ExternalLink, Newspaper, RadioTower } from "lucide-react";
 import {
   fetchRealResearchDataFeed,
   type RealNewsItem,
   type RealResearchDataFeed,
 } from "../lib/tradingApi";
+import { formatResearchDataTime, getResearchRefreshState } from "../lib/researchQueryPresentation";
 
 const sentimentLabels = {
   positive: "偏多",
@@ -51,6 +52,10 @@ export function NewsPanel() {
   const newsItems = feed?.news.items ?? [];
   const visibleNews = newsItems.slice(0, 5);
   const warning = feed?.news.warning ?? feed?.globalMarkets.warning ?? null;
+  const refreshState = getResearchRefreshState({
+    hasData: Boolean(feed),
+    isError: realDataQuery.isError,
+  });
 
   return (
     <section className="panel news-panel">
@@ -85,6 +90,16 @@ export function NewsPanel() {
       ) : null}
       {realDataQuery.isLoading ? (
         <div className="news-empty">正在读取真实新闻和全球市场数据…</div>
+      ) : refreshState.showBlockingError ? (
+        <div className="news-warning">
+          <AlertTriangle size={15} />
+          真实新闻与外围市场暂不可用，请检查 API 与 AkShare 行情桥接。
+        </div>
+      ) : refreshState.showStaleWarning ? (
+        <div className="news-warning">
+          <Clock3 size={15} />
+          本次刷新失败，继续显示缓存数据 · 上次成功更新 {formatResearchDataTime(realDataQuery.dataUpdatedAt)}
+        </div>
       ) : warning ? (
         <div className="news-warning">{warning}</div>
       ) : null}
