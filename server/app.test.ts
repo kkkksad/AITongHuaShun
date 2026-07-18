@@ -130,6 +130,77 @@ describe("trading API", () => {
     });
   });
 
+  it("returns an idle bounded API performance snapshot without recording itself", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/system/performance",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toMatchObject({
+      state: "idle",
+      window: {
+        maxRoutes: 64,
+        samplesPerRoute: 128,
+        slowThresholdMs: 1_500,
+      },
+      totals: {
+        requests: 0,
+        failures: 0,
+        inFlight: 0,
+      },
+      routes: [],
+      runtime: {
+        mode: "mock",
+        marketDataProvider: "mock",
+        realTradingEnabled: false,
+        websocketConnections: 0,
+        marketQuality: {
+          state: expect.stringMatching(/healthy|degraded|unusable/),
+          overall: expect.any(Number),
+          freshness: expect.any(Number),
+          validSymbols: expect.any(Number),
+          requestedSymbols: expect.any(Number),
+          issueCount: expect.any(Number),
+        },
+      },
+    });
+    expect(JSON.stringify(response.json())).not.toMatch(
+      /cookie|csrf|password|token|requestBody|responseBody/i,
+    );
+  });
+
+  it("aggregates completed business requests by route template", async () => {
+    const account = await app.inject({ method: "GET", url: "/api/account" });
+    expect(account.statusCode).toBe(200);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/system/performance",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      state: "healthy",
+      totals: {
+        requests: 1,
+        failures: 0,
+        inFlight: 0,
+      },
+      routes: [
+        {
+          method: "GET",
+          route: "/api/account",
+          requestCount: 1,
+          failureCount: 0,
+          lastStatus: 200,
+          p95Ms: expect.any(Number),
+        },
+      ],
+    });
+  });
+
   it("protects APIs, metrics, docs, and mutations with a server session", async () => {
     const password = "correct-horse-battery-staple";
     const authApp = await buildTradingApp({
@@ -145,6 +216,7 @@ describe("trading API", () => {
       for (const url of [
         "/api/capabilities",
         "/api/account",
+        "/api/system/performance",
         "/api/research/daily-review",
         "/api/research/strategy-robustness",
         "/api/research/cross-market-strategy-context",
@@ -420,6 +492,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/orders");
     expect(response.json().paths).toHaveProperty("/api/capabilities");
     expect(response.json().paths).toHaveProperty("/api/market/quality");
+    expect(response.json().paths).toHaveProperty("/api/system/performance");
     expect(response.json().paths).toHaveProperty("/api/research/strategy-leaderboard");
     expect(response.json().paths).toHaveProperty("/api/research/strategy-robustness");
     expect(response.json().paths).toHaveProperty("/api/research/cross-market-strategy-context");

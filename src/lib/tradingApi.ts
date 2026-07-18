@@ -9,6 +9,7 @@ import type {
   RiskLimits,
   TradingMode,
 } from "../../shared/trading";
+import type { ApiPerformanceSnapshot } from "../../shared/systemMonitoring";
 import { ApiRequestError } from "./apiError";
 
 export interface HealthSnapshot {
@@ -1556,6 +1557,14 @@ export function fetchMarketDataQuality(
   signal?: AbortSignal,
 ): Promise<DataQualityReport> {
   return authApiRequest<DataQualityReport>("/api/market/quality", { signal });
+}
+
+export function fetchApiPerformance(
+  signal?: AbortSignal,
+): Promise<ApiPerformanceSnapshot> {
+  return authApiRequest<ApiPerformanceSnapshot>("/api/system/performance", {
+    signal,
+  });
 }
 
 export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> {

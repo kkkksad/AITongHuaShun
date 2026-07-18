@@ -18,13 +18,15 @@ import {
   formatAdaptiveCapitalPacing,
 } from "../lib/adaptiveStrategyPresentation";
 import {
-  fetchDailyCandidates,
-  fetchDailyMarketReview,
   fetchLearningState,
-  fetchPaperTradingPlan,
   fetchSelfOptimizationStatus,
-  fetchStrategyLeaderboard,
 } from "../lib/tradingApi";
+import {
+  dailyCandidatesQueryOptions,
+  dailyMarketReviewQueryOptions,
+  paperTradingPlanQueryOptions,
+  strategyLeaderboardQueryOptions,
+} from "../lib/researchQueries";
 
 const stageIcons = {
   done: Check,
@@ -34,35 +36,16 @@ const stageIcons = {
 };
 
 export default function LearningPipeline() {
-  const leaderboardQuery = useQuery({
-    queryKey: ["strategy-leaderboard", "pipeline", 120],
-    queryFn: () => fetchStrategyLeaderboard(120),
-    staleTime: 60_000,
-  });
-  const candidatesQuery = useQuery({
-    queryKey: ["daily-candidates", "pipeline", 24],
-    queryFn: () => fetchDailyCandidates(24),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
+  const leaderboardQuery = useQuery(strategyLeaderboardQueryOptions(120));
+  const candidatesQuery = useQuery(dailyCandidatesQueryOptions(24));
   const learningStateQuery = useQuery({
     queryKey: ["learning-state"],
     queryFn: fetchLearningState,
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
-  const paperPlanQuery = useQuery({
-    queryKey: ["paper-trading-plan"],
-    queryFn: fetchPaperTradingPlan,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
-  const dailyReviewQuery = useQuery({
-    queryKey: ["daily-market-review"],
-    queryFn: fetchDailyMarketReview,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
+  const paperPlanQuery = useQuery(paperTradingPlanQueryOptions());
+  const dailyReviewQuery = useQuery(dailyMarketReviewQueryOptions());
   const selfOptimizationQuery = useQuery({
     queryKey: ["self-optimization-status"],
     queryFn: fetchSelfOptimizationStatus,

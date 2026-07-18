@@ -49,6 +49,8 @@
 - **纸面账户纯现金启动配置** —— `TRADING_STARTING_CASH` 控制新建本地模拟账户初始资金，`TRADING_SEED_PORTFOLIO=false` 可关闭默认演示持仓种子，用于从 10000 元纯现金开始做本地 paper 观察。
 - **大盘指数展示修正** —— 主要指数卡片在 AkShare 模式下显示指数成交额，市场页指数图表改为使用当前后端指数快照，不再把静态模拟分时图伪装成实时大盘走势。
 - **行情质量与真实指数空状态** —— `/api/market/quality` 按请求股票池计算有效覆盖，使用整批报价低 10% 分位新鲜度，并区分合法创业板/科创板 20%、北交所 30% 涨跌停与越界价格异常；A 股概览每 30 秒显示 `healthy / degraded / unusable` 只读状态，接口使用私有 5 秒短缓存。主要指数缺失时不再使用静态指数数值补位。质量状态不参与策略路由、风险限额或订单。
+- **有界 API 性能诊断** —— `/api/system/performance` 按 Fastify 路由模板聚合业务请求，最多保留 64 条路由、每路由 128 个耗时样本，输出滚动 P50/P95、平均/最大耗时、`429/5xx` 失败率、慢请求、在途数和当前行情质量；不记录查询值、正文或凭据，不写磁盘，也不影响策略和订单。模拟账户“运维 > 监控”已升级为 15 秒轮询的诊断台。
+- **研究请求去重** —— `src/lib/researchQueries.ts` 统一策略榜、候选扫描、Paper 计划和每日复盘的 Query Key、stale 时间及轮询周期；研究管线不再用 `pipeline` 展示位置拆分相同参数缓存，减少重复 REST 请求和后端计算。
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
 - **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 新增 `qualitySummary`，返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额和现金使用比例；研究管线页面展示该诊断，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1 或持仓约束保持观望。
@@ -139,6 +141,7 @@ GET  /api/capabilities
 GET  /metrics                              (Prometheus 指标)
 GET  /api/market/snapshot
 GET  /api/market/quality
+GET  /api/system/performance
 GET  /api/research/strategy-leaderboard?bars=120
 GET  /api/research/daily-candidates?limit=24
 GET  /api/research/daily-quality-stocks?limit=30
@@ -179,6 +182,15 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-19 bounded API observability and query reuse upgrade
+Server Vitest: 47 files, 750 tests passed
+Web Vitest: 25 files, 82 tests passed
+TypeScript checks and Vite production build passed; 2,316 modules transformed
+
+Authenticated paper + akshare runtime exposed the protected performance endpoint without external fetching. The clean monitor page reported healthy API and healthy market quality, excluded auth and observer endpoints from business routes, and retained only route templates, status, and bounded timing summaries.
+
+Browser checks: desktop body 1265/1265 with four 231.7px summary columns and no header overlap; 390px viewport body 375/375 with a 354.7px monitor, one-column summaries, and the 760px route table contained by a 355px internal scroller. Manual refresh worked, and a fresh final tab had no console warnings or errors.
+
 2026-07-19 market data quality and market-page trust upgrade
 Server Vitest: 46 files, 740 tests passed
 Web Vitest: 23 files, 74 tests passed

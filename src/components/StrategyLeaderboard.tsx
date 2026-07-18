@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, BarChart3, RefreshCw, ShieldCheck, Target, Trophy } from "lucide-react";
 import { ResearchQueryState } from "./ResearchQueryState";
-import { fetchStrategyLeaderboard } from "../lib/tradingApi";
 import type { StrategyLeaderboardEntry } from "../lib/tradingApi";
+import { strategyLeaderboardQueryOptions } from "../lib/researchQueries";
 
 function formatPercent(value: number): string {
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
@@ -41,11 +41,7 @@ function qualityColor(score: number): string {
 }
 
 export function StrategyLeaderboard() {
-  const leaderboardQuery = useQuery({
-    queryKey: ["strategy-leaderboard", 120],
-    queryFn: () => fetchStrategyLeaderboard(120),
-    staleTime: 60_000,
-  });
+  const leaderboardQuery = useQuery(strategyLeaderboardQueryOptions(120));
 
   const report = leaderboardQuery.data;
   const entries = report?.entries ?? [];

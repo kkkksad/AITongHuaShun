@@ -512,95 +512,378 @@
    System Metrics Panel
    ============================================================ */
 
-.metrics-panel {
-  display: flex;
-  flex-direction: column;
+.system-monitor-shell,
+.system-monitor,
+.system-route-section,
+.system-route-table-wrap {
+  min-width: 0;
+}
+
+.system-monitor {
+  display: grid;
   gap: 16px;
 }
 
-.metrics-grid {
+.system-monitor-header,
+.system-monitor-header-actions,
+.system-monitor-state,
+.system-route-heading,
+.system-monitor-footnote {
+  display: flex;
+  align-items: center;
+}
+
+.system-monitor-header {
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.system-monitor-header h2,
+.system-route-heading h3 {
+  margin: 2px 0 0;
+  color: var(--text-heading);
+  letter-spacing: 0;
+}
+
+.system-monitor-header h2 {
+  font-size: 18px;
+}
+
+.system-monitor-header p {
+  margin: 5px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.system-monitor-header-actions {
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.system-monitor-state {
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.system-monitor-state.tone-positive {
+  border-color: color-mix(in srgb, var(--color-positive) 40%, var(--border-default));
+  background: var(--color-positive-bg);
+}
+
+.system-monitor-state.tone-warning,
+.system-monitor-state.tone-danger {
+  border-color: color-mix(in srgb, currentColor 35%, var(--border-default));
+}
+
+.system-monitor-summary,
+.system-runtime-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
 }
 
-.metric-card {
-  padding: 16px;
-  background: var(--bg-panel);
+.system-monitor-summary {
+  gap: 10px;
+}
+
+.system-monitor-summary article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  min-height: 112px;
+  padding: 14px;
   border: 1px solid var(--border-default);
   border-radius: 8px;
-  text-align: center;
+  background: var(--bg-panel);
 }
 
-.metric-card .metric-label {
-  display: block;
+.system-monitor-summary article > span,
+.system-runtime-strip span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   color: var(--text-muted);
   font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  margin-bottom: 6px;
 }
 
-.metric-card .metric-value {
-  display: block;
-  color: var(--text-primary);
-  font-size: 24px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+.system-monitor-summary strong {
+  align-self: end;
+  color: var(--text-heading);
+  font-size: 19px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
-.metric-card .metric-unit {
-  display: block;
+.system-monitor-summary small,
+.system-runtime-strip small,
+.system-route-heading small {
   color: var(--text-muted);
   font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.system-runtime-strip {
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-panel-alt);
+}
+
+.system-runtime-strip > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px 14px;
+  border-right: 1px solid var(--border-light);
+}
+
+.system-runtime-strip > div:last-child {
+  border-right: 0;
+}
+
+.system-runtime-strip strong {
+  color: var(--text-heading);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.quality-healthy {
+  color: var(--color-positive) !important;
+}
+
+.quality-degraded {
+  color: var(--color-warning) !important;
+}
+
+.quality-unusable {
+  color: var(--color-negative) !important;
+}
+
+.system-recommendations {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--color-warning);
+  background: var(--color-warning-bg);
+}
+
+.system-recommendations > svg {
+  flex: 0 0 auto;
   margin-top: 2px;
-}
-
-.metric-card.metric-green .metric-value {
-  color: var(--color-positive);
-}
-
-.metric-card.metric-red .metric-value {
-  color: var(--color-negative);
-}
-
-.metric-card.metric-amber .metric-value {
   color: var(--color-warning);
 }
 
-.metrics-endpoint {
-  padding: 14px 18px;
+.system-recommendations.state-healthy {
+  border-left-color: var(--color-positive);
+  background: var(--color-positive-bg);
+}
+
+.system-recommendations.state-healthy > svg {
+  color: var(--color-positive);
+}
+
+.system-recommendations.state-idle {
+  border-left-color: var(--border-strong);
   background: var(--bg-panel-alt);
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
 }
 
-.metrics-endpoint p {
-  margin: 0;
+.system-recommendations.state-idle > svg {
+  color: var(--text-muted);
+}
+
+.system-recommendations strong {
+  color: var(--text-heading);
+  font-size: 11px;
+}
+
+.system-recommendations p {
+  margin: 4px 0 0;
   color: var(--text-secondary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.system-route-section {
+  display: grid;
+  gap: 10px;
+}
+
+.system-route-heading {
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.system-route-heading h3 {
+  font-size: 14px;
+}
+
+.system-route-heading small {
+  text-align: right;
+}
+
+.system-route-table-wrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.system-route-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.system-route-table th,
+.system-route-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--border-light);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.system-route-table th {
+  color: var(--text-muted);
+  background: var(--bg-panel-alt);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.system-route-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.system-route-table td {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.system-route-table code {
+  color: var(--text-heading);
+  font-size: 10px;
+}
+
+.system-route-table strong {
+  color: var(--text-heading);
+}
+
+.system-route-method,
+.system-status-code {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.system-route-method {
+  color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.system-status-code {
+  justify-content: center;
+  min-width: 36px;
+}
+
+.system-monitor-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 88px;
+  padding: 14px;
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-muted);
+  background: var(--bg-panel-alt);
+}
+
+.system-monitor-empty > div {
+  display: grid;
+  gap: 3px;
+}
+
+.system-monitor-empty strong {
+  color: var(--text-heading);
   font-size: 12px;
 }
 
-.metrics-endpoint code {
-  display: inline-block;
-  margin-top: 6px;
-  padding: 4px 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-input);
-  border-radius: 4px;
-  color: var(--color-primary);
-  font-size: 12px;
+.system-monitor-empty span {
+  font-size: 10px;
+}
+
+.system-monitor-footnote {
+  gap: 7px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.system-monitor-loading {
+  min-height: 74px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.system-monitor-shell > .research-empty,
+.system-monitor-shell > .research-alert {
+  margin-top: 12px;
 }
 
 @media (max-width: 980px) {
-  .metrics-grid {
+  .system-monitor-summary,
+  .system-runtime-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .system-runtime-strip > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .system-runtime-strip > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--border-light);
   }
 }
 
-@media (max-width: 480px) {
-  .metrics-grid {
+@media (max-width: 560px) {
+  .system-monitor-header,
+  .system-route-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .system-monitor-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .system-route-heading small {
+    text-align: left;
+  }
+}
+
+@media (max-width: 420px) {
+  .system-monitor-summary,
+  .system-runtime-strip {
     grid-template-columns: 1fr;
+  }
+
+  .system-runtime-strip > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  .system-runtime-strip > div:last-child {
+    border-bottom: 0;
   }
 }

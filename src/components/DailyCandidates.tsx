@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, RefreshCw, ShieldCheck, Target } from "lucide-react";
 import { paginateItems } from "../lib/pagination";
-import { fetchDailyCandidates } from "../lib/tradingApi";
 import type { DailyCandidate, DailyCandidateAction } from "../lib/tradingApi";
+import { dailyCandidatesQueryOptions } from "../lib/researchQueries";
 import { ResearchQueryState } from "./ResearchQueryState";
 
 const PAGE_SIZE = 8;
@@ -37,12 +37,7 @@ function candidateReason(candidate: DailyCandidate): string {
 
 export function DailyCandidates() {
   const [page, setPage] = useState(1);
-  const candidatesQuery = useQuery({
-    queryKey: ["daily-candidates", 24],
-    queryFn: () => fetchDailyCandidates(24),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
+  const candidatesQuery = useQuery(dailyCandidatesQueryOptions(24));
 
   const report = candidatesQuery.data;
   const candidates = report?.candidates ?? [];

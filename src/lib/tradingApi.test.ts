@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTH_EXPIRED_EVENT,
+  fetchApiPerformance,
   fetchAuditEvents,
   fetchCrossMarketStrategyContext,
   fetchExternalMarketImpact,
@@ -130,6 +131,28 @@ describe("session-aware trading API", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/market\/quality$/),
+      expect.objectContaining({
+        credentials: "include",
+        signal: controller.signal,
+      }),
+    );
+  });
+
+  it("requests bounded API performance with cookie auth and forwards cancellation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        state: "idle",
+        totals: { requests: 0 },
+        routes: [],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await fetchApiPerformance(controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/system\/performance$/),
       expect.objectContaining({
         credentials: "include",
         signal: controller.signal,

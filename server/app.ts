@@ -8,6 +8,7 @@ import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { performance } from "node:perf_hooks";
 import { z, ZodError } from "zod";
 import type {
   AccountSnapshot,
@@ -42,6 +43,10 @@ import {
 } from "./monitoring/exportUtils";
 import type { ExportFormat } from "./monitoring/exportUtils";
 import { queryLogEntries } from "./monitoring/logQuery";
+import {
+  RequestTelemetry,
+  shouldTrackTelemetryRequest,
+} from "./monitoring/requestTelemetry";
 import type { LogEntry } from "./logger";
 import { PaperPlanNotifier } from "./notifications/paperPlanNotifier";
 import { WxPusherClient } from "./notifications/wxPusherClient";
@@ -258,6 +263,9 @@ export async function buildTradingApp(
   const system = options.system ?? createTradingSystem(options.config);
   const hub = new WebSocketHub();
   const researchStore = new InMemoryResearchStore();
+  const requestTelemetry = new RequestTelemetry();
+  const requestStartTimes = new WeakMap<object, number>();
+  const telemetryRequests = new WeakSet<object>();
   const authConfig = options.config.AUTH_ENABLED
     ? getAuthConfig(options.config)
     : null;
@@ -350,20 +358,42 @@ export async function buildTradingApp(
 
   // ── HTTP request timing hook ─────────────────────────────
   app.addHook("onRequest", async (request) => {
-    (request as unknown as Record<string, unknown>).__startTime = Date.now();
+    requestStartTimes.set(request, performance.now());
+    const route = request.routeOptions.url ?? request.url;
+    if (shouldTrackTelemetryRequest(request.method, route)) {
+      telemetryRequests.add(request);
+      requestTelemetry.startRequest();
+    }
   });
 
   app.addHook("onResponse", async (request, reply) => {
-    const start = (request as unknown as Record<string, number>).__startTime;
-    if (start) {
-      const duration = (Date.now() - start) / 1000;
+    const start = requestStartTimes.get(request);
+    if (start !== undefined) {
+      const durationMs = Math.max(0, performance.now() - start);
+      const route = request.routeOptions.url ?? request.url;
       recordHttpRequest(
         request.method,
-        request.routeOptions.url ?? request.url,
+        route,
         reply.statusCode,
-        duration,
+        durationMs / 1000,
       );
+      if (telemetryRequests.has(request)) {
+        telemetryRequests.delete(request);
+        requestTelemetry.finishRequest({
+          method: request.method,
+          route,
+          statusCode: reply.statusCode,
+          durationMs,
+        });
+      }
     }
+  });
+
+  app.addHook("onRequestAbort", async (request) => {
+    if (!telemetryRequests.has(request)) return;
+    telemetryRequests.delete(request);
+    requestTelemetry.cancelRequest();
+    requestStartTimes.delete(request);
   });
 
   // ── Broadcast helpers ───────────────────────────────────
@@ -383,6 +413,26 @@ export async function buildTradingApp(
     }
     const riskState = system.risk.getState();
     recordCircuitBreaker(riskState.circuitState === "tripped");
+  };
+
+  const requestedMarketSymbols = options.config.MARKET_SYMBOLS
+    .split(",")
+    .map((symbol) => symbol.trim())
+    .filter((symbol) => /^\d{6}$/.test(symbol));
+
+  const currentMarketQuality = () => {
+    let cacheAgeSec: number | null = null;
+    if ("getLastFetchSuccessMs" in system.market) {
+      const lastMs = (system.market as { getLastFetchSuccessMs(): number })
+        .getLastFetchSuccessMs();
+      if (lastMs > 0) cacheAgeSec = (Date.now() - lastMs) / 1000;
+    }
+    return computeDataQuality(
+      system.market.getSnapshot(),
+      system.marketDataProvider,
+      requestedMarketSymbols,
+      cacheAgeSec,
+    );
   };
 
   system.market.on("snapshot", (snapshot: MarketSnapshot) => {
@@ -521,6 +571,49 @@ export async function buildTradingApp(
     timestamp: new Date().toISOString(),
   }));
 
+  app.get("/api/system/performance", {
+    schema: {
+      tags: ["监控"],
+      summary: "获取有界 API 性能诊断",
+      description:
+        "返回当前 Fastify 进程内按路由模板聚合的有限耗时样本、服务端失败和行情质量摘要；不记录请求内容、查询值或凭据。",
+    },
+  }, async () => {
+    const telemetry = requestTelemetry.snapshot();
+    const quality = currentMarketQuality();
+    const coverageIssues = Math.max(
+      0,
+      quality.requestedSymbols - quality.validSymbols,
+    );
+    const issueCount = coverageIssues + quality.score.staleCount +
+      quality.score.anomalyPriceCount + quality.score.adjustmentWarningCount;
+    const qualityRecommendation = quality.qualityState === "healthy"
+      ? []
+      : ["行情质量已降级，先核对覆盖、新鲜度和异常报价，再解读研究结果。"];
+
+    return {
+      ...telemetry,
+      recommendations: [
+        ...qualityRecommendation,
+        ...telemetry.recommendations,
+      ].slice(0, 3),
+      runtime: {
+        mode: options.config.MARKET_MODE,
+        marketDataProvider: system.marketDataProvider,
+        realTradingEnabled: options.config.REAL_TRADING_ENABLED,
+        websocketConnections: hub.connectionCount,
+        marketQuality: {
+          state: quality.qualityState,
+          overall: quality.score.overall,
+          freshness: quality.score.freshness,
+          validSymbols: quality.validSymbols,
+          requestedSymbols: quality.requestedSymbols,
+          issueCount,
+        },
+      },
+    };
+  });
+
   app.get("/api/capabilities", {
     schema: {
       tags: ["系统"],
@@ -607,27 +700,7 @@ export async function buildTradingApp(
       "Cache-Control",
       "private, max-age=5, stale-while-revalidate=15",
     );
-    const snapshot = system.market.getSnapshot();
-
-    let cacheAgeSec: number | null = null;
-    if ("getLastFetchSuccessMs" in system.market) {
-      const lastMs = (system.market as { getLastFetchSuccessMs(): number }).getLastFetchSuccessMs();
-      if (lastMs > 0) {
-        cacheAgeSec = (Date.now() - lastMs) / 1000;
-      }
-    }
-
-    const requestedSymbols = options.config.MARKET_SYMBOLS
-      .split(",")
-      .map((s) => s.trim())
-      .filter((s) => /^\d{6}$/.test(s));
-
-    return computeDataQuality(
-      snapshot,
-      system.marketDataProvider,
-      requestedSymbols,
-      cacheAgeSec,
-    );
+    return currentMarketQuality();
   });
 
   app.get("/api/research/strategy-leaderboard", {

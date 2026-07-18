@@ -9,11 +9,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { buildDailyTaskCenterModel, type DailyTaskState } from "../lib/dailyTaskCenter";
+import { fetchPaperAutoExecutionStatus } from "../lib/tradingApi";
 import {
-  fetchDailyMarketReview,
-  fetchPaperAutoExecutionStatus,
-  fetchPaperTradingPlan,
-} from "../lib/tradingApi";
+  dailyMarketReviewQueryOptions,
+  paperTradingPlanQueryOptions,
+} from "../lib/researchQueries";
 
 interface DailyTaskCenterProps {
   onOpenLearning: () => void;
@@ -51,18 +51,8 @@ export function DailyTaskCenter({
   onOpenMarket,
   onOpenOrders,
 }: DailyTaskCenterProps) {
-  const planQuery = useQuery({
-    queryKey: ["paper-trading-plan"],
-    queryFn: fetchPaperTradingPlan,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
-  const reviewQuery = useQuery({
-    queryKey: ["daily-market-review"],
-    queryFn: fetchDailyMarketReview,
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
+  const planQuery = useQuery(paperTradingPlanQueryOptions());
+  const reviewQuery = useQuery(dailyMarketReviewQueryOptions());
   const executionQuery = useQuery({
     queryKey: ["paper-auto-execution-status"],
     queryFn: fetchPaperAutoExecutionStatus,

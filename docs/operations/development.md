@@ -163,6 +163,8 @@ npm run check:a-share
 
 A 股概览还会每 30 秒读取一次受保护的 `/api/market/quality`。该接口只计算当前内存快照，响应使用 `Cache-Control: private, max-age=5, stale-while-revalidate=15`，不会额外调用 AkShare。覆盖率按请求股票池计算，新鲜度取整批报价低 10% 分位；`healthy / degraded / unusable` 仅表示数据可用性。主要指数未返回时页面显示空状态，不用 `mockData.ts` 的静态指数补位。
 
+模拟账户的“运维 > 监控”每 15 秒读取受保护的 `/api/system/performance`。该接口使用 `no-store`，只返回当前 Fastify 进程内最多 64 条路由、每路由 128 个耗时样本的聚合，以及当前行情质量和 WebSocket 数；不会写磁盘、调用 AkShare 或保存查询值、正文、Cookie、Token。`429` 和 `5xx` 进入服务失败率，普通 `4xx` 参数错误只显示最近状态。
+
 默认地址：
 
 - 前端：`http://127.0.0.1:4173/`
@@ -341,6 +343,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/capabilities -WebSession $KairosSess
 Invoke-RestMethod http://127.0.0.1:8787/api/account -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/market/snapshot -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/market/quality -WebSession $KairosSession
+Invoke-RestMethod http://127.0.0.1:8787/api/system/performance -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/strategy-leaderboard -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-candidates -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/daily-quality-stocks -WebSession $KairosSession
