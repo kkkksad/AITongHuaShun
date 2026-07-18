@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
-  Clock3,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -25,10 +24,7 @@ import {
   type StockTrendForecastReport,
   type StockTrendOutlook,
 } from "../lib/tradingApi";
-import {
-  formatResearchDataTime,
-  getResearchRefreshState,
-} from "../lib/researchQueryPresentation";
+import { ResearchQueryState } from "./ResearchQueryState";
 
 const directionLabels: Record<StockTrendDirection, string> = {
   bullish: "偏强",
@@ -207,10 +203,6 @@ export function StockTrendForecastPanel() {
     staleTime: 10 * 60_000,
   });
   const report = trendQuery.data;
-  const refreshState = getResearchRefreshState({
-    hasData: Boolean(report),
-    isError: trendQuery.isError,
-  });
 
   function runQuery(value: string) {
     const normalized = value.trim();
@@ -264,25 +256,14 @@ export function StockTrendForecastPanel() {
         </button>
       </form>
 
-      {trendQuery.isLoading && (
-        <div className="research-empty">正在读取真实行情与历史日线…</div>
-      )}
-
-      {refreshState.showBlockingError && (
-        <div className="research-alert">
-          <AlertTriangle size={16} />
-          <span>{trendQuery.error instanceof Error ? trendQuery.error.message : "趋势研究暂不可用。"}</span>
-        </div>
-      )}
-
-      {refreshState.showStaleWarning && (
-        <div className="research-alert regime-warning">
-          <Clock3 size={16} />
-          <span>
-            本次刷新失败，继续显示缓存数据 · 上次成功更新 {formatResearchDataTime(trendQuery.dataUpdatedAt)}
-          </span>
-        </div>
-      )}
+      <ResearchQueryState
+        dataUpdatedAt={trendQuery.dataUpdatedAt}
+        hasData={Boolean(report)}
+        isError={trendQuery.isError}
+        isLoading={trendQuery.isLoading}
+        loadingText="正在读取真实行情与历史日线…"
+        unavailableText={trendQuery.error instanceof Error ? trendQuery.error.message : "趋势研究暂不可用。"}
+      />
 
       {report?.resolution === "ambiguous" && (
         <AmbiguousMatches onSelect={runQuery} report={report} />
