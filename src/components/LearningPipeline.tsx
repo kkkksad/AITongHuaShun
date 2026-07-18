@@ -11,6 +11,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { pipelineStages } from "../data/mockData";
+import { ResearchQueryState } from "./ResearchQueryState";
 import {
   adaptivePostureLabel,
   adaptiveRegimeLabel,
@@ -130,6 +131,14 @@ export default function LearningPipeline() {
             </div>
             <Database size={19} />
           </div>
+          <ResearchQueryState
+            hasData={Boolean(learningState)}
+            isLoading={learningStateQuery.isLoading}
+            isError={learningStateQuery.isError}
+            dataUpdatedAt={learningStateQuery.dataUpdatedAt}
+            loadingText="正在加载研究记忆…"
+            unavailableText="研究记忆暂不可用，请稍后重试。"
+          />
           <div className="learning-memory-grid">
             <article>
               <span>行情样本</span>
