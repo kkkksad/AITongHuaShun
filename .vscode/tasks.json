@@ -6,6 +6,12 @@
       "type": "npm",
       "script": "dev:a-share",
       "isBackground": true,
+      "options": {
+        "env": {
+          "NO_COLOR": "1",
+          "FORCE_COLOR": "0"
+        }
+      },
       "problemMatcher": {
         "owner": "kairos-dev",
         "pattern": {
@@ -15,7 +21,7 @@
         "background": {
           "activeOnStart": true,
           "beginsPattern": ".*",
-          "endsPattern": "Local:\\s+http://127\\.0\\.0\\.1:4173/"
+          "endsPattern": ".*127\\.0\\.0\\.1:4173.*"
         }
       },
       "presentation": {

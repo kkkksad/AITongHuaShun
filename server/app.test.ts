@@ -2,7 +2,24 @@ import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildTradingApp } from "./app";
 import { hashPassword } from "./auth";
+import { createTradingSystem } from "./system";
 import { createTestConfig } from "./test/testConfig";
+
+async function useGrowthPaperProfile(app: FastifyInstance): Promise<void> {
+  const response = await app.inject({
+    method: "PUT",
+    url: "/api/account/strategy-profile",
+    payload: { strategyProfile: "growth" },
+  });
+  expect(response.statusCode).toBe(200);
+}
+
+function todayAtChinaTime(time: string): Date {
+  const chinaDate = new Date(Date.now() + 8 * 60 * 60_000)
+    .toISOString()
+    .slice(0, 10);
+  return new Date(`${chinaDate}T${time}+08:00`);
+}
 
 describe("trading API", () => {
   let app: FastifyInstance;
@@ -31,6 +48,73 @@ describe("trading API", () => {
       realTradingEnabled: false,
       authEnabled: false,
     });
+  });
+
+  it("rejects account reset outside paper mode", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/account/reset",
+      payload: {
+        startingCash: 10_000,
+        strategyProfile: "balanced",
+        confirmation: "重置模拟账户",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: "PAPER_MODE_REQUIRED" });
+  });
+
+  it("resets a paper account and persists the selected strategy profile", async () => {
+    await app.close();
+    app = await buildTradingApp({
+      config: createTestConfig({
+        MARKET_MODE: "paper",
+        TRADING_SEED_PORTFOLIO: false,
+      }),
+      startMarket: false,
+    });
+
+    const invalid = await app.inject({
+      method: "POST",
+      url: "/api/account/reset",
+      payload: {
+        startingCash: 999,
+        strategyProfile: "growth",
+        confirmation: "重置模拟账户",
+      },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/account/reset",
+      payload: {
+        startingCash: 20_000,
+        strategyProfile: "defensive",
+        confirmation: "重置模拟账户",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      account: {
+        cash: 20_000,
+        equity: 20_000,
+        startingEquity: 20_000,
+        strategyProfile: "defensive",
+      },
+      positions: [],
+      orders: [],
+    });
+
+    const profile = await app.inject({
+      method: "PUT",
+      url: "/api/account/strategy-profile",
+      payload: { strategyProfile: "growth" },
+    });
+    expect(profile.statusCode).toBe(200);
+    expect(profile.json().account.strategyProfile).toBe("growth");
   });
 
   it("returns bounded system log pagination metadata", async () => {
@@ -1062,6 +1146,53 @@ describe("trading API", () => {
     expect(response.json().guardrails.join("")).toContain("PaperBroker");
   });
 
+  it("keeps the API alive when the first paper execution runs before market data arrives", async () => {
+    const config = createTestConfig({
+      MARKET_MODE: "paper",
+      PAPER_AUTO_EXECUTION_ENABLED: true,
+      PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: false,
+    });
+    const system = createTradingSystem(config);
+    vi.spyOn(system.market, "getSnapshot").mockReturnValue({
+      mode: "paper",
+      sequence: 0,
+      marketTime: new Date().toISOString(),
+      quotes: [],
+    });
+    const paperApp = await buildTradingApp({
+      config,
+      system,
+      startMarket: false,
+    });
+
+    try {
+      const run = await paperApp.inject({
+        method: "POST",
+        url: "/api/trading/auto-paper-execution/run",
+      });
+      const health = await paperApp.inject({
+        method: "GET",
+        url: "/api/health",
+      });
+
+      expect(run.statusCode).toBe(200);
+      expect(run.json().run).toMatchObject({
+        planQuality: "not-run",
+        submittedOrders: [],
+      });
+      expect(run.json().run.skippedOperations).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          symbol: "SYSTEM",
+          action: "observe",
+          reason: expect.stringContaining("temporarily unavailable"),
+        }),
+      ]));
+      expect(health.statusCode).toBe(200);
+    } finally {
+      await paperApp.close();
+    }
+  });
+
   it("can manually run paper auto execution in local paper mode", async () => {
     const paperApp = await buildTradingApp({
       config: createTestConfig({
@@ -1076,7 +1207,9 @@ describe("trading API", () => {
         PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: 2,
       }),
       startMarket: false,
+      clock: () => todayAtChinaTime("10:30:00"),
     });
+    await useGrowthPaperProfile(paperApp);
 
     try {
       const response = await paperApp.inject({
@@ -1147,6 +1280,7 @@ describe("trading API", () => {
       startMarket: false,
       clock: () => new Date("2026-07-17T09:35:00+08:00"),
     });
+    await useGrowthPaperProfile(paperApp);
 
     try {
       const response = await paperApp.inject({
@@ -1184,6 +1318,7 @@ describe("trading API", () => {
       startMarket: false,
       clock: () => new Date("2026-07-17T10:30:00+08:00"),
     });
+    await useGrowthPaperProfile(paperApp);
 
     try {
       const response = await paperApp.inject({
@@ -1228,6 +1363,7 @@ describe("trading API", () => {
       startMarket: false,
       clock: () => new Date("2026-07-17T10:30:00+08:00"),
     });
+    await useGrowthPaperProfile(paperApp);
 
     try {
       const firstRun = await paperApp.inject({
@@ -1289,6 +1425,7 @@ describe("trading API", () => {
       startMarket: false,
       clock: () => new Date("2026-07-17T10:30:00+08:00"),
     });
+    await useGrowthPaperProfile(paperApp);
 
     try {
       const run = await paperApp.inject({

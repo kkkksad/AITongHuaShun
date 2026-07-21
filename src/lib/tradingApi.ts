@@ -5,6 +5,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
   TradingMode,
@@ -368,6 +369,31 @@ export interface ExternalMarketImpactReport {
   guardrails: string[];
 }
 
+export interface CryptoMarketResearchReport {
+  generatedAt: string;
+  mode: TradingMode;
+  provider: string;
+  sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+  source: {
+    name: string;
+    fetchedAt: string | null;
+    itemCount: number;
+  };
+  market: {
+    tone: ExternalSignalTone;
+    coverage: number;
+    averageChangePercent: number | null;
+    asOf: string | null;
+  };
+  crypto: ExternalCryptoItem[];
+  aShareContext: {
+    bias: "supportive" | "neutral" | "restrictive";
+    summary: string;
+  };
+  warnings: string[];
+  guardrails: string[];
+}
+
 export type DailyCandidateAction = "watch" | "paper-buy" | "avoid";
 
 export interface DailyCandidate {
@@ -546,6 +572,18 @@ export interface PaperTradingPlanQualitySummary {
   summary: string;
 }
 
+export interface PaperTradingPlanStrategyProfile {
+  key: PaperStrategyProfile;
+  label: string;
+  summary: string;
+  cashReserveFloor: number;
+  minDefensiveScore: number;
+  maxNewPositionsPerPlan: number;
+  allowNewPositions: boolean;
+  effectiveCashReserveRatio: number;
+  effectiveNewPositionScale: number;
+}
+
 export type AdaptiveMarketRegime =
   | "trend-up-low-volatility"
   | "trend-up-high-volatility"
@@ -617,6 +655,7 @@ export interface PaperTradingPlan {
     cashReserveRatio: number;
     cashReserveAmount: number;
   };
+  strategyProfile: PaperTradingPlanStrategyProfile;
   rules: string[];
   topStrategy: {
     strategyKey: string;
@@ -818,6 +857,12 @@ export interface DailyMarketReview {
     }>;
   };
   strategyReview: {
+    profile?: {
+      key: PaperStrategyProfile;
+      label: string;
+      summary: string;
+      cashReserveFloor: number;
+    };
     grade: "disciplined" | "watch" | "needs-improvement";
     summary: string;
     strengths: string[];
@@ -1373,8 +1418,14 @@ export interface SelfOptimizationStatus {
   guardrails: string[];
 }
 
-interface AccountResponse {
+export interface AccountResponse {
   account: AccountSnapshot;
+}
+
+export interface ResetPaperAccountResponse {
+  account: AccountSnapshot;
+  positions: PositionSnapshot[];
+  orders: OrderRecord[];
 }
 
 const API_PROXY_MISS_HINT =
@@ -1622,6 +1673,15 @@ export function fetchExternalMarketImpact(
   );
 }
 
+export function fetchCryptoMarketResearch(
+  signal?: AbortSignal,
+): Promise<CryptoMarketResearchReport> {
+  return authApiRequest<CryptoMarketResearchReport>(
+    "/api/research/crypto-market",
+    { signal },
+  );
+}
+
 export function fetchDailyCandidates(
   limit = 8,
   signal?: AbortSignal,
@@ -1776,6 +1836,26 @@ export function setPaperTradingPaused(paused: boolean): Promise<AccountResponse>
     paused ? "/api/trading/pause" : "/api/trading/resume",
     { method: "POST" },
   );
+}
+
+export function resetPaperAccount(input: {
+  startingCash: number;
+  strategyProfile: PaperStrategyProfile;
+  confirmation: "重置模拟账户";
+}): Promise<ResetPaperAccountResponse> {
+  return authApiRequest<ResetPaperAccountResponse>("/api/account/reset", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updatePaperStrategyProfile(
+  strategyProfile: PaperStrategyProfile,
+): Promise<AccountResponse> {
+  return authApiRequest<AccountResponse>("/api/account/strategy-profile", {
+    method: "PUT",
+    body: JSON.stringify({ strategyProfile }),
+  });
 }
 
 export function fetchAuditEvents(limit = 100): Promise<AuditEvent[]> {

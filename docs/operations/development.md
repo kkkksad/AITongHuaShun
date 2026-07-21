@@ -126,7 +126,7 @@ WXPUSHER_DAILY_MESSAGE_LIMIT=10
 
 该自动执行器只会把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`，不会连接同花顺、中信、SuperMind 或任何真实券商。盘外启动时会保持等待，直到 A 股交易时段才自动运行。默认每轮最多 1 笔、每天最多 4 笔；开盘、上午、下午和尾盘累计最多使用 2、3、4、4 笔，保留后续确认额度。`回撤控制` 硬止损可绕过阶段预算，但仍受全天上限和全部风控。当日笔数从持久化自动订单统计，服务重启不会重置；买入计划继续累计预留成交额、滑点和手续费，并保留当前 paper 权益的 10% 作为现金缓冲。
 
-`TRADING_SEED_PORTFOLIO=true` 是默认演示模式，会在新账户中预置样例持仓；用于从下一个交易日开始观察或纸面买卖时，应设为 `false`，再停止旧服务并重新启动。若使用 `STORE_BACKEND=json`，还需要删除或移走 `DATA_DIR` 下已有的 `paper-trading-state.json`，否则系统会恢复旧账户状态而不是重新创建 10000 元纯现金账户。
+`TRADING_SEED_PORTFOLIO=true` 是默认演示模式，会在新账户中预置样例持仓；用于新建纯现金账户时应设为 `false`。若 `STORE_BACKEND=json` 已有状态，系统会正常恢复旧账户；需要重新开始时应在设置页输入新初始资金、确认短语和复选确认，使用受保护的账户重置流程，不要手动编辑状态文件。
 
 ## 开发服务器
 
@@ -143,6 +143,8 @@ npm run dev:a-share
 ```
 
 `npm run dev` 和 `npm run dev:a-share` 是稳定观察命令：API 以前台进程运行，任一服务异常退出后由 `concurrently` 等待 1 秒并自动重启。它们适合盘中本地 paper 观察，可避免 `tsx watch` 的父进程仍在、实际 API 子进程已经退出时，前端长期连接不到 `8787`。
+
+AkShare 首批全市场行情通常晚于 Fastify 启动。自动 paper 执行器遇到启动阶段空快照时会记录一次 `not-run` 观察并等待下一轮，不会终止 API；因此一键启动不要求人为控制 DATA/API 的精确先后顺序。
 
 修改服务端代码并需要热重载时，可单独运行：
 
@@ -320,6 +322,8 @@ VS Code 会：
 - 使用 Edge 打开 `http://127.0.0.1:4173/strategy`。
 - 默认使用真实 A 股只读行情和 paper-only 模拟交易；不会启用真实下单。
 
+后台任务以 `127.0.0.1:4173` 为就绪信号，并关闭彩色控制字符；因此即使 Vite 或 `concurrently` 的输出格式略有差异，也不会再因为严格匹配 `Local:` 文本而出现 `Timed out waiting for debuggee to spawn`。如果终端已经明确显示 4173 被占用，则属于旧实例占用端口，不是调试器等待规则问题。
+
 若 4173、8787 或 8800 端口已被占用，请先停止已有进程。服务使用固定端口，避免浏览器或代理连接到错误实例。
 
 ## 质量检查
@@ -354,6 +358,7 @@ Invoke-RestMethod http://127.0.0.1:8787/api/integrations/supermind/signal-packag
 Invoke-RestMethod http://127.0.0.1:8787/api/trading/auto-paper-execution/status -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/real-data-feed -WebSession $KairosSession
 Invoke-RestMethod "http://127.0.0.1:8787/api/research/external-market-impact?days=500" -WebSession $KairosSession
+Invoke-RestMethod "http://127.0.0.1:8787/api/research/crypto-market" -WebSession $KairosSession
 Invoke-RestMethod http://127.0.0.1:8787/api/research/ipo-subscriptions -WebSession $KairosSession
 
 Invoke-RestMethod "http://127.0.0.1:8787/api/research/stock-trend?query=600519&days=360" -WebSession $KairosSession

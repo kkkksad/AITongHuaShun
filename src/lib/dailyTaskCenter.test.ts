@@ -29,6 +29,17 @@ function makePlan(
       cashReserveRatio: 0.3,
       cashReserveAmount: 3_000,
     },
+    strategyProfile: {
+      key: "balanced",
+      label: "均衡",
+      summary: "在现金防守和机会参与之间保持中等节奏。",
+      cashReserveFloor: 0.5,
+      minDefensiveScore: 62,
+      maxNewPositionsPerPlan: 2,
+      allowNewPositions: true,
+      effectiveCashReserveRatio: 0.5,
+      effectiveNewPositionScale: 0.85,
+    },
     rules: [],
     topStrategy: null,
     adaptiveRouting: {

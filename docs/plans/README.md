@@ -35,6 +35,8 @@ YYYY-MM-DD-short-task-name.md
 - [行情数据质量与市场页可信度升级](2026-07-19-market-data-quality-experience.md)
 - [API 可观测性与加载性能升级](2026-07-19-api-observability-performance.md)
 - [全链路 Fetch 可靠性加固](2026-07-19-fetch-reliability-hardening.md)
+- [Paper 账户控制与研究体验升级](2026-07-21-paper-control-and-experience-upgrade.md)
+- [隔夜持续性与费用纪律升级](2026-07-21-overnight-persistence-and-fee-discipline.md)
 
 ## 进行中计划
 

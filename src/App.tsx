@@ -622,7 +622,7 @@ function App() {
             <Route
               element={
                 <Suspense fallback={<LazyFallback />}>
-                  <Settings />
+                  <Settings trading={trading} />
                 </Suspense>
               }
               path="/settings"

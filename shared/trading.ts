@@ -1,4 +1,9 @@
 export type TradingMode = "mock" | "paper" | "live";
+export type PaperStrategyProfile =
+  | "capital-preservation"
+  | "defensive"
+  | "balanced"
+  | "growth";
 export type OrderSide = "buy" | "sell";
 export type OrderType = "market" | "limit";
 export type OrderStatus = "accepted" | "filled" | "rejected" | "cancelled" | "pending";
@@ -106,6 +111,8 @@ export interface AccountSnapshot {
   dailyPnlPercent: number;
   riskUtilization: number;
   paused: boolean;
+  startingEquity?: number;
+  strategyProfile?: PaperStrategyProfile;
   updatedAt: string;
 }
 

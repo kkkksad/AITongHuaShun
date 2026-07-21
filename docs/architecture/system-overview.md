@@ -77,8 +77,10 @@ shared/
 - `server/research/bridgeRequest.ts` 是研究域访问 AkShare 桥的唯一请求实现，统一负责 Token 头、超时、HTTP `detail` 截断、网络错误和 JSON 校验；领域模块只把稳定错误语义写入自己的降级报告。
 - `PaperBroker` 依赖行情、风险和仓储，不依赖 HTTP、WebSocket 或 React。
 - `PaperAutoExecutor` 只读取纸面计划并向 `PaperBroker` 提交本地模拟订单；它不能调用真实券商、同花顺、SuperMind 或浏览器自动化能力。
+- `PaperAutoExecutor` 将计划构建或上游研究暂不可用转换为可审计的 `not-run` 观察轮次；启动时空行情不得形成未处理拒绝或终止 Fastify 进程。
+- `paperTradingPlanService` 在发起真实历史研究前同步生成有界候选，将当前持仓、强势回踩候选和优质股候选按优先级去重后放入最多 12 只历史股票池；`paperTradingPlan` 只允许通过历史持续性、往返佣金和同日回补检查的候选形成新增仓位。
 - `RiskEngine` 只依赖共享领域数据，不产生网络或存储副作用。
-- `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都不是未来数据库模型的替代品。
+- `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都实现账户重置和策略档位持久化，但都不是未来数据库模型的替代品。
 - `shared/` 只保存跨进程契约，不包含浏览器或 Node.js 运行时副作用。
 - 行情读取和订单执行保持为不同模块与未来不同权限域。
 - `server/auth.ts` 由 `app.ts` 默认注册；浏览器只能通过 `HttpOnly` Cookie 使用服务端会话，业务 API、指标、文档和 WebSocket 不得建立匿名旁路。当前内存会话只支持单实例；真实执行仍必须使用独立身份提供商和权限域。
@@ -90,7 +92,7 @@ shared/
 3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。Fastify 行情提供者最多执行一轮在途请求，本轮完成后才安排下一轮；整轮失败有界退避并保留最后成功快照，任一路恢复后回到正常轮询周期。
 4. `/api/market/quality` 对当前内存快照生成只读质量报告，使用私有 5 秒缓存和 15 秒 stale-while-revalidate；它不触发新的行情请求，也不写入策略或订单状态。
 5. Fastify 在请求完成时同时更新 Prometheus 累计指标和应用实例级有限遥测；`/api/system/performance` 自身、健康检查、认证和指标端点不进入业务性能窗口。
-6. `/api/research/real-data-feed` 优先选择当前持仓，再按实时成交额补足最多 8 只新闻观察标的，并聚合最多 80 条多源新闻；`/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/external-market-impact` 严格用早于 A 股目标日期的美股/亚洲指数日线和沪深 300 对齐，并把 BTC/ETH 限制为快照参考；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
+6. `/api/research/real-data-feed` 优先选择当前持仓，再按实时成交额补足最多 8 只新闻观察标的，并聚合最多 80 条多源新闻；`/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/external-market-impact` 严格用早于 A 股目标日期的美股/亚洲指数日线和沪深 300 对齐；轻量 `/api/research/crypto-market` 只读取 BTC/ETH 24 小时快照并有 5 秒上限；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
 7. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
 8. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。
 9. `RiskEngine` 检查交易状态、标的、整手、额度、仓位、亏损和资金。
@@ -98,7 +100,7 @@ shared/
 11. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
 12. 新账户、持仓和订单状态再次通过已认证 WebSocket 推送。
 
-WxPusher 通知属于 paper 观察域，不属于订单执行域。自动执行器在四个盘中阶段生成上下文，通知器只在 09:35、10:30、13:30、14:50 开放固定简报；`risk-off`、数据降级、paper 拒单或暂停可以使用事件预留。同类事件按交易日审计去重，多种事件同轮合并，全部成功/失败请求共享每天十条硬上限。
+WxPusher 通知属于 paper 观察域，不属于订单执行域。自动执行器在四个盘中阶段生成上下文，通知器只在 09:35、10:30、13:30、14:50 开放固定简报；`risk-off`、数据降级、paper 拒单或暂停可以使用事件预留。同类事件按交易日审计去重，多种事件同轮合并，全部成功/失败请求共享每天十条硬上限。通知中的“已成交”只从 `TradingStore` 的当日订单和 `paper-auto-execution.decision` 审计重建；计划、跳过和拒绝保持独立分区，缺失的历史理由不得推断。
 
 Fastify 使用 Helmet 设置基础安全响应头，并使用 Rate Limit 对 HTTP 请求进行全局限流。统一错误处理必须保留插件产生的 4xx 状态，不能把 429 改写为 500。
 Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabilities` 声明只读行情与纸面执行边界。
@@ -112,6 +114,8 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 质量报告中的完整度以请求标的数量为分母，缺失和无效报价都会扣分；新鲜度取低 10% 分位而不是整批最大值。合法涨跌停只记录市场状态，超出对应板块涨跌停范围的非停牌价格才进入越界异常。`healthy / degraded / unusable` 只用于界面诊断，不能改变 `AdaptiveStrategyRouter`、`PaperAutoExecutor`、风险限额或订单审批。
 
 全市场股票与指数快照缓存以刷新完成时间计算默认 10 秒 TTL；失败时保留旧快照并进入最长 60 秒冷却，避免慢抓取完成后立即过期形成重试风暴。历史研究接口按请求即时读取并在 Python 进程内短期缓存，不会把无上限原始日线写入本地磁盘。普通研究响应和历史单序列分别使用有界 TTL/LRU，默认最多 64 和 128 个 key；读写路径主动清理过期项，历史 single-flight 请求完成前受淘汰保护。行业日线明确为不复权，个股日线明确为前复权；单次请求受板块数、股票数和交易日数限制。多个公开源只用于可用性回退，每条历史序列保留实际命中的来源。
+
+AkShare 原生调用使用单工作线程串行化，避免其 JavaScript 运行时在并发研究请求下终止桥接进程。BTC/ETH 的 Jin10、Binance 与 CoinGecko 公共 JSON 回退使用独立单工作线程，不能占用 AkShare 队列；Fastify 对该轻量报告最多等待 5 秒，超时后返回无价格的降级报告。
 
 运行日志与交易状态属于不同存储边界。开发启动前的清理器只处理仓库内 `logs/*.log`，按保留天数、单文件大小和目录总大小执行；`data/` 下的 paper 账户、持仓、开放订单和审计留存继续由 `TradingStore` 独立管理，日志清理器不得访问。
 

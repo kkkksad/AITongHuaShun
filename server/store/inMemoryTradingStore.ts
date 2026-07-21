@@ -4,6 +4,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
   TradingMode,
@@ -72,7 +73,8 @@ function withT1Lock(
 
 export class InMemoryTradingStore implements TradingStore {
   private readonly accountId = "PAPER-CN-01";
-  private readonly startingEquity: number;
+  private startingEquity: number;
+  private strategyProfile: PaperStrategyProfile = "balanced";
   private cash: number;
   private blockedCash = 0;
   private paused = false;
@@ -132,6 +134,41 @@ export class InMemoryTradingStore implements TradingStore {
 
   getCash(): number {
     return this.cash;
+  }
+
+  getStrategyProfile(): PaperStrategyProfile {
+    return this.strategyProfile;
+  }
+
+  setStrategyProfile(profile: PaperStrategyProfile): void {
+    this.strategyProfile = profile;
+    this.appendAudit("system", "account.strategy-profile.updated", "Paper 策略档位已更新", {
+      strategyProfile: profile,
+    });
+  }
+
+  resetAccount(input: {
+    startingCash: number;
+    strategyProfile: PaperStrategyProfile;
+  }): void {
+    if (!Number.isFinite(input.startingCash) || input.startingCash <= 0) {
+      throw new Error("Paper account starting cash must be positive.");
+    }
+    this.startingEquity = input.startingCash;
+    this.strategyProfile = input.strategyProfile;
+    this.cash = input.startingCash;
+    this.blockedCash = 0;
+    this.paused = false;
+    this.positions.clear();
+    this.orders.length = 0;
+    this.auditEvents.length = 0;
+    this.orderSequence = 0;
+    this.auditSequence = 0;
+    this.appendAudit("system", "account.reset", "已开始新的纯现金 Paper 模拟", {
+      startingCash: input.startingCash,
+      strategyProfile: input.strategyProfile,
+      previousStateDeleted: true,
+    });
   }
 
   getAvailableCash(): number {
@@ -212,6 +249,8 @@ export class InMemoryTradingStore implements TradingStore {
       dailyPnlPercent: dailyPnl / baseline,
       riskUtilization: Math.min(1, Math.max(exposureRatio, lossRatio)),
       paused: this.paused,
+      startingEquity: this.startingEquity,
+      strategyProfile: this.strategyProfile,
       updatedAt: this.now().toISOString(),
     };
   }

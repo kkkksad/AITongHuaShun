@@ -6,6 +6,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
   TradingMode,
@@ -26,6 +27,7 @@ interface PersistedState {
   version: 1;
   accountId: string;
   startingEquity: number;
+  strategyProfile?: PaperStrategyProfile;
   cash: number;
   blockedCash: number;
   paused: boolean;
@@ -111,6 +113,7 @@ export class JsonFileTradingStore implements TradingStore {
   private readonly retentionMs: number;
   private readonly now: () => Date;
   private startingEquity: number;
+  private strategyProfile: PaperStrategyProfile = "balanced";
   private cash = 0;
   private blockedCash = 0;
   private paused = false;
@@ -159,6 +162,43 @@ export class JsonFileTradingStore implements TradingStore {
 
   getCash(): number {
     return this.cash;
+  }
+
+  getStrategyProfile(): PaperStrategyProfile {
+    return this.strategyProfile;
+  }
+
+  setStrategyProfile(profile: PaperStrategyProfile): void {
+    this.strategyProfile = profile;
+    this.appendAudit("system", "account.strategy-profile.updated", "Paper 策略档位已更新", {
+      strategyProfile: profile,
+    });
+    this.flush();
+  }
+
+  resetAccount(input: {
+    startingCash: number;
+    strategyProfile: PaperStrategyProfile;
+  }): void {
+    if (!Number.isFinite(input.startingCash) || input.startingCash <= 0) {
+      throw new Error("Paper account starting cash must be positive.");
+    }
+    this.startingEquity = input.startingCash;
+    this.strategyProfile = input.strategyProfile;
+    this.cash = input.startingCash;
+    this.blockedCash = 0;
+    this.paused = false;
+    this.positions.clear();
+    this.orders = [];
+    this.auditEvents = [];
+    this.orderSequence = 0;
+    this.auditSequence = 0;
+    this.appendAudit("system", "account.reset", "已开始新的纯现金 Paper 模拟", {
+      startingCash: input.startingCash,
+      strategyProfile: input.strategyProfile,
+      previousStateDeleted: true,
+    });
+    this.flush();
   }
 
   getAvailableCash(): number {
@@ -247,6 +287,8 @@ export class JsonFileTradingStore implements TradingStore {
       dailyPnlPercent: dailyPnl / baseline,
       riskUtilization: Math.min(1, Math.max(exposureRatio, lossRatio)),
       paused: this.paused,
+      startingEquity: this.startingEquity,
+      strategyProfile: this.strategyProfile,
       updatedAt: this.now().toISOString(),
     };
   }
@@ -476,6 +518,7 @@ export class JsonFileTradingStore implements TradingStore {
     }
 
     this.startingEquity = state.startingEquity;
+    this.strategyProfile = state.strategyProfile ?? "balanced";
     this.cash = state.cash;
     this.paused = state.paused;
     this.orderSequence = state.orderSequence;
@@ -511,6 +554,7 @@ export class JsonFileTradingStore implements TradingStore {
       version: 1,
       accountId: this.accountId,
       startingEquity: this.startingEquity,
+      strategyProfile: this.strategyProfile,
       cash: this.cash,
       blockedCash: this.blockedCash,
       paused: this.paused,

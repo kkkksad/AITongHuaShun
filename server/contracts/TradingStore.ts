@@ -4,6 +4,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
   TradingMode,
@@ -32,6 +33,18 @@ export interface TradingStore {
 
   /** 获取总现金（含冻结）。 */
   getCash(): number;
+
+  /** 获取当前本地 paper 策略风险档位。 */
+  getStrategyProfile(): PaperStrategyProfile;
+
+  /** 修改后续 paper 计划使用的策略风险档位。 */
+  setStrategyProfile(profile: PaperStrategyProfile): void;
+
+  /** 清空旧 paper 账户状态并以纯现金开始新一轮模拟。 */
+  resetAccount(input: {
+    startingCash: number;
+    strategyProfile: PaperStrategyProfile;
+  }): void;
 
   // ── 持仓 ──
 

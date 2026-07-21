@@ -4,6 +4,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
   TradingMode,
@@ -113,6 +114,25 @@ export class PaperBroker extends EventEmitter {
     const account = this.getAccount();
     this.emit("account.updated", account);
     return account;
+  }
+
+  setStrategyProfile(profile: PaperStrategyProfile): AccountSnapshot {
+    this.store.setStrategyProfile(profile);
+    const account = this.getAccount();
+    this.emit("account.updated", account);
+    return account;
+  }
+
+  resetAccount(input: {
+    startingCash: number;
+    strategyProfile: PaperStrategyProfile;
+  }): { account: AccountSnapshot; positions: PositionSnapshot[]; orders: OrderRecord[] } {
+    this.store.resetAccount(input);
+    this.risk.resetCircuit();
+    const account = this.getAccount();
+    const positions = this.getPositions();
+    this.emit("account.updated", account);
+    return { account, positions, orders: [] };
   }
 
   markToMarket(snapshot = this.market.getSnapshot()): AccountSnapshot {

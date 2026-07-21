@@ -10,6 +10,7 @@ import type { LucideProps } from "lucide-react";
 import {
   Activity,
   BarChart3,
+  Bitcoin,
   Globe2,
   Layers3,
   LoaderCircle,
@@ -27,6 +28,7 @@ const loadRegimePanel = () => import("./MarketRegimePanel");
 const loadHongKongPanel = () => import("./HongKongMarketPanel");
 const loadFuturesPanel = () => import("./FuturesMarketPanel");
 const loadExternalPanel = () => import("./ExternalMarketImpactPanel");
+const loadCryptoPanel = () => import("./CryptoMarketPanel");
 const loadEventsPanel = () => import("./MarketEventsPanel");
 
 const MarketAshareOverviewPanel = lazy(async () => ({
@@ -50,6 +52,9 @@ const FuturesMarketPanel = lazy(async () => ({
 const ExternalMarketImpactPanel = lazy(async () => ({
   default: (await loadExternalPanel()).ExternalMarketImpactPanel,
 }));
+const CryptoMarketPanel = lazy(async () => ({
+  default: (await loadCryptoPanel()).CryptoMarketPanel,
+}));
 const MarketEventsPanel = lazy(async () => ({
   default: (await loadEventsPanel()).MarketEventsPanel,
 }));
@@ -62,6 +67,7 @@ type MarketWorkspaceTab =
   | "hong-kong"
   | "futures"
   | "external"
+  | "crypto"
   | "events";
 
 interface MarketResearchWorkspaceProps {
@@ -81,6 +87,7 @@ const tabs: Array<{
   { id: "hong-kong", label: "港股观察", icon: Globe2, preload: loadHongKongPanel },
   { id: "futures", label: "期货研判", icon: Activity, preload: loadFuturesPanel },
   { id: "external", label: "全球影响", icon: Globe2, preload: loadExternalPanel },
+  { id: "crypto", label: "数字资产", icon: Bitcoin, preload: loadCryptoPanel },
   { id: "events", label: "事件资讯", icon: Newspaper, preload: loadEventsPanel },
 ];
 
@@ -166,6 +173,7 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
             {activeTab === "hong-kong" && <HongKongMarketPanel />}
             {activeTab === "futures" && <FuturesMarketPanel />}
             {activeTab === "external" && <ExternalMarketImpactPanel />}
+            {activeTab === "crypto" && <CryptoMarketPanel />}
             {activeTab === "events" && <MarketEventsPanel />}
           </Suspense>
         </div>

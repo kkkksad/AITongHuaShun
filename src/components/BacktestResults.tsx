@@ -10,6 +10,12 @@ import {
   YAxis,
 } from "recharts";
 import type { BacktestResult } from "../types";
+import {
+  CHART_AXIS_TICK,
+  CHART_COLORS,
+  CHART_GRID_STROKE,
+  CHART_TOOLTIP_STYLE,
+} from "../lib/chartTheme";
 
 interface BacktestResultsProps {
   result: BacktestResult;
@@ -78,34 +84,24 @@ export function BacktestResults({ result, compact = false }: BacktestResultsProp
       <div className={compact ? "equity-chart compact" : "equity-chart"}>
         <ResponsiveContainer height="100%" width="100%">
           <AreaChart data={result.equityCurve} margin={{ left: 2, right: 12, top: 12 }}>
-            <defs>
-              <linearGradient id="portfolioFill" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#2563eb" stopOpacity={0.24} />
-                <stop offset="100%" stopColor="#2563eb" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="#e7e9ee" strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
             <XAxis
               axisLine={false}
               dataKey="date"
               minTickGap={32}
-              tick={{ fill: "#7a8190", fontSize: 11 }}
+              tick={CHART_AXIS_TICK}
               tickLine={false}
             />
             <YAxis
               axisLine={false}
               domain={["dataMin - 20000", "dataMax + 20000"]}
-              tick={{ fill: "#7a8190", fontSize: 11 }}
+              tick={CHART_AXIS_TICK}
               tickFormatter={(value: number) => `${(value / 10000).toFixed(0)}万`}
               tickLine={false}
               width={48}
             />
             <Tooltip
-              contentStyle={{
-                border: "1px solid #dfe3ea",
-                borderRadius: 6,
-                boxShadow: "0 10px 30px rgba(28, 35, 49, 0.12)",
-              }}
+              contentStyle={CHART_TOOLTIP_STYLE}
               formatter={(value: number, name: string) => [
                 `¥${formatCurrency(value)}`,
                 name === "portfolio" ? "策略" : "沪深 300",
@@ -118,9 +114,10 @@ export function BacktestResults({ result, compact = false }: BacktestResultsProp
             />
             <Area
               dataKey="portfolio"
-              fill="url(#portfolioFill)"
+              fill="var(--color-primary-bg)"
+              fillOpacity={0.72}
               name="portfolio"
-              stroke="#2563eb"
+              stroke={CHART_COLORS.primary}
               strokeWidth={2.25}
               type="monotone"
             />
@@ -128,7 +125,7 @@ export function BacktestResults({ result, compact = false }: BacktestResultsProp
               dataKey="benchmark"
               fill="transparent"
               name="benchmark"
-              stroke="#9aa1ae"
+              stroke={CHART_COLORS.muted}
               strokeDasharray="5 5"
               strokeWidth={1.5}
               type="monotone"

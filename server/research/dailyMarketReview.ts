@@ -6,6 +6,7 @@ import type {
   PositionSnapshot,
   TradingMode,
 } from "../../shared/trading";
+import { getPaperStrategyProfilePolicy } from "../trading/paperStrategyProfile";
 
 export type DailyMarketTone =
   | "risk-on"
@@ -103,6 +104,12 @@ export interface DailyMarketReview {
     items: DailyMarketReviewTrade[];
   };
   strategyReview: {
+    profile: {
+      key: NonNullable<AccountSnapshot["strategyProfile"]>;
+      label: string;
+      summary: string;
+      cashReserveFloor: number;
+    };
     grade: "disciplined" | "watch" | "needs-improvement";
     summary: string;
     strengths: string[];
@@ -374,6 +381,9 @@ export function buildDailyMarketReview(
   const cashRatio = input.account.equity > 0
     ? input.account.cash / input.account.equity
     : 0;
+  const strategyProfile = getPaperStrategyProfilePolicy(
+    input.account.strategyProfile,
+  );
   const capitalDeployedPercent = input.account.equity > 0
     ? input.account.marketValue / input.account.equity
     : 0;
@@ -412,6 +422,7 @@ export function buildDailyMarketReview(
   const strengths: string[] = [
     "所有订单均保留在本地 paper 账户，真实交易继续关闭。",
     "A 股一手、T+1 和风险引擎在订单提交时仍然生效。",
+    `当前使用${strategyProfile.label}档位：${strategyProfile.summary}`,
   ];
 
   if (rejected.some((order) => order.rejectionReason?.includes("资金不足"))) {
@@ -419,6 +430,14 @@ export function buildDailyMarketReview(
   }
   if (cashRatio < 0.1 && input.account.equity > 0) {
     issues.push(`收盘现金比例仅 ${(cashRatio * 100).toFixed(1)}%，资金部署过满，缺少调整余地。`);
+  }
+  if (
+    input.account.equity > 0 &&
+    cashRatio + 0.001 < strategyProfile.cashReserveFloor
+  ) {
+    issues.push(
+      `当前现金比例 ${(cashRatio * 100).toFixed(1)}% 低于${strategyProfile.label}档位 ${(strategyProfile.cashReserveFloor * 100).toFixed(0)}% 的目标；只通过后续计划逐步调整，不绕过 T+1 强卖。`,
+    );
   }
   if (openingBuyAttempts >= 2) {
     issues.push(`开盘 5 分钟内连续尝试 ${openingBuyAttempts} 笔买单，建仓节奏过于集中。`);
@@ -470,6 +489,11 @@ export function buildDailyMarketReview(
   if (tone === "risk-off" && capitalDeployedPercent > 0.7) {
     nextActions.push(
       "risk-off 下优先减持趋势恶化、信号不清或数据不足的仓位，按一手分阶段接近防守现金目标，不机械卖出健康趋势和洗盘候选。",
+    );
+  }
+  if (cashRatio + 0.001 < strategyProfile.cashReserveFloor) {
+    nextActions.push(
+      `下一轮按${strategyProfile.label}档位优先恢复现金缓冲，新增仓位继续服从市场路由和硬风控。`,
     );
   }
   nextActions.push("至少积累一周 paper 样本后再比较胜率、回撤和盈亏比，不用单日结果证明策略有效。");
@@ -536,6 +560,12 @@ export function buildDailyMarketReview(
       items: tradeItems,
     },
     strategyReview: {
+      profile: {
+        key: strategyProfile.key,
+        label: strategyProfile.label,
+        summary: strategyProfile.summary,
+        cashReserveFloor: strategyProfile.cashReserveFloor,
+      },
       grade,
       summary: issues.length > 0
         ? `${tradingDate} 本地 paper 流程发现 ${issues.length} 项需要改进的问题，先修执行纪律，再评价策略收益。`

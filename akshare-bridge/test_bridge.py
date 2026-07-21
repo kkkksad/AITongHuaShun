@@ -47,6 +47,7 @@ from main import (
     fetch_a_share_index_dataframe,
     extract_symbols,
     fetch_financial_news_batches,
+    fetch_crypto_spot_dataframe,
     fetch_global_market_dataframe,
     fetch_global_market_sina_snapshot_dataframe,
     fetch_futures_history_dataframe,
@@ -633,6 +634,57 @@ class TestGlobalMarketsEndpoint:
 
 
 class TestCryptoMarketEndpoint:
+    def test_crypto_public_source_prefers_structured_jin10_json(self):
+        response = MagicMock()
+        response.json.return_value = {
+            "data": [[
+                "crypto",
+                "BTCUSD",
+                68000,
+                1000,
+                1.5,
+                69000,
+                66000,
+                120000,
+                datetime.now().astimezone().isoformat(),
+            ]],
+        }
+        with patch("main.requests.get", return_value=response):
+            frame, source = fetch_crypto_spot_dataframe()
+
+        assert source == "jin10-public-crypto"
+        assert frame["交易品种"].tolist() == ["BTCUSD"]
+
+    def test_crypto_public_source_does_not_use_akshare_native_js(self):
+        response = MagicMock()
+        response.json.return_value = [
+            {
+                "symbol": "BTCUSDT",
+                "lastPrice": "68000",
+                "priceChangePercent": "1.5",
+                "highPrice": "69000",
+                "lowPrice": "66000",
+                "quoteVolume": "120000000",
+                "closeTime": 1784359200000,
+            },
+            {
+                "symbol": "ETHUSDT",
+                "lastPrice": "3600",
+                "priceChangePercent": "-0.8",
+                "highPrice": "3700",
+                "lowPrice": "3500",
+                "quoteVolume": "240000000",
+                "closeTime": 1784359200000,
+            },
+        ]
+        with patch("main.requests.get", return_value=response):
+            with patch("main.ak.crypto_js_spot") as native_crypto:
+                frame, source = fetch_crypto_spot_dataframe()
+
+        assert source == "binance-public-24h"
+        assert frame["symbol"].tolist() == ["BTCUSDT", "ETHUSDT"]
+        native_crypto.assert_not_called()
+
     def test_crypto_quotes_only_return_controlled_btc_and_eth(self):
         frame = pd.DataFrame([
             {

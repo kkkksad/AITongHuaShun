@@ -159,6 +159,50 @@ describe("JsonFileTradingStore", () => {
     expect(reloaded.getAvailableCash()).toBe(store.getAvailableCash());
   });
 
+  it("重置账户会删除旧订单持仓并持久化新的初始资金与策略档位", () => {
+    const order = store.createOrder(
+      { symbol: "601318", side: "buy", type: "market", quantity: 100 },
+      52.1,
+    );
+    store.fillOrder(order, "中国平安", 52.1, 5);
+
+    store.resetAccount({
+      startingCash: 20_000,
+      strategyProfile: "defensive",
+    });
+
+    expect(store.listOrders()).toEqual([]);
+    expect(store.getPositions(snapshot)).toEqual([]);
+    expect(store.getStrategyProfile()).toBe("defensive");
+    expect(store.getAccount("paper", snapshot, demoLimits)).toMatchObject({
+      cash: 20_000,
+      equity: 20_000,
+      startingEquity: 20_000,
+      strategyProfile: "defensive",
+    });
+    expect(store.listAudit()).toHaveLength(1);
+    expect(store.listAudit()[0]).toMatchObject({ action: "account.reset" });
+
+    const reloaded = new JsonFileTradingStore(dataDir, 1_000_000);
+    expect(reloaded.listOrders()).toEqual([]);
+    expect(reloaded.getPositions(snapshot)).toEqual([]);
+    expect(reloaded.getStrategyProfile()).toBe("defensive");
+    expect(reloaded.getAccount("paper", snapshot, demoLimits)).toMatchObject({
+      equity: 20_000,
+      strategyProfile: "defensive",
+    });
+  });
+
+  it("旧版 JSON 没有策略档位时默认使用均衡档", () => {
+    const filePath = path.join(dataDir, "paper-trading-state.json");
+    const persisted = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    delete persisted.strategyProfile;
+    fs.writeFileSync(filePath, JSON.stringify(persisted), "utf-8");
+
+    const reloaded = new JsonFileTradingStore(dataDir, 1_000_000);
+    expect(reloaded.getStrategyProfile()).toBe("balanced");
+  });
+
   it("只保留留存期内的已结束订单和审计，同时保留过期挂单", () => {
     const retentionDir = path.join(dataDir, "retention");
     let now = new Date("2026-07-01T04:00:00.000Z");

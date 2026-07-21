@@ -11,6 +11,12 @@ import {
 } from "recharts";
 import type { MarketQuote, MarketSnapshot } from "../../shared/trading";
 import { intradayData } from "../data/mockData";
+import {
+  CHART_AXIS_TICK,
+  CHART_COLORS,
+  CHART_GRID_STROKE,
+  CHART_TOOLTIP_STYLE,
+} from "../lib/chartTheme";
 
 interface MarketChartProps {
   market?: MarketSnapshot;
@@ -179,34 +185,35 @@ export function MarketChart({ market }: MarketChartProps) {
       <div className="market-chart">
         <ResponsiveContainer height="100%" width="100%">
           <ComposedChart data={chartData} margin={{ left: 0, right: 8, top: 12 }}>
-            <CartesianGrid stroke="#e7e9ee" strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
             <XAxis
               axisLine={false}
               dataKey="time"
-              tick={{ fill: "#7a8190", fontSize: 11 }}
+              tick={CHART_AXIS_TICK}
               tickLine={false}
             />
             <YAxis
               axisLine={false}
               domain={priceDomain}
-              tick={{ fill: "#7a8190", fontSize: 11 }}
+              tick={CHART_AXIS_TICK}
               tickLine={false}
               width={42}
               yAxisId="price"
             />
             <YAxis hide domain={[0, 120]} orientation="right" yAxisId="volume" />
             <Tooltip
-              contentStyle={{ border: "1px solid #dfe3ea", borderRadius: 6 }}
+              contentStyle={CHART_TOOLTIP_STYLE}
+              cursor={{ fill: "var(--bg-panel-hover)" }}
               formatter={(value: number, name: string) => [
                 name === "volume" ? `${value.toFixed(2)} 亿元` : value.toFixed(2),
                 name === "price" ? "点位" : name === "average" ? "昨收" : "成交额",
               ]}
             />
-            <Bar dataKey="volume" fill="#dce6f5" maxBarSize={22} yAxisId="volume" />
+            <Bar dataKey="volume" fill={CHART_COLORS.volume} maxBarSize={22} yAxisId="volume" />
             <Line
               dataKey="average"
               dot={false}
-              stroke="#d97706"
+              stroke={CHART_COLORS.warning}
               strokeDasharray="4 4"
               strokeWidth={1.5}
               type="monotone"
@@ -215,7 +222,7 @@ export function MarketChart({ market }: MarketChartProps) {
             <Line
               dataKey="price"
               dot={false}
-              stroke="#2563eb"
+              stroke={CHART_COLORS.primary}
               strokeWidth={2.25}
               type="monotone"
               yAxisId="price"

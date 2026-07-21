@@ -2,6 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { RefreshCw, Waves } from "lucide-react";
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fetchMarketRegimeResearch } from "../lib/tradingApi";
+import {
+  CHART_AXIS_TICK,
+  CHART_COLORS,
+  CHART_TOOLTIP_STYLE,
+} from "../lib/chartTheme";
 import { ResearchQueryState } from "./ResearchQueryState";
 
 export function FlowPanel() {
@@ -59,19 +64,20 @@ export function FlowPanel() {
                 <YAxis
                   axisLine={false}
                   dataKey="name"
-                  tick={{ fill: "#5d6472", fontSize: 12 }}
+                  tick={{ ...CHART_AXIS_TICK, fontSize: 12 }}
                   tickLine={false}
                   type="category"
                   width={68}
                 />
                 <Tooltip
-                  contentStyle={{ border: "1px solid #dfe3ea", borderRadius: 6 }}
+                  contentStyle={CHART_TOOLTIP_STYLE}
+                  cursor={{ fill: "var(--bg-panel-hover)" }}
                   formatter={(value: number) => [`${value.toFixed(0)} / 100`, "5 日研究评分"]}
                 />
                 <Bar dataKey="score" radius={[0, 3, 3, 0]}>
                   {chartData.map((entry) => (
                     <Cell
-                      fill={entry.direction === "constructive" ? "#0f766e" : entry.direction === "cautious" ? "#dc4c4c" : "#d97706"}
+                      fill={entry.direction === "constructive" ? CHART_COLORS.positive : entry.direction === "cautious" ? CHART_COLORS.negative : CHART_COLORS.warning}
                       key={entry.name}
                     />
                   ))}

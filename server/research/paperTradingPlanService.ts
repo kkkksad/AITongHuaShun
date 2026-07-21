@@ -1,5 +1,6 @@
 import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
+import type { PositionSnapshot } from "../../shared/trading";
 import { buildDailyCandidates } from "./dailyCandidates";
 import type { DailyCandidateReport } from "./dailyCandidates";
 import { buildDailyQualityStocks } from "./dailyQualityStocks";
@@ -29,6 +30,32 @@ export interface CurrentPaperTradingPlanResult {
   adaptiveRouting: AdaptiveStrategyRouting;
 }
 
+export function buildPreferredHistoricalStocks(input: {
+  positions: Array<Pick<PositionSnapshot, "symbol" | "name">>;
+  candidates: DailyCandidateReport;
+  qualityStocks: DailyQualityStockReport;
+  limit: number;
+}): Array<{ symbol: string; name: string }> {
+  const ordered = [
+    ...input.positions.map((position) => ({
+      symbol: position.symbol,
+      name: position.name,
+    })),
+    ...input.candidates.candidates
+      .filter((candidate) => candidate.action === "paper-buy" || candidate.action === "watch")
+      .map((candidate) => ({ symbol: candidate.symbol, name: candidate.name })),
+    ...input.qualityStocks.stocks
+      .filter((stock) => stock.action === "focus" || stock.action === "watch")
+      .map((stock) => ({ symbol: stock.symbol, name: stock.name })),
+  ];
+  return ordered
+    .filter((stock, index, items) =>
+      /^\d{6}$/.test(stock.symbol) &&
+      items.findIndex((candidate) => candidate.symbol === stock.symbol) === index,
+    )
+    .slice(0, Math.max(1, Math.min(input.limit, 12)));
+}
+
 export async function buildCurrentPaperTradingPlan(input: {
   system: TradingSystem;
   config: ServerConfig;
@@ -40,10 +67,25 @@ export async function buildCurrentPaperTradingPlan(input: {
   const snapshot = input.system.market.getSnapshot();
   const account = input.system.broker.getAccount(snapshot);
   const positions = input.system.broker.getPositions(snapshot);
-  const [
-    leaderboard,
+  const strategyProfile = input.system.store.getStrategyProfile();
+  const candidates = buildDailyCandidates(
+    snapshot,
+    input.system.marketDataProvider,
+    input.candidateLimit ?? 40,
+  );
+  const qualityStocks = buildDailyQualityStocks(
+    snapshot,
+    input.system.marketDataProvider,
+    input.qualityLimit ?? 60,
+  );
+  const preferredHistoricalStocks = buildPreferredHistoricalStocks({
+    positions,
     candidates,
     qualityStocks,
+    limit: 12,
+  });
+  const [
+    leaderboard,
     marketRegimeResearch,
     realResearchDataFeed,
     externalMarketImpact,
@@ -53,26 +95,13 @@ export async function buildCurrentPaperTradingPlan(input: {
       input.system.marketDataProvider,
       input.leaderboardBars ?? 120,
     ),
-    buildDailyCandidates(
-      snapshot,
-      input.system.marketDataProvider,
-      input.candidateLimit ?? 40,
-    ),
-    buildDailyQualityStocks(
-      snapshot,
-      input.system.marketDataProvider,
-      input.qualityLimit ?? 60,
-    ),
     buildMarketRegimeResearch({
       bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
       bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
       marketDataProvider: input.system.marketDataProvider,
       mode: input.config.MARKET_MODE,
       snapshot,
-      preferredStocks: positions.map((position) => ({
-        symbol: position.symbol,
-        name: position.name,
-      })),
+      preferredStocks: preferredHistoricalStocks,
       sectorLimit: 10,
       stockLimit: 12,
       days: 180,
@@ -123,13 +152,14 @@ export async function buildCurrentPaperTradingPlan(input: {
       input.system.marketDataProvider === "akshare"
         ? marketRegimeResearch
         : undefined,
-    initialCapital: input.config.TRADING_STARTING_CASH,
+    initialCapital: account.startingEquity ?? input.config.TRADING_STARTING_CASH,
     lotSize: input.system.limits.lotSize,
     maxPositionWeight: input.system.risk.getEffectiveMaxPositionWeight(),
     maxSingleOrderNotional: input.system.risk.getEffectiveMaxOrderNotional(),
     commissionRate: input.config.COMMISSION_RATE,
     minimumCommission: input.config.MIN_COMMISSION,
     cashReserveRatio: input.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
+    strategyProfile,
   });
 
   return {

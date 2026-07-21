@@ -25,6 +25,8 @@ import {
   login,
   notifyAuthExpired,
   runPaperAutoExecutionOnce,
+  resetPaperAccount,
+  updatePaperStrategyProfile,
 } from "./tradingApi";
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -74,6 +76,52 @@ describe("session-aware trading API", () => {
         credentials: "include",
         headers: expect.objectContaining({ "X-CSRF-Token": "csrf-token" }),
       }),
+    );
+    expect(window.localStorage.length).toBe(0);
+  });
+
+  it("sends protected paper account reset and profile updates without browser storage", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        authenticated: true,
+        expiresIn: 3_600,
+        expiresAt: "2026-07-21T13:00:00.000Z",
+        csrfToken: "csrf-account",
+        user: { username: "admin", role: "admin" },
+      }))
+      .mockImplementation(async () => jsonResponse({
+        account: { equity: 10_000, strategyProfile: "defensive" },
+        positions: [],
+        orders: [],
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await login("admin", "test-password");
+    await resetPaperAccount({
+      startingCash: 10_000,
+      strategyProfile: "defensive",
+      confirmation: "重置模拟账户",
+    });
+    await updatePaperStrategyProfile("growth");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      expect.stringMatching(/\/api\/account\/reset$/),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-account" }),
+        body: JSON.stringify({
+          startingCash: 10_000,
+          strategyProfile: "defensive",
+          confirmation: "重置模拟账户",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      expect.stringMatching(/\/api\/account\/strategy-profile$/),
+      expect.objectContaining({ method: "PUT" }),
     );
     expect(window.localStorage.length).toBe(0);
   });

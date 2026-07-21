@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
   AccountSnapshot,
+  AuditEvent,
   OrderRecord,
   PositionSnapshot,
 } from "../../shared/trading";
@@ -114,6 +115,34 @@ export interface PaperPlanExecutionSummary {
   buyNotional: number;
   sellNotional: number;
   commission: number;
+  executedOrders: PaperPlanExecutedOrder[];
+  unfilledOrders: PaperPlanUnfilledOrder[];
+}
+
+export interface PaperPlanExecutedOrder {
+  orderId: string;
+  symbol: string;
+  name: string;
+  side: OrderRecord["side"];
+  quantity: number;
+  filledPrice: number;
+  notional: number;
+  commission: number;
+  strategy: string;
+  reason: string;
+  reasonSource: "decision-audit" | "historical-fallback";
+}
+
+export interface PaperPlanUnfilledOrder {
+  orderId: string;
+  symbol: string;
+  name: string;
+  side: OrderRecord["side"];
+  quantity: number;
+  status: OrderRecord["status"];
+  strategy: string;
+  reason: string;
+  reasonSource: "decision-audit" | "historical-fallback";
 }
 
 export interface PaperPlanBriefingSlot {
@@ -250,10 +279,35 @@ function chinaDate(value: string): string | null {
 export function summarizePaperOrders(
   orders: OrderRecord[],
   tradingDate: string,
+  auditEvents: AuditEvent[] = [],
 ): PaperPlanExecutionSummary {
   const today = orders.filter((order) => chinaDate(order.createdAt) === tradingDate);
   const filled = today.filter((order) => order.status === "filled");
   const roundMoney = (value: number) => Number(value.toFixed(2));
+  const decisionByOrderId = new Map(
+    auditEvents
+      .filter((event) => (
+        event.action === "paper-auto-execution.decision" &&
+        typeof event.data?.orderId === "string"
+      ))
+      .map((event) => [event.data?.orderId as string, event.data ?? {}]),
+  );
+  const orderExplanation = (order: OrderRecord) => {
+    const decision = decisionByOrderId.get(order.id);
+    const strategy = typeof decision?.strategy === "string"
+      ? decision.strategy
+      : "未记录策略";
+    const reason = typeof decision?.reason === "string"
+      ? decision.reason
+      : order.rejectionReason ?? "历史订单未保存策略理由";
+    return {
+      strategy,
+      reason,
+      reasonSource: decision?.reason
+        ? "decision-audit" as const
+        : "historical-fallback" as const,
+    };
+  };
   return {
     filledOrders: filled.length,
     rejectedOrders: today.filter((order) => order.status === "rejected").length,
@@ -268,6 +322,28 @@ export function summarizePaperOrders(
       .filter((order) => order.side === "sell")
       .reduce((total, order) => total + order.notional, 0)),
     commission: roundMoney(filled.reduce((total, order) => total + order.commission, 0)),
+    executedOrders: filled.map((order) => ({
+      orderId: order.id,
+      symbol: order.symbol,
+      name: order.name ?? order.symbol,
+      side: order.side,
+      quantity: order.filledQuantity,
+      filledPrice: order.filledPrice ?? order.requestedPrice,
+      notional: roundMoney(order.notional),
+      commission: roundMoney(order.commission),
+      ...orderExplanation(order),
+    })),
+    unfilledOrders: today
+      .filter((order) => order.status !== "filled")
+      .map((order) => ({
+        orderId: order.id,
+        symbol: order.symbol,
+        name: order.name ?? order.symbol,
+        side: order.side,
+        quantity: order.quantity,
+        status: order.status,
+        ...orderExplanation(order),
+      })),
   };
 }
 
@@ -432,6 +508,30 @@ function formatAction(operation: PaperTradingOperation): string {
   ].join("<br />");
 }
 
+function formatExecutedOrder(order: PaperPlanExecutedOrder): string {
+  const action = order.side === "buy" ? "买入" : "卖出";
+  return [
+    `<strong>${action} ${escapeHtml(order.symbol)} ${escapeHtml(order.name)} ${order.quantity}股</strong>`,
+    `成交价 ${order.filledPrice.toFixed(2)} 元 · 金额 ${order.notional.toFixed(2)} 元 · 手续费 ${order.commission.toFixed(2)} 元`,
+    `策略：${escapeHtml(order.strategy)}`,
+    `原因：${escapeHtml(order.reason)}`,
+  ].join("<br />");
+}
+
+function formatUnfilledOrder(order: PaperPlanUnfilledOrder): string {
+  const action = order.side === "buy" ? "买入" : "卖出";
+  const status = order.status === "rejected"
+    ? "拒单"
+    : order.status === "cancelled"
+      ? "已撤销"
+      : "待处理";
+  return [
+    `<strong>${status} ${action} ${escapeHtml(order.symbol)} ${escapeHtml(order.name)} ${order.quantity}股</strong>`,
+    `策略：${escapeHtml(order.strategy)}`,
+    `原因：${escapeHtml(order.reason)}`,
+  ].join("<br />");
+}
+
 function formatHtmlPositions(
   positions: Array<{ symbol: string; name: string; quantity: number }>,
   empty = "空仓",
@@ -510,6 +610,7 @@ export function formatPaperPlanMessage(
     ? `<ol>${context.executableOperations.slice(0, 4).map((operation) => `<li>${formatAction(operation)}</li>`).join("")}</ol>`
     : `<p><strong>本阶段无可执行 paper 动作。</strong><br />${escapeHtml(conclusion)}</p>`;
   const strategyName = plan.topStrategy?.strategyName ?? "资金观察";
+  const profileName = plan.strategyProfile?.label ?? "均衡";
   const regimeName = REGIME_LABELS[routing?.regime ?? "unclear"] ?? routing?.regime ?? "状态不清";
   const validSectorText = sectors.length > 0
     ? sectors.map(escapeHtml).join("；")
@@ -534,6 +635,12 @@ export function formatPaperPlanMessage(
     `新闻：${newsHighlights.length > 0 ? newsHighlights.map(escapeHtml).join("；") : "暂无通过有效性校验的重要标题"}`,
   ].join("<br />");
   const execution = context.executionSummary;
+  const executedHtml = execution.executedOrders.length > 0
+    ? `<ol>${execution.executedOrders.slice(0, 4).map((order) => `<li>${formatExecutedOrder(order)}</li>`).join("")}</ol>${execution.executedOrders.length > 4 ? `<p>另有 ${execution.executedOrders.length - 4} 笔成交，请在订单历史查看。</p>` : ""}`
+    : "<p>今日暂无已成交 Paper 订单。</p>";
+  const unfilledHtml = execution.unfilledOrders.length > 0
+    ? `<ol>${execution.unfilledOrders.slice(0, 3).map((order) => `<li>${formatUnfilledOrder(order)}</li>`).join("")}</ol>${execution.unfilledOrders.length > 3 ? `<p>另有 ${execution.unfilledOrders.length - 3} 笔未成交记录。</p>` : ""}`
+    : "<p>今日没有拒单、挂单或撤单。</p>";
   const statusColor = avoidNewRisk ? "#b42318" : "#067647";
   const statusBackground = avoidNewRisk ? "#fff1f0" : "#ecfdf3";
   const dailyPnlSign = context.account.dailyPnl > 0 ? "+" : "";
@@ -546,7 +653,7 @@ export function formatPaperPlanMessage(
   ].filter(Boolean).join(" · ");
   const stageReview = briefingSlot.sequence === 4
     ? `<h3>尾盘结果</h3><p>当日 Paper 盈亏 ${escapeHtml(dailyPnl)}<br />${escapeHtml(executionText)}<br />买入 ${execution.buyNotional.toFixed(2)} 元 · 卖出 ${execution.sellNotional.toFixed(2)} 元 · 手续费 ${execution.commission.toFixed(2)} 元</p>`
-    : `<h3>策略与盘面</h3><p>状态：${escapeHtml(regimeName)} · 策略：${escapeHtml(strategyName)}<br />适用：${escapeHtml(playbook?.useWhen ?? "等待真实数据确认")}<br />回避：${escapeHtml(playbook?.avoidWhen ?? "数据不足时不新增仓位")}<br />有效板块：${validSectorText}<br />${macroHtml}</p>`;
+    : `<h3>策略与盘面</h3><p>档位：${escapeHtml(profileName)} · 状态：${escapeHtml(regimeName)} · 策略：${escapeHtml(strategyName)}<br />适用：${escapeHtml(playbook?.useWhen ?? "等待真实数据确认")}<br />回避：${escapeHtml(playbook?.avoidWhen ?? "数据不足时不新增仓位")}<br />有效板块：${validSectorText}<br />${macroHtml}</p>`;
   const deliveryLabel = delivery.messageKind === "scheduled-briefing"
     ? `固定简报 ${briefingSlot.sequence}/4`
     : "重要事件快报";
@@ -570,13 +677,17 @@ export function formatPaperPlanMessage(
       `<div style="padding:10px 12px;background:${statusBackground};border-radius:6px;"><strong style="color:${statusColor};">${escapeHtml(headline)}</strong><br />${escapeHtml(conclusion)}<br />盘面：${escapeHtml(marketSummary)}</div>`,
       "<h3>关键数字</h3>",
       `<p>权益 ${context.account.equity.toFixed(2)} 元 · 现金 ${context.account.cash.toFixed(2)} 元<br />当前仓位 ${(investedRatio * 100).toFixed(1)}% / 阶段上限 ${(context.policy.maxInvestedRatio * 100).toFixed(1)}% · 当日 Paper 盈亏 ${escapeHtml(dailyPnl)}</p>`,
-      "<h3>本时段动作</h3>",
+      "<h3>今日已成交</h3>",
+      executedHtml,
+      "<h3>本时段待执行计划</h3>",
       actionHtml,
+      "<h3>未成交 / 拒单</h3>",
+      unfilledHtml,
       "<h3>当前与计划后持仓</h3>",
       `<p>当前：${escapeHtml(formatCurrentPositions(context.positions))}<br />计划后：${formatHtmlPositions(targets)}</p>`,
       stageReview,
       briefingSlot.sequence === 4
-        ? `<h3>策略与盘面</h3><p>状态：${escapeHtml(regimeName)} · 策略：${escapeHtml(strategyName)}<br />有效板块：${validSectorText}<br />${macroHtml}<br />明日复核：${escapeHtml(compactList(playbook?.recheckTriggers ?? [], "等待下一交易日真实数据", 3))}</p>`
+        ? `<h3>策略与盘面</h3><p>档位：${escapeHtml(profileName)} · 状态：${escapeHtml(regimeName)} · 策略：${escapeHtml(strategyName)}<br />有效板块：${validSectorText}<br />${macroHtml}<br />明日复核：${escapeHtml(compactList(playbook?.recheckTriggers ?? [], "等待下一交易日真实数据", 3))}</p>`
         : `<h3>今日模拟执行</h3><p>${escapeHtml(executionText)}<br />买入 ${execution.buyNotional.toFixed(2)} 元 · 卖出 ${execution.sellNotional.toFixed(2)} 元 · 手续费 ${execution.commission.toFixed(2)} 元</p>`,
       "<h3>风险与数据</h3>",
       `<p>策略风险：${strategyRisks.length > 0 ? compactList(strategyRisks, "", 3).split("；").map(escapeHtml).join("；") : "未记录新增策略风险"}<br />数据质量：${dataQuality.length > 0 ? compactList(dataQuality, "", 3).split("；").map(escapeHtml).join("；") : "真实只读来源未记录新增缺失项"}</p>`,

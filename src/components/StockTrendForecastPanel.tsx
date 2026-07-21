@@ -24,6 +24,12 @@ import {
   type StockTrendForecastReport,
   type StockTrendOutlook,
 } from "../lib/tradingApi";
+import {
+  CHART_AXIS_TICK,
+  CHART_COLORS,
+  CHART_GRID_STROKE,
+  CHART_TOOLTIP_STYLE,
+} from "../lib/chartTheme";
 import { ResearchQueryState } from "./ResearchQueryState";
 
 const directionLabels: Record<StockTrendDirection, string> = {
@@ -336,38 +342,34 @@ export function StockTrendForecastPanel() {
             <div className="stock-trend-chart" aria-label={`${report.selected.name} 真实历史走势`}>
               <ResponsiveContainer height="100%" width="100%">
                 <LineChart data={report.chart} margin={{ left: 0, right: 10, top: 10, bottom: 0 }}>
-                  <CartesianGrid stroke="var(--border-light)" strokeDasharray="3 3" vertical={false} />
+                  <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     axisLine={false}
                     dataKey="date"
                     minTickGap={28}
-                    tick={{ fill: "var(--text-muted)", fontSize: 10 }}
+                    tick={{ ...CHART_AXIS_TICK, fontSize: 10 }}
                     tickFormatter={(value: string) => value.slice(5)}
                     tickLine={false}
                   />
                   <YAxis
                     axisLine={false}
                     domain={["auto", "auto"]}
-                    tick={{ fill: "var(--text-muted)", fontSize: 10 }}
+                    tick={{ ...CHART_AXIS_TICK, fontSize: 10 }}
                     tickFormatter={(value: number) => value.toFixed(0)}
                     tickLine={false}
                     width={48}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: "var(--bg-panel)",
-                      border: "1px solid var(--border-default)",
-                      borderRadius: 6,
-                    }}
+                    contentStyle={CHART_TOOLTIP_STYLE}
                     formatter={(value: number, name: string) => [
                       value.toFixed(2),
                       name === "close" ? "收盘" : name === "ma20" ? "MA20" : "MA60",
                     ]}
                     labelFormatter={(label) => `交易日 ${label}`}
                   />
-                  <Line dataKey="close" dot={false} name="close" stroke="#2563eb" strokeWidth={2.2} type="monotone" />
-                  <Line dataKey="ma20" dot={false} name="ma20" stroke="#0f9f8f" strokeWidth={1.5} type="monotone" />
-                  <Line dataKey="ma60" dot={false} name="ma60" stroke="#d97706" strokeWidth={1.5} type="monotone" />
+                  <Line dataKey="close" dot={false} name="close" stroke={CHART_COLORS.primary} strokeWidth={2.2} type="monotone" />
+                  <Line dataKey="ma20" dot={false} name="ma20" stroke={CHART_COLORS.positive} strokeWidth={1.5} type="monotone" />
+                  <Line dataKey="ma60" dot={false} name="ma60" stroke={CHART_COLORS.warning} strokeWidth={1.5} type="monotone" />
                 </LineChart>
               </ResponsiveContainer>
             </div>

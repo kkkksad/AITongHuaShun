@@ -1,6 +1,6 @@
 # 当前状态
 
-**核对日期：** 2026-07-19
+**核对日期：** 2026-07-21
 
 ## 已实现
 
@@ -121,6 +121,13 @@
 - **顶部快速页面跳转** —— 顶部搜索框支持总览、市场、策略、模拟账户、研究管线和设置，可按页面名称或“行情、回测、下单、订单、配置”等工作流关键词过滤；回车进入首个匹配页面，Esc 关闭结果。
 - **研究历史缓存可观测性** —— 独立历史缓存可返回 fresh 命中、stale 命中和阻塞 miss 累计计数快照，为后续桥接指标与缓存命中 P95 验收提供基础。
 - **工作台事实一致性与响应式收口** —— 总览、侧栏、顶栏和研究环境统一读取实时后端连接、AkShare/Mock 行情源与本地 paper 执行状态，不再同时显示“已连接”和“交易后端不可用”或把 AkShare 写成模拟行情。1440×900 与 390×844 验证无页面级横向溢出，手机账户分组导航不再出现滚动箭头。
+- **Paper 账户生命周期控制** —— 受保护的 `POST /api/account/reset` 可按 1,000 至 100,000,000 元重新建立本地 paper 账户，并原子清空旧持仓、订单、交易审计和风险状态；设置页要求确认短语与复选确认。`PUT /api/account/strategy-profile` 可在不清空账户时切换现金防守、稳健、均衡和进取四档。浏览器设置页不再保存或展示 API 密钥。
+- **策略档位进入计划与复盘** —— 四档策略分别限制现金底线、候选阈值、单轮新仓数量和仓位缩放；档位只会进一步收紧或有界调整 paper 节奏，不能覆盖市场 `risk-off`、T+1、100 股整手、现金、仓位、熔断和真实交易关闭等硬约束。每日复盘返回当前档位、纪律检查和下一步建议。
+- **WxPusher 真实模拟操作摘要** —— 四条固定简报明确分开“当日已成交”“本时段计划”和“未成交/拒绝”，实际成交包含股票名称/代码、买卖方向、数量、成交价、金额、手续费、策略和审计理由；历史缺失理由明确标注缺失，不做事后推测。
+- **独立数字资产观察** —— 市场页新增“数字资产”页签，通过轻量 `/api/research/crypto-market` 读取 BTC/ETH 24 小时公开快照，只作为全球风险偏好补充。请求最多等待 5 秒，失败时不使用静态价格；普通外部 JSON 请求使用独立执行器，不阻塞串行 AkShare 行情任务，也不提供数字资产账户或订单。
+- **统一图表主题与响应式尺寸** —— Recharts 统一网格、坐标轴、Tooltip、涨跌颜色和移动端高度；主要指数在有真实快照时展示日内高低/昨收/今开/最新关键位置，不把静态折线冒充实时分时。桌面和 390px 浏览器验证无页面级横向溢出。
+- **一键启动首轮恢复** —— VS Code 后台任务使用无 ANSI 输出和宽松的 `127.0.0.1:4173` 就绪匹配；API 即使早于 AkShare 首批行情启动，自动 paper 执行器也会记录一次 `not-run` 观察并等待后续轮次，不再因空行情异常退出。
+- **隔夜持续性与费用纪律** —— AkShare Paper 新增仓位优先把持仓和高排名候选纳入最多 12 只真实历史日线池。健康趋势可进入下一步；洗盘候选只有在置信度、至少 20 个验证样本和 5 日历史命中门槛同时通过时才放行；趋势恶化、信号不清、数据不足或历史未覆盖全部停止买入。预计往返最低佣金超过计划金额 1%，或标的当天已由自动计划卖出时，也不会创建 Paper 买单。
 
 ## 仍为静态或合成的数据
 
@@ -158,10 +165,13 @@ GET  /api/research/hong-kong-market?limit=10&days=180
 GET  /api/research/strategy-robustness?limit=12&days=500
 GET  /api/research/cross-market-strategy-context?limit=12&days=180
 GET  /api/research/external-market-impact?days=500
+GET  /api/research/crypto-market
 GET  /api/market/futures/quotes?limit=16
 GET  /api/market/futures/history?symbols=IF0,CU0&days=180
 GET  /api/trading/auto-paper-execution/status
 GET  /api/account
+POST /api/account/reset
+PUT  /api/account/strategy-profile
 GET  /api/positions
 GET  /api/orders
 GET  /api/orders/export?format=csv|json    (交易记录导出)
@@ -183,6 +193,15 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-07-21 Paper account control and research experience upgrade
+Python pytest: 94 tests passed; 1 FastAPI/httpx dependency deprecation warning
+Server Vitest: 51 files, 779 tests passed
+Web Vitest: 27 files, 89 tests passed
+TypeScript checks and Vite production build passed; 2,318 modules transformed
+Runtime: API remained healthy while AkShare loaded its first 5,440 stocks and 562 indices; Vite /api proxy returned JSON
+Browser: 1280x720 and 390x844 had no horizontal overflow; strategy charts rendered at non-zero responsive sizes; no console errors
+Entry discipline: historical persistence, missing history, fee-heavy small orders, same-day re-entry and healthy-trend pass paths covered
+
 2026-07-19 full-chain fetch reliability hardening
 Python pytest: 103 tests passed; 1 FastAPI/httpx dependency deprecation warning
 Server Vitest: 48 files, 758 tests passed
@@ -639,6 +658,21 @@ npm run build
 TypeScript checks and Vite production build passed
 ```
 
+2026-07-20 本地 Paper 操作与次日复核：
+
+1. 09:30 卖出中国铝业 100 股、09:31 卖出交通银行 100 股，分别来自高置信度趋势恶化减仓和 `risk-off` 现金目标再平衡；10:28 买入包钢股份 100 股、13:03 买入中国东航 100 股，两笔买入理由只有日内流动性、强度、换手和波动，没有历史形态准入。
+2. 当天四笔全部模拟成交、拒绝 0 笔；09:30 重要 `risk-off` 提醒、10:30 上午确认、13:30 午后风控和 14:23 数据降级提醒均被 WxPusher 接受。通知接受不代表真实下单或用户批准。
+3. 2026-07-21 包钢股份和中国东航均因历史形态高置信度趋势恶化卖出。按已保存成交价和两边最低手续费计算，包钢股份往返净约 -9 元、中国东航净约 -4 元；结果显示低金额短持有被最低佣金明显侵蚀，但仍只是本地 Paper 结果。
+4. 复盘后的战法升级为“隔夜持续性与费用纪律”：历史未确认不买，预计往返最低佣金超过计划金额 1% 不买，当天卖出的标的不回补。该规则优先减少反复交易，不保证避免亏损。
+
+2026-07-21 10:28（Asia/Shanghai）本地 paper 运行复盘：
+
+1. 自动执行器为 `local-paper-broker-only`，当天提交并成交 2 笔、拒绝 0 笔、买入 0 笔；09:58 卖出包钢股份 100 股，成交价 2.16 元、手续费 5 元；09:59 卖出中国东航 100 股，成交价 3.57 元、手续费 5 元。
+2. 两笔卖出均由持久化 `paper-auto-execution.decision` 审计还原：真实历史形态为高置信度趋势恶化，当前 `risk-off` 下执行减半仓位；T+1 检查通过。该记录是本地模拟成交，不是真实券商成交。
+3. 复盘接口按开盘权益重建的当日 Paper 结果为 -49 元（-0.47%）；同期累计 Paper 结果为 +342 元（+3.42%）。累计结果不得描述为当日收益，也不代表真实收益。
+4. 当前均衡档位账户持有工商银行 200 股、中国石油 200 股、交通银行 100 股，现金 5,935 元；最新计划为 `watch-only`，保留工商银行和交通银行，现金观察理由为 `risk-off` 禁止新增仓位，没有强制买入。
+5. 当时配置的 100 只观察池中上涨 59、下跌 39、平盘 2，平均涨跌 +0.30%；该宽度不是完整交易所全市场统计。策略复盘未发现新的纪律违规，但单日样本不能证明策略有效，至少继续积累一周再比较胜率、回撤和盈亏比。
+
 ## 架构进展
 
 ```
@@ -738,7 +772,7 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 默认使用内存状态；可选 JSON 文件只适合本地单进程恢复，不是生产数据库。
 - 系统日志分页减少网络响应和前端 DOM，启动前日志预算避免开发输出无限增长；但活动重定向日志在持续写入时可以暂时超过预算，任意模块/级别筛选仍需扫描指定日期日志文件，文件索引、异步读取和 PostgreSQL/日志平台接入仍属于后续存储优化。
 - JSON 交易历史默认只保留最近 7 天，过期清理也会缩短订单幂等查询和审计回看窗口；需要长期研究的汇总结果应另行导出，不应依赖无限增长的运行状态文件。
-- 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 从 10000 元纯现金开始；已有 JSON 状态文件不会被自动覆盖，需要用户明确删除或移走后才会重新初始化。
+- 新建纸面账户可通过 `TRADING_STARTING_CASH=10000` 和 `TRADING_SEED_PORTFOLIO=false` 初始化，也可在设置页输入金额和确认短语后受保护地重置；重置会删除旧 paper 持仓、订单与交易审计，但不删除研究缓存、日志或认证配置。
 - A 股 paper 撮合遵守一手 100 股和 T+1 卖出限制；同日买入的 `t1LockedQuantity` 只会在后续交易日释放为可卖数量。
 - 本地 paper 自动执行器默认关闭；开启后只在 `MARKET_MODE=paper` 与 `REAL_TRADING_ENABLED=false` 下运行，默认限制在 A 股交易时段，并只向本地 `PaperBroker` 提交模拟订单。
 - 当前没有事务型数据库、真实账户连接或真实券商执行。

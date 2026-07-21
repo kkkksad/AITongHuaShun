@@ -11,6 +11,11 @@ import {
 } from "recharts";
 import { BarChart3, TrendingUp, Target, ShieldAlert } from "lucide-react";
 import type { BacktestResult, StrategyDefinition } from "../types";
+import {
+  CHART_AXIS_TICK,
+  CHART_GRID_STROKE,
+  CHART_TOOLTIP_STYLE,
+} from "../lib/chartTheme";
 
 interface StrategyCompareProps {
   results: { strategy: StrategyDefinition; result: BacktestResult }[];
@@ -209,28 +214,24 @@ export function StrategyCompare({ results }: StrategyCompareProps) {
         <div className="compare-equity-chart">
           <ResponsiveContainer height="100%" width="100%">
             <AreaChart data={mergedCurve} margin={{ left: 2, right: 12, top: 12 }}>
-              <CartesianGrid stroke="#e7e9ee" strokeDasharray="3 3" vertical={false} />
+              <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
               <XAxis
                 axisLine={false}
                 dataKey="date"
                 minTickGap={32}
-                tick={{ fill: "#7a8190", fontSize: 11 }}
+                tick={CHART_AXIS_TICK}
                 tickLine={false}
               />
               <YAxis
                 axisLine={false}
                 domain={["dataMin - 20000", "dataMax + 20000"]}
-                tick={{ fill: "#7a8190", fontSize: 11 }}
+                tick={CHART_AXIS_TICK}
                 tickFormatter={(value: number) => `${(value / 10000).toFixed(0)}万`}
                 tickLine={false}
                 width={48}
               />
               <Tooltip
-                contentStyle={{
-                  border: "1px solid #dfe3ea",
-                  borderRadius: 6,
-                  boxShadow: "0 10px 30px rgba(28, 35, 49, 0.12)",
-                }}
+                contentStyle={CHART_TOOLTIP_STYLE}
                 formatter={(value: number, name: string) => [
                   `¥${formatCurrency(value)}`,
                   name,

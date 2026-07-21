@@ -38,6 +38,17 @@ function createPlan(
       cashReserveRatio: 0.1,
       cashReserveAmount: 1_000,
     },
+    strategyProfile: {
+      key: "balanced",
+      label: "均衡",
+      summary: "在现金防守和机会参与之间保持中等节奏。",
+      cashReserveFloor: 0.5,
+      minDefensiveScore: 62,
+      maxNewPositionsPerPlan: 2,
+      allowNewPositions: true,
+      effectiveCashReserveRatio: 0.5,
+      effectiveNewPositionScale: 0.85,
+    },
     rules: ["paper only"],
     topStrategy: {
       strategyKey: "kairosLowVolTrend",
@@ -183,6 +194,22 @@ function context(
       buyNotional: 1_050,
       sellNotional: 500,
       commission: 10,
+      executedOrders: [
+        {
+          orderId: "filled-buy",
+          symbol: "000001",
+          name: "Sample Bank",
+          side: "buy",
+          quantity: 100,
+          filledPrice: 10.48,
+          notional: 1_048,
+          commission: 5,
+          strategy: "KAIROS 低波趋势",
+          reason: "趋势与流动性通过本地 Paper 检查。",
+          reasonSource: "decision-audit",
+        },
+      ],
+      unfilledOrders: [],
     },
     policy: policy(),
     marketContext: {
@@ -289,14 +316,31 @@ describe("PaperPlanNotifier", () => {
     const result = summarizePaperOrders([
       order({ id: "buy" }),
       order({ id: "sell", side: "sell", notional: 500, commission: 5 }),
-      order({ id: "rejected", status: "rejected", notional: 0, commission: 0 }),
+      order({
+        id: "rejected",
+        status: "rejected",
+        notional: 0,
+        commission: 0,
+        rejectionReason: "可用资金不足",
+      }),
       order({ id: "pending", status: "accepted", notional: 0, commission: 0 }),
       order({
         id: "previous-day",
         createdAt: "2026-07-16T01:40:00.000Z",
         updatedAt: "2026-07-16T01:40:00.000Z",
       }),
-    ], "2026-07-17");
+    ], "2026-07-17", [{
+      id: "audit-buy",
+      category: "system",
+      action: "paper-auto-execution.decision",
+      message: "decision",
+      timestamp: "2026-07-17T01:40:00.000Z",
+      data: {
+        orderId: "buy",
+        strategy: "KAIROS 低波趋势",
+        reason: "趋势确认后执行。",
+      },
+    }]);
 
     expect(result).toEqual({
       filledOrders: 2,
@@ -306,6 +350,34 @@ describe("PaperPlanNotifier", () => {
       buyNotional: 1_000,
       sellNotional: 500,
       commission: 10,
+      executedOrders: [
+        expect.objectContaining({
+          orderId: "buy",
+          name: "Sample Bank",
+          side: "buy",
+          strategy: "KAIROS 低波趋势",
+          reason: "趋势确认后执行。",
+          reasonSource: "decision-audit",
+        }),
+        expect.objectContaining({
+          orderId: "sell",
+          side: "sell",
+          strategy: "未记录策略",
+          reason: "历史订单未保存策略理由",
+          reasonSource: "historical-fallback",
+        }),
+      ],
+      unfilledOrders: [
+        expect.objectContaining({
+          orderId: "rejected",
+          status: "rejected",
+          reason: "可用资金不足",
+        }),
+        expect.objectContaining({
+          orderId: "pending",
+          status: "accepted",
+        }),
+      ],
     });
   });
 
@@ -322,7 +394,11 @@ describe("PaperPlanNotifier", () => {
     expect(message.summary).toContain("1/10 固定简报 1/4");
     expect(message.content).toContain("今日第 1/10 条 · 固定简报 1/4");
     expect(message.content).toContain("<h3>一眼结论</h3>");
-    expect(message.content).toContain("<h3>本时段动作</h3>");
+    expect(message.content).toContain("<h3>今日已成交</h3>");
+    expect(message.content).toContain("买入 000001 Sample Bank 100股");
+    expect(message.content).toContain("成交价 10.48 元");
+    expect(message.content).toContain("趋势与流动性通过本地 Paper 检查");
+    expect(message.content).toContain("<h3>本时段待执行计划</h3>");
     expect(message.content).toContain("买入 000001 Sample Bank 100股");
     expect(message.content).toContain("参考价 10.50 元");
     expect(message.content).toContain("预计金额 1050.00 元");
@@ -334,6 +410,7 @@ describe("PaperPlanNotifier", () => {
     expect(message.content).toContain("现金 5000.00 元");
     expect(message.content).toContain("当前仓位 50.0%");
     expect(message.content).toContain("KAIROS 低波趋势");
+    expect(message.content).toContain("档位：均衡");
     expect(message.content).toContain("银行+1.2%");
     expect(message.content).toContain("外围：外围市场信号中性");
     expect(message.content).toContain("东方财富：政策支持长期资金入市");
@@ -344,7 +421,7 @@ describe("PaperPlanNotifier", () => {
     expect(message.content).toContain("策略风险：注意板块宽度");
     expect(message.content).toContain("数据质量：新闻源暂时降级");
     expect(message.content).toContain("下一条：10:30 上午确认");
-    expect(message.content.length).toBeLessThan(3_200);
+    expect(message.content.length).toBeLessThan(4_200);
     expect(store.listAudit(20)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         action: "wxpusher.paper-plan.sent",

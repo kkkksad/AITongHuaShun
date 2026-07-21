@@ -15,6 +15,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperStrategyProfile,
 } from "../shared/trading";
 import {
   SessionStore,
@@ -55,6 +56,7 @@ import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
 import { buildCrossMarketStrategyContext } from "./research/crossMarketStrategyContext";
+import { buildCryptoMarketResearch } from "./research/cryptoMarketResearch";
 import { buildExternalMarketImpact } from "./research/externalMarketImpact";
 import {
   ExternalMarketFeatureCapture,
@@ -90,6 +92,23 @@ const orderRequestSchema = z.object({
 
 const cancelParamsSchema = z.object({
   orderId: z.string().trim().min(1),
+});
+
+const paperStrategyProfileSchema = z.enum([
+  "capital-preservation",
+  "defensive",
+  "balanced",
+  "growth",
+]);
+
+const resetPaperAccountSchema = z.object({
+  startingCash: z.coerce.number().finite().min(1_000).max(100_000_000),
+  strategyProfile: paperStrategyProfileSchema,
+  confirmation: z.literal("重置模拟账户"),
+});
+
+const updatePaperStrategyProfileSchema = z.object({
+  strategyProfile: paperStrategyProfileSchema,
 });
 
 const listQuerySchema = z.object({
@@ -812,6 +831,21 @@ export async function buildTradingApp(
     });
   });
 
+  app.get("/api/research/crypto-market", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取 BTC/ETH 只读快照",
+      description:
+        "独立读取 BTC/ETH 真实 24 小时快照与受限 A 股风险偏好解释，不等待全球历史研究，不提供数字资产交易。",
+    },
+  }, async () => buildCryptoMarketResearch({
+    bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+    bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+    marketDataProvider: system.marketDataProvider,
+    mode: options.config.MARKET_MODE,
+    timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
+  }));
+
   app.get("/api/research/external-market-impact", {
     schema: {
       tags: ["研究"],
@@ -1197,6 +1231,59 @@ export async function buildTradingApp(
       description: "返回当前账户权益、现金、持仓市值等信息",
     },
   }, async () => system.broker.getAccount());
+
+  app.post("/api/account/reset", {
+    schema: {
+      tags: ["账户"],
+      summary: "重置本地 paper 账户",
+      description:
+        "删除当前本地 paper 持仓、订单和旧审计，以指定初始资金和策略档位创建新的纯现金模拟账户。真实交易模式拒绝执行。",
+    },
+  }, async (request, reply) => {
+    if (options.config.MARKET_MODE !== "paper" || options.config.REAL_TRADING_ENABLED) {
+      return reply.status(409).send({
+        error: "PAPER_MODE_REQUIRED",
+        message: "账户重置只允许在本地 paper 模式执行",
+      });
+    }
+    if (paperAutoExecutor.getStatus().running) {
+      return reply.status(409).send({
+        error: "PAPER_EXECUTION_RUNNING",
+        message: "Paper 自动执行正在运行，请等待本轮结束后再重置账户",
+      });
+    }
+    const body = resetPaperAccountSchema.parse(request.body);
+    paperAutoExecutor.stop();
+    const result = system.broker.resetAccount({
+      startingCash: body.startingCash,
+      strategyProfile: body.strategyProfile as PaperStrategyProfile,
+    });
+    paperAutoExecutor.start();
+    broadcastPositions(system.market.getSnapshot());
+    return reply.send(result);
+  });
+
+  app.put("/api/account/strategy-profile", {
+    schema: {
+      tags: ["账户"],
+      summary: "切换本地 paper 策略档位",
+      description:
+        "只修改后续本地 paper 计划使用的风险档位，不清空当前持仓或订单，不改变硬风控。",
+    },
+  }, async (request, reply) => {
+    if (options.config.MARKET_MODE !== "paper" || options.config.REAL_TRADING_ENABLED) {
+      return reply.status(409).send({
+        error: "PAPER_MODE_REQUIRED",
+        message: "策略档位只允许在本地 paper 模式修改",
+      });
+    }
+    const body = updatePaperStrategyProfileSchema.parse(request.body);
+    return reply.send({
+      account: system.broker.setStrategyProfile(
+        body.strategyProfile as PaperStrategyProfile,
+      ),
+    });
+  });
 
   app.get("/api/positions", {
     schema: {

@@ -82,6 +82,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("akshare-bridge")
 
+# AkShare includes native JavaScript-backed providers that are not thread-safe.
+# Serialize AkShare calls so concurrent research requests cannot terminate the bridge.
+AKSHARE_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="akshare")
+# Crypto fallbacks use plain public JSON and must not block serialized AkShare work.
+EXTERNAL_JSON_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="external-json")
+
 
 # ── 数据模型 ──────────────────────────────────────────────
 
@@ -554,7 +560,7 @@ class QuoteCache:
                 return
             try:
                 loop = asyncio.get_running_loop()
-                df = await loop.run_in_executor(None, fetch_a_share_spot_dataframe)
+                df = await loop.run_in_executor(AKSHARE_EXECUTOR, fetch_a_share_spot_dataframe)
                 self._parse_dataframe(df)
                 completed_at = time.time()
                 self._last_update = completed_at
@@ -700,7 +706,7 @@ class IndexCache:
                 return
             try:
                 loop = asyncio.get_running_loop()
-                df = await loop.run_in_executor(None, fetch_a_share_index_dataframe)
+                df = await loop.run_in_executor(AKSHARE_EXECUTOR, fetch_a_share_index_dataframe)
                 self._parse_dataframe(df)
                 completed_at = time.time()
                 self._last_update = completed_at
@@ -1013,8 +1019,117 @@ def fetch_global_history_dataframe(
 
 
 def fetch_crypto_spot_dataframe():
-    """Fetch the Jin10 crypto snapshot exposed by the installed AkShare version."""
-    return ak.crypto_js_spot(), "jin10-crypto-spot"
+    """Fetch BTC/ETH public 24-hour JSON without the native JS runtime."""
+    errors: list[str] = []
+    try:
+        response = requests.get(
+            "https://datacenter-api.jin10.com/crypto_currency/list",
+            headers={
+                "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124 Safari/537.36",
+                "x-app-id": "rU6QIu7JHe2gOUeR",
+                "x-csrf-token": "x-csrf-token",
+                "x-version": "1.0.0",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        raw_items = payload.get("data") if isinstance(payload, dict) else None
+        dataframe = pd.DataFrame(raw_items)
+        if dataframe.empty or len(dataframe.columns) != 9:
+            raise RuntimeError("Jin10 返回格式不完整")
+        dataframe.columns = [
+            "市场",
+            "交易品种",
+            "最近报价",
+            "涨跌额",
+            "涨跌幅",
+            "24小时最高",
+            "24小时最低",
+            "24小时成交量",
+            "更新时间",
+        ]
+        reported_at = pd.to_datetime(
+            dataframe["更新时间"],
+            errors="coerce",
+            utc=True,
+        ).max()
+        if pd.isna(reported_at):
+            raise RuntimeError("Jin10 未提供有效更新时间")
+        age = datetime.now(timezone.utc) - reported_at.to_pydatetime()
+        if age > timedelta(hours=6):
+            raise RuntimeError(f"Jin10 最新快照已过期 {age.days} 天")
+        return dataframe, "jin10-public-crypto"
+    except Exception as exc:
+        errors.append(f"jin10: {exc}")
+
+    try:
+        response = requests.get(
+            "https://api.binance.com/api/v3/ticker/24hr",
+            params={"symbols": '["BTCUSDT","ETHUSDT"]'},
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise RuntimeError("Binance 响应不是列表")
+        rows = [
+            {
+                "symbol": item.get("symbol"),
+                "price": item.get("lastPrice"),
+                "change24hPercent": item.get("priceChangePercent"),
+                "high24h": item.get("highPrice"),
+                "low24h": item.get("lowPrice"),
+                "volume24h": item.get("quoteVolume"),
+                "updatedAt": datetime.fromtimestamp(
+                    parse_float(item.get("closeTime"), 0) / 1000,
+                    tz=timezone.utc,
+                ).isoformat() if parse_float(item.get("closeTime"), 0) > 0 else None,
+            }
+            for item in payload
+            if isinstance(item, dict)
+        ]
+        if rows:
+            return pd.DataFrame(rows), "binance-public-24h"
+        raise RuntimeError("Binance 返回空结果")
+    except Exception as exc:
+        errors.append(f"binance: {exc}")
+
+    try:
+        response = requests.get(
+            "https://api.coingecko.com/api/v3/coins/markets",
+            params={
+                "vs_currency": "usd",
+                "ids": "bitcoin,ethereum",
+                "price_change_percentage": "24h",
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        aliases = {"bitcoin": "BTCUSDT", "ethereum": "ETHUSDT"}
+        if not isinstance(payload, list):
+            raise RuntimeError("CoinGecko 响应不是列表")
+        rows = [
+            {
+                "symbol": aliases.get(str(item.get("id", "")).lower()),
+                "price": item.get("current_price"),
+                "change24hPercent": item.get("price_change_percentage_24h"),
+                "high24h": item.get("high_24h"),
+                "low24h": item.get("low_24h"),
+                "volume24h": item.get("total_volume"),
+                "updatedAt": item.get("last_updated"),
+            }
+            for item in payload
+            if isinstance(item, dict) and str(item.get("id", "")).lower() in aliases
+        ]
+        if rows:
+            return pd.DataFrame(rows), "coingecko-public-markets"
+        raise RuntimeError("CoinGecko 返回空结果")
+    except Exception as exc:
+        errors.append(f"coingecko: {exc}")
+
+    raise RuntimeError("BTC/ETH 公开源不可用: " + "; ".join(errors))
 
 
 def fetch_futures_spot_dataframe(symbols: list[str]):
@@ -1157,17 +1272,11 @@ def fetch_global_market_sina_snapshot_dataframe():
 
     rows_by_symbol: dict[str, dict[str, object]] = {}
     errors: list[str] = []
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {
-            executor.submit(fetch_one, symbol): symbol
-            for symbol in GLOBAL_INDEX_WATCHLIST
-        }
-        for future in as_completed(futures):
-            symbol = futures[future]
-            try:
-                rows_by_symbol[symbol] = future.result()
-            except Exception as exc:
-                errors.append(f"{symbol}: {exc}")
+    for symbol in GLOBAL_INDEX_WATCHLIST:
+        try:
+            rows_by_symbol[symbol] = fetch_one(symbol)
+        except Exception as exc:
+            errors.append(f"{symbol}: {exc}")
 
     rows = [
         rows_by_symbol[symbol]
@@ -2185,7 +2294,7 @@ async def build_history_response(
         async def fetch_and_normalize() -> HistoricalSeries:
             async with request_semaphore:
                 result = await loop.run_in_executor(
-                    None,
+                    AKSHARE_EXECUTOR,
                     fetcher,
                     identifier,
                     start_date,
@@ -2473,7 +2582,10 @@ async def get_hk_quotes(
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     try:
         loop = asyncio.get_running_loop()
-        dataframe, source = await loop.run_in_executor(None, fetch_hk_spot_dataframe)
+        dataframe, source = await loop.run_in_executor(
+            AKSHARE_EXECUTOR,
+            fetch_hk_spot_dataframe,
+        )
         response = HongKongQuotesResponse(
             provider="akshare",
             source=source,
@@ -2532,7 +2644,7 @@ async def get_futures_quotes(
     try:
         loop = asyncio.get_running_loop()
         dataframe, source = await loop.run_in_executor(
-            None,
+            AKSHARE_EXECUTOR,
             fetch_futures_spot_dataframe,
             symbols,
         )
@@ -2606,7 +2718,10 @@ async def get_sectors(
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     loop = asyncio.get_running_loop()
     try:
-        sector_result = await loop.run_in_executor(None, fetch_sector_snapshot_dataframe)
+        sector_result = await loop.run_in_executor(
+            AKSHARE_EXECUTOR,
+            fetch_sector_snapshot_dataframe,
+        )
     except Exception as e:
         logger.error("获取行业板块失败: %s", e)
         return SectorSnapshotResponse(
@@ -2627,7 +2742,10 @@ async def get_sectors(
     source = str(sector_source)
     if sector_source == "eastmoney-industry-board":
         try:
-            flow_df = await loop.run_in_executor(None, fetch_sector_fund_flow_dataframe)
+            flow_df = await loop.run_in_executor(
+                AKSHARE_EXECUTOR,
+                fetch_sector_fund_flow_dataframe,
+            )
             source += "+eastmoney-sector-fund-flow"
         except Exception as e:
             warning = f"行业资金流暂不可用，板块涨跌仍为真实数据: {e}"
@@ -2725,7 +2843,7 @@ async def get_research_news(
     try:
         loop = asyncio.get_running_loop()
         batches, warnings = await loop.run_in_executor(
-            None,
+            AKSHARE_EXECUTOR,
             fetch_financial_news_batches,
             symbol_list,
         )
@@ -2776,7 +2894,7 @@ async def get_ipo_subscriptions(
     try:
         loop = asyncio.get_running_loop()
         df, provider_name = await loop.run_in_executor(
-            None,
+            AKSHARE_EXECUTOR,
             fetch_ipo_subscriptions_dataframe,
         )
         response = IpoSubscriptionsResponse(
@@ -2810,7 +2928,10 @@ async def get_global_markets(
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     try:
         loop = asyncio.get_running_loop()
-        df, provider_name = await loop.run_in_executor(None, fetch_global_market_dataframe)
+        df, provider_name = await loop.run_in_executor(
+            AKSHARE_EXECUTOR,
+            fetch_global_market_dataframe,
+        )
         markets = normalize_global_market_dataframe(df, provider_name, limit)
         expected_count = min(limit, len(GLOBAL_INDEX_WATCHLIST))
         response = GlobalMarketsResponse(
@@ -2876,7 +2997,7 @@ async def get_crypto_quotes():
     try:
         loop = asyncio.get_running_loop()
         dataframe, source = await loop.run_in_executor(
-            None,
+            EXTERNAL_JSON_EXECUTOR,
             fetch_crypto_spot_dataframe,
         )
         items = normalize_crypto_quote_dataframe(dataframe, source)

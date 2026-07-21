@@ -9,6 +9,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
   TradingEvent,
@@ -20,7 +21,9 @@ import {
   getTradingSocketUrl,
   notifyAuthExpired,
   setPaperTradingPaused,
+  resetPaperAccount,
   submitPaperOrder,
+  updatePaperStrategyProfile,
   type MarketDataProviderName,
   type TradingBootstrap,
 } from "../lib/tradingApi";
@@ -44,6 +47,12 @@ export interface TradingBackend {
   submitOrder(request: OrderRequest): Promise<OrderRecord>;
   cancelOrder(orderId: string): Promise<OrderRecord>;
   setPaused(paused: boolean): Promise<void>;
+  resetAccount(input: {
+    startingCash: number;
+    strategyProfile: PaperStrategyProfile;
+    confirmation: "重置模拟账户";
+  }): Promise<void>;
+  setStrategyProfile(profile: PaperStrategyProfile): Promise<void>;
 }
 
 interface UseTradingBackendOptions {
@@ -351,6 +360,43 @@ export function useTradingBackend(
     },
   });
 
+  const resetAccountMutation = useMutation({
+    mutationFn: resetPaperAccount,
+    onMutate: () => {
+      setNotice(undefined);
+      setTransportError(undefined);
+    },
+    onSuccess: (result) => {
+      updateBootstrap((current) => ({
+        ...current,
+        account: result.account,
+        positions: result.positions,
+        orders: result.orders,
+      }));
+      setNotice(
+        `已开始新的本地模拟：初始资金 ¥${result.account.equity.toLocaleString("zh-CN")}，旧 Paper 数据已删除`,
+      );
+    },
+    onError: (resetError) => {
+      setTransportError(errorMessage(resetError, "重置模拟账户失败"));
+    },
+  });
+
+  const strategyProfileMutation = useMutation({
+    mutationFn: updatePaperStrategyProfile,
+    onMutate: () => {
+      setNotice(undefined);
+      setTransportError(undefined);
+    },
+    onSuccess: (result) => {
+      updateBootstrap((current) => ({ ...current, account: result.account }));
+      setNotice("Paper 策略档位已更新，下一轮计划开始生效");
+    },
+    onError: (profileError) => {
+      setTransportError(errorMessage(profileError, "更新策略档位失败"));
+    },
+  });
+
   const submitOrder = useCallback(
     async (request: OrderRequest) =>
       (await submitMutation.mutateAsync(request)).order,
@@ -378,6 +424,8 @@ export function useTradingBackend(
     submitMutation.isPending ||
     cancelMutation.isPending ||
     pauseMutation.isPending;
+  const accountControlPending =
+    resetAccountMutation.isPending || strategyProfileMutation.isPending;
   const connectionState: ConnectionState = bootstrap
     ? "connected"
     : bootstrapQuery.isError || realtimeState === "offline"
@@ -399,10 +447,16 @@ export function useTradingBackend(
     limits: bootstrap?.limits,
     error: backendError,
     notice,
-    pendingAction,
+    pendingAction: pendingAction || accountControlPending,
     refresh,
     submitOrder,
     cancelOrder,
     setPaused,
+    resetAccount: async (input) => {
+      await resetAccountMutation.mutateAsync(input);
+    },
+    setStrategyProfile: async (profile) => {
+      await strategyProfileMutation.mutateAsync(profile);
+    },
   };
 }

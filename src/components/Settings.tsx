@@ -1,467 +1,295 @@
-import { useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Eye,
-  EyeOff,
-  KeyRound,
-  Bell,
-  ShieldAlert,
-  Save,
-  RotateCcw,
-  CheckCircle2,
   AlertTriangle,
-  Zap,
+  Banknote,
+  CheckCircle2,
+  Gauge,
+  RefreshCw,
+  ShieldCheck,
+  Trash2,
 } from "lucide-react";
+import type { PaperStrategyProfile } from "../../shared/trading";
+import type { TradingBackend } from "../hooks/useTradingBackend";
 
-// ── Types ──────────────────────────────────────────────────────
-interface ApiKeyEntry {
-  provider: string;
+interface SettingsProps {
+  trading: TradingBackend;
+}
+
+interface StrategyProfileOption {
+  key: PaperStrategyProfile;
   label: string;
-  key: string;
-  masked: boolean;
+  cashReserve: string;
+  pace: string;
+  summary: string;
 }
 
-interface NotificationPrefs {
-  emailAlerts: boolean;
-  pushAlerts: boolean;
-  inAppAlerts: boolean;
-  dailySummary: boolean;
-  tradeExecution: boolean;
-  riskBreach: boolean;
-}
-
-interface RiskParams {
-  maxPositionPercent: number;
-  dailyLossLimit: number;
-  maxDrawdownLimit: number;
-  maxLeverage: number;
-  orderSizeLimit: number;
-  autoStopTrading: boolean;
-}
-
-// ── Defaults ───────────────────────────────────────────────────
-const defaultApiKeys: ApiKeyEntry[] = [
-  { provider: "tonghuashun", label: "同花顺 OpenAPI", key: "", masked: true },
-  { provider: "tushare", label: "Tushare Pro", key: "", masked: true },
-  { provider: "deepseek", label: "DeepSeek AI", key: "", masked: true },
+export const strategyProfileOptions: StrategyProfileOption[] = [
+  {
+    key: "capital-preservation",
+    label: "现金防守",
+    cashReserve: "至少 80% 现金",
+    pace: "停止新增",
+    summary: "市场不明或需要暂时收缩风险时，只处理已有持仓。",
+  },
+  {
+    key: "defensive",
+    label: "稳健",
+    cashReserve: "至少 55% 现金",
+    pace: "每轮最多 1 只",
+    summary: "提高候选门槛并缩小新仓，优先控制回撤。",
+  },
+  {
+    key: "balanced",
+    label: "均衡",
+    cashReserve: "至少 50% 现金",
+    pace: "每轮最多 2 只",
+    summary: "在现金缓冲和机会参与之间保持中等节奏。",
+  },
+  {
+    key: "growth",
+    label: "进取",
+    cashReserve: "至少 20% 现金",
+    pace: "每轮最多 3 只",
+    summary: "允许更高资金参与，但不会放宽 T+1、整手和硬风控。",
+  },
 ];
 
-const defaultNotifications: NotificationPrefs = {
-  emailAlerts: true,
-  pushAlerts: false,
-  inAppAlerts: true,
-  dailySummary: true,
-  tradeExecution: false,
-  riskBreach: true,
-};
-
-const defaultRiskParams: RiskParams = {
-  maxPositionPercent: 25,
-  dailyLossLimit: 5,
-  maxDrawdownLimit: 15,
-  maxLeverage: 1,
-  orderSizeLimit: 100000,
-  autoStopTrading: true,
-};
-
-// ── Helper ─────────────────────────────────────────────────────
-function maskKey(key: string): string {
-  if (key.length <= 8) return "••••••••";
-  return key.slice(0, 4) + "••••••••" + key.slice(-4);
-}
-
-// ── Sub-components ─────────────────────────────────────────────
-
-function ApiKeySection({
-  keys,
-  onUpdate,
-}: {
-  keys: ApiKeyEntry[];
-  onUpdate: (keys: ApiKeyEntry[]) => void;
-}) {
-  const [saved, setSaved] = useState(false);
-
-  const handleKeyChange = (index: number, value: string) => {
-    const next = [...keys];
-    next[index] = { ...next[index], key: value };
-    onUpdate(next);
-    setSaved(false);
-  };
-
-  const toggleMask = (index: number) => {
-    const next = [...keys];
-    next[index] = { ...next[index], masked: !next[index].masked };
-    onUpdate(next);
-  };
-
-  const handleSave = () => {
-    // In a real app this would persist to localStorage or backend
-    localStorage.setItem("kairos_api_keys", JSON.stringify(keys));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
-
+export function canResetPaperAccount(input: {
+  startingCash: number;
+  confirmation: string;
+  acknowledged: boolean;
+  mode: TradingBackend["mode"];
+  pending: boolean;
+}): boolean {
   return (
-    <section className="settings-section">
-      <div className="settings-section-header">
-        <KeyRound size={18} />
-        <div>
-          <h2>API 密钥配置</h2>
-          <p>管理外部数据源与 AI 服务的访问凭据。密钥仅存储于本地浏览器。</p>
-        </div>
-      </div>
-
-      <div className="settings-fields">
-        {keys.map((entry, i) => (
-          <div className="settings-field" key={entry.provider}>
-            <label>{entry.label}</label>
-            <div className="settings-input-group">
-              <input
-                aria-label={`${entry.label} API Key`}
-                onChange={(e) => handleKeyChange(i, e.target.value)}
-                placeholder="输入 API 密钥..."
-                type={entry.masked ? "password" : "text"}
-                value={entry.key}
-              />
-              <button
-                aria-label={entry.masked ? "显示密钥" : "隐藏密钥"}
-                className="settings-input-action"
-                onClick={() => toggleMask(i)}
-                type="button"
-              >
-                {entry.masked ? <Eye size={16} /> : <EyeOff size={16} />}
-              </button>
-            </div>
-            {entry.key && (
-              <span className="settings-field-hint">
-                当前: {maskKey(entry.key)}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <div className="settings-section-footer">
-        <button
-          className="btn btn-primary"
-          onClick={handleSave}
-          type="button"
-        >
-          <Save size={16} />
-          保存密钥
-        </button>
-        {saved && (
-          <span className="settings-saved-badge">
-            <CheckCircle2 size={14} />
-            已保存
-          </span>
-        )}
-      </div>
-    </section>
+    input.mode === "paper" &&
+    !input.pending &&
+    input.acknowledged &&
+    input.confirmation === "重置模拟账户" &&
+    Number.isFinite(input.startingCash) &&
+    input.startingCash >= 1_000 &&
+    input.startingCash <= 100_000_000
   );
 }
 
-function NotificationSection({
-  prefs,
-  onUpdate,
-}: {
-  prefs: NotificationPrefs;
-  onUpdate: (prefs: NotificationPrefs) => void;
-}) {
-  const [saved, setSaved] = useState(false);
-
-  const toggle = (key: keyof NotificationPrefs) => {
-    onUpdate({ ...prefs, [key]: !prefs[key] });
-    setSaved(false);
-  };
-
-  const handleSave = () => {
-    localStorage.setItem("kairos_notification_prefs", JSON.stringify(prefs));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
-
-  const toggles: { key: keyof NotificationPrefs; label: string; desc: string }[] = [
-    { key: "emailAlerts", label: "邮件告警", desc: "接收每日报告与关键事件邮件" },
-    { key: "pushAlerts", label: "推送通知", desc: "浏览器推送通知（需授权）" },
-    { key: "inAppAlerts", label: "应用内通知", desc: "在通知中心显示实时提醒" },
-    { key: "dailySummary", label: "每日摘要", desc: "每个交易日结束后发送组合摘要" },
-    { key: "tradeExecution", label: "交易执行通知", desc: "每次模拟交易成交时通知" },
-    { key: "riskBreach", label: "风控预警", desc: "当触及风控限制时立即告警" },
-  ];
-
-  return (
-    <section className="settings-section">
-      <div className="settings-section-header">
-        <Bell size={18} />
-        <div>
-          <h2>通知偏好</h2>
-          <p>选择希望接收的通知类型与渠道。</p>
-        </div>
-      </div>
-
-      <div className="settings-toggles">
-        {toggles.map(({ key, label, desc }) => (
-          <label className="settings-toggle-row" key={key}>
-            <div>
-              <strong>{label}</strong>
-              <p>{desc}</p>
-            </div>
-            <input
-              checked={prefs[key]}
-              className="settings-switch"
-              onChange={() => toggle(key)}
-              type="checkbox"
-            />
-          </label>
-        ))}
-      </div>
-
-      <div className="settings-section-footer">
-        <button
-          className="btn btn-primary"
-          onClick={handleSave}
-          type="button"
-        >
-          <Save size={16} />
-          保存偏好
-        </button>
-        {saved && (
-          <span className="settings-saved-badge">
-            <CheckCircle2 size={14} />
-            已保存
-          </span>
-        )}
-      </div>
-    </section>
-  );
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
-function RiskSection({
-  params,
-  onUpdate,
-}: {
-  params: RiskParams;
-  onUpdate: (params: RiskParams) => void;
-}) {
-  const [saved, setSaved] = useState(false);
-
-  const handleChange = (key: keyof RiskParams, value: number | boolean) => {
-    onUpdate({ ...params, [key]: value });
-    setSaved(false);
-  };
-
-  const handleSave = () => {
-    localStorage.setItem("kairos_risk_params", JSON.stringify(params));
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2500);
-  };
-
-  const handleReset = () => {
-    onUpdate(defaultRiskParams);
-    setSaved(false);
-  };
-
-  return (
-    <section className="settings-section">
-      <div className="settings-section-header">
-        <ShieldAlert size={18} />
-        <div>
-          <h2>风控参数</h2>
-          <p>这些参数作为模拟交易的安全边界，所有策略均受其约束。</p>
-        </div>
-      </div>
-
-      <div className="settings-fields">
-        <div className="settings-field">
-          <label>最大单仓位 (%)</label>
-          <div className="settings-range-row">
-            <input
-              aria-label="最大单仓位"
-              max={100}
-              min={1}
-              onChange={(e) => handleChange("maxPositionPercent", Number(e.target.value))}
-              type="range"
-              value={params.maxPositionPercent}
-            />
-            <span className="settings-range-value">{params.maxPositionPercent}%</span>
-          </div>
-          <span className="settings-field-hint">
-            单一标的占总权益的最大比例
-          </span>
-        </div>
-
-        <div className="settings-field">
-          <label>单日亏损上限 (%)</label>
-          <div className="settings-range-row">
-            <input
-              aria-label="单日亏损上限"
-              max={20}
-              min={1}
-              onChange={(e) => handleChange("dailyLossLimit", Number(e.target.value))}
-              type="range"
-              value={params.dailyLossLimit}
-            />
-            <span className="settings-range-value">{params.dailyLossLimit}%</span>
-          </div>
-          <span className="settings-field-hint">
-            触及后自动平仓并暂停当日交易
-          </span>
-        </div>
-
-        <div className="settings-field">
-          <label>最大回撤限制 (%)</label>
-          <div className="settings-range-row">
-            <input
-              aria-label="最大回撤限制"
-              max={50}
-              min={5}
-              onChange={(e) => handleChange("maxDrawdownLimit", Number(e.target.value))}
-              type="range"
-              value={params.maxDrawdownLimit}
-            />
-            <span className="settings-range-value">{params.maxDrawdownLimit}%</span>
-          </div>
-          <span className="settings-field-hint">
-            从权益峰值计算的最大允许回撤
-          </span>
-        </div>
-
-        <div className="settings-field">
-          <label>最大杠杆倍数</label>
-          <div className="settings-range-row">
-            <input
-              aria-label="最大杠杆倍数"
-              max={5}
-              min={1}
-              onChange={(e) => handleChange("maxLeverage", Number(e.target.value))}
-              step={0.5}
-              type="range"
-              value={params.maxLeverage}
-            />
-            <span className="settings-range-value">{params.maxLeverage}x</span>
-          </div>
-        </div>
-
-        <div className="settings-field">
-          <label>单笔订单上限 (CNY)</label>
-          <input
-            aria-label="单笔订单上限"
-            className="settings-number-input"
-            min={1000}
-            onChange={(e) => handleChange("orderSizeLimit", Number(e.target.value))}
-            step={10000}
-            type="number"
-            value={params.orderSizeLimit}
-          />
-        </div>
-
-        <label className="settings-toggle-row">
-          <div>
-            <strong>自动熔断</strong>
-            <p>触及风控限制时自动停止所有策略交易</p>
-          </div>
-          <input
-            checked={params.autoStopTrading}
-            className="settings-switch"
-            onChange={(e) => handleChange("autoStopTrading", e.target.checked)}
-            type="checkbox"
-          />
-        </label>
-      </div>
-
-      <div className="settings-section-footer">
-        <button
-          className="btn btn-primary"
-          onClick={handleSave}
-          type="button"
-        >
-          <Save size={16} />
-          保存参数
-        </button>
-        <button
-          className="btn btn-ghost"
-          onClick={handleReset}
-          type="button"
-        >
-          <RotateCcw size={16} />
-          恢复默认
-        </button>
-        {saved && (
-          <span className="settings-saved-badge">
-            <CheckCircle2 size={14} />
-            已保存
-          </span>
-        )}
-      </div>
-
-      <div className="settings-risk-note">
-        <AlertTriangle size={16} />
-        <span>
-          风控参数一经修改，将立即应用于所有运行中的策略。建议在非交易时段调整。
-        </span>
-      </div>
-    </section>
+export function Settings({ trading }: SettingsProps) {
+  const [selectedProfile, setSelectedProfile] = useState<PaperStrategyProfile>(
+    trading.account?.strategyProfile ?? "balanced",
   );
-}
+  const [startingCash, setStartingCash] = useState(
+    String(trading.account?.startingEquity ?? 10_000),
+  );
+  const [confirmation, setConfirmation] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
 
-// ── Main Settings Component ─────────────────────────────────────
-export function Settings() {
-  const [apiKeys, setApiKeys] = useState<ApiKeyEntry[]>(() => {
-    try {
-      const saved = localStorage.getItem("kairos_api_keys");
-      return saved ? JSON.parse(saved) : defaultApiKeys;
-    } catch {
-      return defaultApiKeys;
+  useEffect(() => {
+    localStorage.removeItem("kairos_api_keys");
+    localStorage.removeItem("kairos_risk_params");
+  }, []);
+
+  useEffect(() => {
+    if (trading.account?.strategyProfile) {
+      setSelectedProfile(trading.account.strategyProfile);
     }
-  });
-
-  const [notifications, setNotifications] = useState<NotificationPrefs>(() => {
-    try {
-      const saved = localStorage.getItem("kairos_notification_prefs");
-      return saved ? JSON.parse(saved) : defaultNotifications;
-    } catch {
-      return defaultNotifications;
+    if (trading.account?.startingEquity !== undefined) {
+      setStartingCash(String(trading.account.startingEquity));
     }
-  });
+  }, [trading.account?.startingEquity, trading.account?.strategyProfile]);
 
-  const [riskParams, setRiskParams] = useState<RiskParams>(() => {
+  const numericStartingCash = Number(startingCash);
+  const resetEnabled = useMemo(
+    () => canResetPaperAccount({
+      startingCash: numericStartingCash,
+      confirmation,
+      acknowledged,
+      mode: trading.mode,
+      pending: trading.pendingAction,
+    }),
+    [
+      acknowledged,
+      confirmation,
+      numericStartingCash,
+      trading.mode,
+      trading.pendingAction,
+    ],
+  );
+
+  const handleProfileChange = async (profile: PaperStrategyProfile) => {
+    const previous = trading.account?.strategyProfile ?? "balanced";
+    setSelectedProfile(profile);
     try {
-      const saved = localStorage.getItem("kairos_risk_params");
-      return saved ? JSON.parse(saved) : defaultRiskParams;
+      await trading.setStrategyProfile(profile);
     } catch {
-      return defaultRiskParams;
+      setSelectedProfile(previous);
     }
-  });
+  };
 
-  const handleSaveAll = useCallback(() => {
-    localStorage.setItem("kairos_api_keys", JSON.stringify(apiKeys));
-    localStorage.setItem("kairos_notification_prefs", JSON.stringify(notifications));
-    localStorage.setItem("kairos_risk_params", JSON.stringify(riskParams));
-  }, [apiKeys, notifications, riskParams]);
+  const handleReset = async () => {
+    if (!resetEnabled) return;
+    await trading.resetAccount({
+      startingCash: numericStartingCash,
+      strategyProfile: selectedProfile,
+      confirmation: "重置模拟账户",
+    });
+    setConfirmation("");
+    setAcknowledged(false);
+  };
 
   return (
     <div className="page-stack settings-page">
       <section className="settings-hero">
         <div>
-          <span className="section-kicker">系统配置</span>
-          <h2>设置</h2>
-          <p>管理 API 密钥、通知偏好与风控参数。所有设置保存在本地浏览器中。</p>
+          <span className="section-kicker">Paper 控制台</span>
+          <h2>模拟账户设置</h2>
+          <p>选择后续计划节奏，或用新的初始资金开始一段独立模拟。</p>
         </div>
-        <div className="settings-hero-actions">
-          <button
-            className="btn btn-primary"
-            onClick={handleSaveAll}
-            type="button"
-          >
-            <Zap size={16} />
-            保存全部设置
-          </button>
+        <span className={`settings-mode-badge ${trading.mode === "paper" ? "is-paper" : ""}`}>
+          {trading.mode === "paper" ? "本地 Paper" : "当前不可重置"}
+        </span>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <Gauge size={18} />
+          <div>
+            <h2>策略档位</h2>
+            <p>切换后从下一轮计划生效，已有账户和订单不会被清空。</p>
+          </div>
+        </div>
+
+        <div className="strategy-profile-grid" role="radiogroup" aria-label="Paper 策略档位">
+          {strategyProfileOptions.map((option) => {
+            const selected = selectedProfile === option.key;
+            return (
+              <button
+                aria-checked={selected}
+                className={`strategy-profile-option ${selected ? "is-selected" : ""}`}
+                disabled={trading.pendingAction || trading.mode !== "paper"}
+                key={option.key}
+                onClick={() => void handleProfileChange(option.key)}
+                role="radio"
+                type="button"
+              >
+                <span className="strategy-profile-title">
+                  <strong>{option.label}</strong>
+                  {selected && <CheckCircle2 aria-hidden="true" size={16} />}
+                </span>
+                <span>{option.summary}</span>
+                <small>{option.cashReserve} · {option.pace}</small>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="settings-risk-note">
+          <ShieldCheck size={16} />
+          <span>所有档位继续服从 A 股 T+1、100 股整手、可用现金、仓位上限、熔断和 paper-only 边界。</span>
         </div>
       </section>
 
-      <ApiKeySection keys={apiKeys} onUpdate={setApiKeys} />
-      <NotificationSection prefs={notifications} onUpdate={setNotifications} />
-      <RiskSection params={riskParams} onUpdate={setRiskParams} />
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <Banknote size={18} />
+          <div>
+            <h2>当前模拟账户</h2>
+            <p>账户重置会建立全新的本地 paper 记录。</p>
+          </div>
+        </div>
+
+        <div className="settings-account-stats">
+          <div>
+            <span>初始权益</span>
+            <strong>{formatCurrency(trading.account?.startingEquity ?? trading.account?.equity ?? 0)}</strong>
+          </div>
+          <div>
+            <span>当前权益</span>
+            <strong>{formatCurrency(trading.account?.equity ?? 0)}</strong>
+          </div>
+          <div>
+            <span>可用现金</span>
+            <strong>{formatCurrency(trading.account?.cash ?? 0)}</strong>
+          </div>
+          <div>
+            <span>持仓 / 订单</span>
+            <strong>{trading.positions.length} / {trading.orders.length}</strong>
+          </div>
+        </div>
+
+        <div className="settings-reset-panel">
+          <div className="settings-reset-heading">
+            <Trash2 size={17} />
+            <div>
+              <strong>开始新模拟</strong>
+              <span>清空旧持仓、挂单、历史订单和旧交易审计，研究缓存与登录配置保留。</span>
+            </div>
+          </div>
+
+          <div className="settings-reset-grid">
+            <label className="settings-field">
+              <span>新初始资金（CNY）</span>
+              <input
+                aria-label="新初始资金"
+                className="settings-number-input"
+                max={100_000_000}
+                min={1_000}
+                onChange={(event) => setStartingCash(event.target.value)}
+                step={1_000}
+                type="number"
+                value={startingCash}
+              />
+              <small>允许范围：1,000 至 100,000,000 元</small>
+            </label>
+
+            <label className="settings-field">
+              <span>输入确认短语</span>
+              <input
+                aria-label="重置确认短语"
+                className="settings-text-input"
+                onChange={(event) => setConfirmation(event.target.value)}
+                placeholder="重置模拟账户"
+                type="text"
+                value={confirmation}
+              />
+              <small>必须完整输入“重置模拟账户”</small>
+            </label>
+          </div>
+
+          <label className="settings-destructive-check">
+            <input
+              checked={acknowledged}
+              onChange={(event) => setAcknowledged(event.target.checked)}
+              type="checkbox"
+            />
+            <span>我确认旧 Paper 交易记录将被删除，且该操作不能撤销。</span>
+          </label>
+
+          <div className="settings-section-footer">
+            <button
+              className="btn btn-danger"
+              disabled={!resetEnabled}
+              onClick={() => void handleReset()}
+              type="button"
+            >
+              <RefreshCw size={16} />
+              {trading.pendingAction ? "处理中" : "重置并开始"}
+            </button>
+            {(trading.notice || trading.error) && (
+              <span className={trading.error ? "settings-error" : "settings-saved-badge"}>
+                {trading.error ? <AlertTriangle size={14} /> : <CheckCircle2 size={14} />}
+                {trading.error ?? trading.notice}
+              </span>
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

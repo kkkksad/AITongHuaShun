@@ -3,13 +3,21 @@ import type {
   MarketQuote,
   MarketSnapshot,
   OrderRecord,
+  PaperStrategyProfile,
   PositionSnapshot,
   TradingMode,
 } from "../../shared/trading";
+import {
+  getPaperStrategyProfilePolicy,
+  type PaperStrategyProfilePolicy,
+} from "../trading/paperStrategyProfile";
 import type { DailyCandidateReport } from "./dailyCandidates";
 import type { DailyQualityStockReport } from "./dailyQualityStocks";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
-import type { MarketRegimeResearchReport } from "./marketRegimeResearch";
+import type {
+  MarketRegimeResearchReport,
+  StockRegimeResult,
+} from "./marketRegimeResearch";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 
 export type PaperTradingOperationAction =
@@ -48,6 +56,21 @@ export interface PaperTradingPlanQualitySummary {
   summary: string;
 }
 
+export interface PaperTradingPlanStrategyProfile
+  extends Pick<
+    PaperStrategyProfilePolicy,
+    | "key"
+    | "label"
+    | "summary"
+    | "cashReserveFloor"
+    | "minDefensiveScore"
+    | "maxNewPositionsPerPlan"
+  > {
+  allowNewPositions: boolean;
+  effectiveCashReserveRatio: number;
+  effectiveNewPositionScale: number;
+}
+
 export interface PaperTradingPlan {
   generatedAt: string;
   tradingDate: string;
@@ -67,6 +90,7 @@ export interface PaperTradingPlan {
     cashReserveRatio: number;
     cashReserveAmount: number;
   };
+  strategyProfile: PaperTradingPlanStrategyProfile;
   rules: string[];
   topStrategy: {
     strategyKey: string;
@@ -80,8 +104,6 @@ export interface PaperTradingPlan {
   operations: PaperTradingOperation[];
   guardrails: string[];
 }
-
-const DEFENSIVE_BUY_SCORE_MIN = 58;
 
 function getChinaTradeDate(value = new Date()): string {
   return new Date(value.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -145,6 +167,54 @@ function estimatedCommission(
 ): number {
   if (notional <= 0) return 0;
   return Number(Math.max(minimumCommission, notional * commissionRate).toFixed(2));
+}
+
+const MAX_ENTRY_ROUND_TRIP_FEE_RATIO = 0.01;
+
+function assessEntryPersistence(input: {
+  required: boolean;
+  stockRegime: StockRegimeResult | undefined;
+}): { allowed: boolean; explanation: string; ruleCheck: string } {
+  if (!input.required) {
+    return {
+      allowed: true,
+      explanation: "当前模式不要求外部历史形态准入。",
+      ruleCheck: "entry-persistence: not-required",
+    };
+  }
+  const stock = input.stockRegime;
+  if (!stock) {
+    return {
+      allowed: false,
+      explanation: "候选未进入真实历史日线观察池，缺少隔夜持续性确认。",
+      ruleCheck: "entry-persistence: blocked (history-not-covered)",
+    };
+  }
+  if (stock.regime === "healthy-trend" && stock.confidence >= 0.55) {
+    return {
+      allowed: true,
+      explanation: `真实历史形态为健康趋势，置信度 ${(stock.confidence * 100).toFixed(0)}%。`,
+      ruleCheck: `entry-persistence: pass (healthy-trend ${stock.confidence.toFixed(2)})`,
+    };
+  }
+  const washoutValidated =
+    stock.regime === "washout-candidate" &&
+    stock.confidence >= 0.65 &&
+    stock.validation.samples >= 20 &&
+    stock.validation.hitRate5d !== null &&
+    stock.validation.hitRate5d >= 0.55;
+  if (washoutValidated) {
+    return {
+      allowed: true,
+      explanation: `真实历史形态为已验证洗盘候选，置信度 ${(stock.confidence * 100).toFixed(0)}%，5 日历史命中率 ${(stock.validation.hitRate5d! * 100).toFixed(0)}%。`,
+      ruleCheck: `entry-persistence: pass (validated-washout ${stock.confidence.toFixed(2)})`,
+    };
+  }
+  return {
+    allowed: false,
+    explanation: `真实历史形态 ${stock.regime} 未通过隔夜持续性准入，停止新建仓位。`,
+    ruleCheck: `entry-persistence: blocked (${stock.regime} ${stock.confidence.toFixed(2)})`,
+  };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -321,6 +391,7 @@ export function buildPaperTradingPlan(input: {
   commissionRate: number;
   minimumCommission: number;
   cashReserveRatio: number;
+  strategyProfile?: PaperStrategyProfile;
 }): PaperTradingPlan {
   const marketTime = new Date(input.snapshot.marketTime);
   const now = marketTime.toISOString();
@@ -335,16 +406,21 @@ export function buildPaperTradingPlan(input: {
         input.adaptiveRouting?.eligibleStrategyKeys.includes(entry.strategyKey),
       ) ?? null
     : input.leaderboard.entries[0] ?? null;
+  const profilePolicy = getPaperStrategyProfilePolicy(input.strategyProfile);
   const effectiveCashReserveRatio = Math.max(
     input.cashReserveRatio,
     input.adaptiveRouting?.cashReserveRatio ?? 0,
+    profilePolicy.cashReserveFloor,
   );
   const cashReserveAmount = Math.min(
     input.account.cash,
     Math.max(0, input.account.equity * effectiveCashReserveRatio),
   );
   const plannedCashBudget = Math.max(0, input.account.cash - cashReserveAmount);
-  const newPositionScale = input.adaptiveRouting?.newPositionScale ?? 1;
+  const newPositionScale = Math.min(
+    input.adaptiveRouting?.newPositionScale ?? 1,
+    profilePolicy.newPositionScale,
+  );
   const maxSingleOrderNotional = Math.min(
     input.maxSingleOrderNotional * newPositionScale,
     Math.max(0, input.account.equity * input.maxPositionWeight * newPositionScale),
@@ -653,8 +729,10 @@ export function buildPaperTradingPlan(input: {
   ).length;
 
   let remainingPlannedCash = plannedCashBudget;
-  const routeAllowsBuying = input.adaptiveRouting?.allowNewPositions ?? true;
+  const adaptiveAllowsBuying = input.adaptiveRouting?.allowNewPositions ?? true;
+  const routeAllowsBuying = adaptiveAllowsBuying && profilePolicy.allowNewPositions;
   if (!routeAllowsBuying) {
+    const blockedByProfile = !profilePolicy.allowNewPositions;
     operations.push({
       timestamp: now,
       symbol: "CASH",
@@ -664,8 +742,16 @@ export function buildPaperTradingPlan(input: {
       quantity: 0,
       price: 1,
       estimatedNotional: 0,
-      reason: `当前市场状态 ${input.adaptiveRouting?.regime ?? "unclear"} 禁止新增仓位，等待状态和数据恢复。`,
-      ruleChecks: ["paper-only", "adaptive-new-position: blocked", "no-forced-trade"],
+      reason: blockedByProfile
+        ? `${profilePolicy.label}档位禁止新增仓位，只处理已有持仓风险。`
+        : `当前市场状态 ${input.adaptiveRouting?.regime ?? "unclear"} 禁止新增仓位，等待状态和数据恢复。`,
+      ruleChecks: [
+        "paper-only",
+        blockedByProfile
+          ? `strategy-profile: blocked (${profilePolicy.key})`
+          : "adaptive-new-position: blocked",
+        "no-forced-trade",
+      ],
     });
   } else if (candidatePoolSize > 0 && affordableCandidateCount === 0) {
     operations.push({
@@ -682,6 +768,7 @@ export function buildPaperTradingPlan(input: {
     });
   }
 
+  let plannedNewPositions = 0;
   for (const candidate of routeAllowsBuying && affordableCandidateCount > 0
     ? candidatePool
     : []) {
@@ -721,6 +808,26 @@ export function buildPaperTradingPlan(input: {
       continue;
     }
 
+    if (plannedNewPositions >= profilePolicy.maxNewPositionsPerPlan) {
+      operations.push({
+        timestamp: now,
+        symbol: "CASH",
+        name: "现金观察",
+        action: "observe",
+        strategy: `${profilePolicy.label}节奏控制`,
+        quantity: 0,
+        price: 1,
+        estimatedNotional: 0,
+        reason: `${profilePolicy.label}档位每轮最多新增 ${profilePolicy.maxNewPositionsPerPlan} 只，剩余候选留到下一轮重新确认。`,
+        ruleChecks: [
+          "paper-only",
+          `profile-new-position-limit: ${profilePolicy.maxNewPositionsPerPlan}`,
+          "no-forced-trade",
+        ],
+      });
+      break;
+    }
+
     if (quantity < input.lotSize) {
       operations.push({
         timestamp: now,
@@ -743,7 +850,7 @@ export function buildPaperTradingPlan(input: {
       continue;
     }
 
-    if (candidate.defensiveScore < DEFENSIVE_BUY_SCORE_MIN) {
+    if (candidate.defensiveScore < profilePolicy.minDefensiveScore) {
       operations.push({
         timestamp: now,
         symbol: candidate.symbol,
@@ -755,10 +862,56 @@ export function buildPaperTradingPlan(input: {
         estimatedNotional: 0,
         reason: "候选防守分不足，宁愿空仓观察，不强行做本地 paper 买入。",
         ruleChecks: [
-          `defensive-score: blocked (${candidate.defensiveScore})`,
+          `defensive-score: blocked (${candidate.defensiveScore} < ${profilePolicy.minDefensiveScore})`,
           "paper-only",
           "no-forced-trade",
         ],
+      });
+      continue;
+    }
+
+    const entryBlockReasons: string[] = [];
+    const entryRuleChecks: string[] = [];
+    if (alreadyReducedToday.has(candidate.symbol)) {
+      entryBlockReasons.push("该标的今天已经由自动计划卖出，禁止同日重新买回。");
+      entryRuleChecks.push("same-day-reentry: blocked");
+    }
+    const estimatedRoundTripFees = estimatedFee * 2;
+    const roundTripFeeRatio = estimatedNotional > 0
+      ? estimatedRoundTripFees / estimatedNotional
+      : Number.POSITIVE_INFINITY;
+    if (roundTripFeeRatio > MAX_ENTRY_ROUND_TRIP_FEE_RATIO) {
+      entryBlockReasons.push(
+        `预计往返最低手续费 ${estimatedRoundTripFees.toFixed(2)} 元，占计划金额 ${(roundTripFeeRatio * 100).toFixed(2)}%，超过 1% 费用纪律。`,
+      );
+      entryRuleChecks.push(
+        `round-trip-fee-ratio: blocked (${(roundTripFeeRatio * 100).toFixed(2)}% > 1.00%)`,
+      );
+    } else {
+      entryRuleChecks.push(
+        `round-trip-fee-ratio: pass (${(roundTripFeeRatio * 100).toFixed(2)}% <= 1.00%)`,
+      );
+    }
+    const entryPersistence = assessEntryPersistence({
+      required: Boolean(input.marketRegimeResearch),
+      stockRegime: stockRegimeMap.get(candidate.symbol),
+    });
+    entryRuleChecks.push(entryPersistence.ruleCheck);
+    if (!entryPersistence.allowed) {
+      entryBlockReasons.push(entryPersistence.explanation);
+    }
+    if (entryBlockReasons.length > 0) {
+      operations.push({
+        timestamp: now,
+        symbol: candidate.symbol,
+        name: candidate.name,
+        action: "blocked",
+        strategy: "隔夜持续性与费用纪律",
+        quantity: 0,
+        price: candidate.price,
+        estimatedNotional: 0,
+        reason: entryBlockReasons.join("；"),
+        ruleChecks: ["paper-only", ...entryRuleChecks, "no-forced-trade"],
       });
       continue;
     }
@@ -772,13 +925,17 @@ export function buildPaperTradingPlan(input: {
       quantity,
       price: candidate.price,
       estimatedNotional,
-      reason: candidate.reason || "候选策略与优质股评分同时进入纸面观察。",
+      reason: [
+        candidate.reason || "候选策略与优质股评分同时进入纸面观察。",
+        entryPersistence.explanation,
+      ].join("；"),
       ruleChecks: [
         "paper-only",
         "lot-size: pass",
         "cash-check: pass",
         `cash-reservation: pass (${estimatedCashRequired.toFixed(2)})`,
         `defensive-score: pass (${candidate.defensiveScore})`,
+        ...entryRuleChecks,
         "T+1-after-buy",
       ],
     });
@@ -786,6 +943,7 @@ export function buildPaperTradingPlan(input: {
       0,
       remainingPlannedCash - estimatedCashRequired,
     );
+    plannedNewPositions += 1;
   }
 
   if (operations.length === 0) {
@@ -821,6 +979,17 @@ export function buildPaperTradingPlan(input: {
       lotSize: input.lotSize,
       cashReserveRatio: effectiveCashReserveRatio,
       cashReserveAmount: Number(cashReserveAmount.toFixed(2)),
+    },
+    strategyProfile: {
+      key: profilePolicy.key,
+      label: profilePolicy.label,
+      summary: profilePolicy.summary,
+      cashReserveFloor: profilePolicy.cashReserveFloor,
+      minDefensiveScore: profilePolicy.minDefensiveScore,
+      maxNewPositionsPerPlan: profilePolicy.maxNewPositionsPerPlan,
+      allowNewPositions: routeAllowsBuying,
+      effectiveCashReserveRatio,
+      effectiveNewPositionScale: newPositionScale,
     },
     rules: [
       "A 股一手 100 股。",

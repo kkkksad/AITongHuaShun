@@ -284,6 +284,18 @@ export default function LearningPipeline() {
               <small>一手 {paperPlan?.capitalPlan.lotSize ?? 100} 股</small>
             </article>
           </div>
+          {paperPlan?.strategyProfile && (
+            <div className="learning-plan-summary">
+              <strong>{paperPlan.strategyProfile.label}档位</strong>
+              <p>{paperPlan.strategyProfile.summary}</p>
+              <span>
+                实际现金底线 {(paperPlan.strategyProfile.effectiveCashReserveRatio * 100).toFixed(0)}%
+                {" · "}候选最低分 {paperPlan.strategyProfile.minDefensiveScore}
+                {" · "}每轮最多新增 {paperPlan.strategyProfile.maxNewPositionsPerPlan} 只
+                {" · "}{paperPlan.strategyProfile.allowNewPositions ? "允许继续筛选" : "当前停止新增仓位"}
+              </span>
+            </div>
+          )}
           {paperPlan?.adaptiveRouting && (
             <div className="adaptive-routing-summary">
               <div className="adaptive-routing-stats">

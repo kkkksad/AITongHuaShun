@@ -345,6 +345,7 @@ export class PaperAutoExecutor {
         executionSummary: summarizePaperOrders(
           this.options.system.broker.getOrders(10_000),
           plan.tradingDate,
+          this.options.system.store.listAudit(10_000),
         ),
         policy,
         marketContext: {
@@ -431,6 +432,23 @@ export class PaperAutoExecutor {
         session,
         policy,
         plan.qualitySummary.planQuality,
+        submittedOrders,
+        skippedOperations,
+      );
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      skippedOperations.push({
+        symbol: "SYSTEM",
+        action: "observe",
+        reason: `paper auto execution input is temporarily unavailable: ${detail.slice(0, 240)}`,
+      });
+      return this.finalizeRun(
+        trigger,
+        started,
+        tradingDate,
+        session,
+        initialPolicy,
+        "not-run",
         submittedOrders,
         skippedOperations,
       );
