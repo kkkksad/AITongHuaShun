@@ -17,6 +17,7 @@ import {
   KairosCapitalShieldStrategy,
   KairosLowVolTrendStrategy,
   KairosQuietPullbackStrategy,
+  KairosRiskOffRecoveryStrategy,
   KairosTrendHealthStrategy,
   KairosWashoutRecoveryStrategy,
 } from "./strategies/index";
@@ -587,6 +588,38 @@ describe("KAIROS defensive strategies", () => {
 
     const report = engine.run();
     validateStrategyReport(report);
+  });
+
+  it("risk-off recovery waits for a volume-backed short trend repair", () => {
+    const prices = [
+      ...Array.from({ length: 36 }, (_, index) => 120 - index * 0.82),
+      91.1,
+      90.4,
+      89.8,
+      90.2,
+      91.1,
+      92.4,
+      94.2,
+      98.4,
+    ];
+    const snapshots = snapshotsFromPrices(
+      prices,
+      (index) => index >= prices.length - 3 ? 15_000_000 : 10_000_000,
+    );
+    const engine = new BacktestEngine(
+      snapshots,
+      new KairosRiskOffRecoveryStrategy(8, 30, 15, 0.06, 0.025, 1.1),
+      {
+        initialCapital: 1_000_000,
+        maxOrderNotional: 2_000_000,
+        maxPositionWeight: 1,
+      },
+    );
+
+    const report = engine.run();
+    validateStrategyReport(report);
+    expect(report.strategyName).toContain("KAIROS风险收缩修复");
+    expect(report.trades.some((trade) => trade.side === "buy")).toBe(true);
   });
 });
 

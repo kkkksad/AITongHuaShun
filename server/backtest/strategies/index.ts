@@ -21,6 +21,7 @@ export {
   KairosCapitalShieldStrategy,
   KairosLowVolTrendStrategy,
   KairosQuietPullbackStrategy,
+  KairosRiskOffRecoveryStrategy,
 } from "./KairosDefensiveStrategies";
 export {
   KairosTrendHealthStrategy,

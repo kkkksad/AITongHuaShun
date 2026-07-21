@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  SequentialTaskScheduler,
   paperAutoExecutionAuditSignature,
+  paperNonExecutableReason,
+  resolveNotificationSourceStatus,
   isPaperOperationBlockedByPhaseBudget,
   shouldPersistPaperAutoExecutionRun,
   shouldRunScheduledPaperAutoExecution,
@@ -30,6 +33,78 @@ function run(overrides: Partial<PaperAutoExecutionRun> = {}): PaperAutoExecution
 }
 
 describe("shouldRunScheduledPaperAutoExecution", () => {
+  it("schedules the next timer only after the current async task completes", async () => {
+    const callbacks: Array<() => void> = [];
+    let resolveCurrent: () => void = () => undefined;
+    let taskCalls = 0;
+    const scheduler = new SequentialTaskScheduler({
+      intervalMs: 60_000,
+      task: () => {
+        taskCalls += 1;
+        return new Promise<void>((resolve) => {
+          resolveCurrent = resolve;
+        });
+      },
+      timers: {
+        setTimeout(callback) {
+          callbacks.push(callback);
+          return callback;
+        },
+        clearTimeout(handle) {
+          const index = callbacks.indexOf(handle as () => void);
+          if (index >= 0) callbacks.splice(index, 1);
+        },
+      },
+    });
+
+    scheduler.start();
+    await Promise.resolve();
+    expect(taskCalls).toBe(1);
+    expect(callbacks).toHaveLength(0);
+
+    resolveCurrent();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(callbacks).toHaveLength(1);
+
+    callbacks.shift()?.();
+    await Promise.resolve();
+    expect(taskCalls).toBe(2);
+    expect(callbacks).toHaveLength(0);
+
+    scheduler.stop();
+    resolveCurrent();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(callbacks).toHaveLength(0);
+  });
+
+  it("keeps hold and observe reasons readable in automatic-run audit", () => {
+    expect(paperNonExecutableReason({
+      timestamp: "2026-07-21T07:00:00.000Z",
+      symbol: "601398",
+      name: "工商银行",
+      action: "hold",
+      strategy: "趋势健康持仓",
+      quantity: 0,
+      price: 7.56,
+      estimatedNotional: 0,
+      reason: "真实历史形态仍处于健康趋势，保持原仓位。",
+      ruleChecks: ["paper-only"],
+    })).toBe("正常观望：真实历史形态仍处于健康趋势，保持原仓位。");
+  });
+
+  it("does not disable sector pulse tracking for auxiliary news degradation", () => {
+    expect(resolveNotificationSourceStatus({
+      marketRegime: "live-read-only",
+      auxiliaryResearch: "degraded",
+    })).toBe("live-read-only");
+    expect(resolveNotificationSourceStatus({
+      marketRegime: "degraded",
+      auxiliaryResearch: "live-read-only",
+    })).toBe("degraded");
+  });
+
   it.each([
     ["pre-market", "2026-07-16T09:00:00+08:00"],
     ["lunch break", "2026-07-16T12:00:00+08:00"],
@@ -114,6 +189,28 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
       ...base,
       run: run({ trigger: "startup" }),
     })).toBe(true);
+  });
+
+  it("treats a market-route transition as a material audit change", () => {
+    const defensive = run({
+      researchContext: {
+        regime: "risk-off",
+        sourceStatus: "live-read-only",
+        allowNewPositions: false,
+        candidatePoolSize: 12,
+        affordableCandidateCount: 0,
+      },
+    });
+    const recovery = run({
+      researchContext: {
+        ...defensive.researchContext!,
+        regime: "risk-off-recovery",
+      },
+    });
+
+    expect(paperAutoExecutionAuditSignature(defensive)).not.toBe(
+      paperAutoExecutionAuditSignature(recovery),
+    );
   });
 
   it("reserves exhausted phase capacity except for hard-stop reductions", () => {

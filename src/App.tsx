@@ -307,7 +307,7 @@ function App() {
           <div className="summary-icon amber">
             <Activity size={19} />
           </div>
-          <span>今日 Paper 盈亏</span>
+          <span>累计 Paper 盈亏</span>
           <strong className={(trading.account?.dailyPnl ?? 0) >= 0 ? "positive" : "negative"}>
             {currency(trading.account?.dailyPnl)}
           </strong>
@@ -544,7 +544,7 @@ function App() {
                 }).format(trading.account.equity)}
               </h2>
               <p>
-                今日权益{" "}
+                账户累计{" "}
                 <strong
                   className={trading.account.dailyPnl >= 0 ? "positive" : "negative"}
                 >

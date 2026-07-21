@@ -180,6 +180,174 @@ describe("buildDailyMarketReview", () => {
       .toContain("资金不足");
     expect(report.strategyReview.issues.join(" ")).toContain("资金不足");
     expect(report.strategyReview.issues.join(" ")).toContain("开盘");
+    expect(report.entryReview).toMatchObject({
+      status: "entered",
+      cashWasConstraint: true,
+    });
+  });
+
+  it("explains that available cash stayed idle because the medium-term route blocked entry", () => {
+    const strongSnapshot: MarketSnapshot = {
+      ...snapshot,
+      quotes: Array.from({ length: 10 }, (_, index) => ({
+        ...snapshot.quotes[0],
+        symbol: String(600100 + index),
+        changePercent: 2.2,
+      })),
+    };
+    const reviewAccount: AccountSnapshot = {
+      ...account,
+      cash: 5_935,
+      equity: 10_262,
+      marketValue: 4_327,
+    };
+    const routeAudits: AuditEvent[] = [
+      {
+        id: "route-notification",
+        category: "system",
+        action: "wxpusher.paper-plan.sent",
+        message: "briefing accepted",
+        timestamp: "2026-07-14T06:50:00.000Z",
+        data: {
+          tradingDate: "2026-07-14",
+          regime: "risk-off",
+          sourceStatus: "live-read-only",
+        },
+      },
+      {
+        id: "watch-only-run",
+        category: "system",
+        action: "paper-auto-execution.run",
+        message: "run recorded",
+        timestamp: "2026-07-14T07:01:00.000Z",
+        data: {
+          tradingDate: "2026-07-14",
+          planQuality: "watch-only",
+          skippedReasons: [{
+            symbol: "CASH",
+            reason: "operation is not an executable paper auto action",
+          }],
+        },
+      },
+    ];
+
+    const report = buildDailyMarketReview({
+      snapshot: strongSnapshot,
+      provider: "akshare",
+      account: reviewAccount,
+      positions: [],
+      orders: [],
+      auditEvents: routeAudits,
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+
+    expect(report.entryReview).toMatchObject({
+      status: "risk-blocked",
+      marketRegime: "risk-off",
+      planQuality: "watch-only",
+      cashWasConstraint: false,
+    });
+    expect(report.entryReview.summary).toContain("不是资金不足");
+    expect(report.entryReview.reasons.join(" ")).toContain("单日反弹");
+    expect(report.strategyReview.issues.join(" ")).toContain("中期路由");
+    expect(report.strategyReview.nextActions.join(" ")).toContain("连续确认");
+  });
+
+  it("keeps the last intraday plan decision when a newer post-market startup did not run", () => {
+    const report = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account: { ...account, cash: 5_935 },
+      positions: [],
+      orders: [],
+      auditEvents: [
+        {
+          id: "intraday-watch-only",
+          category: "system",
+          action: "paper-auto-execution.run",
+          message: "intraday decision recorded",
+          timestamp: "2026-07-14T07:01:00.000Z",
+          data: {
+            tradingDate: "2026-07-14",
+            session: "open",
+            regime: "risk-off",
+            sourceStatus: "live-read-only",
+            planQuality: "watch-only",
+            skippedReasons: [{
+              symbol: "CASH",
+              reason: "中期风险收缩，正常观望，不新增 Paper 仓位",
+            }],
+          },
+        },
+        {
+          id: "post-market-startup",
+          category: "system",
+          action: "paper-auto-execution.run",
+          message: "startup outside trading session",
+          timestamp: "2026-07-14T11:52:00.000Z",
+          data: {
+            tradingDate: "2026-07-14",
+            session: "post-market",
+            planQuality: "not-run",
+            skippedReasons: [{
+              symbol: "SYSTEM",
+              reason: "outside A-share trading session: post-market",
+            }],
+          },
+        },
+      ],
+      now: new Date("2026-07-14T12:00:00.000Z"),
+    });
+
+    expect(report.entryReview).toMatchObject({
+      status: "risk-blocked",
+      marketRegime: "risk-off",
+      planQuality: "watch-only",
+    });
+    expect(report.entryReview.reasons.join(" ")).not.toContain("outside A-share trading session");
+  });
+
+  it("distinguishes no qualified candidate from unavailable research input", () => {
+    const runAudit = (
+      planQuality: "watch-only" | "not-run",
+      reason: string,
+    ): AuditEvent => ({
+      id: `${planQuality}-run`,
+      category: "system",
+      action: "paper-auto-execution.run",
+      message: "run recorded",
+      timestamp: "2026-07-14T07:01:00.000Z",
+      data: {
+        tradingDate: "2026-07-14",
+        planQuality,
+        skippedReasons: [{ symbol: "SYSTEM", reason }],
+      },
+    });
+
+    const noCandidate = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account: { ...account, cash: 5_000 },
+      positions: [],
+      orders: [],
+      auditEvents: [runAudit("watch-only", "no qualified candidate")],
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+    const unavailable = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account: { ...account, cash: 5_000 },
+      positions: [],
+      orders: [],
+      auditEvents: [runAudit(
+        "not-run",
+        "paper auto execution input is temporarily unavailable: history timeout",
+      )],
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+
+    expect(noCandidate.entryReview.status).toBe("no-qualified-candidate");
+    expect(unavailable.entryReview.status).toBe("data-unavailable");
   });
 
   it("does not invent reasons for historical orders without decision audit", () => {

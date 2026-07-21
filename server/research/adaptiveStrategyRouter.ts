@@ -6,6 +6,7 @@ export type AdaptiveMarketRegime =
   | "trend-up-high-volatility"
   | "range-low-volatility"
   | "range-high-volatility"
+  | "risk-off-recovery"
   | "risk-off"
   | "unclear";
 
@@ -41,7 +42,7 @@ export interface ExternalMarketShadowResult extends ExternalMarketShadowInput {
 }
 
 export interface AdaptiveStrategyRouting {
-  version: "1.1.0";
+  version: "1.2.0";
   generatedAt: string;
   regime: AdaptiveMarketRegime;
   confidence: number;
@@ -66,6 +67,7 @@ export interface AdaptiveStrategyRouting {
     averageMa20Slope5d: number;
     averageVolatility20d: number;
     averageBreadthRatio: number | null;
+    averageCurrentChangePercent: number;
     healthyStockRatio: number;
     deterioratingStockRatio: number;
   };
@@ -75,6 +77,7 @@ const ALL_STRATEGY_KEYS = [
   "kairosLowVolTrend",
   "kairosQuietPullback",
   "kairosCapitalShield",
+  "kairosRiskOffRecovery",
   "kairosWashoutRecovery",
   "kairosTrendHealth",
   "aSharePullback",
@@ -111,6 +114,10 @@ const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
     "rsi",
     "kairosCapitalShield",
   ],
+  "risk-off-recovery": [
+    "kairosRiskOffRecovery",
+    "kairosCapitalShield",
+  ],
   "risk-off": ["kairosCapitalShield"],
   unclear: ["kairosCapitalShield"],
 };
@@ -139,6 +146,12 @@ const STRATEGY_PLAYBOOKS: Record<AdaptiveMarketRegime, AdaptiveStrategyPlaybook>
     useWhen: "无趋势且波动较高时优先现金防守，只观察高质量回踩确认。",
     avoidWhen: "避免网格加仓、逆势摊薄和高波动反弹追入。",
     recheckTriggers: ["波动回落", "板块宽度恢复", "趋势恶化占比上升"],
+  },
+  "risk-off-recovery": {
+    primaryStrategyKeys: ["kairosRiskOffRecovery", "kairosCapitalShield"],
+    useWhen: "中期结构仍弱但当日上涨宽度和板块强度明显修复时，只建立反转观察清单。",
+    avoidWhen: "单日大涨不能覆盖 20/60 日弱趋势；没有连续确认前禁止新增 paper 仓位。",
+    recheckTriggers: ["上涨宽度连续保持 55% 以上", "谨慎板块占比回落", "20 日均线斜率止跌"],
   },
   "risk-off": {
     primaryStrategyKeys: ["kairosCapitalShield"],
@@ -178,6 +191,12 @@ const CAPITAL_PACING: Record<AdaptiveMarketRegime, AdaptiveCapitalPacing> = {
     morningMaxInvestedRatio: 0.38,
     afternoonMaxInvestedRatio: 0.48,
     closingMaxInvestedRatio: 0.58,
+  },
+  "risk-off-recovery": {
+    openingMaxInvestedRatio: 0.35,
+    morningMaxInvestedRatio: 0.35,
+    afternoonMaxInvestedRatio: 0.35,
+    closingMaxInvestedRatio: 0.4,
   },
   "risk-off": {
     openingMaxInvestedRatio: 0.35,
@@ -283,6 +302,13 @@ function riskProfile(regime: AdaptiveMarketRegime): Pick<
         cashReserveRatio: 0.4,
         newPositionScale: 0.25,
       };
+    case "risk-off-recovery":
+      return {
+        positionPosture: "hold",
+        allowNewPositions: false,
+        cashReserveRatio: 0.55,
+        newPositionScale: 0,
+      };
     case "risk-off":
       return {
         positionPosture: "reduce",
@@ -324,6 +350,9 @@ export function routeAdaptiveStrategies(
   const averageVolatility20d = average(
     sectors.map((sector) => sector.factors.annualizedVolatility20d),
   );
+  const averageCurrentChangePercent = average(
+    sectors.map((sector) => sector.current.changePercent),
+  );
   const breadthValues = sectors.flatMap((sector) =>
     sector.factors.breadthRatio === null ? [] : [sector.factors.breadthRatio],
   );
@@ -350,6 +379,7 @@ export function routeAdaptiveStrategies(
     averageVolatility20d: round(averageVolatility20d),
     averageBreadthRatio:
       averageBreadthRatio === null ? null : round(averageBreadthRatio),
+    averageCurrentChangePercent: round(averageCurrentChangePercent),
     healthyStockRatio: round(healthyStockRatio),
     deterioratingStockRatio: round(deterioratingStockRatio),
   };
@@ -379,8 +409,16 @@ export function routeAdaptiveStrategies(
       (averageBreadthRatio === null || averageBreadthRatio >= 0.5) &&
       deterioratingStockRatio < 0.5;
     const highVolatility = averageVolatility20d >= 0.38;
+    const riskOffRecovery = riskOff &&
+      averageBreadthRatio !== null &&
+      averageBreadthRatio >= 0.58 &&
+      averageCurrentChangePercent >= 1;
 
-    if (riskOff) {
+    if (riskOffRecovery) {
+      regime = "risk-off-recovery";
+      evidence.push("中期趋势仍弱，但板块上涨宽度和当日涨幅形成单日修复观察。");
+      riskFlags.push("单日强反弹不能直接覆盖 20/60 日趋势风险，未连续确认前不新增仓位。");
+    } else if (riskOff) {
       regime = "risk-off";
       evidence.push("板块 20 日收益与均线斜率同步转弱，风险状态优先减仓。");
     } else if (uptrend) {
@@ -404,7 +442,7 @@ export function routeAdaptiveStrategies(
     if (averageBreadthRatio !== null) {
       evidence.push(`样本板块平均上涨宽度为 ${(averageBreadthRatio * 100).toFixed(1)}%。`);
       if (averageBreadthRatio < 0.45) {
-        riskFlags.push("上涨宽度低于 45%，趋势缺少多数标的确认。 ");
+        riskFlags.push("上涨宽度低于 45%，趋势缺少多数标的确认。");
       }
     }
     evidence.push(`趋势恶化个股占比为 ${(deterioratingStockRatio * 100).toFixed(1)}%。`);
@@ -436,7 +474,7 @@ export function routeAdaptiveStrategies(
   });
 
   return {
-    version: "1.1.0",
+    version: "1.2.0",
     generatedAt: new Date().toISOString(),
     regime,
     confidence: officialConfidence,

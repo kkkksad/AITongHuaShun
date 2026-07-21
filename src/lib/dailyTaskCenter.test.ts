@@ -43,7 +43,7 @@ function makePlan(
     rules: [],
     topStrategy: null,
     adaptiveRouting: {
-      version: "1.1.0",
+      version: "1.2.0",
       generatedAt: "2026-07-17T00:45:00.000Z",
       regime: "trend-up-low-volatility",
       confidence: 0.72,
@@ -75,6 +75,7 @@ function makePlan(
         averageMa20Slope5d: 0.01,
         averageVolatility20d: 0.18,
         averageBreadthRatio: 1.4,
+        averageCurrentChangePercent: 1.2,
         healthyStockRatio: 0.62,
         deterioratingStockRatio: 0.18,
       },
@@ -155,6 +156,14 @@ function makeReview(
       filledSellNotional: 0,
       commission: 5,
       items: [],
+    },
+    entryReview: {
+      status: "entered",
+      summary: "当日已有 1 笔本地 Paper 买入成交。",
+      reasons: ["结论来自本地订单。"],
+      marketRegime: "trend-up-low-volatility",
+      planQuality: "actionable",
+      cashWasConstraint: false,
     },
     strategyReview: {
       grade: rejected > 0 ? "watch" : "disciplined",

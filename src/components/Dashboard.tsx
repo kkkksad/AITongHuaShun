@@ -92,7 +92,7 @@ export function Dashboard({ account, positions, alertCount = 0 }: DashboardProps
           </div>
         </article>
 
-        {/* 日收益 */}
+        {/* 账户重置以来的累计收益 */}
         <article className="dashboard-card">
           <div
             className={`dashboard-card-icon ${account.dailyPnl >= 0 ? "profit" : "loss"}`}
@@ -104,7 +104,7 @@ export function Dashboard({ account, positions, alertCount = 0 }: DashboardProps
             )}
           </div>
           <div className="dashboard-card-body">
-            <span className="dashboard-card-label">今日收益</span>
+            <span className="dashboard-card-label">累计收益</span>
             <strong
               className={`dashboard-card-value ${account.dailyPnl >= 0 ? "positive" : "negative"}`}
             >
@@ -175,7 +175,7 @@ export function Dashboard({ account, positions, alertCount = 0 }: DashboardProps
           </strong>
         </div>
         <div className="dashboard-sub-item">
-          <span>收益率</span>
+          <span>累计收益率</span>
           <strong className={account.dailyPnlPercent >= 0 ? "positive" : "negative"}>
             {pct(account.dailyPnlPercent)}
           </strong>

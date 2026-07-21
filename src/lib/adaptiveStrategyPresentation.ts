@@ -9,6 +9,7 @@ const regimeLabels: Record<AdaptiveMarketRegime, string> = {
   "trend-up-high-volatility": "高波上升趋势",
   "range-low-volatility": "低波区间震荡",
   "range-high-volatility": "高波区间震荡",
+  "risk-off-recovery": "风险收缩修复观察",
   "risk-off": "风险收缩",
   unclear: "状态待确认",
 };

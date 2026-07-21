@@ -213,6 +213,17 @@ export default function LearningPipeline() {
               </span>
             </div>
           )}
+          {dailyReview && (
+            <div className={`daily-entry-review ${dailyReview.entryReview.status}`}>
+              <span>为什么没有入场 / 为什么入场</span>
+              <strong>{dailyReview.entryReview.summary}</strong>
+              <ul>
+                {dailyReview.entryReview.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="learning-run-list">
             {(dailyReview?.trades.items ?? []).map((trade) => (
               <article key={trade.orderId}>

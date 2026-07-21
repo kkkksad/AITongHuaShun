@@ -342,3 +342,114 @@ export class KairosCapitalShieldStrategy implements BacktestStrategy {
     return [];
   }
 }
+
+/**
+ * KAIROS 风险收缩修复策略。
+ *
+ * 只研究中期下跌后的放量短趋势修复，目标仓位小于常规趋势策略。
+ */
+export class KairosRiskOffRecoveryStrategy implements BacktestStrategy {
+  readonly name: string;
+  private readonly prices: number[] = [];
+  private readonly volumes: number[] = [];
+  private inPosition = false;
+  private entryPrice = 0;
+
+  constructor(
+    private readonly fastPeriod = 8,
+    private readonly slowPeriod = 30,
+    private readonly recoveryLookback = 15,
+    private readonly minimumDrawdown = 0.06,
+    private readonly minimumRebound = 0.025,
+    private readonly minimumVolumeMultiplier = 1.1,
+    private readonly takeProfitPercent = 0.04,
+    private readonly stopLossPercent = 0.02,
+    private readonly targetWeight = 0.1,
+    customName?: string,
+  ) {
+    this.name = customName ??
+      `KAIROS风险收缩修复(${fastPeriod},${slowPeriod})`;
+  }
+
+  reset(): void {
+    this.prices.length = 0;
+    this.volumes.length = 0;
+    this.inPosition = false;
+    this.entryPrice = 0;
+  }
+
+  onBar(context: StrategyContext): StrategySignal[] {
+    const quote = firstTradableQuote(context);
+    if (!quote) return [];
+
+    this.prices.push(quote.price);
+    this.volumes.push(Math.max(quote.volume, 1));
+    const minimumBars = Math.max(this.slowPeriod + 2, this.recoveryLookback + 2);
+    if (this.prices.length < minimumBars) return [];
+
+    const price = quote.price;
+    const fastMa = sma(this.prices, this.fastPeriod);
+    const previousFastMa = sma(this.prices.slice(0, -1), this.fastPeriod);
+    const slowMa = sma(this.prices, this.slowPeriod);
+    const previousSlowMa = sma(this.prices.slice(0, -1), this.slowPeriod);
+    if ([fastMa, previousFastMa, slowMa, previousSlowMa].some(Number.isNaN)) {
+      return [];
+    }
+
+    if (this.inPosition) {
+      const entryReturn = price / this.entryPrice - 1;
+      const confirmationFailed = price < fastMa * 0.985 || fastMa < previousFastMa;
+      if (
+        entryReturn >= this.takeProfitPercent ||
+        entryReturn <= -this.stopLossPercent ||
+        confirmationFailed
+      ) {
+        this.inPosition = false;
+        this.entryPrice = 0;
+        return [{
+          symbol: quote.symbol,
+          side: "sell",
+          type: "market",
+          targetWeight: 1,
+        }];
+      }
+      return [];
+    }
+
+    const priorPrices = this.prices.slice(-(this.recoveryLookback + 1), -1);
+    const recentHigh = highest(priorPrices, this.recoveryLookback);
+    const recentLow = lowest(priorPrices, this.recoveryLookback);
+    const baselineVolume = average(
+      this.volumes.slice(-(this.recoveryLookback + 1), -1),
+    );
+    if ([recentHigh, recentLow, baselineVolume].some(Number.isNaN)) return [];
+
+    const priorDrawdown = recentHigh > 0 ? 1 - recentLow / recentHigh : 0;
+    const reboundFromLow = recentLow > 0 ? price / recentLow - 1 : 0;
+    const mediumTrendNotRecovered = price <= slowMa * 1.03 &&
+      slowMa <= previousSlowMa * 1.005;
+    const shortTrendRepaired = price > fastMa && fastMa > previousFastMa;
+    const volumeConfirmed = quote.volume >= baselineVolume * this.minimumVolumeMultiplier;
+    const dailyMoveControlled = quote.changePercent >= 0.5 && quote.changePercent <= 6;
+
+    if (
+      mediumTrendNotRecovered &&
+      shortTrendRepaired &&
+      priorDrawdown >= this.minimumDrawdown &&
+      reboundFromLow >= this.minimumRebound &&
+      volumeConfirmed &&
+      dailyMoveControlled
+    ) {
+      this.inPosition = true;
+      this.entryPrice = price;
+      return [{
+        symbol: quote.symbol,
+        side: "buy",
+        type: "market",
+        targetWeight: this.targetWeight,
+      }];
+    }
+
+    return [];
+  }
+}

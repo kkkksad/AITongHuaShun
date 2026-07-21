@@ -197,7 +197,7 @@ describe("routeAdaptiveStrategies", () => {
     ]));
     expect(result.cashReserveRatio).toBe(0.1);
     expect(result.confidence).toBeGreaterThanOrEqual(0.6);
-    expect(result.version).toBe("1.1.0");
+    expect(result.version).toBe("1.2.0");
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
       "kairosLowVolTrend",
       "kairosTrendHealth",
@@ -264,6 +264,50 @@ describe("routeAdaptiveStrategies", () => {
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
       "kairosCapitalShield",
     ]);
+  });
+
+  it("separates a broad intraday recovery from a confirmed medium-term trend", () => {
+    const recoveringWeakSector = sector({
+      direction: "cautious",
+      score: 38,
+      current: {
+        ...sector().current,
+        changePercent: 3.2,
+        advancers: 68,
+        decliners: 32,
+      },
+      factors: {
+        ...sector().factors,
+        return20d: -0.08,
+        return60d: -0.14,
+        ma20Slope5d: -0.03,
+        annualizedVolatility20d: 0.48,
+        breadthRatio: 0.68,
+      },
+    });
+
+    const result = routeAdaptiveStrategies(report({
+      sectors: [
+        recoveringWeakSector,
+        { ...recoveringWeakSector, symbol: "BK0002", name: "测试行业二" },
+      ],
+      stocks: [
+        stock("trend-deterioration", "600519"),
+        stock("trend-deterioration", "000001"),
+      ],
+    }));
+
+    expect(result.regime).toBe("risk-off-recovery");
+    expect(result.positionPosture).toBe("hold");
+    expect(result.allowNewPositions).toBe(false);
+    expect(result.cashReserveRatio).toBeGreaterThanOrEqual(0.55);
+    expect(result.eligibleStrategyKeys).toEqual([
+      "kairosRiskOffRecovery",
+      "kairosCapitalShield",
+    ]);
+    expect(result.evidence.join(" ")).toContain("单日修复");
+    expect(result.riskFlags.join(" ")).toContain("不能直接覆盖");
+    expect(result.metrics.averageCurrentChangePercent).toBe(3.2);
   });
 
   it("falls back to cash when real history is degraded", () => {

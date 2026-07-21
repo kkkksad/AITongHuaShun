@@ -8,7 +8,7 @@ import {
 
 function routing(): AdaptiveStrategyRouting {
   return {
-    version: "1.1.0",
+    version: "1.2.0",
     generatedAt: "2026-07-17T01:30:00.000Z",
     regime: "trend-up-low-volatility",
     confidence: 0.72,
@@ -40,6 +40,7 @@ function routing(): AdaptiveStrategyRouting {
       averageMa20Slope5d: 0.02,
       averageVolatility20d: 0.22,
       averageBreadthRatio: 0.65,
+      averageCurrentChangePercent: 1.2,
       healthyStockRatio: 0.6,
       deterioratingStockRatio: 0.1,
     },

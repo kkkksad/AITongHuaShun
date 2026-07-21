@@ -21,6 +21,7 @@ import {
   kairosLowVolTrendFactory,
   kairosQuietPullbackFactory,
   kairosCapitalShieldFactory,
+  kairosRiskOffRecoveryFactory,
   kairosTrendHealthFactory,
   kairosWashoutRecoveryFactory,
   builtInFactories,
@@ -334,6 +335,7 @@ describe("builtInFactories", () => {
     ["kairosLowVolTrend", kairosLowVolTrendFactory],
     ["kairosQuietPullback", kairosQuietPullbackFactory],
     ["kairosCapitalShield", kairosCapitalShieldFactory],
+    ["kairosRiskOffRecovery", kairosRiskOffRecoveryFactory],
     ["kairosWashoutRecovery", kairosWashoutRecoveryFactory],
     ["kairosTrendHealth", kairosTrendHealthFactory],
   ];
@@ -372,12 +374,13 @@ describe("builtInFactories", () => {
     }, 30000); // 30s timeout for optimization tests
   }
 
-  it("builtInFactories contains all 14 strategies", () => {
-    expect(Object.keys(builtInFactories)).toHaveLength(14);
+  it("builtInFactories contains all 15 strategies", () => {
+    expect(Object.keys(builtInFactories)).toHaveLength(15);
     expect(builtInFactories.aSharePullback.name).toBe("A股强势回踩确认");
     expect(builtInFactories.kairosLowVolTrend.name).toBe("KAIROS低波趋势");
     expect(builtInFactories.kairosQuietPullback.name).toBe("KAIROS缩量回撤反弹");
     expect(builtInFactories.kairosCapitalShield.name).toBe("KAIROS资金护城河");
+    expect(builtInFactories.kairosRiskOffRecovery.name).toBe("KAIROS风险收缩修复");
     expect(builtInFactories.kairosWashoutRecovery.name).toBe("KAIROS洗盘恢复");
     expect(builtInFactories.kairosTrendHealth.name).toBe("KAIROS趋势健康");
   });

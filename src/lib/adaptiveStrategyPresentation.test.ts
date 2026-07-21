@@ -11,6 +11,7 @@ describe("adaptive strategy presentation", () => {
     expect(adaptiveRegimeLabel("trend-up-high-volatility")).toBe("高波上升趋势");
     expect(adaptiveRegimeLabel("range-low-volatility")).toBe("低波区间震荡");
     expect(adaptiveRegimeLabel("range-high-volatility")).toBe("高波区间震荡");
+    expect(adaptiveRegimeLabel("risk-off-recovery")).toBe("风险收缩修复观察");
     expect(adaptiveRegimeLabel("risk-off")).toBe("风险收缩");
     expect(adaptiveRegimeLabel("unclear")).toBe("状态待确认");
   });

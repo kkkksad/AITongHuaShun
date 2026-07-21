@@ -2,7 +2,7 @@
  * 回测参数优化器 —— 统一入口。
  *
  * 提供：
- * - 14 种内置策略的参数空间定义和工厂函数
+ * - 15 种内置策略的参数空间定义和工厂函数
  * - 网格搜索和遗传算法两种优化方法
  * - 便捷的 runOptimization() 高层 API
  */
@@ -333,6 +333,38 @@ export const kairosCapitalShieldFactory: StrategyFactory = {
   },
 };
 
+/** KAIROS 风险收缩修复研究策略参数空间。 */
+export const kairosRiskOffRecoveryFactory: StrategyFactory = {
+  name: "KAIROS风险收缩修复",
+  parameters: [
+    { name: "fastPeriod", type: "int", min: 8, max: 10, step: 2 },
+    { name: "slowPeriod", type: "int", min: 30, max: 40, step: 10 },
+    { name: "recoveryLookback", type: "int", min: 15, max: 15, step: 5 },
+    { name: "minimumDrawdown", type: "float", min: 0.06, max: 0.08, step: 0.02 },
+    { name: "minimumRebound", type: "float", min: 0.025, max: 0.025, step: 0.01 },
+    { name: "minimumVolumeMultiplier", type: "float", min: 1.1, max: 1.2, step: 0.1 },
+    { name: "takeProfitPercent", type: "float", min: 0.04, max: 0.04, step: 0.01 },
+    { name: "stopLossPercent", type: "float", min: 0.02, max: 0.02, step: 0.005 },
+    { name: "targetWeight", type: "float", min: 0.08, max: 0.12, step: 0.02 },
+  ],
+  create: async (params) => {
+    const { KairosRiskOffRecoveryStrategy } = await import(
+      "../backtest/strategies/KairosDefensiveStrategies"
+    );
+    return new KairosRiskOffRecoveryStrategy(
+      params.fastPeriod,
+      params.slowPeriod,
+      params.recoveryLookback,
+      params.minimumDrawdown,
+      params.minimumRebound,
+      params.minimumVolumeMultiplier,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.targetWeight,
+    );
+  },
+};
+
 /** KAIROS 洗盘恢复研究策略参数空间。 */
 export const kairosWashoutRecoveryFactory: StrategyFactory = {
   name: "KAIROS洗盘恢复",
@@ -409,6 +441,7 @@ export const builtInFactories: Record<string, StrategyFactory> = {
   kairosLowVolTrend: kairosLowVolTrendFactory,
   kairosQuietPullback: kairosQuietPullbackFactory,
   kairosCapitalShield: kairosCapitalShieldFactory,
+  kairosRiskOffRecovery: kairosRiskOffRecoveryFactory,
   kairosWashoutRecovery: kairosWashoutRecoveryFactory,
   kairosTrendHealth: kairosTrendHealthFactory,
 };

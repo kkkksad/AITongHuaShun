@@ -65,7 +65,7 @@ export default function AccountPage({ trading }: AccountPageProps) {
                 }).format(trading.account.equity)}
               </h2>
               <p>
-                今日权益{" "}
+                账户累计{" "}
                 <strong
                   className={trading.account.dailyPnl >= 0 ? "positive" : "negative"}
                 >

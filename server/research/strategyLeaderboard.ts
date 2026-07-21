@@ -129,6 +129,20 @@ const rankedFactories: [string, StrategyFactory][] = [
     ]),
   ],
   [
+    "kairosRiskOffRecovery",
+    leaderboardFactory(builtInFactories.kairosRiskOffRecovery, [
+      { name: "fastPeriod", type: "int", min: 8, max: 10, step: 2 },
+      { name: "slowPeriod", type: "int", min: 30, max: 40, step: 10 },
+      { name: "recoveryLookback", type: "int", min: 15, max: 15, step: 5 },
+      { name: "minimumDrawdown", type: "float", min: 0.06, max: 0.06, step: 0.02 },
+      { name: "minimumRebound", type: "float", min: 0.025, max: 0.025, step: 0.01 },
+      { name: "minimumVolumeMultiplier", type: "float", min: 1.1, max: 1.1, step: 0.1 },
+      { name: "takeProfitPercent", type: "float", min: 0.04, max: 0.04, step: 0.01 },
+      { name: "stopLossPercent", type: "float", min: 0.02, max: 0.02, step: 0.005 },
+      { name: "targetWeight", type: "float", min: 0.1, max: 0.1, step: 0.02 },
+    ]),
+  ],
+  [
     "kairosWashoutRecovery",
     leaderboardFactory(builtInFactories.kairosWashoutRecovery, [
       { name: "trendPeriod", type: "int", min: 50, max: 60, step: 10 },

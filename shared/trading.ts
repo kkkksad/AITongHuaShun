@@ -107,6 +107,7 @@ export interface AccountSnapshot {
   marketValue: number;
   unrealizedPnl: number;
   realizedPnl: number;
+  /** Legacy names: these values are measured from the latest paper-account reset. */
   dailyPnl: number;
   dailyPnlPercent: number;
   riskUtilization: number;

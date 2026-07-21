@@ -589,6 +589,7 @@ export type AdaptiveMarketRegime =
   | "trend-up-high-volatility"
   | "range-low-volatility"
   | "range-high-volatility"
+  | "risk-off-recovery"
   | "risk-off"
   | "unclear";
 
@@ -609,7 +610,7 @@ export interface AdaptiveCapitalPacing {
 }
 
 export interface AdaptiveStrategyRouting {
-  version: "1.1.0";
+  version: "1.2.0";
   generatedAt: string;
   regime: AdaptiveMarketRegime;
   confidence: number;
@@ -631,6 +632,7 @@ export interface AdaptiveStrategyRouting {
     averageMa20Slope5d: number;
     averageVolatility20d: number;
     averageBreadthRatio: number | null;
+    averageCurrentChangePercent: number;
     healthyStockRatio: number;
     deterioratingStockRatio: number;
   };
@@ -745,6 +747,13 @@ export interface PaperAutoExecutionRun {
   tradingDate: string;
   session: PaperAutoExecutionSession;
   planQuality: PaperTradingPlanQualitySummary["planQuality"] | "not-run";
+  researchContext?: {
+    regime: string;
+    sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+    allowNewPositions: boolean;
+    candidatePoolSize: number;
+    affordableCandidateCount: number;
+  };
   submittedOrders: PaperAutoExecutionOrder[];
   skippedOperations: PaperAutoExecutionSkip[];
   guardrails: string[];
@@ -855,6 +864,20 @@ export interface DailyMarketReview {
       reasonSource: "decision-audit" | "historical-fallback";
       ruleChecks: string[];
     }>;
+  };
+  entryReview: {
+    status:
+      | "entered"
+      | "risk-blocked"
+      | "cash-constrained"
+      | "no-qualified-candidate"
+      | "data-unavailable"
+      | "not-evaluated";
+    summary: string;
+    reasons: string[];
+    marketRegime: string | null;
+    planQuality: string | null;
+    cashWasConstraint: boolean;
   };
   strategyReview: {
     profile?: {

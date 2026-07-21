@@ -1,5 +1,6 @@
 import type { MarketSnapshot, TradingMode } from "../../shared/trading";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
+import { isTechnologySector } from "./sectorPulse";
 
 export interface HistoricalBar {
   date: string;
@@ -751,10 +752,37 @@ export function selectSectorUniverse(
   const boundedLimit = Math.max(1, Math.min(limit, sectors.length));
   if (sectors.length <= boundedLimit) return sectors.slice();
   if (boundedLimit === 1) return [sectors[0]];
-  return Array.from({ length: boundedLimit }, (_, index) => {
+  const selected = Array.from({ length: boundedLimit }, (_, index) => {
     const sourceIndex = Math.round(index * (sectors.length - 1) / (boundedLimit - 1));
     return sectors[sourceIndex];
   });
+  if (boundedLimit < 3) return selected;
+
+  const key = (sector: SectorSnapshot) => `${sector.symbol}\u0000${sector.name}`;
+  const selectedKeys = new Set(selected.map(key));
+  const technologyLimit = Math.max(1, Math.floor(boundedLimit / 3));
+  const technologySectors = sectors
+    .filter((sector) => isTechnologySector(sector.name))
+    .slice(0, technologyLimit);
+  const replaceableIndexes = Array.from(
+    { length: boundedLimit - 2 },
+    (_, index) => boundedLimit - 2 - index,
+  );
+
+  for (const sector of technologySectors) {
+    if (selectedKeys.has(key(sector))) continue;
+    const replaceIndex = replaceableIndexes.shift();
+    if (replaceIndex === undefined) break;
+    selectedKeys.delete(key(selected[replaceIndex]));
+    selected[replaceIndex] = sector;
+    selectedKeys.add(key(sector));
+  }
+
+  const sourceIndexByKey = new Map(sectors.map((sector, index) => [key(sector), index]));
+  return selected.sort(
+    (left, right) =>
+      (sourceIndexByKey.get(key(left)) ?? 0) - (sourceIndexByKey.get(key(right)) ?? 0),
+  );
 }
 
 function trimTrailingSlash(value: string): string {

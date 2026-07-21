@@ -115,7 +115,7 @@ export function RiskPanel({ limits, account }: RiskPanelProps) {
         <div className="risk-metric-card">
           <div className="risk-metric-header">
             <TrendingDown size={16} />
-            <span>日内亏损追踪</span>
+            <span>账户累计亏损追踪</span>
           </div>
           <div className="risk-gauge-wrap">
             <div className="risk-gauge">
@@ -129,7 +129,7 @@ export function RiskPanel({ limits, account }: RiskPanelProps) {
             </span>
           </div>
           <small className="risk-metric-detail">
-            止损线: {pct(limits.maxDailyLoss)} · 日内盈亏: {money(account.dailyPnl)}
+            风控线: {pct(limits.maxDailyLoss)} · 累计盈亏: {money(account.dailyPnl)}
           </small>
         </div>
       </div>

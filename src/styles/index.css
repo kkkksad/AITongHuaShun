@@ -3769,6 +3769,45 @@ select:focus-visible {
   padding: 0;
 }
 
+.daily-entry-review {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--color-warning);
+  background: color-mix(in srgb, var(--bg-panel-alt) 92%, #f7c948 8%);
+}
+
+.daily-entry-review.entered {
+  border-left-color: var(--color-positive);
+}
+
+.daily-entry-review.risk-blocked,
+.daily-entry-review.data-unavailable,
+.daily-entry-review.cash-constrained {
+  border-left-color: var(--color-negative);
+}
+
+.daily-entry-review > span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.daily-entry-review > strong {
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.daily-entry-review ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .account-tab-group {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

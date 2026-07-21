@@ -48,6 +48,14 @@ export interface PaperAutoExecutionSkip {
   reason: string;
 }
 
+export interface PaperAutoExecutionResearchContext {
+  regime: string;
+  sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
+  allowNewPositions: boolean;
+  candidatePoolSize: number;
+  affordableCandidateCount: number;
+}
+
 export interface PaperAutoExecutionRun {
   id: string;
   trigger: PaperAutoExecutionTrigger;
@@ -58,6 +66,7 @@ export interface PaperAutoExecutionRun {
   phase: AShareTradingPhase;
   phaseMaxInvestedRatio: number;
   planQuality: PaperTradingPlan["qualitySummary"]["planQuality"] | "not-run";
+  researchContext?: PaperAutoExecutionResearchContext;
   submittedOrders: PaperAutoExecutionOrder[];
   skippedOperations: PaperAutoExecutionSkip[];
   guardrails: string[];
@@ -98,6 +107,87 @@ export interface PaperAutoExecutorOptions {
   clock?: () => Date;
   onOrder?: (order: OrderRecord, request: OrderRequest) => void;
   planNotifier?: Pick<PaperPlanNotifier, "notify">;
+}
+
+export interface SequentialTaskTimerApi {
+  setTimeout(callback: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
+}
+
+export interface SequentialTaskSchedulerOptions {
+  intervalMs: number;
+  task: () => Promise<void>;
+  timers?: SequentialTaskTimerApi;
+  clock?: () => Date;
+  onError?: (error: unknown) => void;
+}
+
+function defaultTimers(): SequentialTaskTimerApi {
+  return {
+    setTimeout(callback, delayMs) {
+      const handle = setTimeout(callback, delayMs);
+      handle.unref?.();
+      return handle;
+    },
+    clearTimeout(handle) {
+      clearTimeout(handle as ReturnType<typeof setTimeout>);
+    },
+  };
+}
+
+export class SequentialTaskScheduler {
+  private readonly timers: SequentialTaskTimerApi;
+  private timer: unknown | null = null;
+  private active = false;
+  private nextRunAt: string | null = null;
+
+  constructor(private readonly options: SequentialTaskSchedulerOptions) {
+    this.timers = options.timers ?? defaultTimers();
+  }
+
+  start(initialTask: (() => Promise<void>) | null = null): void {
+    if (this.active) return;
+    this.active = true;
+    void this.run(initialTask ?? this.options.task);
+  }
+
+  stop(): void {
+    this.active = false;
+    if (this.timer !== null) this.timers.clearTimeout(this.timer);
+    this.timer = null;
+    this.nextRunAt = null;
+  }
+
+  isStarted(): boolean {
+    return this.active;
+  }
+
+  getNextRunAt(): string | null {
+    return this.nextRunAt;
+  }
+
+  private async run(task: () => Promise<void>): Promise<void> {
+    try {
+      await task();
+    } catch (error) {
+      this.options.onError?.(error);
+    } finally {
+      if (this.active) this.schedule();
+    }
+  }
+
+  private schedule(): void {
+    if (this.timer !== null) this.timers.clearTimeout(this.timer);
+    this.nextRunAt = new Date(
+      (this.options.clock?.() ?? new Date()).getTime() + this.options.intervalMs,
+    ).toISOString();
+    this.timer = this.timers.setTimeout(() => {
+      this.timer = null;
+      this.nextRunAt = null;
+      if (!this.active) return;
+      void this.run(this.options.task);
+    }, this.options.intervalMs);
+  }
 }
 
 interface PreparedPaperOperation {
@@ -147,6 +237,7 @@ export function paperAutoExecutionAuditSignature(
     session: run.session,
     phase: run.phase,
     planQuality: run.planQuality,
+    researchContext: run.researchContext ?? null,
     submittedOrders: run.submittedOrders.map((order) => ({
       symbol: order.symbol,
       side: order.side,
@@ -187,42 +278,59 @@ export function isPaperOperationBlockedByPhaseBudget(
   return remainingPhaseOrders <= 0 && operation.strategy !== "回撤控制";
 }
 
+export function paperNonExecutableReason(operation: PaperTradingOperation): string {
+  if (operation.action === "hold" || operation.action === "observe") {
+    return `正常观望：${operation.reason}`;
+  }
+  return "operation is not an executable paper auto action";
+}
+
+type NotificationResearchSourceStatus =
+  | "live-read-only"
+  | "degraded"
+  | "mock-disabled";
+
+export function resolveNotificationSourceStatus(input: {
+  marketRegime: NotificationResearchSourceStatus;
+  auxiliaryResearch: NotificationResearchSourceStatus;
+}): NotificationResearchSourceStatus {
+  return input.marketRegime;
+}
+
 export class PaperAutoExecutor {
-  private timer: ReturnType<typeof setInterval> | null = null;
   private startedAt: string | null = null;
   private lastRunAt: string | null = null;
-  private nextRunAt: string | null = null;
   private running = false;
   private sequence = 0;
   private lastPersistedRunSignature: string | null = null;
   private lastPersistedRunAt: number | null = null;
   private readonly runs: PaperAutoExecutionRun[] = [];
+  private readonly scheduler: SequentialTaskScheduler;
 
-  constructor(private readonly options: PaperAutoExecutorOptions) {}
+  constructor(private readonly options: PaperAutoExecutorOptions) {
+    this.scheduler = new SequentialTaskScheduler({
+      intervalMs: options.intervalMs,
+      clock: options.clock,
+      task: async () => {
+        if (!shouldRunScheduledPaperAutoExecution(
+          this.now(),
+          this.options.tradeWindowOnly,
+        )) return;
+        await this.runOnce("timer");
+      },
+    });
+  }
 
   start(): void {
-    if (!this.options.enabled || this.timer) return;
+    if (!this.options.enabled || this.scheduler.isStarted()) return;
     this.startedAt = this.now().toISOString();
-    this.scheduleNext();
-    this.timer = setInterval(() => {
-      if (!shouldRunScheduledPaperAutoExecution(
-        this.now(),
-        this.options.tradeWindowOnly,
-      )) {
-        this.scheduleNext();
-        return;
-      }
-      void this.runOnce("timer");
-    }, this.options.intervalMs);
-    this.timer.unref?.();
-    void this.runOnce("startup");
+    this.scheduler.start(async () => {
+      await this.runOnce("startup");
+    });
   }
 
   stop(): void {
-    if (!this.timer) return;
-    clearInterval(this.timer);
-    this.timer = null;
-    this.nextRunAt = null;
+    this.scheduler.stop();
   }
 
   getStatus(): PaperAutoExecutionStatus {
@@ -253,7 +361,7 @@ export class PaperAutoExecutor {
         latestRun?.phaseMaxInvestedRatio ?? currentPolicy.maxInvestedRatio,
       startedAt: this.startedAt,
       lastRunAt: this.lastRunAt,
-      nextRunAt: this.nextRunAt,
+      nextRunAt: this.scheduler.getNextRunAt(),
       latestRun,
       recentRuns: [...this.runs],
       guardrails: this.guardrails(),
@@ -325,6 +433,7 @@ export class PaperAutoExecutor {
         marketRegimeResearch,
         realResearchDataFeed,
         externalMarketImpact,
+        adaptiveRouting,
       } = await buildCurrentPaperTradingPlan({
         system: this.options.system,
         config: this.options.config,
@@ -349,17 +458,13 @@ export class PaperAutoExecutor {
         ),
         policy,
         marketContext: {
-          sourceStatus:
-            marketRegimeResearch.sourceStatus === "degraded" ||
-            realResearchDataFeed.sourceStatus === "degraded"
-              ? "degraded"
-              : marketRegimeResearch.sourceStatus === "live-read-only" &&
-                  realResearchDataFeed.sourceStatus === "live-read-only"
-                ? "live-read-only"
-                : "mock-disabled",
+          sourceStatus: resolveNotificationSourceStatus({
+            marketRegime: marketRegimeResearch.sourceStatus,
+            auxiliaryResearch: realResearchDataFeed.sourceStatus,
+          }),
           tone: marketAssessment.tone,
           summary: marketAssessment.summary,
-          sectors: marketRegimeResearch.sectorOutlooks.slice(0, 3).map((sector) => ({
+          sectors: marketRegimeResearch.sectorOutlooks.slice(0, 24).map((sector) => ({
             name: sector.name,
             direction: sector.direction,
             score: sector.score,
@@ -434,6 +539,13 @@ export class PaperAutoExecutor {
         plan.qualitySummary.planQuality,
         submittedOrders,
         skippedOperations,
+        {
+          regime: adaptiveRouting.regime,
+          sourceStatus: marketRegimeResearch.sourceStatus,
+          allowNewPositions: adaptiveRouting.allowNewPositions,
+          candidatePoolSize: plan.qualitySummary.candidatePoolSize,
+          affordableCandidateCount: plan.qualitySummary.affordableCandidateCount,
+        },
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
@@ -454,7 +566,6 @@ export class PaperAutoExecutor {
       );
     } finally {
       this.running = false;
-      this.scheduleNext();
     }
   }
 
@@ -487,7 +598,7 @@ export class PaperAutoExecutor {
         skippedOperations.push({
           symbol: operation.symbol,
           action: operation.action,
-          reason: "operation is not an executable paper auto action",
+          reason: paperNonExecutableReason(operation),
         });
         continue;
       }
@@ -601,6 +712,7 @@ export class PaperAutoExecutor {
     planQuality: PaperAutoExecutionRun["planQuality"],
     submittedOrders: PaperAutoExecutionOrder[],
     skippedOperations: PaperAutoExecutionSkip[],
+    researchContext?: PaperAutoExecutionResearchContext,
   ): PaperAutoExecutionRun {
     return this.recordRun({
       id: this.nextRunId(tradingDate),
@@ -612,6 +724,7 @@ export class PaperAutoExecutor {
       phase: policy.phase,
       phaseMaxInvestedRatio: policy.maxInvestedRatio,
       planQuality,
+      researchContext,
       submittedOrders,
       skippedOperations,
       guardrails: this.guardrails(),
@@ -643,6 +756,11 @@ export class PaperAutoExecutor {
         phase: run.phase,
         phaseMaxInvestedRatio: run.phaseMaxInvestedRatio,
         planQuality: run.planQuality,
+        regime: run.researchContext?.regime,
+        sourceStatus: run.researchContext?.sourceStatus,
+        allowNewPositions: run.researchContext?.allowNewPositions,
+        candidatePoolSize: run.researchContext?.candidatePoolSize,
+        affordableCandidateCount: run.researchContext?.affordableCandidateCount,
         submittedOrders: run.submittedOrders.length,
         skippedOperations: run.skippedOperations.length,
         submittedOrderStatuses: run.submittedOrders.map((order) => ({
@@ -664,14 +782,6 @@ export class PaperAutoExecutor {
     this.lastPersistedRunSignature = signature;
     this.lastPersistedRunAt = Date.parse(run.finishedAt);
     return run;
-  }
-
-  private scheduleNext(): void {
-    if (!this.options.enabled) {
-      this.nextRunAt = null;
-      return;
-    }
-    this.nextRunAt = new Date(this.now().getTime() + this.options.intervalMs).toISOString();
   }
 
   private countSubmittedOrders(tradingDate: string): number {

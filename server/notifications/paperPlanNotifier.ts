@@ -10,6 +10,10 @@ import type {
   PaperTradingOperation,
   PaperTradingPlan,
 } from "../research/paperTradingPlan";
+import {
+  SectorPulseTracker,
+  type SectorPulseSignal,
+} from "../research/sectorPulse";
 import type { DailyMarketTone } from "../research/dailyMarketReview";
 import type {
   AShareTradingPhase,
@@ -161,13 +165,16 @@ export type PaperPlanUrgentEvent =
   | "risk-off"
   | "data-degraded"
   | "paper-order-rejected"
-  | "trading-paused";
+  | "trading-paused"
+  | "technology-pullback"
+  | "leader-pullback";
 
 export interface PaperPlanMessageDelivery {
   attemptNumber: number;
   dailyMessageLimit: number;
   messageKind: PaperPlanMessageKind;
   urgentEvents: PaperPlanUrgentEvent[];
+  sectorSignals?: SectorPulseSignal[];
 }
 
 export type PaperPlanNotificationResult =
@@ -249,6 +256,8 @@ const URGENT_EVENT_LABELS: Record<PaperPlanUrgentEvent, string> = {
   "data-degraded": "真实数据源降级",
   "paper-order-rejected": "本地模拟订单出现拒单",
   "trading-paused": "本地模拟交易已暂停",
+  "technology-pullback": "科技板块快速回撤",
+  "leader-pullback": "强势板块快速回撤",
 };
 
 function chinaMinutes(value: Date): number {
@@ -350,6 +359,7 @@ export function summarizePaperOrders(
 function detectUrgentEvents(
   plan: PaperTradingPlan,
   context: PaperPlanNotificationContext,
+  sectorSignals: SectorPulseSignal[] = [],
 ): PaperPlanUrgentEvent[] {
   const events: PaperPlanUrgentEvent[] = [];
   if (
@@ -367,6 +377,9 @@ function detectUrgentEvents(
   }
   if (context.account.paused) {
     events.push("trading-paused");
+  }
+  for (const signal of sectorSignals) {
+    if (!events.includes(signal.event)) events.push(signal.event);
   }
   return events;
 }
@@ -493,9 +506,9 @@ function targetPositions(
   ));
 }
 
-function formatSignedPercent(value: number): string {
+function formatSignedPercent(value: number, digits = 1): string {
   const sign = value > 0 ? "+" : "";
-  return `${sign}${value.toFixed(1)}%`;
+  return `${sign}${value.toFixed(digits)}%`;
 }
 
 function formatAction(operation: PaperTradingOperation): string {
@@ -548,6 +561,7 @@ export function formatPaperPlanMessage(
     dailyMessageLimit: 10,
     messageKind: "scheduled-briefing",
     urgentEvents: [],
+    sectorSignals: [],
   },
 ): WxPusherMessage {
   if (!briefingSlot) {
@@ -584,11 +598,16 @@ export function formatPaperPlanMessage(
   const avoidNewRisk =
     context.marketContext.tone === "risk-off" ||
     (routing?.regime === "risk-off" && routing.allowNewPositions === false);
-  const headline = avoidNewRisk
-    ? "市场不宜操作"
-    : context.executableOperations.length > 0
-      ? `本时段有 ${context.executableOperations.length} 项模拟动作`
-      : "暂无动作，继续等待";
+  const sectorUrgentEvent = delivery.urgentEvents.find((event) => (
+    event === "technology-pullback" || event === "leader-pullback"
+  ));
+  const headline = sectorUrgentEvent
+    ? URGENT_EVENT_LABELS[sectorUrgentEvent]
+    : avoidNewRisk
+      ? "市场不宜操作"
+      : context.executableOperations.length > 0
+        ? `本时段有 ${context.executableOperations.length} 项模拟动作`
+        : "暂无动作，继续等待";
   const conclusion = avoidNewRisk
     ? "市场不宜操作，暂停新增 paper 仓位，优先保留现金并执行既定风控。"
     : context.executableOperations.length > 0
@@ -652,7 +671,7 @@ export function formatPaperPlanMessage(
     execution.cancelledOrders > 0 ? `撤单 ${execution.cancelledOrders} 笔` : null,
   ].filter(Boolean).join(" · ");
   const stageReview = briefingSlot.sequence === 4
-    ? `<h3>尾盘结果</h3><p>当日 Paper 盈亏 ${escapeHtml(dailyPnl)}<br />${escapeHtml(executionText)}<br />买入 ${execution.buyNotional.toFixed(2)} 元 · 卖出 ${execution.sellNotional.toFixed(2)} 元 · 手续费 ${execution.commission.toFixed(2)} 元</p>`
+    ? `<h3>尾盘结果</h3><p>账户重置以来 Paper 盈亏 ${escapeHtml(dailyPnl)}<br />${escapeHtml(executionText)}<br />买入 ${execution.buyNotional.toFixed(2)} 元 · 卖出 ${execution.sellNotional.toFixed(2)} 元 · 手续费 ${execution.commission.toFixed(2)} 元</p>`
     : `<h3>策略与盘面</h3><p>档位：${escapeHtml(profileName)} · 状态：${escapeHtml(regimeName)} · 策略：${escapeHtml(strategyName)}<br />适用：${escapeHtml(playbook?.useWhen ?? "等待真实数据确认")}<br />回避：${escapeHtml(playbook?.avoidWhen ?? "数据不足时不新增仓位")}<br />有效板块：${validSectorText}<br />${macroHtml}</p>`;
   const deliveryLabel = delivery.messageKind === "scheduled-briefing"
     ? `固定简报 ${briefingSlot.sequence}/4`
@@ -660,6 +679,14 @@ export function formatPaperPlanMessage(
   const urgentText = delivery.urgentEvents.length > 0
     ? delivery.urgentEvents.map((event) => URGENT_EVENT_LABELS[event]).join("；")
     : null;
+  const sectorSignalHtml = (delivery.sectorSignals ?? []).length > 0
+    ? [
+        "<h3>板块脉冲</h3>",
+        `<ol>${(delivery.sectorSignals ?? []).slice(0, 3).map((signal) => (
+          `<li><strong>${escapeHtml(signal.sectorName)}</strong>：观察高点 ${formatSignedPercent(signal.peakChangePercent, 2)}，当前 ${formatSignedPercent(signal.currentChangePercent, 2)}，回撤 ${signal.pullbackPercentPoints.toFixed(2)} 个百分点。<br />该信号只说明盘中强度下降，不等同于趋势反转或自动卖出依据。</li>`
+        )).join("")}</ol>`,
+      ].join("")
+    : "";
   const timingLabel = delivery.messageKind === "scheduled-briefing"
     ? `${escapeHtml(briefingSlot.label)} ${briefingSlot.scheduledAt}`
     : `关联阶段 ${escapeHtml(briefingSlot.label)}`;
@@ -675,8 +702,9 @@ export function formatPaperPlanMessage(
       `</div>`,
       "<h3>一眼结论</h3>",
       `<div style="padding:10px 12px;background:${statusBackground};border-radius:6px;"><strong style="color:${statusColor};">${escapeHtml(headline)}</strong><br />${escapeHtml(conclusion)}<br />盘面：${escapeHtml(marketSummary)}</div>`,
+      sectorSignalHtml,
       "<h3>关键数字</h3>",
-      `<p>权益 ${context.account.equity.toFixed(2)} 元 · 现金 ${context.account.cash.toFixed(2)} 元<br />当前仓位 ${(investedRatio * 100).toFixed(1)}% / 阶段上限 ${(context.policy.maxInvestedRatio * 100).toFixed(1)}% · 当日 Paper 盈亏 ${escapeHtml(dailyPnl)}</p>`,
+      `<p>权益 ${context.account.equity.toFixed(2)} 元 · 现金 ${context.account.cash.toFixed(2)} 元<br />当前仓位 ${(investedRatio * 100).toFixed(1)}% / 阶段上限 ${(context.policy.maxInvestedRatio * 100).toFixed(1)}% · 累计 Paper 盈亏 ${escapeHtml(dailyPnl)}</p>`,
       "<h3>今日已成交</h3>",
       executedHtml,
       "<h3>本时段待执行计划</h3>",
@@ -701,6 +729,8 @@ export function formatPaperPlanMessage(
 }
 
 export class PaperPlanNotifier {
+  private readonly sectorPulseTracker = new SectorPulseTracker();
+
   constructor(private readonly options: PaperPlanNotifierOptions) {}
 
   async notify(
@@ -720,6 +750,12 @@ export class PaperPlanNotifier {
       return { status: "not-actionable" };
     }
     const briefingSlot = getPaperPlanBriefingSlot(now, context.policy.phase);
+    const sectorSignals = this.sectorPulseTracker.observe({
+      tradingDate: plan.tradingDate,
+      observedAt: now.toISOString(),
+      sourceStatus: context.marketContext.sourceStatus,
+      sectors: context.marketContext.sectors,
+    });
 
     const signature = materialSignature(plan, context);
     const attempts = this.options.store.listAudit(10_000).filter((event) => (
@@ -732,8 +768,11 @@ export class PaperPlanNotifier {
     const alertedUrgentEvents = new Set(
       attempts.flatMap((event) => auditUrgentEvents(event.data)),
     );
-    const urgentEvents = detectUrgentEvents(plan, context).filter(
+    const urgentEvents = detectUrgentEvents(plan, context, sectorSignals).filter(
       (event) => !alertedUrgentEvents.has(event),
+    );
+    const deliverableSectorSignals = sectorSignals.filter((signal) =>
+      urgentEvents.includes(signal.event),
     );
 
     let messageKind: PaperPlanMessageKind;
@@ -768,6 +807,7 @@ export class PaperPlanNotifier {
       scheduledAt: configuredSlot.scheduledAt,
       slotLabel: configuredSlot.label,
       urgentEvents,
+      sectorSignals: deliverableSectorSignals.slice(0, 3),
       regime: plan.adaptiveRouting?.regime ?? "unavailable",
       strategy: plan.topStrategy?.strategyKey ?? "cash-observation",
       sourceStatus: context.marketContext.sourceStatus,
@@ -789,6 +829,7 @@ export class PaperPlanNotifier {
           dailyMessageLimit,
           messageKind,
           urgentEvents,
+          sectorSignals: deliverableSectorSignals,
         },
       ));
       this.options.store.appendAudit(

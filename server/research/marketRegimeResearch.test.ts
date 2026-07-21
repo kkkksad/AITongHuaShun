@@ -197,6 +197,33 @@ describe("market regime research", () => {
     ]);
   });
 
+  it("keeps a bounded technology sector in the sample after it falls from the leaders", () => {
+    const sectors = Array.from({ length: 12 }, (_, index) => ({
+      symbol: `BK${index}`,
+      name: index === 9 ? "半导体" : `行业${index}`,
+      price: 100,
+      changePercent: 12 - index,
+      amount: null,
+      turnover: null,
+      advancers: null,
+      decliners: null,
+      leaderName: null,
+      leaderChangePercent: null,
+      mainNetInflow: null,
+      updatedAt: "2026-07-21T06:00:00Z",
+    }));
+
+    const selected = selectSectorUniverse(sectors, 4);
+
+    expect(selected).toHaveLength(4);
+    expect(selected.map((sector) => sector.name)).toEqual([
+      "行业0",
+      "行业4",
+      "半导体",
+      "行业11",
+    ]);
+  });
+
   it("puts preferred held stocks before snapshot candidates within the bridge limit", async () => {
     const requestedUrls: string[] = [];
     const fetchImpl = vi.fn<typeof fetch>(async (input) => {

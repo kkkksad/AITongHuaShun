@@ -134,7 +134,7 @@ export function PaperAccount({ backend }: PaperAccountProps) {
           <span className="section-kicker">{account.accountId}</span>
           <h2>{money(account.equity)}</h2>
           <p>
-            今日权益{" "}
+            账户累计{" "}
             <strong className={account.dailyPnl >= 0 ? "positive" : "negative"}>
               {account.dailyPnl >= 0 ? "+" : ""}
               {(account.dailyPnlPercent * 100).toFixed(2)}%

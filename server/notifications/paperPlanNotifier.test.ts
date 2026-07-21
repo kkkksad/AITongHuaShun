@@ -58,7 +58,7 @@ function createPlan(
       qualityGate: "research-only",
     },
     adaptiveRouting: {
-      version: "1.1.0",
+      version: "1.2.0",
       generatedAt: "2026-07-17T01:35:00.000Z",
       regime: "trend-up-low-volatility",
       confidence: 0.72,
@@ -90,6 +90,7 @@ function createPlan(
         averageMa20Slope5d: 0.02,
         averageVolatility20d: 0.22,
         averageBreadthRatio: 0.65,
+        averageCurrentChangePercent: 1.2,
         healthyStockRatio: 0.6,
         deterioratingStockRatio: 0.1,
       },
@@ -394,6 +395,8 @@ describe("PaperPlanNotifier", () => {
     expect(message.summary).toContain("1/10 固定简报 1/4");
     expect(message.content).toContain("今日第 1/10 条 · 固定简报 1/4");
     expect(message.content).toContain("<h3>一眼结论</h3>");
+    expect(message.content).toContain("累计 Paper 盈亏");
+    expect(message.content).not.toContain("当日 Paper 盈亏");
     expect(message.content).toContain("<h3>今日已成交</h3>");
     expect(message.content).toContain("买入 000001 Sample Bank 100股");
     expect(message.content).toContain("成交价 10.48 元");
@@ -576,6 +579,64 @@ describe("PaperPlanNotifier", () => {
         summary: "当前观察池盘面分化。",
         sectors: [],
         warnings: ["真实新闻源暂不可用"],
+      },
+    }))).resolves.toMatchObject({ status: "phase-used" });
+    expect(sender.send).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends one precise technology pullback update after a live intraday baseline", async () => {
+    const plan = createPlan("observe");
+    const { notifier, sender, store, setNow } = createNotifier();
+    const baseMarket = context(plan).marketContext;
+
+    await notifier.notify(plan, context(plan, {
+      marketContext: {
+        ...baseMarket,
+        sectors: [
+          { name: "半导体", direction: "constructive", score: 82, changePercent: 6.2 },
+          { name: "银行", direction: "neutral", score: 55, changePercent: 0.8 },
+        ],
+      },
+    }));
+    setNow(new Date("2026-07-17T09:42:00+08:00"));
+
+    await expect(notifier.notify(plan, context(plan, {
+      marketContext: {
+        ...baseMarket,
+        sectors: [
+          { name: "半导体", direction: "constructive", score: 76, changePercent: 4.1 },
+          { name: "银行", direction: "neutral", score: 56, changePercent: 0.9 },
+        ],
+      },
+    }))).resolves.toMatchObject({
+      status: "sent",
+      messageKind: "urgent-update",
+    });
+
+    const message = sender.send.mock.calls[1][0];
+    expect(message.summary).toContain("科技板块快速回撤");
+    expect(message.content).toContain("半导体");
+    expect(message.content).toContain("观察高点 +6.20%");
+    expect(message.content).toContain("当前 +4.10%");
+    expect(message.content).toContain("回撤 2.10 个百分点");
+    expect(store.listAudit(20)[0]).toEqual(expect.objectContaining({
+      action: "wxpusher.paper-plan.sent",
+      data: expect.objectContaining({
+        urgentEvents: ["technology-pullback"],
+        sectorSignals: [expect.objectContaining({
+          sectorName: "半导体",
+          pullbackPercentPoints: 2.1,
+        })],
+      }),
+    }));
+
+    setNow(new Date("2026-07-17T09:48:00+08:00"));
+    await expect(notifier.notify(plan, context(plan, {
+      marketContext: {
+        ...baseMarket,
+        sectors: [
+          { name: "半导体", direction: "neutral", score: 64, changePercent: 2.8 },
+        ],
       },
     }))).resolves.toMatchObject({ status: "phase-used" });
     expect(sender.send).toHaveBeenCalledTimes(2);

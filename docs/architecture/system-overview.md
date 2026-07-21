@@ -29,7 +29,7 @@ FastAPI + AkShare :8800
         └─ 新股申购与上市记录（只读，无账户和订单接口）
 ```
 
-前后端共享 `shared/trading.ts` 中的行情、账户、持仓、订单、风险和实时事件契约。
+前后端共享 `shared/trading.ts` 中的行情、账户、持仓、订单、风险和实时事件契约。`AccountSnapshot.dailyPnl*` 是兼容旧客户端的历史字段名，当前存储语义是账户重置以来累计结果；交易日收益由每日复盘按昨收和当日成交独立重建。
 
 `server/market/dataQuality.ts` 是行情质量的唯一计算入口。它按请求股票池计算有效覆盖，使用整批报价低 10% 分位新鲜度避免单条最新报价掩盖陈旧批次，并把合法主板、创业板、科创板和北交所涨跌停与越界价格异常分开。`/api/market/quality` 只读取当前内存快照，不触发外部抓取；浏览器只在后端连接时轮询该接口。
 
@@ -51,7 +51,7 @@ src/
 server/
   broker/        PaperBroker 模拟撮合、受控纸面适配器与只读行情原型
   market/        MockMarket、HTTP 与 AkShare 只读行情适配器
-  research/      策略排行、真实稳健性、跨市场状态、外盘影响/紧凑特征、候选池、板块/形态研究、纸面计划与 SuperMind 信号包
+  research/      策略排行、真实稳健性、跨市场状态、板块脉冲、外盘影响/紧凑特征、候选池、板块/形态研究、纸面计划与 SuperMind 信号包
   monitoring/    日志查询、导出与有界 API 请求遥测
   notifications/ WxPusher 四时点简报、重要事件去重与十条发送预算
   trading/       本地 paper 自动执行器
@@ -77,7 +77,8 @@ shared/
 - `server/research/bridgeRequest.ts` 是研究域访问 AkShare 桥的唯一请求实现，统一负责 Token 头、超时、HTTP `detail` 截断、网络错误和 JSON 校验；领域模块只把稳定错误语义写入自己的降级报告。
 - `PaperBroker` 依赖行情、风险和仓储，不依赖 HTTP、WebSocket 或 React。
 - `PaperAutoExecutor` 只读取纸面计划并向 `PaperBroker` 提交本地模拟订单；它不能调用真实券商、同花顺、SuperMind 或浏览器自动化能力。
-- `PaperAutoExecutor` 将计划构建或上游研究暂不可用转换为可审计的 `not-run` 观察轮次；启动时空行情不得形成未处理拒绝或终止 Fastify 进程。
+- `PaperAutoExecutor` 将计划构建或上游研究暂不可用转换为可审计的 `not-run` 观察轮次；定时任务使用完成后调度，上一轮结束后才开始计算下一间隔。启动时空行情不得形成未处理拒绝或终止 Fastify 进程。
+- 每日复盘从自动执行审计中优先选择最近的有效盘中决策，盘后启动产生的 `not-run` 不能覆盖同日 `open` 交易时段形成的计划质量和跳过原因。
 - `paperTradingPlanService` 在发起真实历史研究前同步生成有界候选，将当前持仓、强势回踩候选和优质股候选按优先级去重后放入最多 12 只历史股票池；`paperTradingPlan` 只允许通过历史持续性、往返佣金和同日回补检查的候选形成新增仓位。
 - `RiskEngine` 只依赖共享领域数据，不产生网络或存储副作用。
 - `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都实现账户重置和策略档位持久化，但都不是未来数据库模型的替代品。
@@ -100,7 +101,7 @@ shared/
 11. 当前选定的 `TradingStore` 更新现金、持仓、订单和审计事件。
 12. 新账户、持仓和订单状态再次通过已认证 WebSocket 推送。
 
-WxPusher 通知属于 paper 观察域，不属于订单执行域。自动执行器在四个盘中阶段生成上下文，通知器只在 09:35、10:30、13:30、14:50 开放固定简报；`risk-off`、数据降级、paper 拒单或暂停可以使用事件预留。同类事件按交易日审计去重，多种事件同轮合并，全部成功/失败请求共享每天十条硬上限。通知中的“已成交”只从 `TradingStore` 的当日订单和 `paper-auto-execution.decision` 审计重建；计划、跳过和拒绝保持独立分区，缺失的历史理由不得推断。
+WxPusher 通知属于 paper 观察域，不属于订单执行域。自动执行器在四个盘中阶段生成上下文，通知器只在 09:35、10:30、13:30、14:50 开放固定简报；`risk-off`、核心板块研究降级、paper 拒单、暂停、科技快速回撤或强势板块严重回撤可以使用事件预留。同类事件按交易日审计去重，多种事件同轮合并，全部成功/失败请求共享每天十条硬上限。`SectorPulseTracker` 每日最多保留 24 个板块的名称、上次涨幅和观察高点，不落盘原始行情；市场研究抽样会保留少量科技行业。辅助新闻/外盘降级只进入正文警告，不阻断板块脉冲。通知中的“已成交”只从 `TradingStore` 的当日订单和 `paper-auto-execution.decision` 审计重建；计划、跳过和拒绝保持独立分区，缺失的历史理由不得推断。
 
 Fastify 使用 Helmet 设置基础安全响应头，并使用 Rate Limit 对 HTTP 请求进行全局限流。统一错误处理必须保留插件产生的 4xx 状态，不能把 429 改写为 500。
 Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabilities` 声明只读行情与纸面执行边界。

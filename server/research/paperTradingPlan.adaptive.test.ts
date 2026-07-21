@@ -108,7 +108,7 @@ function routing(
   overrides: Partial<AdaptiveStrategyRouting> = {},
 ): AdaptiveStrategyRouting {
   return {
-    version: "1.1.0",
+    version: "1.2.0",
     generatedAt: snapshot.marketTime,
     regime: "trend-up-low-volatility",
     confidence: 0.72,
@@ -140,6 +140,7 @@ function routing(
       averageMa20Slope5d: 0.02,
       averageVolatility20d: 0.22,
       averageBreadthRatio: 0.65,
+      averageCurrentChangePercent: 1.2,
       healthyStockRatio: 0.6,
       deterioratingStockRatio: 0.1,
     },

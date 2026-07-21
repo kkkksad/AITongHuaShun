@@ -50,6 +50,23 @@ export interface DailyMarketReviewTrade {
   ruleChecks: string[];
 }
 
+export type DailyEntryReviewStatus =
+  | "entered"
+  | "risk-blocked"
+  | "cash-constrained"
+  | "no-qualified-candidate"
+  | "data-unavailable"
+  | "not-evaluated";
+
+export interface DailyEntryReview {
+  status: DailyEntryReviewStatus;
+  summary: string;
+  reasons: string[];
+  marketRegime: string | null;
+  planQuality: string | null;
+  cashWasConstraint: boolean;
+}
+
 export interface DailyMarketReview {
   generatedAt: string;
   tradingDate: string;
@@ -103,6 +120,7 @@ export interface DailyMarketReview {
     commission: number;
     items: DailyMarketReviewTrade[];
   };
+  entryReview: DailyEntryReview;
   strategyReview: {
     profile: {
       key: NonNullable<AccountSnapshot["strategyProfile"]>;
@@ -251,6 +269,164 @@ function decisionAuditMap(events: AuditEvent[]): Map<string, DecisionAuditData> 
   return decisions;
 }
 
+function eventTradingDate(event: AuditEvent): string | null {
+  const explicit = event.data?.tradingDate;
+  return typeof explicit === "string" ? explicit : chinaParts(new Date(event.timestamp)).date;
+}
+
+function latestAudit(
+  events: AuditEvent[],
+  predicate: (event: AuditEvent) => boolean,
+): AuditEvent | undefined {
+  return events
+    .filter(predicate)
+    .sort((left, right) => right.timestamp.localeCompare(left.timestamp))[0];
+}
+
+function latestEffectiveAutoExecutionRun(events: AuditEvent[]): AuditEvent | undefined {
+  const runs = events.filter((event) => event.action === "paper-auto-execution.run");
+  return latestAudit(runs, (event) => (
+    event.data?.session === "open" && event.data?.planQuality !== "not-run"
+  )) ?? latestAudit(runs, (event) => event.data?.session === "open")
+    ?? latestAudit(runs, (event) => (
+      event.data?.session === undefined && event.data?.planQuality !== "not-run"
+    ))
+    ?? latestAudit(runs, () => true);
+}
+
+function auditSkippedReasons(event: AuditEvent | undefined): string[] {
+  if (!Array.isArray(event?.data?.skippedReasons)) return [];
+  return event.data.skippedReasons.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const reason = (item as { reason?: unknown }).reason;
+    return typeof reason === "string" && reason.trim().length > 0
+      ? [reason.trim()]
+      : [];
+  });
+}
+
+function buildEntryReview(input: {
+  tradingDate: string;
+  marketTone: DailyMarketTone;
+  account: AccountSnapshot;
+  dailyOrders: OrderRecord[];
+  auditEvents: AuditEvent[];
+}): DailyEntryReview {
+  const filledBuys = input.dailyOrders.filter(
+    (order) => order.side === "buy" && order.status === "filled",
+  );
+  const cashRejected = input.dailyOrders.some((order) => (
+    order.side === "buy" &&
+    order.status === "rejected" &&
+    /资金不足|可用资金不足/.test(order.rejectionReason ?? "")
+  ));
+  const dailyAudits = input.auditEvents.filter(
+    (event) => eventTradingDate(event) === input.tradingDate,
+  );
+  const latestRun = latestEffectiveAutoExecutionRun(dailyAudits);
+  const latestRoute = typeof latestRun?.data?.regime === "string"
+    ? latestRun
+    : latestAudit(dailyAudits, (event) => (
+      (event.action === "paper-auto-execution.run" ||
+        event.action === "wxpusher.paper-plan.sent" ||
+        event.action === "wxpusher.paper-plan.failed") &&
+      typeof event.data?.regime === "string"
+    ));
+  const marketRegime = typeof latestRoute?.data?.regime === "string"
+    ? latestRoute.data.regime
+    : null;
+  const planQuality = typeof latestRun?.data?.planQuality === "string"
+    ? latestRun.data.planQuality
+    : null;
+  const sourceStatus = typeof latestRoute?.data?.sourceStatus === "string"
+    ? latestRoute.data.sourceStatus
+    : null;
+  const skippedReasons = auditSkippedReasons(latestRun);
+
+  if (filledBuys.length > 0) {
+    return {
+      status: "entered",
+      summary: cashRejected
+        ? `当日已有 ${filledBuys.length} 笔本地 Paper 买入成交，另有买单受到现金约束。`
+        : `当日已有 ${filledBuys.length} 笔本地 Paper 买入成交。`,
+      reasons: [
+        "入场结论来自本地订单成交记录，不代表真实账户成交。",
+        ...(cashRejected ? ["资金不足拒单限制了额外买入，但没有否定已经发生的 Paper 入场。"] : []),
+      ],
+      marketRegime,
+      planQuality,
+      cashWasConstraint: cashRejected,
+    };
+  }
+
+  if (cashRejected) {
+    return {
+      status: "cash-constrained",
+      summary: "当日出现买单资金不足拒绝，现金约束参与了未入场结果。",
+      reasons: ["资金不足结论来自本地 Paper 拒单，不是事后推断。"],
+      marketRegime,
+      planQuality,
+      cashWasConstraint: true,
+    };
+  }
+
+  const unavailable = sourceStatus === "degraded" || skippedReasons.some(
+    (reason) => /temporarily unavailable|暂不可用|没有可交易标的|超时/.test(reason),
+  );
+  if (unavailable) {
+    return {
+      status: "data-unavailable",
+      summary: "研究输入曾不可用或降级，系统没有用缺失数据生成 Paper 入场。",
+      reasons: skippedReasons.length > 0
+        ? skippedReasons.slice(0, 3)
+        : ["真实研究来源状态为 degraded。"],
+      marketRegime,
+      planQuality,
+      cashWasConstraint: false,
+    };
+  }
+
+  if (marketRegime === "risk-off" || marketRegime === "risk-off-recovery") {
+    const reasons = [
+      `最新可审计中期路由为 ${marketRegime}，新增仓位被策略风控关闭。`,
+      `账户仍有 ${input.account.cash.toFixed(2)} 元现金，因此未入场不是资金不足。`,
+    ];
+    if (input.marketTone === "risk-on") {
+      reasons.push("收盘短线盘面转强，但单日反弹尚未完成中期趋势的连续修复确认。");
+    }
+    return {
+      status: "risk-blocked",
+      summary: "当日未买入主要是中期策略风控阻止入场，不是资金不足。",
+      reasons,
+      marketRegime,
+      planQuality,
+      cashWasConstraint: false,
+    };
+  }
+
+  if (planQuality === "watch-only") {
+    return {
+      status: "no-qualified-candidate",
+      summary: "当日计划保持观察，没有候选同时通过策略、历史持续性、费用和仓位准入。",
+      reasons: skippedReasons.length > 0
+        ? skippedReasons.slice(0, 3)
+        : ["最新自动执行计划质量为 watch-only。"],
+      marketRegime,
+      planQuality,
+      cashWasConstraint: false,
+    };
+  }
+
+  return {
+    status: "not-evaluated",
+    summary: "没有足够的当日自动执行审计来确认未入场原因。",
+    reasons: ["保留未知状态，不补写不存在的策略依据。"],
+    marketRegime,
+    planQuality,
+    cashWasConstraint: false,
+  };
+}
+
 function fallbackReason(order: OrderRecord): string {
   if (order.rejectionReason?.includes("资金不足")) {
     return "自动 paper 买单因资金不足被风控拒绝；该订单暴露了同批计划未累计预留现金的问题。";
@@ -378,6 +554,13 @@ export function buildDailyMarketReview(
   const rejected = dailyOrders.filter((order) => order.status === "rejected");
   const filledBuys = filled.filter((order) => order.side === "buy");
   const filledSells = filled.filter((order) => order.side === "sell");
+  const entryReview = buildEntryReview({
+    tradingDate,
+    marketTone: tone,
+    account: input.account,
+    dailyOrders,
+    auditEvents: input.auditEvents,
+  });
   const cashRatio = input.account.equity > 0
     ? input.account.cash / input.account.equity
     : 0;
@@ -465,6 +648,15 @@ export function buildDailyMarketReview(
       `观察池盘面偏弱时收盘仓位仍为 ${(capitalDeployedPercent * 100).toFixed(1)}%，高于 70% 风险观察线；防守现金目标需要转成分阶段减仓。`,
     );
   }
+  if (
+    tone === "risk-on" &&
+    (entryReview.marketRegime === "risk-off" ||
+      entryReview.marketRegime === "risk-off-recovery")
+  ) {
+    issues.push(
+      `收盘短线盘面已转强，但中期路由仍为 ${entryReview.marketRegime}；当前应识别为修复观察，不把单日反弹直接当成趋势反转。`,
+    );
+  }
 
   const nextActions = [
     "继续按成交额、滑点和手续费累计预留现金，资金不足时不创建 paper 订单。",
@@ -494,6 +686,15 @@ export function buildDailyMarketReview(
   if (cashRatio + 0.001 < strategyProfile.cashReserveFloor) {
     nextActions.push(
       `下一轮按${strategyProfile.label}档位优先恢复现金缓冲，新增仓位继续服从市场路由和硬风控。`,
+    );
+  }
+  if (
+    tone === "risk-on" &&
+    (entryReview.marketRegime === "risk-off" ||
+      entryReview.marketRegime === "risk-off-recovery")
+  ) {
+    nextActions.push(
+      "下一交易日复核上涨宽度、谨慎板块占比和 20 日均线斜率是否连续确认，再决定是否开放小仓位修复策略。",
     );
   }
   nextActions.push("至少积累一周 paper 样本后再比较胜率、回撤和盈亏比，不用单日结果证明策略有效。");
@@ -559,6 +760,7 @@ export function buildDailyMarketReview(
       commission: round(filled.reduce((sum, order) => sum + order.commission, 0)),
       items: tradeItems,
     },
+    entryReview,
     strategyReview: {
       profile: {
         key: strategyProfile.key,
