@@ -39,6 +39,21 @@ AUTH_LOGIN_RATE_LIMIT_MAX=5
 
 `AUTH_COOKIE_SECURE=false` 只允许本机 `http://127.0.0.1` 开发。生产环境必须使用 HTTPS 并设置 `AUTH_COOKIE_SECURE=true`；否则 `NODE_ENV=production` 会拒绝启动。全局与登录限流都在应用进程内，公网部署还需要反向代理或 API 网关的独立限流。
 
+## 腾讯云生产部署
+
+生产环境使用 `docker-compose.production.yml`，详细初始化、升级和回滚步骤见 `deploy/README.md`。公网只开放 SSH 22、HTTP 80 和 HTTPS 443；Fastify 3001 与 AkShare 8800 不得加入云防火墙或宿主机端口映射。
+
+```bash
+cd /opt/kairos
+docker compose --env-file .env.production -f docker-compose.production.yml config --quiet
+docker compose --env-file .env.production -f docker-compose.production.yml up -d --no-build
+docker compose --env-file .env.production -f docker-compose.production.yml ps
+curl -kfsS https://127.0.0.1/healthz
+curl -kfsS https://127.0.0.1/api/health
+```
+
+当前 IP 入口使用带 IP SAN 的自签名证书，只适合作为域名接入前的过渡。绑定域名后必须替换为受信任证书。生产凭据只保存在权限为 600 的 `/opt/kairos/.env.production`，不得提交或复制到文档；部署后的运行状态与已知限制记录在 `docs/status/current-state.md`。
+
 交易状态默认使用内存仓储。需要在本地重启后保留模拟账户时，可在 `.env.local` 设置：
 
 ```text

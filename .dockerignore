@@ -38,8 +38,9 @@ __pycache__/
 .venv/
 venv/
 
-# Data
-data/
+# Runtime data (root directories only; keep source folders such as src/data)
+/data/
+/runtime/
 *.db
 *.sqlite
 

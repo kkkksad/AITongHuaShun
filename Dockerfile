@@ -15,7 +15,13 @@ FROM dev AS builder
 RUN npm run build
 
 # ============================================================
-# Stage 3: Production — minimal runtime image
+# Stage 3: Web — static frontend served by Nginx
+# ============================================================
+FROM nginx:1.27-alpine AS web
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# ============================================================
+# Stage 4: Production — minimal API runtime image
 # ============================================================
 FROM node:20-alpine AS production
 WORKDIR /app
@@ -24,6 +30,7 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/shared ./shared
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package*.json ./
 

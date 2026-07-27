@@ -5,18 +5,18 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安装系统依赖（AkShare 需要的一些底层库）
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
-
 # 安装 Python 依赖
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+ARG PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple
+RUN pip install \
+    --no-cache-dir \
+    --timeout 120 \
+    --retries 8 \
+    --index-url "${PIP_INDEX_URL}" \
+    -r requirements.txt
 
-# 复制源码
-COPY main.py .
+# 复制运行时源码。main.py 的研究缓存与历史调度器依赖独立模块。
+COPY main.py research_cache.py ./
 
 # 暴露端口
 EXPOSE 8800

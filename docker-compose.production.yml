@@ -1,0 +1,126 @@
+name: kairos-quant
+
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+services:
+  akshare-bridge:
+    build:
+      context: ./akshare-bridge
+      dockerfile: Dockerfile
+    image: kairos-akshare-bridge:production
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      AKSHARE_BRIDGE_HOST: 0.0.0.0
+      AKSHARE_BRIDGE_PORT: 8800
+      AKSHARE_BRIDGE_TOKEN: ${AKSHARE_BRIDGE_TOKEN:?AKSHARE_BRIDGE_TOKEN is required}
+      AKSHARE_BRIDGE_ORIGINS: http://backend:3001
+      AKSHARE_BRIDGE_DISABLE_PROXY: "true"
+      AKSHARE_BRIDGE_CACHE_TTL: 10
+      AKSHARE_BRIDGE_RESEARCH_CACHE_TTL: 900
+      AKSHARE_BRIDGE_RESEARCH_CACHE_STALE_TTL: 3600
+      AKSHARE_BRIDGE_RESEARCH_CACHE_MAX_ENTRIES: 64
+      AKSHARE_BRIDGE_HISTORY_CACHE_MAX_ENTRIES: 128
+      AKSHARE_BRIDGE_HISTORY_FETCH_MAX_PENDING: 8
+      AKSHARE_BRIDGE_HISTORY_RESPONSE_BUDGET: 6
+      AKSHARE_BRIDGE_HISTORY_PROVIDER_TIMEOUT: 8
+    expose:
+      - "8800"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8800/health', timeout=5)
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 90s
+    mem_limit: 1600m
+    cpus: 2.0
+    security_opt:
+      - no-new-privileges:true
+    logging: *bounded-logging
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    image: kairos-api:production
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Shanghai
+      API_HOST: 0.0.0.0
+      API_PORT: 3001
+      WEB_ORIGIN: https://${PUBLIC_HOST:?PUBLIC_HOST is required}
+      API_DOCS_ENABLED: "false"
+      TRUST_PROXY: "true"
+      AUTH_ENABLED: "true"
+      AUTH_COOKIE_SECURE: "true"
+      MARKET_MODE: paper
+      MARKET_DATA_PROVIDER: akshare
+      AKSHARE_BRIDGE_URL: http://akshare-bridge:8800
+      STORE_BACKEND: json
+      DATA_DIR: /app/data
+      RESEARCH_DATA_DIR: /app/data/research
+      EXTERNAL_MARKET_FEATURE_FILE: /app/data/research/external-market-features.json
+      REAL_TRADING_ENABLED: "false"
+    expose:
+      - "3001"
+    volumes:
+      - ./runtime/data:/app/data
+      - ./runtime/logs:/app/logs
+    depends_on:
+      akshare-bridge:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - require('http').get('http://127.0.0.1:3001/api/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))
+      interval: 30s
+      timeout: 8s
+      retries: 5
+      start_period: 30s
+    mem_limit: 1400m
+    cpus: 1.5
+    security_opt:
+      - no-new-privileges:true
+    logging: *bounded-logging
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    image: kairos-web:production
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./runtime/certs:/etc/nginx/certs:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    mem_limit: 128m
+    cpus: 0.5
+    security_opt:
+      - no-new-privileges:true
+    logging: *bounded-logging

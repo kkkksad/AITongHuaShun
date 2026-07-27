@@ -1,0 +1,80 @@
+name: 部署 KAIROS 生产服务器
+
+on:
+  push:
+    branches:
+      - codex/real-market-regime
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kairos-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: 测试与生产构建
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: 安装 Node.js 依赖
+        run: npm ci
+
+      - name: 运行前后端测试
+        run: npm test
+
+      - name: 运行生产构建
+        run: npm run build
+
+      - name: 配置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: akshare-bridge/requirements.txt
+
+      - name: 安装行情桥测试依赖
+        run: python -m pip install -r akshare-bridge/requirements.txt
+
+      - name: 运行行情桥测试
+        run: python -m pytest akshare-bridge -q
+
+      - name: 校验生产 Compose
+        run: |
+          cp deploy/production.env.example .env.production
+          docker compose --env-file .env.production -f docker-compose.production.yml config --quiet
+
+  deploy:
+    name: 更新腾讯云服务器
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: 配置受限部署密钥和主机指纹
+        env:
+          DEPLOY_KEY: ${{ secrets.KAIROS_DEPLOY_SSH_KEY }}
+        run: |
+          test -n "$DEPLOY_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/kairos_deploy
+          chmod 600 ~/.ssh/kairos_deploy
+          ssh-keyscan -T 10 -t ed25519 111.229.76.161 > ~/.ssh/known_hosts
+          test "$(ssh-keygen -lf ~/.ssh/known_hosts | awk '{print $2}')" = "SHA256:urck/cc2Fp9epQvFOGM0iMoTuVbvbfY+yHPqacVfsGE"
+
+      - name: 部署已验证提交
+        run: |
+          ssh -i ~/.ssh/kairos_deploy \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            ubuntu@111.229.76.161 \
+            "deploy $GITHUB_SHA"

@@ -56,8 +56,8 @@ async function main() {
     );
   }
   const environmentFile = readArgument("--env-file") ?? ".env.local";
-  if (![".env", ".env.local"].includes(environmentFile)) {
-    throw new Error("--env-file must be .env or .env.local");
+  if (![".env", ".env.local", ".env.production"].includes(environmentFile)) {
+    throw new Error("--env-file must be .env, .env.local, or .env.production");
   }
   const environmentPath = path.resolve(process.cwd(), environmentFile);
   const production = process.argv.includes("--production");

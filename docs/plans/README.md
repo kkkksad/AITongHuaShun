@@ -38,6 +38,9 @@ YYYY-MM-DD-short-task-name.md
 - [Paper 账户控制与研究体验升级](2026-07-21-paper-control-and-experience-upgrade.md)
 - [隔夜持续性与费用纪律升级](2026-07-21-overnight-persistence-and-fee-discipline.md)
 - [今日复盘、板块脉冲与运行可靠性升级](2026-07-21-daily-review-sector-pulse-and-runtime-upgrade.md)
+- [历史研究超时治理](2026-07-21-history-research-timeout-reliability.md)
+- [无操作复盘与策略状态稳定](2026-07-27-no-trade-review-and-regime-stability.md)
+- [轻量云服务器生产部署](2026-07-27-lighthouse-production-deployment.md)
 
 ## 进行中计划
 

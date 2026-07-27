@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.pnpm-store/
 
 # Production and test output
 dist/
@@ -18,6 +19,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+/runtime/
 
 # TypeScript and generated config output
 *.tsbuildinfo
