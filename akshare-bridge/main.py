@@ -27,7 +27,12 @@ import pandas as pd
 import requests
 from pydantic import BaseModel, Field
 
-from research_cache import BoundedTTLCache, HistoryCacheKey, ResearchHistoryCache
+from research_cache import (
+    BoundedTTLCache,
+    HistoryCacheKey,
+    HistoryFetchLimiter,
+    ResearchHistoryCache,
+)
 
 # ── 配置 ──────────────────────────────────────────────────
 
@@ -45,6 +50,15 @@ RESEARCH_CACHE_MAX_ENTRIES = int(
 )
 HISTORY_CACHE_MAX_ENTRIES = int(
     os.getenv("AKSHARE_BRIDGE_HISTORY_CACHE_MAX_ENTRIES", "128")
+)
+HISTORY_FETCH_MAX_PENDING = int(
+    os.getenv("AKSHARE_BRIDGE_HISTORY_FETCH_MAX_PENDING", "8")
+)
+HISTORY_RESPONSE_BUDGET_SEC = float(
+    os.getenv("AKSHARE_BRIDGE_HISTORY_RESPONSE_BUDGET", "6.0")
+)
+HISTORY_PROVIDER_TIMEOUT_SEC = float(
+    os.getenv("AKSHARE_BRIDGE_HISTORY_PROVIDER_TIMEOUT", "8.0")
 )
 AUTH_TOKEN = os.getenv("AKSHARE_BRIDGE_TOKEN", "")
 DISABLE_PROXY = os.getenv("AKSHARE_BRIDGE_DISABLE_PROXY", "true").strip().lower() not in {
@@ -1503,7 +1517,7 @@ def fetch_stock_history_dataframe(
                 start_date=start_date,
                 end_date=end_date,
                 adjust="qfq",
-                timeout=12,
+                timeout=HISTORY_PROVIDER_TIMEOUT_SEC,
             ),
         ),
         (
@@ -1513,16 +1527,7 @@ def fetch_stock_history_dataframe(
                 start_date=start_date,
                 end_date=end_date,
                 adjust="qfq",
-                timeout=12,
-            ),
-        ),
-        (
-            "sina-stock-history",
-            lambda: ak.stock_zh_a_daily(
-                symbol=market_symbol,
-                start_date=start_date,
-                end_date=end_date,
-                adjust="qfq",
+                timeout=HISTORY_PROVIDER_TIMEOUT_SEC,
             ),
         ),
     )
@@ -2256,6 +2261,10 @@ research_cache = BoundedTTLCache[str, BaseModel](
 history_cache: ResearchHistoryCache[HistoricalSeries] = ResearchHistoryCache(
     max_entries=HISTORY_CACHE_MAX_ENTRIES,
 )
+history_scheduler = HistoryFetchLimiter(
+    max_active=1,
+    max_pending=HISTORY_FETCH_MAX_PENDING,
+)
 
 
 def get_cached_research(key: str):
@@ -2288,18 +2297,18 @@ async def build_history_response(
     fetched_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     start_date, end_date = history_date_range(days)
     loop = asyncio.get_running_loop()
-    request_semaphore = asyncio.Semaphore(2)
 
     async def fetch_one(identifier: str) -> HistoricalSeries:
         async def fetch_and_normalize() -> HistoricalSeries:
-            async with request_semaphore:
-                result = await loop.run_in_executor(
+            async def fetch_from_provider():
+                return await loop.run_in_executor(
                     AKSHARE_EXECUTOR,
                     fetcher,
                     identifier,
                     start_date,
                     end_date,
                 )
+            result = await history_scheduler.run(fetch_from_provider)
             dataframe = result
             item_source = source
             if isinstance(result, tuple) and len(result) == 2:
@@ -2333,30 +2342,53 @@ async def build_history_response(
             stale_ttl_sec=RESEARCH_CACHE_STALE_TTL_SEC,
         )
 
-    results = await asyncio.gather(*[
-        fetch_one(identifier)
+    tasks = [
+        asyncio.create_task(fetch_one(identifier))
         for identifier in identifiers
-    ], return_exceptions=True)
+    ]
+    await asyncio.wait(tasks, timeout=HISTORY_RESPONSE_BUDGET_SEC)
+
+    def consume_background_result(task: asyncio.Task[HistoricalSeries]) -> None:
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception as exc:
+            logger.debug("后台历史预热未完成: %s", exc)
 
     series: list[HistoricalSeries] = []
     errors: list[str] = []
     actual_sources: list[str] = []
-    for identifier, result in zip(identifiers, results):
-        if isinstance(result, BaseException):
-            errors.append(f"{identifier}: {result}")
+    pending_count = 0
+    for identifier, task in zip(identifiers, tasks):
+        if not task.done():
+            pending_count += 1
+            task.add_done_callback(consume_background_result)
+            continue
+        if task.cancelled():
+            errors.append(f"{identifier}: 历史刷新已取消")
+            continue
+        try:
+            result = task.result()
+        except Exception as exc:
+            errors.append(f"{identifier}: {exc}")
             continue
         series.append(result)
         actual_sources.append(result.source)
 
-    warning = None
+    warnings: list[str] = []
     if errors:
-        warning = "部分历史数据暂不可用: " + "; ".join(errors[:8])
+        warnings.append("部分历史数据暂不可用: " + "; ".join(errors[:8]))
+    if pending_count:
+        warnings.append(
+            f"{pending_count} 个历史序列仍在后台刷新，本次先返回已完成数据。"
+        )
     return HistoricalBarsResponse(
         provider="akshare",
         source="+".join(dict.fromkeys(actual_sources)) if actual_sources else source,
         fetchedAt=fetched_at,
         series=series,
-        warning=warning,
+        warning=" ".join(warnings) or None,
     )
 
 
@@ -2423,6 +2455,7 @@ async def health():
     index_cache_age = index_cache.age_sec
     research_cache_stats = research_cache.stats()
     history_cache_stats = history_cache.stats()
+    history_scheduler_stats = history_scheduler.stats()
     return {
         "status": "ok",
         "service": "akshare-market-bridge",
@@ -2448,6 +2481,15 @@ async def health():
             "evictions": history_cache_stats["evictions"],
             "expiredPruned": history_cache_stats["expired_pruned"],
             "inFlight": history_cache_stats["in_flight"],
+        },
+        "historyScheduler": {
+            "active": history_scheduler_stats["active"],
+            "pending": history_scheduler_stats["pending"],
+            "maxActive": history_scheduler_stats["max_active"],
+            "maxPending": history_scheduler_stats["max_pending"],
+            "accepted": history_scheduler_stats["accepted"],
+            "completed": history_scheduler_stats["completed"],
+            "rejected": history_scheduler_stats["rejected"],
         },
         "proxyDisabled": DISABLE_PROXY,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
@@ -2775,18 +2817,15 @@ async def get_sector_history(
     if any(len(sector) > 40 for sector in sector_list):
         raise HTTPException(status_code=400, detail="行业板块名称过长")
 
-    cache_key = f"sector-history:{days}:{','.join(sector_list)}"
-    cached = get_cached_research(cache_key)
-    if cached is not None:
-        return cached
     response = await build_history_response(
         identifiers=sector_list,
         days=days,
         source="eastmoney-industry-history",
         adjustment="none",
         fetcher=fetch_sector_history_dataframe,
+        market="a-share-sector",
     )
-    return set_cached_research(cache_key, response) if response.series else response
+    return response
 
 
 @app.get("/api/market/stock-history", response_model=HistoricalBarsResponse)

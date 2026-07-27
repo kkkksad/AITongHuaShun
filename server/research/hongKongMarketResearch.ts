@@ -1,5 +1,6 @@
 import type { TradingMode } from "../../shared/trading";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
+import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 import type {
   HistoricalBar,
   HistoricalBarsResponse,
@@ -415,7 +416,7 @@ export async function buildHongKongMarketResearch(
     const history = await fetchBridgeJson<HistoricalBarsResponse>({
       url: historyUrl.toString(),
       token: input.bridgeToken,
-      timeoutMs: input.timeoutMs * 24,
+      timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
       fetchImpl,
     });
     const quoteBySymbol = new Map(quotes.items.map((item) => [item.symbol, item]));

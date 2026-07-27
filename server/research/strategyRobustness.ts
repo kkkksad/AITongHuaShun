@@ -13,6 +13,7 @@ import type {
   HistoricalSeries,
 } from "./marketRegimeResearch";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
+import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 
 export type StrategyFamily =
   | "trend"
@@ -495,7 +496,7 @@ export async function buildStrategyRobustnessReport(
     const history = await fetchBridgeJson<HistoricalBarsResponse>({
       url: historyUrl.toString(),
       token: input.bridgeToken,
-      timeoutMs: input.timeoutMs * 12,
+      timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
       fetchImpl: input.fetchImpl ?? fetch,
     });
     const names = new Map(universe.map((quote) => [quote.symbol, quote.name]));

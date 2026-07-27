@@ -1,5 +1,6 @@
 import type { MarketSnapshot, TradingMode } from "../../shared/trading";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
+import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 import { isTechnologySector } from "./sectorPulse";
 
 export interface HistoricalBar {
@@ -854,7 +855,7 @@ export async function buildMarketRegimeResearch(
       ? fetchBridgeJson<HistoricalBarsResponse>({
           url: sectorUrl.toString(),
           token: input.bridgeToken,
-          timeoutMs: input.timeoutMs * 4,
+          timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
           fetchImpl,
         })
       : Promise.resolve(failedHistory("unavailable", "没有可查询的行业板块。")),
@@ -862,7 +863,7 @@ export async function buildMarketRegimeResearch(
       ? fetchBridgeJson<HistoricalBarsResponse>({
           url: stockUrl.toString(),
           token: input.bridgeToken,
-          timeoutMs: input.timeoutMs * 4,
+          timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
           fetchImpl,
         })
       : Promise.resolve(failedHistory("unavailable", "当前快照没有可查询股票。")),

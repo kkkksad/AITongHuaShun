@@ -1,5 +1,6 @@
 import type { MarketSnapshot, TradingMode } from "../../shared/trading";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
+import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 import type {
   HistoricalBar,
   HistoricalBarsResponse,
@@ -587,7 +588,7 @@ export async function buildTurningPointReport(
     const history = await fetchBridgeJson<HistoricalBarsResponse>({
       url: historyUrl.toString(),
       token: input.bridgeToken,
-      timeoutMs: input.timeoutMs * 4,
+      timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
       fetchImpl: input.fetchImpl ?? fetch,
     });
     const names = new Map(universe.map((quote) => [quote.symbol, quote.name]));

@@ -1,7 +1,15 @@
 import asyncio
 from contextlib import suppress
 
-from research_cache import BoundedTTLCache, HistoryCacheKey, ResearchHistoryCache
+import pytest
+
+from research_cache import (
+    BoundedTTLCache,
+    HistoryCacheKey,
+    HistoryFetchLimiter,
+    HistoryQueueFullError,
+    ResearchHistoryCache,
+)
 
 
 def run(coro):
@@ -16,6 +24,49 @@ def history_key(symbol: str) -> HistoryCacheKey:
         end_date="2026-07-17",
         days=120,
     )
+
+
+def test_history_fetch_limiter_rejects_work_beyond_global_pending_limit():
+    limiter = HistoryFetchLimiter(max_active=1, max_pending=2)
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fetcher():
+        started.set()
+        await release.wait()
+        return "done"
+
+    async def scenario():
+        first = asyncio.create_task(limiter.run(fetcher))
+        await asyncio.wait_for(started.wait(), timeout=1)
+        second = asyncio.create_task(limiter.run(fetcher))
+        await asyncio.sleep(0)
+
+        with pytest.raises(HistoryQueueFullError):
+            await limiter.run(fetcher)
+
+        stats = limiter.stats()
+        assert stats["active"] == 1
+        assert stats["pending"] == 1
+        assert stats["max_pending"] == 2
+        assert stats["rejected"] == 1
+
+        release.set()
+        assert await asyncio.gather(first, second) == ["done", "done"]
+        assert limiter.stats()["completed"] == 2
+
+    run(scenario())
+
+
+def test_history_fetch_limiter_rebinds_after_previous_event_loop_drains():
+    limiter = HistoryFetchLimiter(max_active=1, max_pending=2)
+
+    async def fetcher():
+        return "done"
+
+    assert run(limiter.run(fetcher)) == "done"
+    assert run(limiter.run(fetcher)) == "done"
+    assert limiter.stats()["completed"] == 2
 
 
 def test_bounded_ttl_cache_evicts_lru_entry_and_prunes_expired_entries():

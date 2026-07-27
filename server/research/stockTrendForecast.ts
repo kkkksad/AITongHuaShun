@@ -1,5 +1,6 @@
 import type { TradingMode } from "../../shared/trading";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
+import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 import type {
   HistoricalBar,
   HistoricalBarsResponse,
@@ -703,7 +704,7 @@ export async function buildStockTrendForecast(
     const history = await fetchBridgeJson<HistoricalBarsResponse>({
       url: historyUrl.toString(),
       token: input.bridgeToken,
-      timeoutMs: input.timeoutMs * 4,
+      timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
       fetchImpl,
     });
     const series = history.series.find((item) => item.symbol === selected.symbol);

@@ -1,5 +1,6 @@
 import type { TradingMode } from "../../shared/trading";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
+import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 import type {
   HistoricalBar,
   HistoricalBarsResponse,
@@ -601,7 +602,7 @@ export async function buildCrossMarketStrategyContext(
       historyResponse = await fetchBridgeJson<HistoricalBarsResponse>({
         url: historyUrl.toString(),
         token: input.bridgeToken,
-        timeoutMs: input.timeoutMs * 12,
+        timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
         fetchImpl,
       });
       if (historyResponse.warning) warnings.push(historyResponse.warning);

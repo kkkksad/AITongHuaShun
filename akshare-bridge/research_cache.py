@@ -13,6 +13,70 @@ CacheKey = TypeVar("CacheKey")
 CacheValue = TypeVar("CacheValue")
 
 
+class HistoryQueueFullError(RuntimeError):
+    """Raised when bounded history work cannot be admitted."""
+
+
+class HistoryFetchLimiter:
+    """Bound active and queued history work before it reaches AkShare."""
+
+    def __init__(self, *, max_active: int = 1, max_pending: int = 8):
+        if max_active < 1:
+            raise ValueError("max_active must be positive")
+        if max_pending < max_active:
+            raise ValueError("max_pending must be at least max_active")
+        self._max_active = max_active
+        self._max_pending = max_pending
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._semaphore: asyncio.Semaphore | None = None
+        self._admitted = 0
+        self._active = 0
+        self._accepted = 0
+        self._completed = 0
+        self._rejected = 0
+
+    async def run(
+        self,
+        fetcher: Callable[[], Awaitable[CacheValue]],
+    ) -> CacheValue:
+        loop = asyncio.get_running_loop()
+        if self._loop is not loop:
+            if self._admitted > 0:
+                self._rejected += 1
+                raise HistoryQueueFullError("历史行情队列正在切换，请稍后重试")
+            self._loop = loop
+            self._semaphore = asyncio.Semaphore(self._max_active)
+
+        if self._admitted >= self._max_pending:
+            self._rejected += 1
+            raise HistoryQueueFullError("历史行情队列繁忙，请稍后重试")
+
+        assert self._semaphore is not None
+        self._admitted += 1
+        self._accepted += 1
+        try:
+            async with self._semaphore:
+                self._active += 1
+                try:
+                    return await fetcher()
+                finally:
+                    self._active -= 1
+                    self._completed += 1
+        finally:
+            self._admitted -= 1
+
+    def stats(self) -> dict[str, int]:
+        return {
+            "active": self._active,
+            "pending": max(0, self._admitted - self._active),
+            "max_active": self._max_active,
+            "max_pending": self._max_pending,
+            "accepted": self._accepted,
+            "completed": self._completed,
+            "rejected": self._rejected,
+        }
+
+
 @dataclass(slots=True)
 class TTLCacheEntry(Generic[CacheValue]):
     value: CacheValue
@@ -99,6 +163,7 @@ class BoundedTTLCache(MutableMapping[CacheKey, CacheValue], Generic[CacheKey, Ca
 class HistoryCacheKey:
     market: Literal[
         "a-share",
+        "a-share-sector",
         "a-share-index",
         "hong-kong",
         "futures",

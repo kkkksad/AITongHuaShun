@@ -6,6 +6,7 @@ AkShare 桥接微服务单元测试
 
 import asyncio
 import sys
+import time
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -19,6 +20,7 @@ sys.modules["akshare"] = MagicMock()
 from main import (
     app,
     FUTURES_WATCHLIST,
+    HISTORY_FETCH_MAX_PENDING,
     history_cache,
     research_cache,
     GlobalMarketsResponse,
@@ -91,6 +93,13 @@ class TestHealthEndpoint:
         assert data["researchCache"]["entries"] <= data["researchCache"]["maxEntries"]
         assert data["historyCache"]["entries"] <= data["historyCache"]["maxEntries"]
         assert data["historyCache"]["inFlight"] >= 0
+        assert data["historyScheduler"]["active"] >= 0
+        assert data["historyScheduler"]["pending"] >= 0
+        assert (
+            data["historyScheduler"]["active"]
+            + data["historyScheduler"]["pending"]
+            <= data["historyScheduler"]["maxPending"]
+        )
         assert response.headers["x-content-type-options"] == "nosniff"
 
     def test_api_health_alias_returns_same_service(self):
@@ -915,12 +924,18 @@ class TestDomesticFuturesEndpoints:
             "main.fetch_futures_history_dataframe",
             return_value=(frame, "sina-domestic-main-continuous"),
         ) as fetch:
-            response = client.get(
+            first = client.get(
+                f"/api/market/futures/history?symbols={symbols}&days=180",
+            )
+            second = client.get(
                 f"/api/market/futures/history?symbols={symbols}&days=180",
             )
 
-        assert response.status_code == 200
-        assert len(response.json()["series"]) == len(FUTURES_WATCHLIST)
+        assert first.status_code == 200
+        assert len(first.json()["series"]) == HISTORY_FETCH_MAX_PENDING
+        assert "队列繁忙" in first.json()["warning"]
+        assert second.status_code == 200
+        assert len(second.json()["series"]) == len(FUTURES_WATCHLIST)
         assert fetch.call_count == len(FUTURES_WATCHLIST)
 
     def test_futures_history_uses_continuous_main_daily_bars(self):
@@ -1042,6 +1057,34 @@ class TestSectorAndHistoryEndpoints:
         data = response.json()
         assert [item["symbol"] for item in data["series"]] == ["600519"]
         assert "000001" in data["warning"]
+
+    def test_stock_history_returns_completed_series_when_later_series_exceed_budget(self):
+        frame = pd.DataFrame([{
+            "date": "2026-07-10",
+            "open": 10,
+            "high": 11,
+            "low": 9.8,
+            "close": 10.8,
+            "volume": 1000,
+        }])
+
+        def fetch(symbol, _start, _end):
+            if symbol == "000001":
+                time.sleep(0.4)
+            return frame
+
+        started_at = time.monotonic()
+        with patch("main.HISTORY_RESPONSE_BUDGET_SEC", 0.05):
+            with patch("main.fetch_stock_history_dataframe", side_effect=fetch):
+                response = client.get(
+                    "/api/market/stock-history?symbols=600519,000001&days=180",
+                )
+        elapsed = time.monotonic() - started_at
+
+        assert response.status_code == 200
+        assert elapsed < 0.25
+        assert [item["symbol"] for item in response.json()["series"]] == ["600519"]
+        assert "后台刷新" in response.json()["warning"]
 
     def test_stock_history_reuses_a_symbol_across_different_batches(self):
         frame = pd.DataFrame([{
@@ -1431,6 +1474,25 @@ class TestQuoteCache:
         assert df is fallback_df
         assert provider == "tencent-stock-history"
         assert tx.call_args.kwargs["symbol"] == "sh600519"
+
+    def test_stock_history_does_not_call_unbounded_sina_fallback(self):
+        with patch(
+            "main.ak.stock_zh_a_hist",
+            side_effect=RuntimeError("eastmoney offline"),
+        ):
+            with patch(
+                "main.ak.stock_zh_a_hist_tx",
+                side_effect=RuntimeError("tencent offline"),
+            ):
+                with patch("main.ak.stock_zh_a_daily") as sina:
+                    with pytest.raises(RuntimeError, match="tencent offline"):
+                        fetch_stock_history_dataframe(
+                            "600519",
+                            "20250101",
+                            "20260714",
+                        )
+
+        sina.assert_not_called()
 
 
 class TestResearchDataNormalization:

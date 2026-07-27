@@ -1,5 +1,6 @@
 import type { TradingMode } from "../../shared/trading";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
+import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 import type {
   HistoricalBarsResponse,
   HistoricalSeries,
@@ -441,13 +442,13 @@ export async function buildExternalMarketImpact(
     fetchBridgeJson<HistoricalBarsResponse>({
       url: globalHistoryUrl.toString(),
       token: input.bridgeToken,
-      timeoutMs: input.timeoutMs * 12,
+      timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
       fetchImpl,
     }),
     fetchBridgeJson<HistoricalBarsResponse>({
       url: benchmarkUrl.toString(),
       token: input.bridgeToken,
-      timeoutMs: input.timeoutMs * 6,
+      timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
       fetchImpl,
     }),
     fetchBridgeJson<BridgeCryptoResponse>({
