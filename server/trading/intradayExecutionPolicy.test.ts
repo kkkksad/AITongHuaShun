@@ -8,7 +8,7 @@ import {
 
 function routing(): AdaptiveStrategyRouting {
   return {
-    version: "1.2.0",
+    version: "1.3.0",
     generatedAt: "2026-07-17T01:30:00.000Z",
     regime: "trend-up-low-volatility",
     confidence: 0.72,
@@ -29,6 +29,13 @@ function routing(): AdaptiveStrategyRouting {
       morningMaxInvestedRatio: 0.7,
       afternoonMaxInvestedRatio: 0.82,
       closingMaxInvestedRatio: 0.9,
+    },
+    stability: {
+      status: "direct",
+      observedRegime: "trend-up-low-volatility",
+      previousConfirmedRegime: null,
+      previousConfirmedAt: null,
+      rationale: "test fixture",
     },
     evidence: [],
     riskFlags: [],

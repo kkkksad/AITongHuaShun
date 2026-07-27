@@ -43,7 +43,7 @@ function makePlan(
     rules: [],
     topStrategy: null,
     adaptiveRouting: {
-      version: "1.2.0",
+      version: "1.3.0",
       generatedAt: "2026-07-17T00:45:00.000Z",
       regime: "trend-up-low-volatility",
       confidence: 0.72,
@@ -64,6 +64,13 @@ function makePlan(
         morningMaxInvestedRatio: 0.35,
         afternoonMaxInvestedRatio: 0.45,
         closingMaxInvestedRatio: 0.5,
+      },
+      stability: {
+        status: "direct",
+        observedRegime: "trend-up-low-volatility",
+        previousConfirmedRegime: null,
+        previousConfirmedAt: null,
+        rationale: "test fixture",
       },
       evidence: [],
       riskFlags: [],
@@ -118,6 +125,8 @@ function makeReview(
     provider: "akshare",
     market: {
       snapshotTime: "2026-07-17T07:00:00.000Z",
+      snapshotTradingDate: "2026-07-17",
+      evidenceStatus: "matched",
       tone,
       summary: tone === "risk-off" ? "市场宽度偏弱。" : "市场宽度均衡。",
       breadth: {

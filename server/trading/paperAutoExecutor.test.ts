@@ -195,6 +195,10 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
     const defensive = run({
       researchContext: {
         regime: "risk-off",
+        observedRegime: "risk-off",
+        routingStability: "direct",
+        previousConfirmedRegime: null,
+        previousConfirmedAt: null,
         sourceStatus: "live-read-only",
         allowNewPositions: false,
         candidatePoolSize: 12,

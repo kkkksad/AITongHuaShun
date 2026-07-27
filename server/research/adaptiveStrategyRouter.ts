@@ -42,7 +42,7 @@ export interface ExternalMarketShadowResult extends ExternalMarketShadowInput {
 }
 
 export interface AdaptiveStrategyRouting {
-  version: "1.2.0";
+  version: "1.3.0";
   generatedAt: string;
   regime: AdaptiveMarketRegime;
   confidence: number;
@@ -54,6 +54,13 @@ export interface AdaptiveStrategyRouting {
   disabledStrategyKeys: string[];
   strategyPlaybook: AdaptiveStrategyPlaybook;
   capitalPacing: AdaptiveCapitalPacing;
+  stability: {
+    status: "direct" | "degraded-defensive-hold";
+    observedRegime: AdaptiveMarketRegime;
+    previousConfirmedRegime: AdaptiveMarketRegime | null;
+    previousConfirmedAt: string | null;
+    rationale: string;
+  };
   shadow?: {
     externalMarket: ExternalMarketShadowResult;
   };
@@ -474,7 +481,7 @@ export function routeAdaptiveStrategies(
   });
 
   return {
-    version: "1.2.0",
+    version: "1.3.0",
     generatedAt: new Date().toISOString(),
     regime,
     confidence: officialConfidence,
@@ -487,11 +494,74 @@ export function routeAdaptiveStrategies(
       recheckTriggers: [...STRATEGY_PLAYBOOKS[regime].recheckTriggers],
     },
     capitalPacing: { ...CAPITAL_PACING[regime] },
+    stability: {
+      status: "direct",
+      observedRegime: regime,
+      previousConfirmedRegime: null,
+      previousConfirmedAt: null,
+      rationale: "当前路由直接来自本轮真实历史研究。",
+    },
     shadow: {
       externalMarket: externalMarketShadow,
     },
     evidence,
     riskFlags,
     metrics,
+  };
+}
+
+export interface ConfirmedRestrictiveRouting {
+  regime: "risk-off" | "risk-off-recovery";
+  confirmedAt: string;
+}
+
+export function stabilizeAdaptiveStrategyRouting(input: {
+  current: AdaptiveStrategyRouting;
+  sourceStatus: MarketRegimeResearchReport["sourceStatus"];
+  previousConfirmed: ConfirmedRestrictiveRouting | null;
+}): AdaptiveStrategyRouting {
+  if (
+    input.sourceStatus !== "degraded" ||
+    input.current.regime !== "unclear" ||
+    input.previousConfirmed === null
+  ) {
+    return input.current;
+  }
+
+  const previous = input.previousConfirmed;
+  return {
+    ...input.current,
+    regime: previous.regime,
+    confidence: 0,
+    positionPosture: "hold",
+    allowNewPositions: false,
+    cashReserveRatio: Math.max(0.7, input.current.cashReserveRatio),
+    newPositionScale: 0,
+    eligibleStrategyKeys: ["kairosCapitalShield"],
+    disabledStrategyKeys: ALL_STRATEGY_KEYS.filter(
+      (key) => key !== "kairosCapitalShield",
+    ),
+    strategyPlaybook: {
+      primaryStrategyKeys: ["kairosCapitalShield"],
+      useWhen: "真实历史研究短暂降级时，保留当日上一条已确认防守状态并暂停方向性操作。",
+      avoidWhen: "禁止用旧结论新增仓位，也不在当前持仓历史缺失时继续执行普通减仓。",
+      recheckTriggers: ["数据源恢复", "历史样本重新完整", "本轮警告清零"],
+    },
+    capitalPacing: { ...CAPITAL_PACING.unclear },
+    evidence: [
+      `当前研究降级，保留上一条已确认防守状态 ${previous.regime} 作为标签。`,
+      ...input.current.evidence,
+    ],
+    riskFlags: [
+      ...input.current.riskFlags,
+      "数据恢复前暂停新增和数据不足下的减仓，不把降级状态解释为市场反转。",
+    ],
+    stability: {
+      status: "degraded-defensive-hold",
+      observedRegime: input.current.regime,
+      previousConfirmedRegime: previous.regime,
+      previousConfirmedAt: previous.confirmedAt,
+      rationale: "沿用同一交易日最近一次真实盘中防守标签，执行姿态降为 hold。",
+    },
   };
 }

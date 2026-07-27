@@ -52,6 +52,7 @@ export interface DailyMarketReviewTrade {
 
 export type DailyEntryReviewStatus =
   | "entered"
+  | "runtime-gap"
   | "risk-blocked"
   | "cash-constrained"
   | "no-qualified-candidate"
@@ -75,6 +76,8 @@ export interface DailyMarketReview {
   provider: string;
   market: {
     snapshotTime: string;
+    snapshotTradingDate: string | null;
+    evidenceStatus: "matched" | "stale" | "unknown";
     tone: DailyMarketTone;
     summary: string;
     breadth: {
@@ -305,6 +308,15 @@ function auditSkippedReasons(event: AuditEvent | undefined): string[] {
   });
 }
 
+function hasIntradayExecutionEvidence(event: AuditEvent): boolean {
+  if (event.action !== "paper-auto-execution.run") return false;
+  if (event.data?.session === "open") return true;
+  if (event.data?.session !== undefined) return false;
+  const reasons = auditSkippedReasons(event);
+  return event.data?.planQuality !== undefined &&
+    !reasons.some((reason) => /outside A-share trading session/.test(reason));
+}
+
 function buildEntryReview(input: {
   tradingDate: string;
   marketTone: DailyMarketTone;
@@ -342,6 +354,7 @@ function buildEntryReview(input: {
     ? latestRoute.data.sourceStatus
     : null;
   const skippedReasons = auditSkippedReasons(latestRun);
+  const hasIntradayCoverage = dailyAudits.some(hasIntradayExecutionEvidence);
 
   if (filledBuys.length > 0) {
     return {
@@ -367,6 +380,30 @@ function buildEntryReview(input: {
       marketRegime,
       planQuality,
       cashWasConstraint: true,
+    };
+  }
+
+  if (input.dailyOrders.length === 0 && !hasIntradayCoverage) {
+    const recordedSessions = [...new Set(dailyAudits.flatMap((event) => {
+      const session = event.data?.session;
+      return typeof session === "string" ? [session] : [];
+    }))];
+    const sessionLabels: Record<string, string> = {
+      "pre-market": "盘前",
+      "lunch-break": "午间休市",
+      "after-hours": "盘后",
+      "post-market": "盘后",
+      weekend: "周末",
+    };
+    return {
+      status: "runtime-gap",
+      summary: "复盘日没有覆盖盘中的自动执行证据，不能把未操作归因于策略无信号。",
+      reasons: recordedSessions.length > 0
+        ? [`仅发现${recordedSessions.map((session) => sessionLabels[session] ?? session).join("、")}运行记录，交易时段覆盖不完整。`]
+        : ["复盘日没有订单或自动执行审计，服务可能未启动或未持续运行。"],
+      marketRegime: null,
+      planQuality: null,
+      cashWasConstraint: false,
     };
   }
 
@@ -504,7 +541,32 @@ export function buildDailyMarketReview(
 ): DailyMarketReview {
   const now = input.now ?? new Date();
   const { tradingDate, dateBasis } = resolveReviewTradingDate(now);
-  const marketAssessment = assessMarketSnapshot(input.snapshot);
+  const snapshotTimestamp = Date.parse(input.snapshot.marketTime);
+  const snapshotTradingDate = Number.isFinite(snapshotTimestamp)
+    ? chinaParts(new Date(snapshotTimestamp)).date
+    : null;
+  const marketEvidenceStatus = snapshotTradingDate === null
+    ? "unknown"
+    : snapshotTradingDate === tradingDate
+      ? "matched"
+      : "stale";
+  const observedMarketAssessment = assessMarketSnapshot(input.snapshot);
+  const marketAssessment: MarketSnapshotAssessment = marketEvidenceStatus === "matched"
+    ? observedMarketAssessment
+    : {
+      tone: "insufficient-data",
+      summary: snapshotTradingDate
+        ? `行情快照日期 ${snapshotTradingDate} 与复盘日期 ${tradingDate} 不一致，不使用旧快照代替当日行情。`
+        : `行情快照时间无法解析，不使用该快照代替 ${tradingDate} 行情。`,
+      breadth: {
+        total: 0,
+        advancers: 0,
+        decliners: 0,
+        flat: 0,
+        averageChangePercent: 0,
+        advanceDeclineRatio: 0,
+      },
+    };
   const { tone } = marketAssessment;
   const {
     advancers,
@@ -517,12 +579,21 @@ export function buildDailyMarketReview(
   const dailyOrders = input.orders
     .filter((order) => chinaParts(new Date(order.createdAt)).date === tradingDate)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const reviewDayPerformance = calculateReviewDayPerformance({
+  const calculatedReviewDayPerformance = calculateReviewDayPerformance({
     account: input.account,
     positions: input.positions,
     dailyOrders,
     quoteMap,
   });
+  const reviewDayPerformance = marketEvidenceStatus === "matched"
+    ? calculatedReviewDayPerformance
+    : {
+      dailyPnl: null,
+      dailyPnlPercent: null,
+      performanceBasis: "unavailable" as const,
+      openingEquity: null,
+      missingPreviousCloseSymbols: [],
+    };
 
   const tradeItems: DailyMarketReviewTrade[] = dailyOrders.map((order) => {
     const decision = decisions.get(order.id);
@@ -631,9 +702,9 @@ export function buildDailyMarketReview(
     );
   }
   if (reviewDayPerformance.performanceBasis === "unavailable") {
-    issues.push(
-      `缺少 ${reviewDayPerformance.missingPreviousCloseSymbols.join("、")} 的昨收，无法重建复盘日盯市收益；累计收益未被冒充为当日收益。`,
-    );
+    issues.push(marketEvidenceStatus !== "matched"
+      ? `行情快照未覆盖复盘日 ${tradingDate}，无法重建当日盘面与盯市收益；旧快照和累计收益均未用于替代。`
+      : `缺少 ${reviewDayPerformance.missingPreviousCloseSymbols.join("、")} 的昨收，无法重建复盘日盯市收益；累计收益未被冒充为当日收益。`);
   }
   if (missingDecisionReasons > 0) {
     issues.push(`${missingDecisionReasons} 笔历史订单缺少逐笔策略理由，旧记录只能复核成交事实。`);
@@ -657,11 +728,17 @@ export function buildDailyMarketReview(
       `收盘短线盘面已转强，但中期路由仍为 ${entryReview.marketRegime}；当前应识别为修复观察，不把单日反弹直接当成趋势反转。`,
     );
   }
+  if (entryReview.status === "runtime-gap") {
+    issues.push("复盘日存在运行覆盖缺口，无法判断当日是无信号、风控观望还是数据中断。");
+  }
 
   const nextActions = [
     "继续按成交额、滑点和手续费累计预留现金，资金不足时不创建 paper 订单。",
     "维持每轮最多 1 笔、每天最多 4 笔的自动执行节奏。",
   ];
+  if (entryReview.status === "runtime-gap") {
+    nextActions.push("下一个交易日开盘前确认 4173、8787、8800 三服务健康，并在盘中保留有界心跳审计。");
+  }
   if (openingBuyAttempts >= 2) {
     nextActions.push("将开盘集中建仓改为分批确认，观察首个价格区间后再增加下一笔 paper 仓位。");
   }
@@ -713,10 +790,12 @@ export function buildDailyMarketReview(
     provider: input.provider,
     market: {
       snapshotTime: input.snapshot.marketTime,
+      snapshotTradingDate,
+      evidenceStatus: marketEvidenceStatus,
       tone,
       summary: marketAssessment.summary,
       breadth: marketAssessment.breadth,
-      indices: input.snapshot.quotes
+      indices: (marketEvidenceStatus === "matched" ? input.snapshot.quotes : [])
         .filter((quote) => !quote.tradable && quote.price > 0)
         .map((quote) => ({
           symbol: quote.symbol,
@@ -788,7 +867,9 @@ export function buildDailyMarketReview(
           : "复盘日期按北京时间当前工作日确定；法定节假日仍需交易所日历确认。",
       reviewDayPerformance.performanceBasis === "mark-to-market"
         ? "复盘日收益由开盘现金、开盘持仓昨收、当日成交和手续费重建，与累计 paper 收益分开。"
-        : "复盘日收益因昨收缺失保持不可用，不使用累计 paper 收益替代。",
+        : marketEvidenceStatus !== "matched"
+          ? "行情快照与复盘日期不一致，盘面和复盘日收益保持不可用。"
+          : "复盘日收益因昨收缺失保持不可用，不使用累计 paper 收益替代。",
     ],
   };
 }

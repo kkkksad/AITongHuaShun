@@ -525,7 +525,57 @@ describe("buildDailyMarketReview", () => {
     expect(report).toMatchObject({
       tradingDate: "2026-07-17",
       dateBasis: "pre-market-previous-weekday",
+      market: {
+        evidenceStatus: "stale",
+        snapshotTradingDate: "2026-07-14",
+        tone: "insufficient-data",
+        indices: [],
+        breadth: { total: 0 },
+      },
+      entryReview: {
+        status: "runtime-gap",
+      },
     });
+    expect(report.market.summary).toContain("不使用旧快照代替");
+    expect(report.account.performanceBasis).toBe("unavailable");
+  });
+
+  it("reports a runtime gap when the service only started before the market opened", () => {
+    const preMarketAudit: AuditEvent = {
+      id: "pre-market-startup",
+      category: "system",
+      action: "paper-auto-execution.run",
+      message: "run recorded",
+      timestamp: "2026-07-23T00:45:11.912Z",
+      data: {
+        tradingDate: "2026-07-23",
+        session: "pre-market",
+        planQuality: "not-run",
+      },
+    };
+
+    const report = buildDailyMarketReview({
+      snapshot: {
+        ...snapshot,
+        marketTime: "2026-07-23T00:45:11.912Z",
+      },
+      provider: "akshare",
+      account: { ...account, cash: 5_935 },
+      positions: [],
+      orders: [],
+      auditEvents: [preMarketAudit],
+      now: new Date("2026-07-23T08:00:00.000Z"),
+    });
+
+    expect(report.entryReview).toMatchObject({
+      status: "runtime-gap",
+      marketRegime: null,
+      planQuality: null,
+      cashWasConstraint: false,
+    });
+    expect(report.entryReview.summary).toContain("没有覆盖盘中");
+    expect(report.entryReview.reasons.join(" ")).toContain("盘前");
+    expect(report.strategyReview.issues.join(" ")).toContain("运行覆盖");
   });
 
   it("flags an opening phase that consumes the full automatic daily order budget", () => {

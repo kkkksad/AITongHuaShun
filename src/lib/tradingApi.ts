@@ -610,7 +610,7 @@ export interface AdaptiveCapitalPacing {
 }
 
 export interface AdaptiveStrategyRouting {
-  version: "1.2.0";
+  version: "1.3.0";
   generatedAt: string;
   regime: AdaptiveMarketRegime;
   confidence: number;
@@ -622,6 +622,13 @@ export interface AdaptiveStrategyRouting {
   disabledStrategyKeys: string[];
   strategyPlaybook: AdaptiveStrategyPlaybook;
   capitalPacing: AdaptiveCapitalPacing;
+  stability: {
+    status: "direct" | "degraded-defensive-hold";
+    observedRegime: AdaptiveMarketRegime;
+    previousConfirmedRegime: AdaptiveMarketRegime | null;
+    previousConfirmedAt: string | null;
+    rationale: string;
+  };
   evidence: string[];
   riskFlags: string[];
   metrics: {
@@ -749,6 +756,10 @@ export interface PaperAutoExecutionRun {
   planQuality: PaperTradingPlanQualitySummary["planQuality"] | "not-run";
   researchContext?: {
     regime: string;
+    observedRegime: string;
+    routingStability: AdaptiveStrategyRouting["stability"]["status"];
+    previousConfirmedRegime: string | null;
+    previousConfirmedAt: string | null;
     sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
     allowNewPositions: boolean;
     candidatePoolSize: number;
@@ -804,6 +815,8 @@ export interface DailyMarketReview {
   provider: string;
   market: {
     snapshotTime: string;
+    snapshotTradingDate: string | null;
+    evidenceStatus: "matched" | "stale" | "unknown";
     tone: DailyMarketTone;
     summary: string;
     breadth: {
@@ -868,6 +881,7 @@ export interface DailyMarketReview {
   entryReview: {
     status:
       | "entered"
+      | "runtime-gap"
       | "risk-blocked"
       | "cash-constrained"
       | "no-qualified-candidate"

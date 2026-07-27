@@ -8,6 +8,7 @@ import {
 } from "../notifications/paperPlanNotifier";
 import { buildCurrentPaperTradingPlan } from "../research/paperTradingPlanService";
 import { assessMarketSnapshot } from "../research/dailyMarketReview";
+import type { AdaptiveStrategyRouting } from "../research/adaptiveStrategyRouter";
 import type {
   PaperTradingOperation,
   PaperTradingPlan,
@@ -50,6 +51,10 @@ export interface PaperAutoExecutionSkip {
 
 export interface PaperAutoExecutionResearchContext {
   regime: string;
+  observedRegime: string;
+  routingStability: AdaptiveStrategyRouting["stability"]["status"];
+  previousConfirmedRegime: string | null;
+  previousConfirmedAt: string | null;
   sourceStatus: "live-read-only" | "degraded" | "mock-disabled";
   allowNewPositions: boolean;
   candidatePoolSize: number;
@@ -437,6 +442,7 @@ export class PaperAutoExecutor {
       } = await buildCurrentPaperTradingPlan({
         system: this.options.system,
         config: this.options.config,
+        now: started,
       });
       const policy = getIntradayExecutionPolicy(started, plan.adaptiveRouting);
       const marketAssessment = assessMarketSnapshot(
@@ -541,6 +547,11 @@ export class PaperAutoExecutor {
         skippedOperations,
         {
           regime: adaptiveRouting.regime,
+          observedRegime: adaptiveRouting.stability.observedRegime,
+          routingStability: adaptiveRouting.stability.status,
+          previousConfirmedRegime:
+            adaptiveRouting.stability.previousConfirmedRegime,
+          previousConfirmedAt: adaptiveRouting.stability.previousConfirmedAt,
           sourceStatus: marketRegimeResearch.sourceStatus,
           allowNewPositions: adaptiveRouting.allowNewPositions,
           candidatePoolSize: plan.qualitySummary.candidatePoolSize,
@@ -757,6 +768,11 @@ export class PaperAutoExecutor {
         phaseMaxInvestedRatio: run.phaseMaxInvestedRatio,
         planQuality: run.planQuality,
         regime: run.researchContext?.regime,
+        observedRegime: run.researchContext?.observedRegime,
+        routingStability: run.researchContext?.routingStability,
+        previousConfirmedRegime:
+          run.researchContext?.previousConfirmedRegime,
+        previousConfirmedAt: run.researchContext?.previousConfirmedAt,
         sourceStatus: run.researchContext?.sourceStatus,
         allowNewPositions: run.researchContext?.allowNewPositions,
         candidatePoolSize: run.researchContext?.candidatePoolSize,

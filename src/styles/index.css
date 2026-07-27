@@ -3784,7 +3784,8 @@ select:focus-visible {
 
 .daily-entry-review.risk-blocked,
 .daily-entry-review.data-unavailable,
-.daily-entry-review.cash-constrained {
+.daily-entry-review.cash-constrained,
+.daily-entry-review.runtime-gap {
   border-left-color: var(--color-negative);
 }
 

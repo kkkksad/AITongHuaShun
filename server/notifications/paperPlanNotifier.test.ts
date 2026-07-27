@@ -58,7 +58,7 @@ function createPlan(
       qualityGate: "research-only",
     },
     adaptiveRouting: {
-      version: "1.2.0",
+      version: "1.3.0",
       generatedAt: "2026-07-17T01:35:00.000Z",
       regime: "trend-up-low-volatility",
       confidence: 0.72,
@@ -79,6 +79,13 @@ function createPlan(
         morningMaxInvestedRatio: 0.7,
         afternoonMaxInvestedRatio: 0.82,
         closingMaxInvestedRatio: 0.9,
+      },
+      stability: {
+        status: "direct",
+        observedRegime: "trend-up-low-volatility",
+        previousConfirmedRegime: null,
+        previousConfirmedAt: null,
+        rationale: "test fixture",
       },
       evidence: ["趋势向上"],
       riskFlags: ["注意板块宽度"],

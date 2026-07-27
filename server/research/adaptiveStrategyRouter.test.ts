@@ -7,6 +7,7 @@ import type {
 import {
   evaluateExternalMarketShadow,
   routeAdaptiveStrategies,
+  stabilizeAdaptiveStrategyRouting,
 } from "./adaptiveStrategyRouter";
 
 function sector(overrides: Partial<SectorOutlook> = {}): SectorOutlook {
@@ -197,7 +198,7 @@ describe("routeAdaptiveStrategies", () => {
     ]));
     expect(result.cashReserveRatio).toBe(0.1);
     expect(result.confidence).toBeGreaterThanOrEqual(0.6);
-    expect(result.version).toBe("1.2.0");
+    expect(result.version).toBe("1.3.0");
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
       "kairosLowVolTrend",
       "kairosTrendHealth",
@@ -323,6 +324,74 @@ describe("routeAdaptiveStrategies", () => {
     expect(result.eligibleStrategyKeys).toEqual(["kairosCapitalShield"]);
     expect(result.evidence.join(" ")).toContain("降级");
     expect(result.strategyPlaybook.useWhen).toContain("数据");
+  });
+
+  it("retains the last confirmed risk-off label during a transient data downgrade without selling", () => {
+    const degraded = routeAdaptiveStrategies(report({
+      sourceStatus: "degraded",
+      sectors: [],
+      stocks: [],
+    }));
+
+    const result = stabilizeAdaptiveStrategyRouting({
+      current: degraded,
+      sourceStatus: "degraded",
+      previousConfirmed: {
+        regime: "risk-off",
+        confirmedAt: "2026-07-22T06:54:47.616Z",
+      },
+    });
+
+    expect(result.regime).toBe("risk-off");
+    expect(result.allowNewPositions).toBe(false);
+    expect(result.positionPosture).toBe("hold");
+    expect(result.newPositionScale).toBe(0);
+    expect(result.eligibleStrategyKeys).toEqual(["kairosCapitalShield"]);
+    expect(result.stability).toMatchObject({
+      status: "degraded-defensive-hold",
+      observedRegime: "unclear",
+      previousConfirmedRegime: "risk-off",
+      previousConfirmedAt: "2026-07-22T06:54:47.616Z",
+    });
+    expect(result.evidence.join(" ")).toContain("保留上一条已确认防守状态");
+    expect(result.riskFlags.join(" ")).toContain("暂停新增和数据不足下的减仓");
+  });
+
+  it("does not reuse a previous defensive label after live research recovers", () => {
+    const current = routeAdaptiveStrategies(report());
+    const result = stabilizeAdaptiveStrategyRouting({
+      current,
+      sourceStatus: "live-read-only",
+      previousConfirmed: {
+        regime: "risk-off",
+        confirmedAt: "2026-07-22T06:54:47.616Z",
+      },
+    });
+
+    expect(result).toBe(current);
+    expect(result.regime).toBe("trend-up-low-volatility");
+    expect(result.allowNewPositions).toBe(true);
+    expect(result.stability.status).toBe("direct");
+  });
+
+  it("does not reuse a live defensive label when real research is disabled", () => {
+    const unavailable = routeAdaptiveStrategies(report({
+      sourceStatus: "mock-disabled",
+      sectors: [],
+      stocks: [],
+    }));
+    const result = stabilizeAdaptiveStrategyRouting({
+      current: unavailable,
+      sourceStatus: "mock-disabled",
+      previousConfirmed: {
+        regime: "risk-off",
+        confirmedAt: "2026-07-22T06:54:47.616Z",
+      },
+    });
+
+    expect(result).toBe(unavailable);
+    expect(result.regime).toBe("unclear");
+    expect(result.stability.status).toBe("direct");
   });
 
   it("uses mean reversion only in a low-volatility range", () => {

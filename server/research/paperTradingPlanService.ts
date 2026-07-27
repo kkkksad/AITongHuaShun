@@ -1,12 +1,16 @@
 import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
-import type { PositionSnapshot } from "../../shared/trading";
+import type { AuditEvent, PositionSnapshot } from "../../shared/trading";
 import { buildDailyCandidates } from "./dailyCandidates";
 import type { DailyCandidateReport } from "./dailyCandidates";
 import { buildDailyQualityStocks } from "./dailyQualityStocks";
 import type { DailyQualityStockReport } from "./dailyQualityStocks";
-import { routeAdaptiveStrategies } from "./adaptiveStrategyRouter";
+import {
+  routeAdaptiveStrategies,
+  stabilizeAdaptiveStrategyRouting,
+} from "./adaptiveStrategyRouter";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
+import type { ConfirmedRestrictiveRouting } from "./adaptiveStrategyRouter";
 import { buildMarketRegimeResearch } from "./marketRegimeResearch";
 import type { MarketRegimeResearchReport } from "./marketRegimeResearch";
 import { buildExternalMarketImpact } from "./externalMarketImpact";
@@ -56,6 +60,33 @@ export function buildPreferredHistoricalStocks(input: {
     .slice(0, Math.max(1, Math.min(input.limit, 12)));
 }
 
+export function findLatestConfirmedRestrictiveRouting(
+  audits: AuditEvent[],
+  tradingDate: string,
+): ConfirmedRestrictiveRouting | null {
+  const event = audits
+    .filter((audit) => (
+      audit.action === "paper-auto-execution.run" &&
+      audit.data?.tradingDate === tradingDate &&
+      audit.data?.session === "open" &&
+      audit.data?.sourceStatus === "live-read-only" &&
+      (audit.data?.regime === "risk-off" ||
+        audit.data?.regime === "risk-off-recovery")
+    ))
+    .sort((left, right) => right.timestamp.localeCompare(left.timestamp))[0];
+  if (!event) return null;
+  return {
+    regime: event.data!.regime as ConfirmedRestrictiveRouting["regime"],
+    confirmedAt: event.timestamp,
+  };
+}
+
+export function resolveChinaTradingDate(value: Date): string {
+  return new Date(value.getTime() + 8 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 export async function buildCurrentPaperTradingPlan(input: {
   system: TradingSystem;
   config: ServerConfig;
@@ -63,6 +94,7 @@ export async function buildCurrentPaperTradingPlan(input: {
   leaderboardBars?: number;
   candidateLimit?: number;
   qualityLimit?: number;
+  now?: Date;
 }): Promise<CurrentPaperTradingPlanResult> {
   const snapshot = input.system.market.getSnapshot();
   const account = input.system.broker.getAccount(snapshot);
@@ -125,11 +157,19 @@ export async function buildCurrentPaperTradingPlan(input: {
       timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
     }),
   ]);
-  const adaptiveRouting = routeAdaptiveStrategies(marketRegimeResearch, {
+  const observedAdaptiveRouting = routeAdaptiveStrategies(marketRegimeResearch, {
     bias: externalMarketImpact.aShareImpact.bias,
     samples: externalMarketImpact.validation.samples,
     windows: externalMarketImpact.validation.windows,
     directionalHitRate: externalMarketImpact.validation.directionalHitRate,
+  });
+  const adaptiveRouting = stabilizeAdaptiveStrategyRouting({
+    current: observedAdaptiveRouting,
+    sourceStatus: marketRegimeResearch.sourceStatus,
+    previousConfirmed: findLatestConfirmedRestrictiveRouting(
+      input.system.store.listAudit(10_000),
+      resolveChinaTradingDate(input.now ?? new Date()),
+    ),
   });
 
   input.researchStore?.recordMarketSnapshot(snapshot, input.system.marketDataProvider);
