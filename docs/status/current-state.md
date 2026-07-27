@@ -34,7 +34,7 @@
 - **东方财富只读行情原型** —— `EastMoneyMarketProvider` 可读取公开行情并拒绝 `live`，当前尚未接入主服务的 `MARKET_DATA_PROVIDER` 选择器。
 - **东方财富纸面适配器** —— `EastMoneyBrokerAdapter` 不发送外部订单，订单、费用、风控、幂等和账户状态全部委托标准 `PaperBroker` 运行时。
 - **同花顺模拟盘纸面适配器骨架** —— `TongHuaShunPaperAdapter` 只允许 `paper`/`sandbox`，接收行情注入后委托 `PaperBroker + RiskEngine` 完成模拟成交；拒绝 `live` 和 `tradingEnabled=true`，当前未装配到主服务，也不包含同花顺真实下单端点。
-- **强制服务端会话认证** —— 正常运行默认要求登录，密码配置只保存 `scrypt` 散列；浏览器使用可撤销的 `HttpOnly`、`SameSite=Strict` Cookie，会话有过期时间与数量上限，生产环境要求 HTTPS `Secure` Cookie。除最小健康检查和认证入口外，业务 API、指标、OpenAPI 与 WebSocket 都受保护。
+- **强制服务端会话认证** —— 正常运行默认要求登录，密码配置只保存 `scrypt` 散列；固定密码允许 8 至 256 个字符并可通过服务器标准输入重置，不写入命令参数或环境明文。浏览器使用可撤销的 `HttpOnly`、`SameSite=Strict` Cookie，会话有过期时间与数量上限，生产环境要求 HTTPS `Secure` Cookie。除最小健康检查和认证入口外，业务 API、指标、OpenAPI 与 WebSocket 都受保护。
 - **认证感知前端连接** —— 前端只有在服务端会话验证成功后才拉取交易 bootstrap 并建立 WebSocket；令牌不进入 `localStorage` 或 WebSocket URL，任意业务 API 401 或 WebSocket 1008 会立即返回登录页。修改请求额外携带会话级 CSRF，登出会服务端撤销会话。
 - **自优化与存储控制状态** —— `/api/research/self-optimization` 声明 paper-only 策略自优化输入、目标和有界本地研究缓存策略，默认只计划保存紧凑日线/特征，不保存无上限垃圾数据。
 - **三服务调试** —— VS Code 可同时启动 FastAPI 行情桥接、Fastify 纸面交易后端和 React 前端。
@@ -706,7 +706,7 @@ TypeScript checks and Vite production build passed
 4. 外部网页行情访问受当前安全策略限制，本地三服务也未运行，因此 2026-07-23、24 的完整收盘行情保持不可用，没有补写未经核验的涨跌、板块或指数数据。
 5. 策略路由升级到 1.3.0：短暂数据降级不再显示成新的市场反转，也不会用陈旧历史继续普通减仓；每日复盘新增 `runtime-gap` 和快照日期校验。
 
-验证结果：服务端 Vitest 53 个文件、803 个测试通过；前端 Vitest 27 个文件、90 个测试通过；Python 109 个测试通过（保留 1 条既有 FastAPI/httpx 弃用警告）；`tsc -b` 与 Vite 生产构建通过。
+验证结果：服务端 Vitest 53 个文件、804 个测试通过；前端 Vitest 27 个文件、90 个测试通过；Python 109 个测试通过（保留 1 条既有 FastAPI/httpx 弃用警告）；`tsc -b` 与 Vite 生产构建通过。
 
 ## 架构进展
 

@@ -73,6 +73,14 @@ describe("password hashing", () => {
     expect(await verifyPassword("wrong-password", passwordHash)).toBe(false);
     expect(await verifyPassword(rawPassword, "not-a-password-hash")).toBe(false);
   });
+
+  it("accepts an explicit eight-character password and rejects shorter values", async () => {
+    const minimumPassword = "12345678";
+    const minimumHash = await hashPassword(minimumPassword);
+
+    expect(await verifyPassword(minimumPassword, minimumHash)).toBe(true);
+    await expect(hashPassword("1234567")).rejects.toThrow("8 到 256");
+  });
 });
 
 describe("server sessions", () => {

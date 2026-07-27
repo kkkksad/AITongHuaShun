@@ -17,6 +17,14 @@ function generatePassword(length = 24): string {
   ).join("");
 }
 
+async function readPasswordFromStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8").replace(/\r?\n$/, "");
+}
+
 function updateEnvironment(
   source: string,
   values: Record<string, string>,
@@ -62,7 +70,10 @@ async function main() {
   const environmentPath = path.resolve(process.cwd(), environmentFile);
   const production = process.argv.includes("--production");
 
-  const password = generatePassword();
+  const passwordFromStdin = process.argv.includes("--password-stdin");
+  const password = passwordFromStdin
+    ? await readPasswordFromStdin()
+    : generatePassword();
   const passwordHash = await hashPassword(password);
   const storedPasswordHash = production ? `'${passwordHash}'` : passwordHash;
   const current = await fs.readFile(environmentPath, "utf8").catch((error: NodeJS.ErrnoException) => {
@@ -90,7 +101,11 @@ async function main() {
   await fs.rename(temporaryPath, environmentPath);
 
   console.log(`KAIROS authentication configured for ${username}.`);
-  console.log(`Initial password (shown once): ${password}`);
+  if (passwordFromStdin) {
+    console.log("Password was read from stdin and was not echoed.");
+  } else {
+    console.log(`Initial password (shown once): ${password}`);
+  }
   console.log(`Only the scrypt password hash was written to ${environmentFile}.`);
 }
 

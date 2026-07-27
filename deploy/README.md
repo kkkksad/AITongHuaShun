@@ -27,6 +27,26 @@ docker compose --env-file .env.production -f docker-compose.production.yml ps
 
 初期 IP 证书为自签名证书，浏览器会显示风险提示。绑定域名后应替换 `runtime/certs/kairos.crt` 和 `kairos.key`，并同步更新 `PUBLIC_HOST` 与 `WEB_ORIGIN`。
 
+## 固定密码重置
+
+固定密码必须在服务器终端隐藏输入，不能出现在命令参数、Git 或 `.env.production` 明文中。当前单用户部署允许 8 至 256 个字符；公网部署仍应使用未在其他位置复用的密码。
+
+```bash
+cd /opt/kairos
+read -rsp "New KAIROS password: " KAIROS_PASSWORD; echo
+printf '%s' "$KAIROS_PASSWORD" | docker run --rm -i \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" -w /work \
+  kairos-api:production \
+  /app/node_modules/.bin/tsx scripts/setup-auth.ts \
+  --username admin --env-file .env.production --production --password-stdin
+unset KAIROS_PASSWORD
+docker compose --env-file .env.production \
+  -f docker-compose.production.yml up -d --force-recreate backend
+```
+
+重置会使旧密码和后端内存会话失效，但不会修改 Paper 账户、持仓或订单数据。
+
 ## 运维
 
 ```bash

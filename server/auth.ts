@@ -99,8 +99,8 @@ function derivePasswordKey(password: string, salt: Buffer): Promise<Buffer> {
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  if (password.length < 12 || password.length > 256) {
-    throw new Error("密码长度必须在 12 到 256 个字符之间");
+  if (password.length < 8 || password.length > 256) {
+    throw new Error("密码长度必须在 8 到 256 个字符之间");
   }
   const salt = crypto.randomBytes(16);
   const derivedKey = await derivePasswordKey(password, salt);

@@ -10,6 +10,7 @@
 - [0004：东方财富只读行情与统一纸面执行边界](0004-eastmoney-read-only-paper-boundary.md)
 - [0005：认证原型默认禁用与显式配置](0005-auth-prototype-fail-closed.md)
 - [0006：强制服务端会话认证](0006-required-session-authentication.md)
+- [0007：单用户部署允许八字符固定密码](0007-operator-defined-password-floor.md)
 
 ## 新建格式
 
