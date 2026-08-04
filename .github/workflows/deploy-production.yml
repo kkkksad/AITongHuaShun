@@ -60,6 +60,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
+      - name: 检出已验证代码
+        uses: actions/checkout@v4
+
       - name: 配置受限部署密钥和主机指纹
         env:
           DEPLOY_KEY: ${{ secrets.KAIROS_DEPLOY_SSH_KEY }}
@@ -68,13 +71,17 @@ jobs:
           install -d -m 700 ~/.ssh
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/kairos_deploy
           chmod 600 ~/.ssh/kairos_deploy
-          ssh-keyscan -T 10 -t ed25519 111.229.76.161 > ~/.ssh/known_hosts
-          test "$(ssh-keygen -lf ~/.ssh/known_hosts | awk '{print $2}')" = "SHA256:urck/cc2Fp9epQvFOGM0iMoTuVbvbfY+yHPqacVfsGE"
+          ssh-keyscan -T 10 -t ed25519 124.221.165.45 > ~/.ssh/known_hosts
+          test "$(ssh-keygen -lf ~/.ssh/known_hosts | awk '{print $2}')" = "SHA256:Q5U0eeB25u0SiZ4PcfSqiCHEQpF5u/+6+4+L56qPkdw"
 
-      - name: 部署已验证提交
+      - name: 打包已验证源码
+        run: |
+          git archive --format=tar.gz --output=kairos-release.tar.gz "$GITHUB_SHA"
+
+      - name: 上传并部署已验证提交
         run: |
           ssh -i ~/.ssh/kairos_deploy \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            ubuntu@111.229.76.161 \
-            "deploy $GITHUB_SHA"
+            ubuntu@124.221.165.45 \
+            "deploy-upload $GITHUB_SHA" < kairos-release.tar.gz

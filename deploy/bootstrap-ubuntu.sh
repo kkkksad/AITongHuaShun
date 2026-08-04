@@ -12,7 +12,15 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl docker.io docker-compose-v2 openssl
+install -d -m 0755 /etc/docker
+cat >/etc/docker/daemon.json <<'JSON'
+{
+  "registry-mirrors": ["https://mirror.ccs.tencentyun.com"]
+}
+JSON
+systemctl daemon-reload
 systemctl enable --now docker
+systemctl restart docker
 usermod -aG docker "${DEPLOY_USER}"
 
 install -d -m 0750 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" /opt/kairos

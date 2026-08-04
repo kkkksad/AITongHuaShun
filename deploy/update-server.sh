@@ -6,6 +6,8 @@ ROOT=/opt/kairos
 COMPOSE_FILE="${ROOT}/docker-compose.production.yml"
 ENV_FILE="${ROOT}/.env.production"
 LOCK_FILE=/tmp/kairos-production-deploy.lock
+RELEASE_ARCHIVE="/tmp/kairos-release-${COMMIT}.tar.gz"
+SOURCE_BACKUP="/tmp/kairos-source-backup-${COMMIT}.tar.gz"
 SERVICES=(akshare-bridge backend web)
 IMAGES=(kairos-akshare-bridge kairos-api kairos-web)
 
@@ -32,8 +34,29 @@ compose() {
 
 previous_commit="$(git rev-parse HEAD 2>/dev/null || true)"
 
+replace_source_from_archive() {
+  local archive="${1:?archive is required}"
+  if [[ ! -s "${archive}" ]]; then
+    echo "Missing release archive: ${archive}." >&2
+    exit 78
+  fi
+
+  tar --exclude='./runtime' --exclude='./.env.production' -czf "${SOURCE_BACKUP}" -C "${ROOT}" . || true
+  find "${ROOT}" -mindepth 1 -maxdepth 1 \
+    ! -name runtime \
+    ! -name .env.production \
+    -exec rm -rf {} +
+  tar -xzf "${archive}" -C "${ROOT}"
+}
+
 restore_source() {
-  if [[ "${previous_commit}" =~ ^[0-9a-f]{40}$ ]]; then
+  if [[ -s "${SOURCE_BACKUP}" ]]; then
+    find "${ROOT}" -mindepth 1 -maxdepth 1 \
+      ! -name runtime \
+      ! -name .env.production \
+      -exec rm -rf {} +
+    tar -xzf "${SOURCE_BACKUP}" -C "${ROOT}"
+  elif [[ "${previous_commit}" =~ ^[0-9a-f]{40}$ ]]; then
     git checkout --detach --force "${previous_commit}"
   fi
 }
@@ -59,8 +82,12 @@ for image in "${IMAGES[@]}"; do
   fi
 done
 
-git fetch --no-tags --depth=1 origin "${COMMIT}"
-git checkout --detach --force "${COMMIT}"
+if [[ -s "${RELEASE_ARCHIVE}" ]]; then
+  replace_source_from_archive "${RELEASE_ARCHIVE}"
+else
+  git fetch --no-tags --depth=1 origin "${COMMIT}"
+  git checkout --detach --force "${COMMIT}"
+fi
 
 if ! compose config --quiet; then
   restore_source
@@ -94,6 +121,7 @@ while (( SECONDS < deadline )); do
     for image in "${IMAGES[@]}"; do
       docker image rm "${image}:rollback" >/dev/null 2>&1 || true
     done
+    rm -f "${RELEASE_ARCHIVE}" "${SOURCE_BACKUP}"
     docker image prune -f --filter "until=168h" >/dev/null
     echo "KAIROS production deployment completed at ${COMMIT}."
     exit 0

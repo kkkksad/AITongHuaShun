@@ -5,11 +5,13 @@
 ## 首次部署
 
 ```bash
-sudo bash deploy/bootstrap-ubuntu.sh 111.229.76.161
+sudo bash deploy/bootstrap-ubuntu.sh 124.221.165.45
 cp deploy/production.env.example .env.production
 chmod 600 .env.production
 npm run auth:setup -- --username admin --env-file .env.production --production
 ```
+
+`bootstrap-ubuntu.sh` 会为国内 Lighthouse 实例写入腾讯云 Docker 镜像加速，避免首次构建卡在 Docker Hub 基础镜像拉取。
 
 认证脚本只显示一次随机初始密码，并把 scrypt 散列写入 `.env.production`，不会保存明文密码。再生成独立桥接 Token：
 
@@ -59,7 +61,7 @@ docker compose --env-file .env.production -f docker-compose.production.yml down
 
 ## GitHub 自动部署
 
-`.github/workflows/deploy-production.yml` 只监听生产分支 `codex/real-market-regime`。推送后先运行 Node、Python、生产构建和 Compose 校验，再通过受限 SSH 密钥调用 `deploy/update-server.sh`。部署脚本串行执行；构建失败不会替换运行容器，启动后健康检查失败会尝试恢复上一组镜像。
+`.github/workflows/deploy-production.yml` 只监听生产分支 `codex/real-market-regime`。推送后先运行 Node、Python、生产构建和 Compose 校验，再把已验证提交通过受限 SSH 会话的 stdin 上传到服务器，并调用 `deploy/update-server.sh`。服务器不需要直接读取 GitHub 私有仓库，也不开放通用 scp/sftp。部署脚本串行执行；构建失败不会替换运行容器，启动后健康检查失败会尝试恢复上一组镜像和上一份源码。
 
 服务器的部署公钥必须使用强制命令，示例：
 
