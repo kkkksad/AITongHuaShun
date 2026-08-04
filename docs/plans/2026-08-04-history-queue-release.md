@@ -18,8 +18,8 @@
 - [x] 更新生产 `docker-compose.production.yml`、本地 `.env.example` 和运维文档。
 - [x] 更新回归测试，要求完整期货观察池默认不再触发“队列繁忙”。
 - [x] 运行 Python 桥接测试、前后端测试和生产构建。
-- [ ] 提交、推送到 `codex/real-market-regime` 并通过 GitHub Actions 自动部署到 `124.221.165.45`。
-- [ ] 部署后检查服务器容器状态和内部健康接口。
+- [x] 提交、推送到 `codex/real-market-regime` 并部署到 `124.221.165.45`。
+- [x] 部署后检查服务器容器状态和内部健康接口。
 
 ## 发布流程
 
@@ -30,3 +30,10 @@
 - `/api/market/futures/history` 的完整 16 合约观察池在测试中返回完整序列，不出现“队列繁忙”。
 - `/health` 的 `historyScheduler.maxActive` 为 2，`maxPending` 为 24。
 - 生产容器重启后 `https://127.0.0.1/api/health` 在服务器内部返回健康。
+
+## 发布验证
+
+- 2026-08-04 部署提交：`426e39c3fb769fe978a19aab2efc9848b713ce25`。
+- 生产容器：`akshare-bridge`、`backend`、`web` 均为 healthy。
+- AkShare 桥 `/health` 返回 `historyScheduler.maxActive=2`、`historyScheduler.maxPending=24`、`historyScheduler.rejected=0`。
+- 生产 API `/api/health` 返回 `paper + akshare`，`realTradingEnabled=false`。
