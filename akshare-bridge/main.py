@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from research_cache import (
     BoundedTTLCache,
     HistoryCacheKey,
+    HistoryQueueFullError,
     HistoryFetchLimiter,
     ResearchHistoryCache,
 )
@@ -51,8 +52,12 @@ RESEARCH_CACHE_MAX_ENTRIES = int(
 HISTORY_CACHE_MAX_ENTRIES = int(
     os.getenv("AKSHARE_BRIDGE_HISTORY_CACHE_MAX_ENTRIES", "128")
 )
+HISTORY_FETCH_MAX_ACTIVE = max(
+    1,
+    int(os.getenv("AKSHARE_BRIDGE_HISTORY_FETCH_MAX_ACTIVE", "2")),
+)
 HISTORY_FETCH_MAX_PENDING = int(
-    os.getenv("AKSHARE_BRIDGE_HISTORY_FETCH_MAX_PENDING", "8")
+    os.getenv("AKSHARE_BRIDGE_HISTORY_FETCH_MAX_PENDING", "24")
 )
 HISTORY_RESPONSE_BUDGET_SEC = float(
     os.getenv("AKSHARE_BRIDGE_HISTORY_RESPONSE_BUDGET", "6.0")
@@ -96,9 +101,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("akshare-bridge")
 
-# AkShare includes native JavaScript-backed providers that are not thread-safe.
-# Serialize AkShare calls so concurrent research requests cannot terminate the bridge.
-AKSHARE_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="akshare")
+# AkShare providers have limited concurrency tolerance; keep history work at a
+# small explicit worker count and let the limiter bound the queue.
+AKSHARE_EXECUTOR = ThreadPoolExecutor(
+    max_workers=HISTORY_FETCH_MAX_ACTIVE,
+    thread_name_prefix="akshare",
+)
 # Crypto fallbacks use plain public JSON and must not block serialized AkShare work.
 EXTERNAL_JSON_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="external-json")
 
@@ -2262,8 +2270,8 @@ history_cache: ResearchHistoryCache[HistoricalSeries] = ResearchHistoryCache(
     max_entries=HISTORY_CACHE_MAX_ENTRIES,
 )
 history_scheduler = HistoryFetchLimiter(
-    max_active=1,
-    max_pending=HISTORY_FETCH_MAX_PENDING,
+    max_active=HISTORY_FETCH_MAX_ACTIVE,
+    max_pending=max(HISTORY_FETCH_MAX_ACTIVE, HISTORY_FETCH_MAX_PENDING),
 )
 
 
@@ -2360,6 +2368,7 @@ async def build_history_response(
     errors: list[str] = []
     actual_sources: list[str] = []
     pending_count = 0
+    queue_deferred_count = 0
     for identifier, task in zip(identifiers, tasks):
         if not task.done():
             pending_count += 1
@@ -2370,6 +2379,9 @@ async def build_history_response(
             continue
         try:
             result = task.result()
+        except HistoryQueueFullError:
+            queue_deferred_count += 1
+            continue
         except Exception as exc:
             errors.append(f"{identifier}: {exc}")
             continue
@@ -2381,7 +2393,11 @@ async def build_history_response(
         warnings.append("部分历史数据暂不可用: " + "; ".join(errors[:8]))
     if pending_count:
         warnings.append(
-            f"{pending_count} 个历史序列仍在后台刷新，本次先返回已完成数据。"
+            f"历史缓存冷启动中，{pending_count} 个历史序列正在或等待后台预热，本次先返回已完成数据。"
+        )
+    if queue_deferred_count:
+        warnings.append(
+            f"{queue_deferred_count} 个历史序列超过队列上限，请稍后重试。"
         )
     return HistoricalBarsResponse(
         provider="akshare",

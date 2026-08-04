@@ -20,6 +20,7 @@ sys.modules["akshare"] = MagicMock()
 from main import (
     app,
     FUTURES_WATCHLIST,
+    HISTORY_FETCH_MAX_ACTIVE,
     HISTORY_FETCH_MAX_PENDING,
     history_cache,
     research_cache,
@@ -932,8 +933,10 @@ class TestDomesticFuturesEndpoints:
             )
 
         assert first.status_code == 200
-        assert len(first.json()["series"]) == HISTORY_FETCH_MAX_PENDING
-        assert "队列繁忙" in first.json()["warning"]
+        assert HISTORY_FETCH_MAX_PENDING >= len(FUTURES_WATCHLIST)
+        assert HISTORY_FETCH_MAX_ACTIVE >= 2
+        assert len(first.json()["series"]) == len(FUTURES_WATCHLIST)
+        assert "队列繁忙" not in str(first.json().get("warning"))
         assert second.status_code == 200
         assert len(second.json()["series"]) == len(FUTURES_WATCHLIST)
         assert fetch.call_count == len(FUTURES_WATCHLIST)
@@ -1084,7 +1087,7 @@ class TestSectorAndHistoryEndpoints:
         assert response.status_code == 200
         assert elapsed < 0.25
         assert [item["symbol"] for item in response.json()["series"]] == ["600519"]
-        assert "后台刷新" in response.json()["warning"]
+        assert "后台预热" in response.json()["warning"]
 
     def test_stock_history_reuses_a_symbol_across_different_batches(self):
         frame = pd.DataFrame([{

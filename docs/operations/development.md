@@ -93,14 +93,15 @@ AKSHARE_BRIDGE_RESEARCH_CACHE_TTL=900
 AKSHARE_BRIDGE_RESEARCH_CACHE_STALE_TTL=3600
 AKSHARE_BRIDGE_RESEARCH_CACHE_MAX_ENTRIES=64
 AKSHARE_BRIDGE_HISTORY_CACHE_MAX_ENTRIES=128
-AKSHARE_BRIDGE_HISTORY_FETCH_MAX_PENDING=8
+AKSHARE_BRIDGE_HISTORY_FETCH_MAX_ACTIVE=2
+AKSHARE_BRIDGE_HISTORY_FETCH_MAX_PENDING=24
 AKSHARE_BRIDGE_HISTORY_RESPONSE_BUDGET=6
 AKSHARE_BRIDGE_HISTORY_PROVIDER_TIMEOUT=8
 ```
 
-全市场股票与指数缓存只在成功刷新完成后更新年龄，默认完成后 10 秒内复用；失败时保留旧数据并进入最长 60 秒冷却，不会因一次抓取本身超过 TTL 而立即再次重打上游。读写研究缓存时会主动清除过期项，超过容量后按 LRU 淘汰；正在拉取的历史序列不会在请求完成前被淘汰。历史调度器默认同时只执行 1 个序列、最多接纳 8 个执行中或排队序列；一个 HTTP 批次等待 6 秒后先返回已完成数据，已接纳的未完成序列继续在后台预热。A 股东方财富和腾讯历史源默认各使用 8 秒显式网络超时，不再调用无明确超时参数的新浪第三回退。
+全市场股票与指数缓存只在成功刷新完成后更新年龄，默认完成后 10 秒内复用；失败时保留旧数据并进入最长 60 秒冷却，不会因一次抓取本身超过 TTL 而立即再次重打上游。读写研究缓存时会主动清除过期项，超过容量后按 LRU 淘汰；正在拉取的历史序列不会在请求完成前被淘汰。历史调度器默认同时执行 2 个序列、最多接纳 24 个执行中或排队序列，足以覆盖单次 20 个行业板块或 16 个期货主连的完整观察池；一个 HTTP 批次等待 6 秒后先返回已完成数据，已接纳的未完成序列继续在后台预热。A 股东方财富和腾讯历史源默认各使用 8 秒显式网络超时，不再调用无明确超时参数的新浪第三回退。
 
-`http://127.0.0.1:8800/health` 的 `researchCache` 和 `historyCache` 会返回当前条目数、上限、淘汰数和过期清理数；`historyScheduler` 额外返回 `active`、`pending`、`maxPending`、完成数和拒绝数。`active + pending` 不应超过 `maxPending`。单次历史研究请求最多读取 20 个行业板块、16 个受控期货主连、12 只股票和 60 至 500 个交易日。队列繁忙或响应预算用完时接口会返回部分真实结果和明确 `warning`，后续刷新逐步复用已预热序列；不会使用静态数据补齐。行业日线为不复权，个股日线为前复权；该缓存不会在 `data/` 中长期堆积原始日线。
+`http://127.0.0.1:8800/health` 的 `researchCache` 和 `historyCache` 会返回当前条目数、上限、淘汰数和过期清理数；`historyScheduler` 额外返回 `active`、`pending`、`maxActive`、`maxPending`、完成数和拒绝数。`active + pending` 不应超过 `maxPending`。单次历史研究请求最多读取 20 个行业板块、16 个受控期货主连、12 只股票和 60 至 500 个交易日。只有请求超过接纳上限、上游超时或响应预算用完时接口才会返回部分真实结果和明确 `warning`，后续刷新逐步复用已预热序列；不会使用静态数据补齐。行业日线为不复权，个股日线为前复权；该缓存不会在 `data/` 中长期堆积原始日线。
 
 开发日志在执行 `npm run dev` 或 `npm run dev:a-share` 前自动清理，默认预算为：
 
