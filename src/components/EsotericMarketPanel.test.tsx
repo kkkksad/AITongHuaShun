@@ -13,5 +13,8 @@ describe("EsotericMarketPanel", () => {
     expect(html).toContain("不得据此开仓");
     expect(html).toContain("传统参考");
     expect(html).toContain("Paper 执行");
+    expect(html).toContain("盘面镜像");
+    expect(html).toContain("收盘复盘问题");
+    expect(html).toContain("不是胜率");
   });
 });

@@ -189,4 +189,99 @@ describe("adaptive candidate strategy routing", () => {
       candidateScore: 95,
     })).toBeNull();
   });
+
+  it("adds trend coverage for moving average, MACD, and Turtle rules", () => {
+    const trendRouting = routing({
+      eligibleStrategyKeys: ["movingAverageCross", "macd", "turtle"],
+      strategyPlaybook: {
+        primaryStrategyKeys: ["movingAverageCross", "macd"],
+        useWhen: "趋势确认",
+        avoidWhen: "追高",
+        recheckTriggers: ["均线转弱"],
+      },
+    });
+
+    const keys = rankAdaptiveCandidateStrategies({
+      quote,
+      stockRegime: stock("healthy-trend"),
+      routing: trendRouting,
+      candidateScore: 84,
+    }).map((signal) => signal.strategyKey);
+
+    expect(keys).toEqual(expect.arrayContaining([
+      "movingAverageCross",
+      "macd",
+      "turtle",
+    ]));
+  });
+
+  it("adds small range-only RSI and Bollinger coverage near the lower intraday area", () => {
+    const rangeQuote = {
+      ...quote,
+      price: 99.2,
+      changePercent: -0.8,
+      open: 100,
+      high: 101,
+      low: 98.8,
+      amplitude: 2.2,
+    };
+    const rangeStock = stock("unclear", {
+      confidence: 0.6,
+      features: {
+        ...stock("unclear").features,
+        return5d: -0.012,
+        return20d: -0.008,
+        return60d: 0.01,
+        distanceFromMa20: -0.025,
+        ma20Slope5d: -0.002,
+      },
+    });
+    const rangeRouting = routing({
+      regime: "range-low-volatility",
+      eligibleStrategyKeys: ["rsi", "bollingerBands"],
+      strategyPlaybook: {
+        primaryStrategyKeys: ["rsi", "bollingerBands"],
+        useWhen: "区间边缘",
+        avoidWhen: "趋势恶化",
+        recheckTriggers: ["突破确认"],
+      },
+    });
+
+    expect(rankAdaptiveCandidateStrategies({
+      quote: rangeQuote,
+      stockRegime: rangeStock,
+      routing: rangeRouting,
+      candidateScore: 76,
+    }).map((signal) => signal.strategyKey)).toEqual(expect.arrayContaining([
+      "rsi",
+      "bollingerBands",
+    ]));
+  });
+
+  it("blocks range signals for a deteriorating stock even when the route allows them", () => {
+    expect(rankAdaptiveCandidateStrategies({
+      quote: { ...quote, changePercent: -0.6 },
+      stockRegime: stock("trend-deterioration"),
+      routing: routing({
+        regime: "range-low-volatility",
+        eligibleStrategyKeys: ["rsi", "bollingerBands"],
+      }),
+      candidateScore: 90,
+    })).toEqual([]);
+  });
+
+  it("requires a tradable quote and an explicitly eligible strategy key", () => {
+    expect(rankAdaptiveCandidateStrategies({
+      quote: { ...quote, tradable: false },
+      stockRegime: stock("healthy-trend"),
+      routing: routing(),
+      candidateScore: 90,
+    })).toEqual([]);
+    expect(rankAdaptiveCandidateStrategies({
+      quote,
+      stockRegime: stock("healthy-trend"),
+      routing: routing({ eligibleStrategyKeys: ["kairosCapitalShield"] }),
+      candidateScore: 90,
+    })).toEqual([]);
+  });
 });

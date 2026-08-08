@@ -40,18 +40,23 @@ export function buildPreferredHistoricalStocks(input: {
   qualityStocks: DailyQualityStockReport;
   limit: number;
 }): Array<{ symbol: string; name: string }> {
-  const ordered = [
-    ...input.positions.map((position) => ({
+  const positions = input.positions.map((position) => ({
       symbol: position.symbol,
       name: position.name,
-    })),
-    ...input.candidates.candidates
-      .filter((candidate) => candidate.action === "paper-buy" || candidate.action === "watch")
-      .map((candidate) => ({ symbol: candidate.symbol, name: candidate.name })),
-    ...input.qualityStocks.stocks
-      .filter((stock) => stock.action === "focus" || stock.action === "watch")
-      .map((stock) => ({ symbol: stock.symbol, name: stock.name })),
-  ];
+    }));
+  const candidates = input.candidates.candidates
+    .filter((candidate) => candidate.action === "paper-buy" || candidate.action === "watch")
+    .map((candidate) => ({ symbol: candidate.symbol, name: candidate.name }));
+  const qualityStocks = input.qualityStocks.stocks
+    .filter((stock) => stock.action === "focus" || stock.action === "watch")
+    .map((stock) => ({ symbol: stock.symbol, name: stock.name }));
+  const interleavedResearchPool: Array<{ symbol: string; name: string }> = [];
+  const scannerLength = Math.max(candidates.length, qualityStocks.length);
+  for (let index = 0; index < scannerLength; index += 1) {
+    if (candidates[index]) interleavedResearchPool.push(candidates[index]);
+    if (qualityStocks[index]) interleavedResearchPool.push(qualityStocks[index]);
+  }
+  const ordered = [...positions, ...interleavedResearchPool];
   return ordered
     .filter((stock, index, items) =>
       /^\d{6}$/.test(stock.symbol) &&

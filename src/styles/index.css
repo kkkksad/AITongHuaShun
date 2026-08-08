@@ -8394,12 +8394,56 @@ select:focus-visible {
   font-weight: 700;
 }
 
+.esoteric-hexagram-card > p {
+  margin: 10px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.learning-plan-summary small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
 .esoteric-changing-line {
   margin-top: 21px;
   padding-top: 10px;
   border-top: 1px solid var(--border-light);
   color: var(--text-secondary);
   font-size: 10px;
+}
+
+.esoteric-entertainment-index {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border-light);
+  color: var(--color-warning);
+}
+
+.esoteric-entertainment-index > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.esoteric-entertainment-index strong {
+  margin-left: 4px;
+  color: var(--text-heading);
+  font-size: 12px;
+}
+
+.esoteric-entertainment-index small {
+  color: var(--text-muted);
+  font-size: 9px;
 }
 
 .esoteric-reading-card > strong {
@@ -8409,12 +8453,50 @@ select:focus-visible {
   font-size: 17px;
 }
 
+.esoteric-reading-card > span,
+.esoteric-observation-card > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .esoteric-reading-card p,
 .esoteric-observation-card p {
   margin: 7px 0 0;
   color: var(--text-secondary);
   font-size: 11px;
   line-height: 1.6;
+}
+
+.esoteric-reading-card ul,
+.esoteric-observation-card ol {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.esoteric-reading-card small {
+  display: block;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.esoteric-alignment-aligned {
+  border-top: 3px solid var(--color-positive);
+}
+
+.esoteric-alignment-conflicted {
+  border-top: 3px solid var(--color-negative);
+}
+
+.esoteric-alignment-unavailable {
+  border-top: 3px solid var(--border-default);
 }
 
 .esoteric-observation-card {
@@ -8431,7 +8513,7 @@ select:focus-visible {
 
 .esoteric-market-checks {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-top: 14px;
   border-top: 1px solid var(--border-default);
   border-bottom: 1px solid var(--border-default);
