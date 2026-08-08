@@ -568,6 +568,15 @@ export interface PaperTradingPlanQualitySummary {
   plannedSellNotional: number;
   cashDeploymentPercent: number;
   remainingCashAfterPlan: number;
+  strategyCoverage: {
+    eligibleKeys: string[];
+    matchedKeys: string[];
+    matchedCandidateCount: number;
+    unmatchedCandidateCount: number;
+    dominantStrategyKey: string | null;
+    dominantBlocker: string | null;
+    summary: string;
+  };
   planQuality: "actionable" | "watch-only" | "blocked";
   summary: string;
 }

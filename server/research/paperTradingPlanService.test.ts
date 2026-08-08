@@ -35,9 +35,39 @@ describe("buildPreferredHistoricalStocks", () => {
     })).toEqual([
       { symbol: "601398", name: "工商银行" },
       { symbol: "600010", name: "包钢股份" },
-      { symbol: "600115", name: "中国东航" },
       { symbol: "601288", name: "农业银行" },
+      { symbol: "600115", name: "中国东航" },
     ]);
+  });
+
+  it("keeps both scanners represented when the bounded pool is crowded", () => {
+    const candidates = {
+      candidates: Array.from({ length: 8 }, (_, index) => ({
+        symbol: `6000${String(index).padStart(2, "0")}`,
+        name: `候选${index}`,
+        action: "paper-buy",
+        score: 90 - index,
+      })),
+    } as unknown as DailyCandidateReport;
+    const qualityStocks = {
+      stocks: Array.from({ length: 4 }, (_, index) => ({
+        symbol: `6010${String(index).padStart(2, "0")}`,
+        name: `优质${index}`,
+        action: "focus",
+        score: 88 - index,
+      })),
+    } as unknown as DailyQualityStockReport;
+
+    const result = buildPreferredHistoricalStocks({
+      positions: [],
+      candidates,
+      qualityStocks,
+      limit: 6,
+    });
+
+    expect(result).toHaveLength(6);
+    expect(result.filter((stock) => stock.name.startsWith("候选"))).toHaveLength(3);
+    expect(result.filter((stock) => stock.name.startsWith("优质"))).toHaveLength(3);
   });
 });
 

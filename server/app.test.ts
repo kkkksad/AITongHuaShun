@@ -1075,6 +1075,10 @@ describe("trading API", () => {
         blocked: expect.any(Number),
         hold: expect.any(Number),
       }),
+      strategyCoverage: expect.objectContaining({
+        matchedKeys: expect.any(Array),
+        unmatchedCandidateCount: expect.any(Number),
+      }),
       planQuality: expect.stringMatching(/^(actionable|watch-only|blocked)$/),
     });
     expect(response.json().operations.length).toBeGreaterThan(0);

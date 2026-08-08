@@ -1,11 +1,22 @@
 import { useMemo, useState } from "react";
-import { BookOpen, CalendarDays, Dices, ShieldAlert, Sparkles } from "lucide-react";
+import {
+  Activity,
+  BookOpen,
+  CalendarDays,
+  CircleGauge,
+  Dices,
+  ListChecks,
+  ShieldAlert,
+  Sparkles,
+} from "lucide-react";
 import type { MarketSnapshot } from "../../shared/trading";
 import {
   createEsotericMarketReading,
   formatLocalDate,
   getEsotericMethodLabel,
+  summarizeEsotericMarketContext,
   type EsotericMethod,
+  type EsotericMarketState,
 } from "../lib/esotericMarket";
 
 interface EsotericMarketPanelProps {
@@ -18,16 +29,38 @@ function formatSnapshotTime(market?: MarketSnapshot): string {
   return `真实快照 ${new Date(market.marketTime).toLocaleString("zh-CN", { hour12: false })}`;
 }
 
+function marketStateLabel(state: EsotericMarketState): string {
+  if (state === "expanding") return "扩张";
+  if (state === "contracting") return "收缩";
+  if (state === "balanced") return "均衡";
+  return "样本不足";
+}
+
+function alignmentLabel(alignment: "aligned" | "conflicted" | "unavailable"): string {
+  if (alignment === "aligned") return "象意与现实暂时同向";
+  if (alignment === "conflicted") return "象意与现实存在冲突";
+  return "等待现实数据后再比较";
+}
+
 export function EsotericMarketPanel({ market, today = new Date() }: EsotericMarketPanelProps) {
   const [target, setTarget] = useState("今日大盘");
   const [date, setDate] = useState(() => formatLocalDate(today));
   const [method, setMethod] = useState<EsotericMethod>("yijing");
   const [round, setRound] = useState(0);
-  const reading = useMemo(
-    () => createEsotericMarketReading({ date, target, method, round }),
-    [date, method, round, target],
+  const marketContext = useMemo(
+    () => summarizeEsotericMarketContext(market, today),
+    [market, today],
   );
-  const indexCount = market?.quotes.filter((quote) => !quote.tradable && quote.price > 0).length ?? 0;
+  const reading = useMemo(
+    () => createEsotericMarketReading({
+      date,
+      target,
+      method,
+      round,
+      marketContext,
+    }),
+    [date, marketContext, method, round, target],
+  );
 
   return (
     <section className="panel esoteric-market-panel" aria-labelledby="esoteric-market-title">
@@ -39,7 +72,7 @@ export function EsotericMarketPanel({ market, today = new Date() }: EsotericMark
             玄学观察
           </h2>
           <p className="esoteric-market-subtitle">
-            用传统卦名、五行和固定日期规则生成一份可复盘的文化观察笔记。
+            传统象意、真实盘面镜像和收盘复盘分层记录，结果只留在娱乐研究层。
           </p>
         </div>
         <div className="esoteric-market-source" title="玄学结果不会写入策略或订单">
@@ -101,33 +134,61 @@ export function EsotericMarketPanel({ market, today = new Date() }: EsotericMark
           <div className="esoteric-hexagram-label">第 {reading.hexagram.number} 卦 · {getEsotericMethodLabel(reading.method)}</div>
           <strong>{reading.hexagram.name}</strong>
           <span>{reading.hexagram.theme}</span>
+          <p>{reading.methodLens}</p>
           <div className="esoteric-changing-line">变爻 {reading.changingLine} · 五行参考 {reading.element}</div>
+          <div className="esoteric-entertainment-index">
+            <CircleGauge size={15} />
+            <span>
+              娱乐观察指数 <strong>{reading.entertainmentIndex}/100</strong>
+              <small>不是胜率，也不是预测概率</small>
+            </span>
+          </div>
         </article>
 
-        <article className="esoteric-reading-card">
-          <span>今日象意</span>
-          <strong>{reading.tendency}</strong>
-          <p>{reading.hexagram.image}</p>
-          <p>{reading.observation}</p>
+        <article className={`esoteric-reading-card esoteric-alignment-${reading.alignment}`}>
+          <span><Activity size={14} /> 盘面镜像</span>
+          <strong>{alignmentLabel(reading.alignment)}</strong>
+          <p>{reading.marketMirror.summary}</p>
+          <ul>
+            {reading.marketMirror.evidence.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+          <small>象意层为{reading.symbolLayer.focus}；发生冲突时只记录，不解释为交易信号。</small>
         </article>
 
         <article className="esoteric-observation-card">
-          <span>可复盘的观察动作</span>
+          <span><ListChecks size={14} /> 收盘复盘问题</span>
+          <ol>
+            {reading.reviewQuestions.map((question) => <li key={question}>{question}</li>)}
+          </ol>
           <p>{reading.ritual}</p>
-          <small>只记录，不把它转换成买卖指令。</small>
+          <small>先写下答案，再对照真实量价；不把文化解释转换成买卖指令。</small>
         </article>
       </div>
 
       <div className="esoteric-market-checks">
         <div>
           <span>现实行情</span>
-          <strong>{indexCount > 0 ? `${indexCount} 个指数快照` : "等待真实快照"}</strong>
+          <strong>{marketStateLabel(marketContext.marketState)}</strong>
           <small>{formatSnapshotTime(market)}</small>
         </div>
         <div>
-          <span>量化策略</span>
-          <strong>独立运行</strong>
-          <small>以数据、规则和历史验证为准</small>
+          <span>上涨宽度</span>
+          <strong>{marketContext.breadthRatio === null ? "--" : `${(marketContext.breadthRatio * 100).toFixed(0)}%`}</strong>
+          <small>上涨 {marketContext.advancingCount} · 下跌 {marketContext.decliningCount}</small>
+        </div>
+        <div>
+          <span>涨跌与振幅</span>
+          <strong>
+            {marketContext.averageChangePercent === null
+              ? "--"
+              : `${marketContext.averageChangePercent >= 0 ? "+" : ""}${marketContext.averageChangePercent.toFixed(2)}%`}
+          </strong>
+          <small>平均振幅 {marketContext.averageAmplitudePercent?.toFixed(2) ?? "--"}%</small>
+        </div>
+        <div>
+          <span>快照覆盖</span>
+          <strong>{marketContext.validCount}/{marketContext.sampleCount}</strong>
+          <small>平均新鲜度 {marketContext.freshnessMinutes?.toFixed(1) ?? "--"} 分钟</small>
         </div>
         <div>
           <span>Paper 执行</span>
@@ -137,7 +198,7 @@ export function EsotericMarketPanel({ market, today = new Date() }: EsotericMark
       </div>
 
       <footer className="esoteric-market-footer">
-        <span>传统参考：卦名取自《周易》六十四卦，五行术语用于文化表达。</span>
+        <span>传统参考：卦名取自《周易》六十四卦；量化策略仍以数据、规则和历史验证独立运行。</span>
         <span>本次固定索引：{reading.seed} · 日期 {reading.date}</span>
       </footer>
     </section>

@@ -37,16 +37,16 @@ const snapshot: MarketSnapshot = {
       symbol: "601988",
       name: "低价候选",
       tradable: true,
-      price: 5,
-      previousClose: 4.95,
-      changePercent: 1,
+      price: 4.92,
+      previousClose: 4.96,
+      changePercent: -0.81,
       volume: 20_000_000,
       amount: 100_000_000,
       turnover: 1.5,
-      amplitude: 2.5,
-      open: 4.95,
-      high: 5.05,
-      low: 4.92,
+      amplitude: 3.2,
+      open: 4.98,
+      high: 5.04,
+      low: 4.88,
       updatedAt: "2026-07-15T02:00:00.000Z",
     },
   ],
@@ -469,5 +469,65 @@ describe("adaptive paper trading plan", () => {
         ]),
       }),
     ]));
+  });
+
+  it("reports strategy coverage while keeping an eligible range candidate executable", () => {
+    const plan = build({
+      cash: 8_000,
+      includeCandidate: true,
+      adaptiveRouting: routing({
+        regime: "range-low-volatility",
+        positionPosture: "hold",
+        eligibleStrategyKeys: ["rsi", "bollingerBands"],
+        strategyPlaybook: {
+          primaryStrategyKeys: ["rsi", "bollingerBands"],
+          useWhen: "区间边缘",
+          avoidWhen: "趋势恶化",
+          recheckTriggers: ["突破确认"],
+        },
+      }),
+      research: marketRegime("unclear", 0.6, "601988"),
+    });
+
+    expect(plan.qualitySummary.strategyCoverage).toMatchObject({
+      matchedKeys: expect.arrayContaining(["rsi", "bollingerBands"]),
+    });
+    expect(plan.qualitySummary.strategyCoverage.unmatchedCandidateCount).toBeGreaterThanOrEqual(0);
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "601988",
+        action: "paper-buy-plan",
+        ruleChecks: expect.arrayContaining([
+          expect.stringContaining("entry-persistence: pass (range-structure"),
+        ]),
+      }),
+    ]));
+
+    for (const blockedRouting of [
+      routing({
+        regime: "risk-off",
+        allowNewPositions: false,
+        positionPosture: "reduce",
+        newPositionScale: 0,
+        eligibleStrategyKeys: ["kairosCapitalShield"],
+      }),
+      routing({
+        regime: "unclear",
+        allowNewPositions: false,
+        positionPosture: "hold",
+        newPositionScale: 0,
+        eligibleStrategyKeys: ["kairosCapitalShield"],
+      }),
+    ]) {
+      const blockedPlan = build({
+        cash: 8_000,
+        includeCandidate: true,
+        adaptiveRouting: blockedRouting,
+        research: marketRegime("unclear", 0.6, "601988"),
+      });
+      expect(blockedPlan.operations.some((operation) =>
+        operation.action === "paper-buy-plan"
+      )).toBe(false);
+    }
   });
 });
