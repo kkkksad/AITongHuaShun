@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { HistoricalBar, HistoricalSeries } from "./marketRegimeResearch";
 import {
   STRATEGY_ROBUSTNESS_PROFILES,
+  assessStrategyEvidence,
   buildAlignedHistoricalSnapshots,
   buildStrategyRobustnessReport,
   evaluateFixedStrategyProfiles,
@@ -106,6 +107,43 @@ describe("evaluateFixedStrategyProfiles", () => {
     expect(entries[0].fixedParams).toEqual(movingAverage!.fixedParams);
     expect(entries[0].totalTrades).toBeGreaterThanOrEqual(0);
     expect(entries[0].worstMaxDrawdown).toBeGreaterThanOrEqual(0);
+    expect(entries[0].averageSharpeRatio).toEqual(expect.any(Number));
+    expect(
+      entries[0].averageProfitFactor === null ||
+      Number.isFinite(entries[0].averageProfitFactor),
+    ).toBe(true);
+    expect(entries[0].evidenceScore).toBeGreaterThanOrEqual(0);
+    expect(entries[0].evidenceScore).toBeLessThanOrEqual(100);
+    expect(entries[0].fragilityFlags).toEqual(expect.any(Array));
+  });
+});
+
+describe("assessStrategyEvidence", () => {
+  it("scores complete consistent samples above sparse fragile samples", () => {
+    const healthy = assessStrategyEvidence({
+      windows: 3,
+      profitableWindows: 3,
+      totalTrades: 18,
+      worstReturn: 0.02,
+      worstMaxDrawdown: 0.08,
+    });
+    const fragile = assessStrategyEvidence({
+      windows: 2,
+      profitableWindows: 0,
+      totalTrades: 2,
+      worstReturn: -0.12,
+      worstMaxDrawdown: 0.28,
+    });
+
+    expect(healthy.evidenceScore).toBeGreaterThan(fragile.evidenceScore);
+    expect(healthy.fragilityFlags).toEqual([]);
+    expect(fragile.evidenceScore).toBeLessThanOrEqual(35);
+    expect(fragile.fragilityFlags).toEqual(expect.arrayContaining([
+      "有效窗口不足 3 个",
+      "交易样本少于 6 笔",
+      "最差窗口收益低于 -5%",
+      "最差回撤超过 15%",
+    ]));
   });
 });
 

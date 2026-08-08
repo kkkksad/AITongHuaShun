@@ -41,7 +41,7 @@ export interface DailyQualityStockReport {
   };
   methodology: {
     name: "每日优质股评分";
-    version: "0.1.0";
+    version: "0.2.0";
     dataScope: {
       realtimeQuote: boolean;
       historicalBars: boolean;
@@ -115,6 +115,20 @@ function computeIntradayStrength(quote: MarketQuote): number {
   return 40;
 }
 
+function computeTurnoverScore(turnover: number): number {
+  if (!Number.isFinite(turnover) || turnover <= 0) return 50;
+
+  if (turnover < 2) {
+    return round(20 + 70 * (turnover / 2) ** 1.5);
+  }
+  if (turnover <= 6) {
+    return round(100 - Math.abs(turnover - 4) * 5);
+  }
+
+  const overheating = clamp((turnover - 6) / 12, 0, 1);
+  return round(90 - 70 * overheating ** 1.35);
+}
+
 function inferStyle(
   quote: MarketQuote,
   score: number,
@@ -150,18 +164,21 @@ function scoreQuote(quote: MarketQuote): Omit<DailyQualityStock, "rank"> {
     momentum: round(scoreRange(change, 0.2, 3.8, -4.5, 8.5)),
     stability: round(100 - clamp(amplitude || Math.abs(change) * 1.8, 0, 12) * 6.5),
     intradayStrength: computeIntradayStrength(quote),
-    turnover: turnover > 0 ? round(scoreRange(turnover, 1.2, 8, 0.1, 18)) : 55,
+    turnover: computeTurnoverScore(turnover),
   };
 
   if (factors.liquidity >= 72) reasons.push("成交额/成交量满足优质股筛选的流动性门槛。");
   if (change >= 0.2 && change <= 3.8) reasons.push("涨跌幅处于健康强势区间，未出现过热追涨。");
   if (factors.intradayStrength >= 65) reasons.push("价格靠近日内强势区间，承接表现较好。");
   if (factors.stability >= 70) reasons.push("日内波动相对可控，适合进入观察池。");
-  if (turnover > 0 && turnover <= 8) reasons.push("换手率处于相对健康区间。");
+  if (turnover >= 2 && turnover <= 6) reasons.push("换手率处于 2%-6% 的健康换手甜蜜区。");
+  if (turnover <= 0) reasons.push("换手率字段缺失，本因子按中性证据处理。");
 
   if (change <= -3) riskFlags.push("当日跌幅较大，优先等待企稳确认。");
   if (change >= 7) riskFlags.push("当日涨幅过高，隔日回撤风险上升。");
   if (amplitude >= 10) riskFlags.push("振幅过大，短线不确定性偏高。");
+  if (turnover > 0 && turnover < 0.8) riskFlags.push("换手不足，价格信号可能缺少成交确认。");
+  if (turnover >= 10 && turnover < 18) riskFlags.push("换手偏热，追涨与次日回撤风险上升。");
   if (turnover >= 18) riskFlags.push("换手率过高，可能存在情绪化交易。");
   if (factors.liquidity < 55) riskFlags.push("流动性不足，模拟成交质量较差。");
   if (!quote.tradable || quote.price <= 0) riskFlags.push("标的不可交易或价格无效。");
@@ -233,7 +250,7 @@ export function buildDailyQualityStocks(
     },
     methodology: {
       name: "每日优质股评分",
-      version: "0.1.0",
+      version: "0.2.0",
       dataScope: {
         realtimeQuote: marketDataProvider !== "mock",
         historicalBars: false,

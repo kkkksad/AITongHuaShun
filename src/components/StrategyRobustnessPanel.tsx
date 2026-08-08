@@ -24,6 +24,12 @@ function formatPercent(value: number): string {
   return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}%`;
 }
 
+function evidenceTone(score: number): "strong" | "medium" | "weak" {
+  if (score >= 75) return "strong";
+  if (score >= 50) return "medium";
+  return "weak";
+}
+
 export function StrategyRobustnessPanel() {
   const reportQuery = useQuery({
     queryKey: ["strategy-robustness", 12, 500],
@@ -90,7 +96,7 @@ export function StrategyRobustnessPanel() {
 
           <div className="research-alert">
             <ShieldCheck size={16} />
-            <span>{report.methodology.stabilityMeaning}</span>
+            <span>{report.methodology.stabilityMeaning} {report.methodology.evidenceScoreMeaning}</span>
           </div>
 
           {report.warnings.map((warning) => (
@@ -109,12 +115,16 @@ export function StrategyRobustnessPanel() {
                     <th>策略</th>
                     <th>盈利窗口</th>
                     <th>交易数</th>
+                    <th>证据分</th>
+                    <th>脆弱性</th>
+                    <th>稳健门槛</th>
                     <th>中位收益</th>
                     <th>最差收益</th>
                     <th>平均回撤</th>
                     <th>最差回撤</th>
                     <th>平均胜率</th>
-                    <th>稳健门槛</th>
+                    <th>平均夏普</th>
+                    <th>平均盈亏比</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -127,6 +137,24 @@ export function StrategyRobustnessPanel() {
                       </td>
                       <td><strong>{entry.profitableWindows}/{entry.windows}</strong></td>
                       <td>{entry.totalTrades}</td>
+                      <td>
+                        <span className={`evidence-badge evidence-${evidenceTone(entry.evidenceScore)}`}>
+                          {entry.evidenceScore}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          className={`fragility-badge${entry.fragilityFlags.length > 0 ? " has-flags" : ""}`}
+                          title={entry.fragilityFlags.length > 0 ? entry.fragilityFlags.join("；") : "未触发当前脆弱性规则"}
+                        >
+                          {entry.fragilityFlags.length > 0 ? `${entry.fragilityFlags.length} 项` : "无"}
+                        </span>
+                      </td>
+                      <td>
+                        <span className={`rank-badge gate-${entry.stabilityGate}`}>
+                          {gateLabels[entry.stabilityGate]}
+                        </span>
+                      </td>
                       <td className={entry.medianReturn >= 0 ? "positive" : "negative"}>
                         {formatPercent(entry.medianReturn)}
                       </td>
@@ -136,11 +164,10 @@ export function StrategyRobustnessPanel() {
                       <td>{formatPercent(-entry.averageMaxDrawdown)}</td>
                       <td className="negative">{formatPercent(-entry.worstMaxDrawdown)}</td>
                       <td>{formatPercent(entry.averageWinRate)}</td>
-                      <td>
-                        <span className={`rank-badge gate-${entry.stabilityGate}`}>
-                          {gateLabels[entry.stabilityGate]}
-                        </span>
+                      <td className={entry.averageSharpeRatio >= 0 ? "positive" : "negative"}>
+                        {entry.averageSharpeRatio.toFixed(2)}
                       </td>
+                      <td>{entry.averageProfitFactor === null ? "—" : entry.averageProfitFactor.toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>

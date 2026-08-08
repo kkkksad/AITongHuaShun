@@ -25,6 +25,7 @@ import { LoginPage } from "./components/LoginPage";
 import { StrategyWorkflow } from "./components/StrategyWorkflow";
 import { TradingStrategies } from "./components/TradingStrategies";
 import { SystemMonitor } from "./components/SystemMonitor";
+import { ViewportDeferred } from "./components/ViewportDeferred";
 import { strategies } from "./data/mockData";
 import { runBacktest } from "./lib/backtest";
 import { buildOrderSymbolNames } from "./lib/orderPresentation";
@@ -342,18 +343,24 @@ function App() {
       </Suspense>
 
       <div className="two-column wide-left">
-        <Suspense fallback={<LazyFallback />}>
-          <BacktestResults compact result={result} />
-        </Suspense>
-        <Suspense fallback={<LazyFallback />}>
-          <FlowPanel />
-        </Suspense>
+        <ViewportDeferred minHeight={420}>
+          <Suspense fallback={<LazyFallback />}>
+            <BacktestResults compact result={result} />
+          </Suspense>
+        </ViewportDeferred>
+        <ViewportDeferred minHeight={420}>
+          <Suspense fallback={<LazyFallback />}>
+            <FlowPanel />
+          </Suspense>
+        </ViewportDeferred>
       </div>
 
       <div className="two-column">
-        <Suspense fallback={<LazyFallback />}>
-          <NewsPanel />
-        </Suspense>
+        <ViewportDeferred minHeight={420}>
+          <Suspense fallback={<LazyFallback />}>
+            <NewsPanel />
+          </Suspense>
+        </ViewportDeferred>
         <section className="panel watch-panel">
           <div className="panel-header">
             <div>

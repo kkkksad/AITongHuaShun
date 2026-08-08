@@ -170,6 +170,10 @@ export interface StrategyRobustnessEntry {
   averageMaxDrawdown: number;
   worstMaxDrawdown: number;
   averageWinRate: number;
+  averageSharpeRatio: number;
+  averageProfitFactor: number | null;
+  evidenceScore: number;
+  fragilityFlags: string[];
   stabilityGate: "pass" | "caution" | "blocked";
 }
 
@@ -194,6 +198,7 @@ export interface StrategyRobustnessReport {
     nonOverlappingWindows: true;
     minimumAlignedTradingDays: number;
     stabilityMeaning: string;
+    evidenceScoreMeaning: string;
   };
   entries: StrategyRobustnessEntry[];
   warnings: string[];

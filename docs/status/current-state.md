@@ -41,7 +41,7 @@
 - **策略研究排行榜** —— `/api/research/strategy-leaderboard` 基于当前行情快照生成确定性研究样本，运行内置策略参数搜索，并在前端策略页展示成功率/胜率优先排名；排序同时约束交易次数、正收益和最大回撤，结果明确标注为研究/模拟，不代表真实收益。
 - **A 股强势回踩确认战法** —— 新增偏高胜率的研究候选策略：中期趋势向上、温和回踩、放量反包确认后入场，并使用固定止盈止损控制单笔风险；已纳入策略研究排行榜，但当前仍基于快照合成样本，不代表真实收益。
 - **今日候选扫描器** —— `/api/research/daily-candidates` 基于当前行情快照输出 A 股强势回踩确认战法的候选清单、模拟动作、建议 paper 仓位和止盈止损；前端默认展示 24 个候选，后端最多支持 80 个，结果只用于研究和模拟盘观察。
-- **每日优质股筛选器** —— `/api/research/daily-quality-stocks` 基于当前行情快照按流动性、涨跌幅健康度、波动稳定性、日内强度和换手率生成优质股观察池；前端默认展示 30 个标的，后端最多支持 120 个，当前尚未接授权历史 K 线、财务因子或真实新闻。
+- **每日优质股筛选器** —— `/api/research/daily-quality-stocks` 基于当前行情快照按流动性、涨跌幅健康度、波动稳定性、日内强度和换手率生成优质股观察池；换手率已升级为有界的 2%-6% 非线性健康甜蜜区，低换手、过热换手和字段缺失均有独立解释；前端默认展示 30 个标的，后端最多支持 120 个，当前尚未接授权历史 K 线、财务因子或真实新闻。
 - **研究学习状态** —— `/api/research/learning-state` 记录运行期内存中的行情快照样本、策略排行榜运行、今日候选扫描和每日优质股运行摘要；研究管线页显示累计样本、研究运行、覆盖标的和下一批数据需求。当前仅为内存观测层，服务重启会清空，尚未升级为授权历史行情缓存或数据库。
 - **研究管线实时化** —— 研究管线页已从静态说明升级为读取策略排行榜、今日候选扫描和学习状态，并修复默认导出组件被命名懒加载误用导致的页面渲染异常。
 - **前端稳定性防护** —— 开发环境自动注销 PWA Service Worker 并清理缓存；REST 客户端会识别 API 代理误返回 HTML 的情况，WebSocket 默认支持同源代理和显式 `VITE_WS_URL`。
@@ -82,7 +82,7 @@
 - **按名称/代码的个股趋势研判** —— AkShare 桥复用全 A 股内存行情缓存解析代码、完整名称和模糊名称；Fastify `/api/research/stock-trend` 读取单股默认 360 日前复权日线，基于均线、5/20/60 日动量、RSI、波动、ATR 和量能输出 3/5/10 个交易日规则分，并严格滚动验证过去同方向信号。市场页显示真实 Close/MA20/MA60 图、经验涨跌/震荡概率、阶段高低点中位交易日和幅度、支撑压力、依据与风险；规则分和经验频率都不是校准后的未来概率，也不会触发订单。
 - **A 股五日变盘雷达** —— `/api/research/turning-points` 使用决策时点冻结的 20 日区间和 ATR 阈值定义之后 5 个交易日的向上、向下或不变盘，并按历史相似压缩状态统计条件频率；至少 20 个样本才返回概率，样本不足时明确留空。准备度综合历史频率、压缩、边界、量能和样本置信度，仅用于排序，当前只扫描最多 12 只受控观察池且不会直接生成 paper 或真实订单。
 - **港股真实只读研究** —— AkShare 桥新增 `/api/market/hk/quotes` 与 `/api/market/hk/history`，Fastify `/api/research/hong-kong-market` 输出真实港股快照、前复权日线、5/20/60 日趋势、波动、回撤、量能和同趋势历史验证。快照优先新浪并回退东方财富，历史优先东方财富并回退新浪；港股不读取账户，不继承 A 股 T+1、100 股整手或费用规则，也不进入当前 A 股 paper。
-- **真实 A 股多窗口稳健性验证** —— `/api/research/strategy-robustness` 从真实可交易快照按流动性选取最多 12 只 A 股，读取每只最多 500 根前复权日线，以预先固定参数在三个互不重叠窗口独立回测 14 个代表策略。报告交易数、盈利窗口、中位/最差收益、平均/最差回撤和平均胜率；不在验证样本上重新调参，并与合成参数排行榜分开展示。
+- **真实 A 股多窗口稳健性验证** —— `/api/research/strategy-robustness` 从真实可交易快照按流动性选取最多 12 只 A 股，读取每只最多 500 根前复权日线，以预先固定参数在三个互不重叠窗口独立回测 14 个代表策略。报告交易数、盈利窗口、中位/最差收益、平均/最差回撤、平均胜率、平均夏普和平均盈亏比，并生成 0-100 证据分与窗口/交易样本/尾部收益/回撤脆弱标签；证据分衡量验证充分度，不是盈利概率。不在验证样本上重新调参，并与合成参数排行榜分开展示。
 - **国内期货只读研究桥** —— AkShare 桥接和 Fastify 提供 16 个白名单主连代码的快照与有界历史接口，历史单次查询上限与受控观察池一致为 16，覆盖股指、贵金属、有色、黑色、能源化工和农产品。历史序列明确标记 `continuous-main`；Fastify 会透传有界的桥接错误详情，上游失败返回空结果和警告，不返回静态价格，也不读取期货账户或生成期货订单。
 - **跨市场策略上下文** —— `/api/research/cross-market-strategy-context` 组合全球指数、股指期货、工业品和贵金属的真实只读数据，输出 `risk-on / neutral / risk-off / mixed`、优先与降权策略族、仓位姿态、证据和降级信息。该结果只解释当前适用策略，不直接修改 A 股 paper 计划或提交订单。
 - **外部市场对 A 股影响研究** —— AkShare 桥新增受控全球指数快照/历史、A 股指数历史和 BTC/ETH 快照端点；Fastify `/api/research/external-market-impact?days=500` 按美股隔夜、亚洲市场和数字资产分组，并只使用严格早于 A 股目标交易日的外部收盘验证沪深 300 条件统计。少于 60 个样本不显示命中率，BTC/ETH 不能独立产生方向，所有结果均为只读观察。
@@ -96,6 +96,7 @@
 - **自动执行审计降噪** —— `PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY=true` 时，定时器只在 A 股交易时段运行；盘前、午休、盘后和周末不再每分钟写入重复跳过记录。交易时段内相同的无订单 timer 结果只在状态变化或 15 分钟心跳时持久化；订单提交、拒绝、manual、startup 和决策审计仍逐笔保留。
 - **策略状态前端解释** —— 研究管线页显示当前市场状态、路由置信度、仓位姿态、现金储备、选中策略、允许策略数量和是否允许新增 paper 仓位，不把启发式置信度描述为盈利概率。
 - **策略实验室阶段式工作流** —— 策略页按“配置策略、合成回测、独立真实验证、Paper 观察”四阶段按需挂载内容；修改已运行配置会明确标记旧结果过期，真实历史固定策略组不会冒充当前浏览器参数结果。
+- **总览首屏按视口延迟** —— 新增 `ViewportDeferred`，总览下方的回测图表、板块展望和真实新闻接近视口时才挂载；占位保留稳定高度，快速跳过模块时也会通过滚动兜底挂载；这会延迟 Recharts 图表块和新闻请求，不改变数据或交易语义。
 - **总览每日任务中心** —— 总览复用当日 Paper 计划、每日市场复盘和本地自动执行器状态，按盘前、盘中、午间、盘后和非交易日展示任务阶段，并汇总计划质量、市场状态、资金仓位、订单结果、异常原因和下一步动作；任一接口失败时保留其余可用事实，真实交易继续关闭。
 - **Paper 观察列表分页** —— 每日优质股继续有界请求 30 条、今日候选继续有界请求 24 条，两张表在浏览器端每页只渲染 8 条；页码会在数据缩短后自动夹紧，当前仅减少 DOM 和滚动噪音，不改变研究评分、排序或后端查询语义。
 - **系统日志服务端分页** —— `/api/logs` 默认每页 50 条、单页上限 200 条，返回原始总数、过滤总数、当前页数量、页码和前后页状态；日志页支持前后页、模块防抖搜索和正确范围展示，进入历史页会暂停自动刷新，导出明确限定为当前页 JSON。
@@ -203,6 +204,16 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-08-08 全局研究证据与总览首屏性能优化
+Server Vitest: 55 files, 825 tests passed
+Web Vitest: 30 files, 103 tests passed
+Python pytest: 109 tests passed; 1 FastAPI/httpx deprecation warning and 1 local pytest-cache permission warning
+TypeScript project-reference checks passed; Vite production build passed with 2,321 modules transformed
+Browser: desktop and 390x844 responsive checks passed; initial overview kept all three deferred modules unmounted, fast scroll mounted all three, page overflow remained 0, chart SVG rendered after mount
+Safety: Paper-only, real trading disabled, risk gates unchanged; esoteric output remains outside routing, notification and execution inputs
+Production: restricted deployment entrypoint completed; AkShare, Fastify and Nginx containers healthy; HTTP redirects to HTTPS; /healthz, HTTPS root and /api/health returned 200; mode paper + akshare, auth enabled, real trading disabled
+Remote: GitHub push remained blocked by local GitHub HTTPS reachability and unavailable write-authorized SSH key; production was updated directly through the same restricted server deployment entrypoint used by GitHub Actions
+
 2026-08-08 esoteric observation and adaptive strategy coverage upgrade
 Server Vitest: 54 files, 822 tests passed
 Web Vitest: 29 files, 100 tests passed

@@ -43,6 +43,10 @@ export interface StrategyRobustnessEntry {
   averageMaxDrawdown: number;
   worstMaxDrawdown: number;
   averageWinRate: number;
+  averageSharpeRatio: number;
+  averageProfitFactor: number | null;
+  evidenceScore: number;
+  fragilityFlags: string[];
   stabilityGate: "pass" | "caution" | "blocked";
 }
 
@@ -67,6 +71,7 @@ export interface StrategyRobustnessReport {
     nonOverlappingWindows: true;
     minimumAlignedTradingDays: 300;
     stabilityMeaning: string;
+    evidenceScoreMeaning: string;
   };
   entries: StrategyRobustnessEntry[];
   warnings: string[];
@@ -246,6 +251,10 @@ function round(value: number, digits = 4): number {
   return Math.round(value * factor) / factor;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 function average(values: number[]): number {
   return values.length === 0
     ? 0
@@ -341,6 +350,48 @@ type StrategyRobustnessAggregate = Pick<
   | "averageWinRate"
 >;
 
+export interface StrategyEvidenceInput {
+  windows: number;
+  profitableWindows: number;
+  totalTrades: number;
+  worstReturn: number;
+  worstMaxDrawdown: number;
+}
+
+export function assessStrategyEvidence(metrics: StrategyEvidenceInput): {
+  evidenceScore: number;
+  fragilityFlags: string[];
+} {
+  const windows = Math.max(0, metrics.windows);
+  const totalTrades = Math.max(0, metrics.totalTrades);
+  const fragilityFlags: string[] = [];
+
+  if (windows < WINDOW_COUNT) fragilityFlags.push("有效窗口不足 3 个");
+  if (totalTrades < 6) fragilityFlags.push("交易样本少于 6 笔");
+  if (metrics.worstReturn < -0.05) fragilityFlags.push("最差窗口收益低于 -5%");
+  if (metrics.worstMaxDrawdown > 0.15) fragilityFlags.push("最差回撤超过 15%");
+
+  const coverage = clamp(windows / WINDOW_COUNT, 0, 1);
+  const activity = clamp(totalTrades / 12, 0, 1);
+  const consistency = windows > 0
+    ? clamp(metrics.profitableWindows / windows, 0, 1)
+    : 0;
+  const tailReturn = clamp((metrics.worstReturn + 0.08) / 0.12, 0, 1);
+  const drawdownControl = 1 - clamp(metrics.worstMaxDrawdown / 0.25, 0, 1);
+  let evidenceScore = round((
+    coverage * 0.15 +
+    activity * 0.25 +
+    consistency * 0.25 +
+    tailReturn * 0.15 +
+    drawdownControl * 0.2
+  ) * 100, 0);
+
+  if (windows < WINDOW_COUNT) evidenceScore = Math.min(evidenceScore, 45);
+  if (totalTrades < 3) evidenceScore = Math.min(evidenceScore, 35);
+
+  return { evidenceScore, fragilityFlags };
+}
+
 function stabilityGate(
   metrics: StrategyRobustnessAggregate,
 ): StrategyRobustnessEntry["stabilityGate"] {
@@ -368,6 +419,7 @@ export async function evaluateFixedStrategyProfiles(
   profiles: StrategyRobustnessProfile[] = STRATEGY_ROBUSTNESS_PROFILES,
 ): Promise<StrategyRobustnessEntry[]> {
   const windows = splitChronologicalWindows(snapshots, WINDOW_COUNT);
+  if (windows.length === 0) return [];
   const entries: Array<Omit<StrategyRobustnessEntry, "rank">> = [];
 
   for (const profile of profiles) {
@@ -387,6 +439,12 @@ export async function evaluateFixedStrategyProfiles(
 
     const returns = reports.map((metrics) => metrics.totalReturn);
     const drawdowns = reports.map((metrics) => metrics.maxDrawdownPercent);
+    const sharpeRatios = reports
+      .map((metrics) => metrics.sharpeRatio)
+      .filter(Number.isFinite);
+    const profitFactors = reports
+      .map((metrics) => metrics.profitFactor)
+      .filter(Number.isFinite);
     const aggregate = {
       windows: reports.length,
       profitableWindows: returns.filter((value) => value > 0).length,
@@ -397,12 +455,18 @@ export async function evaluateFixedStrategyProfiles(
       worstMaxDrawdown: round(Math.max(...drawdowns, 0)),
       averageWinRate: round(average(reports.map((metrics) => metrics.winRate))),
     };
+    const evidence = assessStrategyEvidence(aggregate);
     entries.push({
       strategyKey: profile.strategyKey,
       strategyName: profile.factory.name,
       strategyFamily: profile.strategyFamily,
       fixedParams: { ...profile.fixedParams },
       ...aggregate,
+      averageSharpeRatio: round(average(sharpeRatios)),
+      averageProfitFactor: profitFactors.length > 0
+        ? round(average(profitFactors))
+        : null,
+      ...evidence,
       stabilityGate: stabilityGate(aggregate),
     });
   }
@@ -411,6 +475,7 @@ export async function evaluateFixedStrategyProfiles(
   return entries
     .sort((left, right) =>
       gateRank[left.stabilityGate] - gateRank[right.stabilityGate] ||
+      right.evidenceScore - left.evidenceScore ||
       right.profitableWindows - left.profitableWindows ||
       right.medianReturn - left.medianReturn ||
       left.worstMaxDrawdown - right.worstMaxDrawdown,
@@ -445,6 +510,8 @@ function baseReport(input: BuildStrategyRobustnessInput): StrategyRobustnessRepo
       minimumAlignedTradingDays: MINIMUM_ALIGNED_DAYS,
       stabilityMeaning:
         "固定参数在三个不重叠真实历史窗口分别回测；至少两窗盈利、六笔交易、中位收益为正且最差回撤不超过 15% 才通过。",
+      evidenceScoreMeaning:
+        "证据分综合窗口完整性、交易样本、一致性和尾部风险，仅衡量当前验证充分度，不是盈利概率。",
     },
     entries: [],
     warnings: [],
