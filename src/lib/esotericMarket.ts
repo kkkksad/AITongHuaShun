@@ -1,10 +1,32 @@
+import type { MarketQuote, MarketSnapshot } from "../../shared/trading";
+
 export type EsotericMethod = "yijing" | "wuxing" | "number";
+export type EsotericMarketState =
+  | "expanding"
+  | "balanced"
+  | "contracting"
+  | "unavailable";
+export type EsotericAlignment = "aligned" | "conflicted" | "unavailable";
+
+export interface EsotericMarketContext {
+  sampleCount: number;
+  validCount: number;
+  advancingCount: number;
+  decliningCount: number;
+  breadthRatio: number | null;
+  averageChangePercent: number | null;
+  averageAmplitudePercent: number | null;
+  coverageRatio: number;
+  freshnessMinutes: number | null;
+  marketState: EsotericMarketState;
+}
 
 export interface EsotericMarketReadingInput {
   date: string;
   target: string;
   round?: number;
   method?: EsotericMethod;
+  marketContext?: EsotericMarketContext;
 }
 
 export interface HexagramReference {
@@ -26,6 +48,19 @@ export interface EsotericMarketReading {
   ritual: string;
   risk: string;
   seed: number;
+  methodLens: string;
+  symbolLayer: {
+    state: Exclude<EsotericMarketState, "unavailable">;
+    focus: string;
+  };
+  marketMirror: {
+    state: EsotericMarketState;
+    summary: string;
+    evidence: string[];
+  };
+  alignment: EsotericAlignment;
+  entertainmentIndex: number;
+  reviewQuestions: [string, string];
 }
 
 const hexagrams: HexagramReference[] = [
@@ -129,6 +164,162 @@ function normalizeRound(round: number | undefined): number {
   return Math.max(0, Math.floor(round));
 }
 
+function roundNumber(value: number, digits = 2): number {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function quoteAmplitude(quote: MarketQuote): number {
+  if (quote.amplitude !== undefined && Number.isFinite(quote.amplitude)) {
+    return Math.max(0, quote.amplitude);
+  }
+  if (
+    quote.high !== undefined &&
+    quote.low !== undefined &&
+    quote.high >= quote.low &&
+    quote.previousClose > 0
+  ) {
+    return Math.max(0, ((quote.high - quote.low) / quote.previousClose) * 100);
+  }
+  return Math.abs(quote.changePercent) * 1.5;
+}
+
+export function summarizeEsotericMarketContext(
+  market: MarketSnapshot | undefined,
+  now = new Date(),
+): EsotericMarketContext {
+  const tradable = market?.quotes.filter((quote) => quote.tradable) ?? [];
+  const valid = tradable.filter((quote) =>
+    quote.price > 0 &&
+    quote.previousClose > 0 &&
+    Number.isFinite(quote.changePercent),
+  );
+  const validCount = valid.length;
+  const sampleCount = tradable.length;
+  const coverageRatio = sampleCount > 0 ? validCount / sampleCount : 0;
+  const sufficient = validCount >= 3 && coverageRatio >= 0.5;
+
+  if (!sufficient) {
+    return {
+      sampleCount,
+      validCount,
+      advancingCount: valid.filter((quote) => quote.changePercent > 0).length,
+      decliningCount: valid.filter((quote) => quote.changePercent < 0).length,
+      breadthRatio: null,
+      averageChangePercent: null,
+      averageAmplitudePercent: null,
+      coverageRatio: roundNumber(coverageRatio, 4),
+      freshnessMinutes: null,
+      marketState: "unavailable",
+    };
+  }
+
+  const advancingCount = valid.filter((quote) => quote.changePercent > 0).length;
+  const decliningCount = valid.filter((quote) => quote.changePercent < 0).length;
+  const breadthRatio = advancingCount / validCount;
+  const averageChangePercent = valid.reduce(
+    (sum, quote) => sum + quote.changePercent,
+    0,
+  ) / validCount;
+  const averageAmplitudePercent = valid.reduce(
+    (sum, quote) => sum + quoteAmplitude(quote),
+    0,
+  ) / validCount;
+  const freshnessSamples = valid.flatMap((quote) => {
+    const updatedAt = new Date(quote.updatedAt).getTime();
+    if (!Number.isFinite(updatedAt)) return [];
+    return [Math.max(0, (now.getTime() - updatedAt) / 60_000)];
+  });
+  const freshnessMinutes = freshnessSamples.length > 0
+    ? freshnessSamples.reduce((sum, age) => sum + age, 0) /
+      freshnessSamples.length
+    : null;
+  const marketState: EsotericMarketState =
+    breadthRatio >= 0.6 && averageChangePercent >= 0.3
+      ? "expanding"
+      : breadthRatio <= 0.4 && averageChangePercent <= -0.3
+        ? "contracting"
+        : "balanced";
+
+  return {
+    sampleCount,
+    validCount,
+    advancingCount,
+    decliningCount,
+    breadthRatio: roundNumber(breadthRatio, 4),
+    averageChangePercent: roundNumber(averageChangePercent),
+    averageAmplitudePercent: roundNumber(averageAmplitudePercent),
+    coverageRatio: roundNumber(coverageRatio, 4),
+    freshnessMinutes: freshnessMinutes === null
+      ? null
+      : roundNumber(freshnessMinutes, 1),
+    marketState,
+  };
+}
+
+function symbolicState(seed: number): Exclude<EsotericMarketState, "unavailable"> {
+  const index = (seed >>> 19) % 3;
+  if (index === 0) return "expanding";
+  if (index === 1) return "contracting";
+  return "balanced";
+}
+
+function methodLens(
+  method: EsotericMethod,
+  element: (typeof elements)[number],
+  changingLine: number,
+  target: string,
+): string {
+  if (method === "wuxing") {
+    return `五行节律以${element}为当次文化锚点，观察${target}的强弱转换是否有连续事实。`;
+  }
+  if (method === "number") {
+    return `数字起卦聚焦日期、对象与轮次的固定节律，只比较本次记录与收盘事实。`;
+  }
+  return `易经卦象聚焦第 ${changingLine} 爻的变化张力，提醒先核对条件是否真的发生。`;
+}
+
+function stateLabel(state: EsotericMarketState): string {
+  if (state === "expanding") return "扩张";
+  if (state === "contracting") return "收缩";
+  if (state === "balanced") return "均衡";
+  return "不可用";
+}
+
+function buildMarketMirror(context: EsotericMarketContext | undefined): EsotericMarketReading["marketMirror"] {
+  if (!context || context.marketState === "unavailable") {
+    return {
+      state: "unavailable",
+      summary: "真实快照样本不足，今天只保留文化记录，不比较盘面。",
+      evidence: ["需要至少 3 个有效可交易报价且覆盖率不低于 50%。"],
+    };
+  }
+  return {
+    state: context.marketState,
+    summary: `现实样本处于${stateLabel(context.marketState)}状态，上涨宽度 ${((context.breadthRatio ?? 0) * 100).toFixed(0)}%，平均涨跌 ${(context.averageChangePercent ?? 0).toFixed(2)}%。`,
+    evidence: [
+      `有效报价 ${context.validCount}/${context.sampleCount}，上涨 ${context.advancingCount}、下跌 ${context.decliningCount}。`,
+      `平均振幅 ${(context.averageAmplitudePercent ?? 0).toFixed(2)}%，平均新鲜度 ${context.freshnessMinutes?.toFixed(1) ?? "--"} 分钟。`,
+    ],
+  };
+}
+
+function buildReviewQuestions(
+  method: EsotericMethod,
+  target: string,
+  context: EsotericMarketContext | undefined,
+): [string, string] {
+  const methodQuestion = method === "wuxing"
+    ? `收盘时，${target}的量价强弱是否出现了可以记录的转换？`
+    : method === "number"
+      ? `本次固定索引对应的观察与${target}收盘事实有何差异？`
+      : `第一个被验证或证伪的条件是什么，发生在什么时间？`;
+  const marketQuestion = context?.marketState === "unavailable"
+    ? "真实快照为何不足，数据恢复后结论是否需要标记为不可比较？"
+    : "收盘时上涨宽度、平均涨跌和振幅是否仍支持盘中看到的状态？";
+  return [methodQuestion, marketQuestion];
+}
+
 export function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -146,19 +337,38 @@ export function createEsotericMarketReading(
   const hexagram = hexagrams[seed % hexagrams.length];
   const element = elements[(seed >>> 5) % elements.length];
   const tendency = tendencies[(seed >>> 8) % tendencies.length];
+  const changingLine = (seed % 6) + 1;
+  const symbolState = symbolicState(seed);
+  const marketMirror = buildMarketMirror(input.marketContext);
+  const alignment: EsotericAlignment = marketMirror.state === "unavailable"
+    ? "unavailable"
+    : symbolState === marketMirror.state ||
+        symbolState === "balanced" ||
+        marketMirror.state === "balanced"
+      ? "aligned"
+      : "conflicted";
 
   return {
     date: input.date,
     target,
     method,
     hexagram,
-    changingLine: (seed % 6) + 1,
+    changingLine,
     element,
     tendency,
     observation: observations[(seed >>> 12) % observations.length],
     ritual: rituals[(seed >>> 16) % rituals.length],
     risk: "玄学结果不具备预测能力，不得据此开仓、加仓、减仓或修改风险限额。",
     seed,
+    methodLens: methodLens(method, element, changingLine, target),
+    symbolLayer: {
+      state: symbolState,
+      focus: `${stateLabel(symbolState)}象意 · ${hexagram.theme}`,
+    },
+    marketMirror,
+    alignment,
+    entertainmentIndex: (seed >>> 21) % 101,
+    reviewQuestions: buildReviewQuestions(method, target, input.marketContext),
   };
 }
 

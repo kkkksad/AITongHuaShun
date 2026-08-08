@@ -9,7 +9,13 @@ export interface AdaptiveCandidateStrategySignal {
     | "momentum"
     | "kairosQuietPullback"
     | "kairosWashoutRecovery"
-    | "aSharePullback";
+    | "aSharePullback"
+    | "movingAverageCross"
+    | "macd"
+    | "turtle"
+    | "rsi"
+    | "bollingerBands"
+    | "kairosRiskOffRecovery";
   strategyName: string;
   score: number;
   evidence: string[];
@@ -52,6 +58,17 @@ function isValidatedWashout(stock: StockRegimeResult): boolean {
     stock.validation.samples >= 20 &&
     stock.validation.hitRate5d !== null &&
     stock.validation.hitRate5d >= 0.55;
+}
+
+function isRangeRegime(routing: AdaptiveStrategyRouting): boolean {
+  return routing.regime === "range-low-volatility" ||
+    routing.regime === "range-high-volatility";
+}
+
+function hasControlledIntradayMove(quote: MarketQuote, maximumChange: number): boolean {
+  return quote.changePercent >= -1.8 &&
+    quote.changePercent <= maximumChange &&
+    amplitude(quote) <= 5.5;
 }
 
 export function rankAdaptiveCandidateStrategies(
@@ -113,6 +130,83 @@ export function rankAdaptiveCandidateStrategies(
       [
         "真实历史形态为健康趋势，20 日均线斜率向上。",
         `当前振幅 ${currentAmplitude.toFixed(2)}%，符合低波趋势纪律。`,
+      ],
+    );
+  }
+
+  if (
+    stock.regime === "healthy-trend" &&
+    stock.confidence >= 0.55 &&
+    stock.features.return20d >= 0.02 &&
+    stock.features.return60d >= 0.04 &&
+    stock.features.ma20Slope5d > 0 &&
+    stock.features.ma60Slope5d >= 0 &&
+    stock.features.distanceFromMa20 >= -0.02 &&
+    stock.features.distanceFromMa20 <= 0.08 &&
+    hasControlledIntradayMove(quote, 3.2)
+  ) {
+    add(
+      "movingAverageCross",
+      "均线交叉确认",
+      72 +
+        stock.confidence * 7 +
+        clamp(stock.features.ma20Slope5d * 100, 0, 5) +
+        clamp(stock.features.return20d * 20, 0, 4),
+      [
+        "20/60 日历史收益为正，短中期均线斜率保持向上。",
+        "价格距离 20 日均线受控，当前波动未触发追高过滤。",
+      ],
+    );
+  }
+
+  if (
+    (stock.regime === "healthy-trend" || isValidatedWashout(stock)) &&
+    stock.features.return20d > 0 &&
+    stock.features.ma20Slope5d > 0 &&
+    stock.features.ma60Slope5d >= -0.005 &&
+    quote.open !== undefined &&
+    quote.price >= quote.open &&
+    quote.changePercent >= -0.2 &&
+    quote.changePercent <= 3.5 &&
+    currentAmplitude <= 5.5
+  ) {
+    add(
+      "macd",
+      "MACD趋势确认",
+      69 +
+        stock.confidence * 7 +
+        clamp(stock.features.return20d * 28, 0, 7) +
+        clamp(stock.features.ma20Slope5d * 100, 0, 4),
+      [
+        "用中期收益和均线斜率作为 MACD 方向代理，避免引入未确认的盘后数据。",
+        "当前价格高于开盘且振幅受控，短线方向得到快照复核。",
+      ],
+    );
+  }
+
+  if (
+    stock.regime === "healthy-trend" &&
+    stock.confidence >= 0.58 &&
+    stock.features.return20d >= 0.025 &&
+    stock.features.return60d >= 0.05 &&
+    stock.features.distanceFromMa60 > 0 &&
+    currentPosition !== null &&
+    currentPosition >= 0.48 &&
+    currentPosition <= 0.86 &&
+    quote.changePercent >= 0 &&
+    quote.changePercent <= 3.8 &&
+    currentAmplitude <= 6
+  ) {
+    add(
+      "turtle",
+      "海龟趋势突破",
+      67 +
+        stock.confidence * 8 +
+        clamp(stock.features.return60d * 22, 0, 7) +
+        currentPosition * 3,
+      [
+        "60 日历史趋势和价格相对中期均线保持正向。",
+        "价格位于日内中上区间，但涨幅仍低于追涨阈值。",
       ],
     );
   }
@@ -217,6 +311,54 @@ export function rankAdaptiveCandidateStrategies(
       [
         "实时快照回踩评分通过，并由真实历史形态复核。",
         "涨幅和流动性处于受控确认区间。",
+      ],
+    );
+  }
+
+  if (
+    isRangeRegime(routing) &&
+    (stock.regime === "healthy-trend" || stock.regime === "unclear") &&
+    currentPosition !== null &&
+    currentPosition <= 0.4 &&
+    stock.features.return20d >= -0.06 &&
+    stock.features.return20d <= 0.08 &&
+    stock.features.distanceFromMa20 >= -0.08 &&
+    stock.features.distanceFromMa20 <= 0.02 &&
+    hasControlledIntradayMove(quote, 0.8)
+  ) {
+    add(
+      "rsi",
+      "RSI区间回归",
+      61 +
+        clamp((0.4 - currentPosition) * 18, 0, 6) +
+        clamp((0.08 - stock.features.return20d) * 12, 0, 4),
+      [
+        "当前被路由为震荡市场，价格靠近日内下沿且中期偏离受控。",
+        "RSI 仅作为区间回归观察代理，不在趋势恶化标的上使用。",
+      ],
+    );
+  }
+
+  if (
+    isRangeRegime(routing) &&
+    (stock.regime === "healthy-trend" || stock.regime === "unclear") &&
+    currentPosition !== null &&
+    currentPosition <= 0.35 &&
+    stock.features.distanceFromMa20 >= -0.1 &&
+    stock.features.distanceFromMa20 <= 0.025 &&
+    currentAmplitude <= 5 &&
+    quote.changePercent >= -1.8 &&
+    quote.changePercent <= 0.5
+  ) {
+    add(
+      "bollingerBands",
+      "布林带下沿回归",
+      59 +
+        clamp((0.35 - currentPosition) * 16, 0, 5) +
+        clamp((5 - currentAmplitude) * 1.2, 0, 4),
+      [
+        "价格位于日内低位、振幅受控，符合震荡下沿的研究条件。",
+        "布林带只用于小仓位 paper 观察，跌破风险需重新评估。",
       ],
     );
   }

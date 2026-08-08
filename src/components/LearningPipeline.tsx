@@ -35,6 +35,26 @@ const stageIcons = {
   review: Eye,
 };
 
+const adaptiveStrategyLabels: Record<string, string> = {
+  kairosLowVolTrend: "低波趋势",
+  kairosTrendHealth: "趋势健康",
+  momentum: "动量确认",
+  movingAverageCross: "均线交叉",
+  macd: "MACD确认",
+  turtle: "海龟突破",
+  kairosQuietPullback: "安静回踩",
+  kairosWashoutRecovery: "洗盘恢复",
+  aSharePullback: "强势回踩",
+  rsi: "RSI回归",
+  bollingerBands: "布林下沿",
+  kairosRiskOffRecovery: "风险修复",
+  kairosCapitalShield: "资金盾牌",
+};
+
+function adaptiveStrategyLabel(key: string): string {
+  return adaptiveStrategyLabels[key] ?? key;
+}
+
 export default function LearningPipeline() {
   const leaderboardQuery = useQuery(strategyLeaderboardQueryOptions(120));
   const candidatesQuery = useQuery(dailyCandidatesQueryOptions(24));
@@ -358,6 +378,19 @@ export default function LearningPipeline() {
                 ，拟投入 {(paperPlanQuality.cashDeploymentPercent * 100).toFixed(1)}%，拦截{" "}
                 {paperPlanQuality.actionCounts.blocked}，持有 {paperPlanQuality.actionCounts.hold}
               </span>
+              <span>
+                策略命中 {paperPlanQuality.strategyCoverage.matchedCandidateCount} 个候选 · 覆盖{" "}
+                {paperPlanQuality.strategyCoverage.matchedKeys.length > 0
+                  ? paperPlanQuality.strategyCoverage.matchedKeys
+                      .map(adaptiveStrategyLabel)
+                      .join(" / ")
+                  : "暂无"}
+                {" · "}未匹配 {paperPlanQuality.strategyCoverage.unmatchedCandidateCount} 个
+              </span>
+              <span>
+                主要拦截：{paperPlanQuality.strategyCoverage.dominantBlocker ?? "无"}
+              </span>
+              <small>合格机会覆盖，不强制换手，不代表预期盈利。</small>
             </div>
           )}
           <div className="learning-run-list">

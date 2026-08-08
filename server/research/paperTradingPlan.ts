@@ -14,7 +14,7 @@ import {
 import type { DailyCandidateReport } from "./dailyCandidates";
 import type { DailyQualityStockReport } from "./dailyQualityStocks";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
-import { selectAdaptiveCandidateStrategy } from "./adaptiveCandidateStrategy";
+import { rankAdaptiveCandidateStrategies } from "./adaptiveCandidateStrategy";
 import type {
   MarketRegimeResearchReport,
   StockRegimeResult,
@@ -53,6 +53,15 @@ export interface PaperTradingPlanQualitySummary {
   plannedSellNotional: number;
   cashDeploymentPercent: number;
   remainingCashAfterPlan: number;
+  strategyCoverage: {
+    eligibleKeys: string[];
+    matchedKeys: string[];
+    matchedCandidateCount: number;
+    unmatchedCandidateCount: number;
+    dominantStrategyKey: string | null;
+    dominantBlocker: string | null;
+    summary: string;
+  };
   planQuality: "actionable" | "watch-only" | "blocked";
   summary: string;
 }
@@ -175,6 +184,7 @@ const MAX_ENTRY_ROUND_TRIP_FEE_RATIO = 0.01;
 function assessEntryPersistence(input: {
   required: boolean;
   stockRegime: StockRegimeResult | undefined;
+  strategyKey?: string | null;
 }): { allowed: boolean; explanation: string; ruleCheck: string } {
   if (!input.required) {
     return {
@@ -209,6 +219,23 @@ function assessEntryPersistence(input: {
       allowed: true,
       explanation: `真实历史形态为已验证洗盘候选，置信度 ${(stock.confidence * 100).toFixed(0)}%，5 日历史命中率 ${(stock.validation.hitRate5d! * 100).toFixed(0)}%。`,
       ruleCheck: `entry-persistence: pass (validated-washout ${stock.confidence.toFixed(2)})`,
+    };
+  }
+  const rangeStructureValidated =
+    (input.strategyKey === "rsi" || input.strategyKey === "bollingerBands") &&
+    stock.regime === "unclear" &&
+    stock.barCount >= 120 &&
+    stock.confidence >= 0.55 &&
+    stock.features.return20d >= -0.06 &&
+    stock.features.return20d <= 0.08 &&
+    stock.features.distanceFromMa20 >= -0.1 &&
+    stock.features.distanceFromMa20 <= 0.03 &&
+    stock.features.ma20Slope5d >= -0.01;
+  if (rangeStructureValidated) {
+    return {
+      allowed: true,
+      explanation: `真实历史样本 ${stock.barCount} 根，区间偏离和均线斜率保持受控。`,
+      ruleCheck: `entry-persistence: pass (range-structure ${stock.confidence.toFixed(2)})`,
     };
   }
   return {
@@ -321,6 +348,7 @@ function buildQualitySummary(input: {
   cash: number;
   commissionRate: number;
   minimumCommission: number;
+  strategyCoverage: PaperTradingPlanQualitySummary["strategyCoverage"];
 }): PaperTradingPlanQualitySummary {
   const actionCounts = countOperations(input.operations);
   const plannedBuyNotional = input.operations
@@ -349,6 +377,9 @@ function buildQualitySummary(input: {
       : actionCounts.blocked > 0
         ? "blocked"
         : "watch-only";
+  const blockedReasons = summarizeBlockedReasons(input.operations);
+  const dominantBlocker = Object.entries(blockedReasons)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? null;
 
   const summary =
     planQuality === "actionable"
@@ -362,13 +393,17 @@ function buildQualitySummary(input: {
     affordableCandidateCount: input.affordableCandidateCount,
     positionConflictCount: input.positionConflictCount,
     actionCounts,
-    blockedReasons: summarizeBlockedReasons(input.operations),
+    blockedReasons,
     plannedBuyNotional: Number(plannedBuyNotional.toFixed(2)),
     plannedBuyFees: Number(plannedBuyFees.toFixed(2)),
     plannedCashRequired: Number(plannedCashRequired.toFixed(2)),
     plannedSellNotional: Number(plannedSellNotional.toFixed(2)),
     cashDeploymentPercent: Number(cashDeploymentPercent.toFixed(4)),
     remainingCashAfterPlan: Number(remainingCashAfterPlan.toFixed(2)),
+    strategyCoverage: {
+      ...input.strategyCoverage,
+      dominantBlocker,
+    },
     planQuality,
     summary,
   };
@@ -654,14 +689,15 @@ export function buildPaperTradingPlan(input: {
     const usesAdaptiveHistoryRoute = Boolean(
       input.adaptiveRouting && input.marketRegimeResearch,
     );
-    const signal = input.adaptiveRouting && quote
-      ? selectAdaptiveCandidateStrategy({
+    const rankedSignals = input.adaptiveRouting && quote
+      ? rankAdaptiveCandidateStrategies({
           quote,
           stockRegime: stockRegimeMap.get(base.symbol),
           routing: input.adaptiveRouting,
           candidateScore: base.score,
         })
-      : null;
+      : [];
+    const signal = rankedSignals[0] ?? null;
     return {
       ...base,
       strategy: signal?.strategyName ?? base.strategy,
@@ -669,6 +705,7 @@ export function buildPaperTradingPlan(input: {
         (usesAdaptiveHistoryRoute ? null : "snapshot-candidate"),
       strategyScore: signal?.score ?? base.score,
       strategyEvidence: signal?.evidence ?? [],
+      strategyCandidates: rankedSignals.map((candidateSignal) => candidateSignal.strategyKey),
       strategyEligible: signal !== null || !usesAdaptiveHistoryRoute,
       defensiveScore: defensiveCandidateScore(base, quote),
     };
@@ -755,6 +792,29 @@ export function buildPaperTradingPlan(input: {
   const positionConflictCount = candidatePool.filter((candidate) =>
     positionMap.has(candidate.symbol),
   ).length;
+  const strategyKeyCounts = new Map<string, number>();
+  const matchedCandidateCount = candidatePool.filter((candidate) => {
+    const keys = candidate.strategyCandidates ?? [];
+    for (const key of keys) {
+      strategyKeyCounts.set(key, (strategyKeyCounts.get(key) ?? 0) + 1);
+    }
+    return candidate.strategyEligible && keys.length > 0;
+  }).length;
+  const matchedKeys = [...strategyKeyCounts.keys()].sort();
+  const dominantStrategyKey = [...strategyKeyCounts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? null;
+  const unmatchedCandidateCount = candidatePool.length - matchedCandidateCount;
+  const strategyCoverage = {
+    eligibleKeys: [...(input.adaptiveRouting?.eligibleStrategyKeys ?? [])],
+    matchedKeys,
+    matchedCandidateCount,
+    unmatchedCandidateCount,
+    dominantStrategyKey,
+    dominantBlocker: null,
+    summary: matchedKeys.length > 0
+      ? `当前候选覆盖 ${matchedKeys.length} 个路由策略，最高覆盖为 ${dominantStrategyKey}；未匹配候选 ${unmatchedCandidateCount} 个。`
+      : "当前没有候选通过可用策略规则，保持观察，不强行增加交易。",
+  } satisfies PaperTradingPlanQualitySummary["strategyCoverage"];
 
   let remainingPlannedCash = plannedCashBudget;
   const adaptiveAllowsBuying = input.adaptiveRouting?.allowNewPositions ?? true;
@@ -943,6 +1003,7 @@ export function buildPaperTradingPlan(input: {
     const entryPersistence = assessEntryPersistence({
       required: Boolean(input.marketRegimeResearch),
       stockRegime: stockRegimeMap.get(candidate.symbol),
+      strategyKey: candidate.strategyKey,
     });
     entryRuleChecks.push(entryPersistence.ruleCheck);
     if (!entryPersistence.allowed) {
@@ -1065,6 +1126,7 @@ export function buildPaperTradingPlan(input: {
       cash: input.account.cash,
       commissionRate: input.commissionRate,
       minimumCommission: input.minimumCommission,
+      strategyCoverage,
     }),
     operations,
     guardrails: [
