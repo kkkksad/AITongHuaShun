@@ -95,6 +95,9 @@ export interface RealResearchDataInput {
   snapshot: MarketSnapshot;
   timeoutMs: number;
   preferredSymbols?: string[];
+  newsItemLimit?: number;
+  newsSymbolLimit?: number;
+  includeGlobalMarkets?: boolean;
   fetchImpl?: typeof fetch;
 }
 
@@ -285,6 +288,23 @@ function buildImpact(
   };
 }
 
+function buildNewsOnlyImpact(
+  snapshot: MarketSnapshot,
+): RealResearchDataFeed["impact"] {
+  const aShareContext = snapshot.quotes
+    .filter((quote) => !quote.tradable)
+    .slice(0, 4)
+    .map((quote) => `${quote.name} ${quote.changePercent.toFixed(2)}%`);
+
+  return {
+    direction: "neutral",
+    score: 0,
+    summary: "轻量新闻快照只拉取多源新闻，外围市场影响留给完整研究流更新。",
+    drivers: [],
+    aShareContext,
+  };
+}
+
 function unavailableFeed(input: RealResearchDataInput): RealResearchDataFeed {
   return {
     generatedAt: new Date().toISOString(),
@@ -327,26 +347,43 @@ export async function buildRealResearchDataFeed(
 
   const fetchImpl = input.fetchImpl ?? fetch;
   const baseUrl = trimTrailingSlash(input.bridgeUrl);
+  const newsItemLimit = clamp(
+    Math.floor(input.newsItemLimit ?? NEWS_ITEM_LIMIT),
+    10,
+    NEWS_ITEM_LIMIT,
+  );
+  const includeGlobalMarkets = input.includeGlobalMarkets ?? true;
   const requestedNewsSymbols = selectNewsSymbols(
     input.snapshot,
     input.preferredSymbols,
+    input.newsSymbolLimit,
   );
   const newsUrl = new URL(`${baseUrl}/api/research/news`);
-  newsUrl.searchParams.set("limit", String(NEWS_ITEM_LIMIT));
+  newsUrl.searchParams.set("limit", String(newsItemLimit));
   newsUrl.searchParams.set("symbols", requestedNewsSymbols.join(","));
+  const globalMarketRequest = includeGlobalMarkets
+    ? fetchBridgeJson<BridgeGlobalResponse>({
+      url: `${baseUrl}/api/market/global?limit=12`,
+      token: input.bridgeToken,
+      timeoutMs: input.timeoutMs,
+      cacheTtlMs: 5 * 60_000,
+      fetchImpl,
+      })
+    : Promise.resolve<BridgeGlobalResponse>({
+        provider: "akshare",
+        fetchedAt: undefined,
+        markets: [],
+        warning: null,
+      });
   const [newsResult, globalResult] = await Promise.allSettled([
     fetchBridgeJson<BridgeNewsResponse>({
       url: newsUrl.toString(),
       token: input.bridgeToken,
       timeoutMs: input.timeoutMs,
+      cacheTtlMs: 10 * 60_000,
       fetchImpl,
     }),
-    fetchBridgeJson<BridgeGlobalResponse>({
-      url: `${baseUrl}/api/market/global?limit=12`,
-      token: input.bridgeToken,
-      timeoutMs: input.timeoutMs,
-      fetchImpl,
-    }),
+    globalMarketRequest,
   ]);
 
   const news =
@@ -409,9 +446,9 @@ export async function buildRealResearchDataFeed(
 
   const degraded =
     Boolean(news.warning) ||
-    Boolean(globalMarkets.warning) ||
+    (includeGlobalMarkets && Boolean(globalMarkets.warning)) ||
     news.items.length === 0 ||
-    globalMarkets.markets.length === 0;
+    (includeGlobalMarkets && globalMarkets.markets.length === 0);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -420,7 +457,9 @@ export async function buildRealResearchDataFeed(
     sourceStatus: degraded ? "degraded" : "live-read-only",
     news,
     globalMarkets,
-    impact: buildImpact(globalMarkets.markets, input.snapshot),
+    impact: includeGlobalMarkets
+      ? buildImpact(globalMarkets.markets, input.snapshot)
+      : buildNewsOnlyImpact(input.snapshot),
     guardrails: [
       "该接口只读取真实新闻和全球市场数据，不包含账户、下单或撤单能力。",
       "所有新闻必须保留来源、发布时间、抓取时间和去重依据；缺失时明确显示降级。",

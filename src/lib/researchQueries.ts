@@ -3,6 +3,7 @@ import {
   fetchDailyCandidates,
   fetchDailyMarketReview,
   fetchPaperTradingPlan,
+  fetchRealResearchDataFeed,
   fetchStrategyLeaderboard,
 } from "./tradingApi";
 
@@ -45,5 +46,22 @@ export function dailyMarketReviewQueryOptions() {
     queryFn: ({ signal }) => fetchDailyMarketReview(signal),
     refetchInterval: 60_000,
     staleTime: 30_000,
+  });
+}
+
+export function realResearchNewsFeedQueryOptions() {
+  const newsLimit = 40;
+  const symbolLimit = 3;
+  return queryOptions({
+    queryKey: ["real-research-data-feed", "news", newsLimit, symbolLimit] as const,
+    queryFn: ({ signal }) =>
+      fetchRealResearchDataFeed(signal, {
+        scope: "news",
+        newsLimit,
+        symbolLimit,
+      }),
+    refetchInterval: 15 * 60_000,
+    staleTime: 10 * 60_000,
+    placeholderData: (previousData) => previousData,
   });
 }

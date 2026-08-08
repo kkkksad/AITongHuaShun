@@ -277,6 +277,27 @@ describe("session-aware trading API", () => {
     );
   });
 
+  it("requests a lightweight news-only feed with bounded parameters", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      sourceStatus: "live-read-only",
+      news: { items: [] },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchRealResearchDataFeed(undefined, {
+      scope: "news",
+      newsLimit: 40,
+      symbolLimit: 3,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/api\/research\/real-data-feed\?scope=news&newsLimit=40&symbolLimit=3$/,
+      ),
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
   it("requests bounded real IPO subscription research with the session cookie", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({

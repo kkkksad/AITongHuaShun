@@ -178,6 +178,12 @@ const ipoSubscriptionsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(80).default(40),
 });
 
+const realDataFeedQuerySchema = z.object({
+  scope: z.enum(["full", "news"]).default("full"),
+  newsLimit: z.coerce.number().int().min(10).max(80).default(80),
+  symbolLimit: z.coerce.number().int().min(1).max(8).default(8),
+});
+
 const publicAuthPaths = new Set([
   "/api/health",
   "/api/auth/login",
@@ -1213,15 +1219,32 @@ export async function buildTradingApp(
       summary: "获取真实只读研究数据流",
       description:
         "从 AkShare 桥接读取真实新闻和全球市场指数，并生成 A 股影响摘要。该接口只读，不包含账户或订单能力。",
+      querystring: {
+        type: "object",
+        properties: {
+          scope: { type: "string", enum: ["full", "news"] },
+          newsLimit: { type: "integer", minimum: 10, maximum: 80 },
+          symbolLimit: { type: "integer", minimum: 1, maximum: 8 },
+        },
+      },
     },
-  }, async () => buildRealResearchDataFeed({
-    bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
-    bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
-    marketDataProvider: system.marketDataProvider,
-    mode: options.config.MARKET_MODE,
-    snapshot: system.market.getSnapshot(),
-    timeoutMs: options.config.MARKET_DATA_TIMEOUT_MS,
-  }));
+  }, async (request) => {
+    const query = realDataFeedQuerySchema.parse(request.query);
+    const newsOnly = query.scope === "news";
+    return buildRealResearchDataFeed({
+      bridgeUrl: options.config.AKSHARE_BRIDGE_URL,
+      bridgeToken: options.config.AKSHARE_BRIDGE_TOKEN || undefined,
+      marketDataProvider: system.marketDataProvider,
+      mode: options.config.MARKET_MODE,
+      snapshot: system.market.getSnapshot(),
+      timeoutMs: newsOnly
+        ? Math.min(options.config.MARKET_DATA_TIMEOUT_MS, 12_000)
+        : options.config.MARKET_DATA_TIMEOUT_MS,
+      newsItemLimit: query.newsLimit,
+      newsSymbolLimit: query.symbolLimit,
+      includeGlobalMarkets: !newsOnly,
+    });
+  });
 
   // 账户
   app.get("/api/account", {

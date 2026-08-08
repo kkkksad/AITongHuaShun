@@ -656,9 +656,12 @@ export function analyzeMarketRegimeData(
     input.stockHistory.warning,
   );
   if (sectorOutlooks.length === 0) warnings.push("没有板块具备至少 61 根有效日线。");
-  if (stockRegimes.length === 0) warnings.push("没有取得候选股票历史日线。");
+  const usableStockCount = stockRegimes.filter(
+    (stock) => stock.regime !== "insufficient-data",
+  ).length;
+  if (usableStockCount === 0) warnings.push("没有候选股票具备至少 61 根有效历史日线。");
   const sourceStatus =
-    warnings.length === 0 && sectorOutlooks.length > 0 && stockRegimes.length > 0
+    sectorOutlooks.length >= 2 && usableStockCount > 0
       ? "live-read-only"
       : "degraded";
 
@@ -813,6 +816,7 @@ export async function buildMarketRegimeResearch(
       url: `${baseUrl}/api/market/sectors?limit=80`,
       token: input.bridgeToken,
       timeoutMs: input.timeoutMs,
+      cacheTtlMs: 60_000,
       fetchImpl,
     });
   } catch (error) {
@@ -856,6 +860,7 @@ export async function buildMarketRegimeResearch(
           url: sectorUrl.toString(),
           token: input.bridgeToken,
           timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
+          cacheTtlMs: 5 * 60_000,
           fetchImpl,
         })
       : Promise.resolve(failedHistory("unavailable", "没有可查询的行业板块。")),
@@ -864,6 +869,7 @@ export async function buildMarketRegimeResearch(
           url: stockUrl.toString(),
           token: input.bridgeToken,
           timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
+          cacheTtlMs: 5 * 60_000,
           fetchImpl,
         })
       : Promise.resolve(failedHistory("unavailable", "当前快照没有可查询股票。")),

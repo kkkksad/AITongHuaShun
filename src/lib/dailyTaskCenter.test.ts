@@ -43,7 +43,7 @@ function makePlan(
     rules: [],
     topStrategy: null,
     adaptiveRouting: {
-      version: "1.3.0",
+      version: "1.4.0",
       generatedAt: "2026-07-17T00:45:00.000Z",
       regime: "trend-up-low-volatility",
       confidence: 0.72,

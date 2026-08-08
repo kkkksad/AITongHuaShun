@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BridgeRequestError,
   bridgeErrorMessage,
+  clearBridgeRequestCache,
   fetchBridgeJson,
 } from "./bridgeRequest";
 
@@ -14,7 +15,74 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 describe("fetchBridgeJson", () => {
   afterEach(() => {
+    clearBridgeRequestCache();
     vi.useRealTimers();
+  });
+
+  it("deduplicates identical in-flight reads and reuses them until the TTL expires", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-08T01:00:00.000Z"));
+    const fetchImpl = vi.fn().mockImplementation(async () =>
+      jsonResponse({ sequence: 1 }),
+    );
+    const input = {
+      url: "http://127.0.0.1:8800/api/market/history?symbols=600519",
+      timeoutMs: 1_000,
+      cacheTtlMs: 5_000,
+      fetchImpl,
+    };
+
+    const [first, second] = await Promise.all([
+      fetchBridgeJson<{ sequence: number }>(input),
+      fetchBridgeJson<{ sequence: number }>(input),
+    ]);
+    const third = await fetchBridgeJson<{ sequence: number }>(input);
+
+    expect(first).toEqual({ sequence: 1 });
+    expect(second).toBe(first);
+    expect(third).toBe(first);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(5_001);
+    await fetchBridgeJson(input);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("evicts a rejected cached read so the next refresh can recover", async () => {
+    const fetchImpl = vi.fn()
+      .mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValueOnce(jsonResponse({ recovered: true }));
+    const input = {
+      url: "http://127.0.0.1:8800/api/recoverable",
+      timeoutMs: 1_000,
+      cacheTtlMs: 5_000,
+      fetchImpl,
+    };
+
+    await expect(fetchBridgeJson(input)).rejects.toMatchObject({ code: "network" });
+    await expect(fetchBridgeJson(input)).resolves.toEqual({ recovered: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps cached reads isolated by bearer-token scope", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ scope: "alpha" }))
+      .mockResolvedValueOnce(jsonResponse({ scope: "beta" }));
+    const input = {
+      url: "http://127.0.0.1:8800/api/scoped-research",
+      timeoutMs: 1_000,
+      cacheTtlMs: 5_000,
+      fetchImpl,
+    };
+
+    const alpha = await fetchBridgeJson({ ...input, token: "token-alpha" });
+    const beta = await fetchBridgeJson({ ...input, token: "token-beta" });
+    const alphaAgain = await fetchBridgeJson({ ...input, token: "token-alpha" });
+
+    expect(alpha).toEqual({ scope: "alpha" });
+    expect(beta).toEqual({ scope: "beta" });
+    expect(alphaAgain).toBe(alpha);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("returns JSON and sends only the optional bearer token", async () => {

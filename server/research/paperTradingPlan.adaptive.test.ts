@@ -108,7 +108,7 @@ function routing(
   overrides: Partial<AdaptiveStrategyRouting> = {},
 ): AdaptiveStrategyRouting {
   return {
-    version: "1.3.0",
+    version: "1.4.0",
     generatedAt: snapshot.marketTime,
     regime: "trend-up-low-volatility",
     confidence: 0.72,
@@ -158,15 +158,37 @@ function routing(
 function marketRegime(
   stockRegime: StockRegime,
   confidence = 0.72,
+  symbol = "600519",
 ): MarketRegimeResearchReport {
   return {
     sourceStatus: "live-read-only",
     stockRegimes: [
       {
-        symbol: "600519",
-        name: "测试持仓",
+        rank: 1,
+        symbol,
+        name: symbol === "601988" ? "低价候选" : "测试持仓",
+        latestDate: "2026-07-14",
+        barCount: 180,
         regime: stockRegime,
         confidence,
+        features: {
+          return5d: 0.01,
+          return20d: 0.08,
+          return60d: 0.16,
+          pullbackFrom20DayHigh: 0.03,
+          distanceFromMa20: 0.01,
+          distanceFromMa60: 0.08,
+          ma20Slope5d: 0.02,
+          ma60Slope5d: 0.01,
+          volumeRatio: 0.88,
+        },
+        validation: {
+          samples: 32,
+          hitRate5d: 0.61,
+          averageForwardReturn5d: 0.012,
+        },
+        evidence: ["真实历史趋势保持向上"],
+        riskFlags: [],
       },
     ],
   } as unknown as MarketRegimeResearchReport;
@@ -225,11 +247,12 @@ function build(input: {
   research?: MarketRegimeResearchReport;
   includeCandidate?: boolean;
   orders?: OrderRecord[];
+  cash?: number;
 }) {
   return buildPaperTradingPlan({
     snapshot,
     provider: "akshare",
-    account: account(),
+    account: account(input.cash),
     positions: input.positions ?? [],
     orders: input.orders ?? [],
     leaderboard: leaderboard(),
@@ -426,5 +449,25 @@ describe("adaptive paper trading plan", () => {
       strategyKey: "kairosCapitalShield",
       strategyName: "资金盾牌",
     });
+  });
+
+  it("records a real-history routed strategy on an executable paper buy", () => {
+    const plan = build({
+      cash: 8_000,
+      includeCandidate: true,
+      research: marketRegime("healthy-trend", 0.72, "601988"),
+    });
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "601988",
+        action: "paper-buy-plan",
+        strategy: "KAIROS趋势健康",
+        reason: expect.stringContaining("真实历史"),
+        ruleChecks: expect.arrayContaining([
+          "strategy-route: pass (kairosTrendHealth)",
+        ]),
+      }),
+    ]));
   });
 });

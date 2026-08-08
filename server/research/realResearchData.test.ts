@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MarketSnapshot } from "../../shared/trading";
+import { clearBridgeRequestCache } from "./bridgeRequest";
 import {
   buildRealResearchDataFeed,
   selectNewsSymbols,
@@ -57,6 +58,8 @@ const snapshot: MarketSnapshot = {
 };
 
 describe("bounded multi-source real research news", () => {
+  beforeEach(() => clearBridgeRequestCache());
+
   it("prioritizes current holdings before liquid snapshot symbols", () => {
     expect(selectNewsSymbols(snapshot, ["600519", "999999"], 3)).toEqual([
       "600519",
@@ -164,7 +167,11 @@ describe("bounded multi-source real research news", () => {
       fetchImpl: fetchImpl as typeof fetch,
     });
 
-    const newsUrl = new URL(String(fetchImpl.mock.calls[0][0]));
+    const newsCall = fetchImpl.mock.calls.find(([url]) =>
+      String(url).includes("/api/research/news"),
+    );
+    expect(newsCall).toBeDefined();
+    const newsUrl = new URL(String(newsCall![0]));
     expect(newsUrl.pathname).toBe("/api/research/news");
     expect(newsUrl.searchParams.get("limit")).toBe("80");
     expect(newsUrl.searchParams.get("symbols")).toBe("600519,000001,300750");
@@ -175,5 +182,55 @@ describe("bounded multi-source real research news", () => {
     expect(report.news.availableCount).toBe(4);
     expect(report.news.deduplicatedCount).toBe(2);
     expect(report.news.sources).toHaveLength(3);
+  });
+
+  it("uses a bounded news-only request without waiting for global markets", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL) => {
+      const requested = new URL(String(url));
+      expect(requested.pathname).toBe("/api/research/news");
+      expect(requested.searchParams.get("limit")).toBe("20");
+      expect(requested.searchParams.get("symbols")).toBe("000001,300750");
+      return new Response(JSON.stringify({
+        provider: "akshare",
+        source: "multi-source-financial-news",
+        fetchedAt: "2026-08-08T02:00:00.000Z",
+        requestedSymbols: ["000001", "300750"],
+        rawCount: 1,
+        availableCount: 1,
+        deduplicatedCount: 0,
+        sources: [{ source: "财联社", category: "market", itemCount: 1 }],
+        items: [{
+          id: "market-1",
+          source: "财联社",
+          title: "A股市场新闻",
+          publishedAt: "2026-08-08T09:50:00+08:00",
+          fetchedAt: "2026-08-08T02:00:00.000Z",
+          url: "https://example.com/news-1",
+          symbols: [],
+          sentiment: "neutral",
+          summary: null,
+          category: "market",
+        }],
+        warning: null,
+      }), { status: 200 });
+    });
+
+    const report = await buildRealResearchDataFeed({
+      bridgeUrl: "http://127.0.0.1:8800",
+      marketDataProvider: "akshare",
+      mode: "paper",
+      snapshot,
+      timeoutMs: 1_000,
+      newsItemLimit: 20,
+      newsSymbolLimit: 2,
+      includeGlobalMarkets: false,
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(report.sourceStatus).toBe("live-read-only");
+    expect(report.news.items).toHaveLength(1);
+    expect(report.globalMarkets.markets).toEqual([]);
+    expect(report.impact.summary).toContain("轻量新闻快照");
   });
 });

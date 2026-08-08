@@ -42,7 +42,7 @@ export interface ExternalMarketShadowResult extends ExternalMarketShadowInput {
 }
 
 export interface AdaptiveStrategyRouting {
-  version: "1.3.0";
+  version: "1.4.0";
   generatedAt: string;
   regime: AdaptiveMarketRegime;
   confidence: number;
@@ -398,7 +398,7 @@ export function routeAdaptiveStrategies(
   if (
     report.sourceStatus !== "live-read-only" ||
     sectors.length < 2 ||
-    report.warnings.length > 0
+    stocks.length === 0
   ) {
     regime = "unclear";
     evidence.push("真实历史研究处于降级或样本不足状态，策略路由回退到现金等待。");
@@ -453,6 +453,10 @@ export function routeAdaptiveStrategies(
       }
     }
     evidence.push(`趋势恶化个股占比为 ${(deterioratingStockRatio * 100).toFixed(1)}%。`);
+    if (report.warnings.length > 0) {
+      evidence.push("部分非关键数据仍在刷新；当前仅使用已完成且满足长度要求的真实历史序列。");
+      riskFlags.push(...report.warnings);
+    }
   }
 
   const profile = riskProfile(regime);
@@ -481,7 +485,7 @@ export function routeAdaptiveStrategies(
   });
 
   return {
-    version: "1.3.0",
+    version: "1.4.0",
     generatedAt: new Date().toISOString(),
     regime,
     confidence: officialConfidence,

@@ -619,6 +619,20 @@ describe("trading API", () => {
     expect(response.json().guardrails.join("")).toContain("不包含账户、下单或撤单能力");
   });
 
+  it("validates lightweight real-data feed bounds", async () => {
+    const invalidNewsLimit = await app.inject({
+      method: "GET",
+      url: "/api/research/real-data-feed?scope=news&newsLimit=9&symbolLimit=3",
+    });
+    const invalidSymbolLimit = await app.inject({
+      method: "GET",
+      url: "/api/research/real-data-feed?scope=news&newsLimit=40&symbolLimit=9",
+    });
+
+    expect(invalidNewsLimit.statusCode).toBe(400);
+    expect(invalidSymbolLimit.statusCode).toBe(400);
+  });
+
   it("does not replace real strategy robustness history with synthetic data", async () => {
     const response = await app.inject({
       method: "GET",

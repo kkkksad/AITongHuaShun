@@ -9,8 +9,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { paginateItems } from "../lib/pagination";
+import { realResearchNewsFeedQueryOptions } from "../lib/researchQueries";
 import {
-  fetchRealResearchDataFeed,
   type RealNewsCategory,
   type RealNewsItem,
   type RealResearchDataFeed,
@@ -70,12 +70,7 @@ export function filterNewsItems(
 export function NewsPanel() {
   const [category, setCategory] = useState<NewsCategoryFilter>("all");
   const [page, setPage] = useState(1);
-  const realDataQuery = useQuery({
-    queryKey: ["real-research-data-feed"],
-    queryFn: ({ signal }) => fetchRealResearchDataFeed(signal),
-    refetchInterval: 180_000,
-    staleTime: 120_000,
-  });
+  const realDataQuery = useQuery(realResearchNewsFeedQueryOptions());
 
   const feed = realDataQuery.data;
   const newsItems = feed?.news.items ?? [];
@@ -149,7 +144,7 @@ export function NewsPanel() {
         hasData={Boolean(feed)}
         isError={realDataQuery.isError}
         isLoading={realDataQuery.isLoading}
-        loadingText="正在读取多源真实新闻和全球市场数据…"
+        loadingText="正在读取轻量真实新闻快照..."
         unavailableText="真实新闻与外围市场暂不可用，请检查 API 与 AkShare 行情桥接。"
       />
       {warning && !realDataQuery.isError ? (

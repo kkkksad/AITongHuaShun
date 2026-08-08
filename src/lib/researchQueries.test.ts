@@ -3,6 +3,7 @@ import {
   dailyCandidatesQueryOptions,
   dailyMarketReviewQueryOptions,
   paperTradingPlanQueryOptions,
+  realResearchNewsFeedQueryOptions,
   strategyLeaderboardQueryOptions,
 } from "./researchQueries";
 
@@ -48,5 +49,19 @@ describe("research query options", () => {
     expect(review.refetchInterval).toBe(60_000);
     expect(plan.staleTime).toBe(30_000);
     expect(review.staleTime).toBe(30_000);
+  });
+
+  it("keeps the overview news request lightweight and cached", () => {
+    const news = realResearchNewsFeedQueryOptions();
+
+    expect(news.queryKey).toEqual([
+      "real-research-data-feed",
+      "news",
+      40,
+      3,
+    ]);
+    expect(news.staleTime).toBe(10 * 60_000);
+    expect(news.refetchInterval).toBe(15 * 60_000);
+    expect(news.placeholderData).toBeTypeOf("function");
   });
 });

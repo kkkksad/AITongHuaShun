@@ -198,7 +198,7 @@ describe("routeAdaptiveStrategies", () => {
     ]));
     expect(result.cashReserveRatio).toBe(0.1);
     expect(result.confidence).toBeGreaterThanOrEqual(0.6);
-    expect(result.version).toBe("1.3.0");
+    expect(result.version).toBe("1.4.0");
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
       "kairosLowVolTrend",
       "kairosTrendHealth",

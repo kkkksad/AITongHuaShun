@@ -437,24 +437,28 @@ export async function buildExternalMarketImpact(
       url: `${baseUrl}/api/market/global?limit=10`,
       token: input.bridgeToken,
       timeoutMs: input.timeoutMs * 4,
+      cacheTtlMs: 5 * 60_000,
       fetchImpl,
     }),
     fetchBridgeJson<HistoricalBarsResponse>({
       url: globalHistoryUrl.toString(),
       token: input.bridgeToken,
       timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
+      cacheTtlMs: 10 * 60_000,
       fetchImpl,
     }),
     fetchBridgeJson<HistoricalBarsResponse>({
       url: benchmarkUrl.toString(),
       token: input.bridgeToken,
       timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
+      cacheTtlMs: 10 * 60_000,
       fetchImpl,
     }),
     fetchBridgeJson<BridgeCryptoResponse>({
       url: `${baseUrl}/api/market/crypto/quotes`,
       token: input.bridgeToken,
       timeoutMs: input.timeoutMs * 4,
+      cacheTtlMs: 2 * 60_000,
       fetchImpl,
     }),
   ]);

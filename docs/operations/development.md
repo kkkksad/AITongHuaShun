@@ -103,6 +103,8 @@ AKSHARE_BRIDGE_HISTORY_PROVIDER_TIMEOUT=8
 
 `http://127.0.0.1:8800/health` 的 `researchCache` 和 `historyCache` 会返回当前条目数、上限、淘汰数和过期清理数；`historyScheduler` 额外返回 `active`、`pending`、`maxActive`、`maxPending`、完成数和拒绝数。`active + pending` 不应超过 `maxPending`。单次历史研究请求最多读取 20 个行业板块、16 个受控期货主连、12 只股票和 60 至 500 个交易日。只有请求超过接纳上限、上游超时或响应预算用完时接口才会返回部分真实结果和明确 `warning`，后续刷新逐步复用已预热序列；不会使用静态数据补齐。行业日线为不复权，个股日线为前复权；该缓存不会在 `data/` 中长期堆积原始日线。
 
+Fastify 侧还会在 `server/research/bridgeRequest.ts` 对只读桥接请求做最多 64 项的内存 Promise 缓存。相同 URL 和凭据作用域的并发读取会合并，失败请求立即移除；板块快照、历史日线、新闻、全球市场和数字资产按数据新鲜度使用 1 至 10 分钟短 TTL。该层不写磁盘，也不缓存账户、持仓、订单、审计或任何修改请求。新闻面板使用 `scope=news&newsLimit=40&symbolLimit=3`，成功结果 10 分钟内复用并每 15 分钟后台刷新，新闻刷新不再重复读取全球市场。
+
 开发日志在执行 `npm run dev` 或 `npm run dev:a-share` 前自动清理，默认预算为：
 
 ```text

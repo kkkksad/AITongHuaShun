@@ -74,7 +74,7 @@
 - **KAIROS 形态策略与回测日期修复** —— “洗盘恢复”“趋势健康”和“风险收缩修复”均已纳入确定性研究，内置优化策略为 15 种，并进入合成样本排行榜候选。回测仓储使用当前历史 bar 的市场日期执行 A 股 T+1，不会把所有历史 bar 错当成电脑当天而永久拦截卖出。
 - **真实板块研究前端** —— 市场页新增“板块展望 / 形态识别”模块；旧 `FlowPanel` 不再读取静态 `sectorFlows`，上游不可用时显示降级原因。桌面与手机宽表格将横向滚动限制在模块内部。
 - **市场状态自适应策略路由** —— `AdaptiveStrategyRouter` 使用真实行业 20/60 日收益、均线斜率、波动率、板块宽度、当日平均涨幅和个股形态宽度，确定性输出七类市场状态、置信度、允许/禁用策略、仓位姿态、现金储备和新增仓位缩放。新增 `risk-off-recovery` 用于区分中期弱势与单日广度修复，默认仍禁止新增仓位。它只在 AkShare 只读行情模式下参与本地 paper 计划；Mock 模式继续保留原有确定性演示行为。
-- **策略路由 1.3 防守状态稳定** —— 七类市场状态分别输出优先策略、适用条件、回避条件、复核触发器以及开盘/上午/下午/尾盘最大 paper 仓位；同一交易日已确认 `risk-off` 或 `risk-off-recovery` 后，真实历史研究短暂降级为 `unclear` 时保留防守标签，但执行姿态降为 `hold`、新增仓位缩放为 0、现金储备至少 70%，且不依据缺失历史继续普通减仓。数据恢复后直接采用新路由；该手册是确定性研究规则，不是校准后的盈利概率。
+- **策略路由 1.4 部分数据可用性** —— 七类市场状态分别输出优先策略、适用条件、回避条件、复核触发器以及开盘/上午/下午/尾盘最大 paper 仓位。真实研究只要有至少 2 个满足长度要求的板块序列和 1 个满足长度要求的股票序列，就可继续使用已完成证据并把非致命警告保留到 `riskFlags`；覆盖不足时仍回退 `unclear`。同一交易日已确认 `risk-off` 或 `risk-off-recovery` 后，短暂降级继续保持防守标签、新增仓位缩放为 0，数据恢复后直接采用新路由。
 - **分时资金节奏与执行前预检** —— 本地 paper 自动执行器在 09:30、10:15、13:00 和 14:15 四个阶段重新评估，先完成每日/阶段/单轮笔数、幂等、行情、现金储备和买入后总仓位检查，再形成精确的本轮模拟动作；普通降风险卖出不受买入仓位上限限制，但仍受阶段订单预算约束。
 - **十条预算化 WxPusher 简报** —— 每天最多 10 次提供商请求；09:35、10:30、13:30、14:50 四条固定简报承担开盘定调、上午确认、午后风控和尾盘复核，其余最多六条只预留给重要事件。标题和正文显示“今日第 N/10 条”、固定简报序号、本条职责和下一时点；内容按结论、数字、动作、持仓、策略盘面、前三板块、两条有效新闻、外围影响、模拟执行和风险数据分层，尾盘条额外汇总当日成交、拒单、手续费、Paper 盈亏和明日复核条件。
 - **重要事件合并去重** —— 当前配置股票池进入 `risk-off`、核心板块研究降级、本地 paper 出现拒单、交易暂停、科技板块从观察高点回撤至少 1.5 个百分点或非科技强势板块严重回撤时可使用事件预留；同类事件同一交易日只提醒一次，多类事件同轮合并。回撤消息显示板块名称、观察高点、当前涨幅和回撤幅度，并说明该信号不等于趋势反转。辅助新闻/外盘降级只进入固定简报数据提示，不会停止核心板块脉冲积累。所有尝试共享十条预算且审计不保存凭据。
@@ -133,6 +133,9 @@
 - **统一图表主题与响应式尺寸** —— Recharts 统一网格、坐标轴、Tooltip、涨跌颜色和移动端高度；主要指数在有真实快照时展示日内高低/昨收/今开/最新关键位置，不把静态折线冒充实时分时。桌面和 390px 浏览器验证无页面级横向溢出。
 - **一键启动首轮恢复** —— VS Code 后台任务使用无 ANSI 输出和宽松的 `127.0.0.1:4173` 就绪匹配；API 即使早于 AkShare 首批行情启动，自动 paper 执行器也会记录一次 `not-run` 观察并等待后续轮次，不再因空行情异常退出。
 - **隔夜持续性与费用纪律** —— AkShare Paper 新增仓位优先把持仓和高排名候选纳入最多 12 只真实历史日线池。健康趋势可进入下一步；洗盘候选只有在置信度、至少 20 个验证样本和 5 日历史命中门槛同时通过时才放行；趋势恶化、信号不清、数据不足或历史未覆盖全部停止买入。预计往返最低佣金超过计划金额 1%，或标的当天已由自动计划卖出时，也不会创建 Paper 买单。
+- **行情适配的候选策略组合** —— 本地 Paper 候选会根据当前市场允许策略和真实股票历史形态，在低波趋势、趋势健康、动量确认、安静回踩、洗盘恢复与 A 股强势回踩确认之间选择；没有同时满足历史证据和当前路由的候选明确记录为 `blocked`，不为制造交易强行放行。可执行计划记录策略键、策略名称、真实历史依据以及后续隔夜持续性、现金、费用、T+1 和仓位检查。
+- **Fastify 只读研究请求缓存** —— `bridgeRequest` 对相同 URL、凭据作用域和请求实现进行在途去重及短时复用，最多保留 64 项；失败请求立即移除，过期或超限项有界淘汰。该缓存只用于新闻、板块/股票历史、全球市场、期货和数字资产等只读桥接读取，不缓存账户、持仓、订单或交易审计。
+- **新闻轻量刷新** —— 新闻面板单独请求最多 40 条新闻和 3 个股票标的，不再为刷新新闻重复拉取全球市场；成功数据缓存 10 分钟、每 15 分钟后台刷新，刷新期间保留旧内容。完整真实研究流仍可按需读取全球市场影响。
 
 ## 仍为静态或合成的数据
 
@@ -199,6 +202,14 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-08-08 adaptive candidate routing and bounded research requests
+Server Vitest: 54 files, 813 tests passed
+Web Vitest: 29 files, 97 tests passed
+TypeScript project-reference checks passed; Vite production build passed with 2,320 modules transformed
+git diff --check passed with line-ending conversion warnings only
+Runtime: local ports 4173/8787/8800 listening; AkShare bridge health returned 200 with 5,538 A-share symbols and 562 indices cached
+Remaining live dependency: the latest public stock/index refresh had received upstream HTML instead of JSON; the bridge retained bounded cached data and exposed both errors instead of substituting static values
+
 2026-07-21 bounded history research timeout reliability
 Python pytest: 109 tests passed; 1 FastAPI/httpx dependency deprecation warning
 Server Vitest: 53 files, 797 tests passed

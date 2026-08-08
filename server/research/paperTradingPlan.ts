@@ -14,6 +14,7 @@ import {
 import type { DailyCandidateReport } from "./dailyCandidates";
 import type { DailyQualityStockReport } from "./dailyQualityStocks";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
+import { selectAdaptiveCandidateStrategy } from "./adaptiveCandidateStrategy";
 import type {
   MarketRegimeResearchReport,
   StockRegimeResult,
@@ -640,6 +641,39 @@ export function buildPaperTradingPlan(input: {
     }
   }
 
+  const routeCandidate = (base: {
+    symbol: string;
+    name: string;
+    price: number;
+    score: number;
+    strategy: string;
+    reason: string;
+    priority: number;
+  }) => {
+    const quote = quoteMap.get(base.symbol);
+    const usesAdaptiveHistoryRoute = Boolean(
+      input.adaptiveRouting && input.marketRegimeResearch,
+    );
+    const signal = input.adaptiveRouting && quote
+      ? selectAdaptiveCandidateStrategy({
+          quote,
+          stockRegime: stockRegimeMap.get(base.symbol),
+          routing: input.adaptiveRouting,
+          candidateScore: base.score,
+        })
+      : null;
+    return {
+      ...base,
+      strategy: signal?.strategyName ?? base.strategy,
+      strategyKey: signal?.strategyKey ??
+        (usesAdaptiveHistoryRoute ? null : "snapshot-candidate"),
+      strategyScore: signal?.score ?? base.score,
+      strategyEvidence: signal?.evidence ?? [],
+      strategyEligible: signal !== null || !usesAdaptiveHistoryRoute,
+      defensiveScore: defensiveCandidateScore(base, quote),
+    };
+  };
+
   const candidatePool = uniqueBySymbol([
     ...input.candidates.candidates
       .filter((candidate) => candidate.action === "paper-buy" || candidate.action === "watch")
@@ -654,13 +688,7 @@ export function buildPaperTradingPlan(input: {
           reason: candidate.reasons.join("；"),
           priority,
         };
-        return {
-          ...base,
-          defensiveScore: defensiveCandidateScore(
-            base,
-            quoteMap.get(candidate.symbol),
-          ),
-        };
+        return routeCandidate(base);
       }),
     ...input.qualityStocks.stocks
       .filter((stock) => stock.action === "focus" || stock.action === "watch")
@@ -675,13 +703,7 @@ export function buildPaperTradingPlan(input: {
           reason: stock.reasons.join("；"),
           priority,
         };
-        return {
-          ...base,
-          defensiveScore: defensiveCandidateScore(
-            base,
-            quoteMap.get(stock.symbol),
-          ),
-        };
+        return routeCandidate(base);
       }),
   ])
     .sort((a, b) => {
@@ -704,6 +726,12 @@ export function buildPaperTradingPlan(input: {
       const aAffordable = aQuantity >= input.lotSize ? 1 : 0;
       const bAffordable = bQuantity >= input.lotSize ? 1 : 0;
       if (bAffordable !== aAffordable) return bAffordable - aAffordable;
+      if (b.strategyEligible !== a.strategyEligible) {
+        return Number(b.strategyEligible) - Number(a.strategyEligible);
+      }
+      if (b.strategyScore !== a.strategyScore) {
+        return b.strategyScore - a.strategyScore;
+      }
       if (b.defensiveScore !== a.defensiveScore) {
         return b.defensiveScore - a.defensiveScore;
       }
@@ -804,6 +832,26 @@ export function buildPaperTradingPlan(input: {
         estimatedNotional: 0,
         reason: "已有持仓，优先观察现有仓位，不重复加仓。",
         ruleChecks: ["paper-only", "position-exists", "manual-review-required"],
+      });
+      continue;
+    }
+
+    if (!candidate.strategyEligible || !candidate.strategyKey) {
+      operations.push({
+        timestamp: now,
+        symbol: candidate.symbol,
+        name: candidate.name,
+        action: "blocked",
+        strategy: "市场策略路由",
+        quantity: 0,
+        price: candidate.price,
+        estimatedNotional: 0,
+        reason: `当前市场状态 ${input.adaptiveRouting?.regime ?? "unclear"} 下，该候选没有同时满足真实历史形态与可用策略规则。`,
+        ruleChecks: [
+          "paper-only",
+          "strategy-route: blocked (no-qualified-signal)",
+          "no-forced-trade",
+        ],
       });
       continue;
     }
@@ -927,6 +975,7 @@ export function buildPaperTradingPlan(input: {
       estimatedNotional,
       reason: [
         candidate.reason || "候选策略与优质股评分同时进入纸面观察。",
+        ...candidate.strategyEvidence,
         entryPersistence.explanation,
       ].join("；"),
       ruleChecks: [
@@ -935,6 +984,7 @@ export function buildPaperTradingPlan(input: {
         "cash-check: pass",
         `cash-reservation: pass (${estimatedCashRequired.toFixed(2)})`,
         `defensive-score: pass (${candidate.defensiveScore})`,
+        `strategy-route: pass (${candidate.strategyKey})`,
         ...entryRuleChecks,
         "T+1-after-buy",
       ],

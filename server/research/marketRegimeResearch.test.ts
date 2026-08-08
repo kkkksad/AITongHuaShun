@@ -153,6 +153,70 @@ describe("market regime research", () => {
     expect(report.warnings).toContain("history unavailable");
   });
 
+  it("keeps usable partial coverage live while retaining a non-fatal warning", () => {
+    const sectorBars = increasingBars();
+    const report = analyzeMarketRegimeData({
+      mode: "paper",
+      provider: "akshare",
+      days: 180,
+      sectorResponse: {
+        provider: "akshare",
+        source: "eastmoney-industry-board",
+        fetchedAt: "2026-08-08T02:00:00Z",
+        sectors: ["半导体", "自动化设备"].map((name, index) => ({
+          symbol: `BK000${index + 1}`,
+          name,
+          price: 100 + index,
+          changePercent: 1.2 - index * 0.2,
+          amount: 10_000_000_000,
+          turnover: 2,
+          advancers: 60,
+          decliners: 30,
+          leaderName: "测试股份",
+          leaderChangePercent: 3,
+          mainNetInflow: null,
+          updatedAt: "2026-08-08T02:00:00Z",
+        })),
+        warning: "部分板块资金流暂不可用",
+      },
+      sectorHistory: {
+        provider: "akshare",
+        source: "eastmoney-industry-history",
+        fetchedAt: "2026-08-08T02:00:00Z",
+        series: ["半导体", "自动化设备"].map((name, index) => ({
+          symbol: `BK000${index + 1}`,
+          name,
+          source: "eastmoney-industry-history",
+          adjustment: "none",
+          bars: sectorBars,
+        })),
+        warning: "2 个历史序列仍在后台刷新，本次先返回已完成数据。",
+      },
+      stockHistory: {
+        provider: "akshare",
+        source: "eastmoney-stock-history",
+        fetchedAt: "2026-08-08T02:00:00Z",
+        series: [{
+          symbol: "600519",
+          name: "测试股票",
+          source: "eastmoney-stock-history",
+          adjustment: "qfq",
+          bars: increasingBars(),
+        }],
+        warning: null,
+      },
+      stockNames: new Map([["600519", "测试股票"]]),
+    });
+
+    expect(report.sourceStatus).toBe("live-read-only");
+    expect(report.sectorOutlooks).toHaveLength(2);
+    expect(report.stockRegimes).toHaveLength(1);
+    expect(report.warnings).toEqual(expect.arrayContaining([
+      "部分板块资金流暂不可用",
+      "2 个历史序列仍在后台刷新，本次先返回已完成数据。",
+    ]));
+  });
+
   it("does not call real sources when AkShare is disabled", async () => {
     const fetchImpl = vi.fn<typeof fetch>();
 

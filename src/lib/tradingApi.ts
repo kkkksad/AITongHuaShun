@@ -610,7 +610,7 @@ export interface AdaptiveCapitalPacing {
 }
 
 export interface AdaptiveStrategyRouting {
-  version: "1.3.0";
+  version: "1.4.0";
   generatedAt: string;
   regime: AdaptiveMarketRegime;
   confidence: number;
@@ -1775,12 +1775,31 @@ export function runPaperAutoExecutionOnce(): Promise<PaperAutoExecutionRunRespon
   );
 }
 
+export interface RealResearchDataFeedOptions {
+  scope?: "full" | "news";
+  newsLimit?: number;
+  symbolLimit?: number;
+}
+
 export function fetchRealResearchDataFeed(
   signal?: AbortSignal,
+  options: RealResearchDataFeedOptions = {},
 ): Promise<RealResearchDataFeed> {
-  return authApiRequest<RealResearchDataFeed>("/api/research/real-data-feed", {
-    signal,
-  });
+  const params = new URLSearchParams();
+  if (options.scope) params.set("scope", options.scope);
+  if (options.newsLimit !== undefined) {
+    params.set("newsLimit", String(Math.round(options.newsLimit)));
+  }
+  if (options.symbolLimit !== undefined) {
+    params.set("symbolLimit", String(Math.round(options.symbolLimit)));
+  }
+  const query = params.toString();
+  return authApiRequest<RealResearchDataFeed>(
+    `/api/research/real-data-feed${query ? `?${query}` : ""}`,
+    {
+      signal,
+    },
+  );
 }
 
 export function fetchMarketRegimeResearch(

@@ -12,6 +12,7 @@ describe("NewsPanel", () => {
     expect(source).not.toContain("getResearchRefreshState");
     expect(source).not.toContain("showBlockingError");
     expect(source).not.toContain("showStaleWarning");
+    expect(source).toContain("realResearchNewsFeedQueryOptions()");
   });
 
   it("paginates the full bounded feed instead of slicing five headlines", () => {
