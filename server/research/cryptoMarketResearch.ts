@@ -118,6 +118,7 @@ export async function buildCryptoMarketResearch(input: {
       url: `${input.bridgeUrl.replace(/\/+$/, "")}/api/market/crypto/quotes`,
       token: input.bridgeToken,
       timeoutMs: boundedCryptoBridgeTimeoutMs(input.timeoutMs),
+      cacheTtlMs: 2 * 60_000,
       fetchImpl: input.fetchImpl,
     });
     const items = response.items.filter((item) => (

@@ -389,6 +389,7 @@ export async function buildHongKongMarketResearch(
       url: `${baseUrl}/api/market/hk/quotes?limit=${limit}`,
       token: input.bridgeToken,
       timeoutMs: input.timeoutMs * 8,
+      cacheTtlMs: 60_000,
       fetchImpl,
     });
   } catch (error) {
@@ -417,6 +418,7 @@ export async function buildHongKongMarketResearch(
       url: historyUrl.toString(),
       token: input.bridgeToken,
       timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
+      cacheTtlMs: 10 * 60_000,
       fetchImpl,
     });
     const quoteBySymbol = new Map(quotes.items.map((item) => [item.symbol, item]));

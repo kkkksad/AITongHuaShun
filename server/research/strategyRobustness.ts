@@ -497,6 +497,7 @@ export async function buildStrategyRobustnessReport(
       url: historyUrl.toString(),
       token: input.bridgeToken,
       timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
+      cacheTtlMs: 10 * 60_000,
       fetchImpl: input.fetchImpl ?? fetch,
     });
     const names = new Map(universe.map((quote) => [quote.symbol, quote.name]));

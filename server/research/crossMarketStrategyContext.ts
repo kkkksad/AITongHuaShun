@@ -570,12 +570,14 @@ export async function buildCrossMarketStrategyContext(
       url: globalUrl,
       token: input.bridgeToken,
       timeoutMs: input.timeoutMs * 4,
+      cacheTtlMs: 60_000,
       fetchImpl,
     }),
     fetchBridgeJson<BridgeFuturesResponse>({
       url: futuresUrl,
       token: input.bridgeToken,
       timeoutMs: input.timeoutMs * 4,
+      cacheTtlMs: 60_000,
       fetchImpl,
     }),
   ]);
@@ -603,6 +605,7 @@ export async function buildCrossMarketStrategyContext(
         url: historyUrl.toString(),
         token: input.bridgeToken,
         timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
+        cacheTtlMs: 10 * 60_000,
         fetchImpl,
       });
       if (historyResponse.warning) warnings.push(historyResponse.warning);

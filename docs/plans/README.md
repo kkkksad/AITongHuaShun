@@ -41,6 +41,8 @@ YYYY-MM-DD-short-task-name.md
 - [历史研究超时治理](2026-07-21-history-research-timeout-reliability.md)
 - [无操作复盘与策略状态稳定](2026-07-27-no-trade-review-and-regime-stability.md)
 - [轻量云服务器生产部署](2026-07-27-lighthouse-production-deployment.md)
+- [自适应策略与研究性能加固](2026-08-08-adaptive-strategy-and-research-performance.md)
+- [研究缓存覆盖收口](2026-08-08-research-cache-coverage.md)
 
 ## 进行中计划
 

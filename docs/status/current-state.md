@@ -134,8 +134,9 @@
 - **一键启动首轮恢复** —— VS Code 后台任务使用无 ANSI 输出和宽松的 `127.0.0.1:4173` 就绪匹配；API 即使早于 AkShare 首批行情启动，自动 paper 执行器也会记录一次 `not-run` 观察并等待后续轮次，不再因空行情异常退出。
 - **隔夜持续性与费用纪律** —— AkShare Paper 新增仓位优先把持仓和高排名候选纳入最多 12 只真实历史日线池。健康趋势可进入下一步；洗盘候选只有在置信度、至少 20 个验证样本和 5 日历史命中门槛同时通过时才放行；趋势恶化、信号不清、数据不足或历史未覆盖全部停止买入。预计往返最低佣金超过计划金额 1%，或标的当天已由自动计划卖出时，也不会创建 Paper 买单。
 - **行情适配的候选策略组合** —— 本地 Paper 候选会根据当前市场允许策略和真实股票历史形态，在低波趋势、趋势健康、动量确认、安静回踩、洗盘恢复与 A 股强势回踩确认之间选择；没有同时满足历史证据和当前路由的候选明确记录为 `blocked`，不为制造交易强行放行。可执行计划记录策略键、策略名称、真实历史依据以及后续隔夜持续性、现金、费用、T+1 和仓位检查。
-- **Fastify 只读研究请求缓存** —— `bridgeRequest` 对相同 URL、凭据作用域和请求实现进行在途去重及短时复用，最多保留 64 项；失败请求立即移除，过期或超限项有界淘汰。该缓存只用于新闻、板块/股票历史、全球市场、期货和数字资产等只读桥接读取，不缓存账户、持仓、订单或交易审计。
+- **Fastify 只读研究请求缓存** —— `bridgeRequest` 对相同 URL、凭据哈希作用域和请求实现进行在途去重及短时复用，最多保留 64 项；失败请求立即移除，过期或超限项有界淘汰，缓存键不保留原始 Token。该缓存只用于新闻、板块/股票历史、全球市场、期货和数字资产等只读桥接读取，不缓存账户、持仓、订单或交易审计。
 - **新闻轻量刷新** —— 新闻面板单独请求最多 40 条新闻和 3 个股票标的，不再为刷新新闻重复拉取全球市场；成功数据缓存 10 分钟、每 15 分钟后台刷新，刷新期间保留旧内容。完整真实研究流仍可按需读取全球市场影响。
+- **二级研究缓存覆盖** —— 跨市场、港股、个股趋势、策略稳健性、变盘雷达和新股申购读取均已接入同一有界桥接缓存；当前行情/快照使用 1 至 2 分钟，历史序列使用 10 分钟，新股元数据使用 30 分钟。相同历史窗口复用，不同股票池或交易日窗口严格分键。
 
 ## 仍为静态或合成的数据
 
@@ -203,12 +204,12 @@ GET  /documentation/json                  (OpenAPI JSON)
 
 ```text
 2026-08-08 adaptive candidate routing and bounded research requests
-Server Vitest: 54 files, 813 tests passed
+Server Vitest: 54 files, 816 tests passed
 Web Vitest: 29 files, 97 tests passed
 TypeScript project-reference checks passed; Vite production build passed with 2,320 modules transformed
 git diff --check passed with line-ending conversion warnings only
-Runtime: local ports 4173/8787/8800 listening; AkShare bridge health returned 200 with 5,538 A-share symbols and 562 indices cached
-Remaining live dependency: the latest public stock/index refresh had received upstream HTML instead of JSON; the bridge retained bounded cached data and exposed both errors instead of substituting static values
+Runtime: ports 4173/8787/8800 were already listening; the bridge health endpoint returned 200 with bounded caches and current stock/index cache counts. This session did not restart the services.
+Remaining live dependency: the authenticated `paper + akshare` check must still verify source freshness and current index/stock timestamps; upstream failures remain explicit and must not be replaced with static values.
 
 2026-07-21 bounded history research timeout reliability
 Python pytest: 109 tests passed; 1 FastAPI/httpx dependency deprecation warning

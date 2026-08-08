@@ -654,6 +654,7 @@ export async function buildStockTrendForecast(
       url: searchUrl.toString(),
       token: input.bridgeToken,
       timeoutMs: input.timeoutMs,
+      cacheTtlMs: 60_000,
       fetchImpl,
     });
   } catch (error) {
@@ -705,6 +706,7 @@ export async function buildStockTrendForecast(
       url: historyUrl.toString(),
       token: input.bridgeToken,
       timeoutMs: historyBridgeTimeoutMs(input.timeoutMs),
+      cacheTtlMs: 10 * 60_000,
       fetchImpl,
     });
     const series = history.series.find((item) => item.symbol === selected.symbol);

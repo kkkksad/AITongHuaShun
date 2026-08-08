@@ -5,6 +5,7 @@ import {
   buildStockTrendForecast,
   type StockSearchMatch,
 } from "./stockTrendForecast";
+import { clearBridgeRequestCache } from "./bridgeRequest";
 
 function makeBars(count: number, dailyDrift: number): HistoricalBar[] {
   let close = 100;
@@ -218,6 +219,55 @@ describe("buildStockTrendForecast", () => {
       expect.stringContaining("/api/market/stock-history?symbols=600519&days=360"),
       expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer bridge-token" }) }),
     );
+  });
+
+  it("reuses identical search and history reads but isolates a different history window", async () => {
+    clearBridgeRequestCache();
+    const match = selected();
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/api/market/stock-search")) {
+        return new Response(JSON.stringify({
+          provider: "akshare",
+          source: "a-share-spot-cache",
+          fetchedAt: "2026-08-08T02:00:00Z",
+          items: [match],
+          warning: null,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      const requestedDays = Number(url.searchParams.get("days"));
+      return new Response(JSON.stringify({
+        provider: "akshare",
+        source: "tencent-stock-history",
+        fetchedAt: "2026-08-08T02:00:01Z",
+        series: [series(makeBars(Math.min(requestedDays, 240), 0.002))],
+        warning: null,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const baseInput = {
+      query: "贵州茅台",
+      bridgeUrl: "http://bridge-window-cache.test",
+      bridgeToken: "bridge-token",
+      marketDataProvider: "akshare",
+      mode: "paper" as const,
+      timeoutMs: 1_000,
+      fetchImpl: fetchMock,
+    };
+
+    const first = await buildStockTrendForecast({ ...baseInput, days: 360 });
+    const second = await buildStockTrendForecast({ ...baseInput, days: 360 });
+    const wider = await buildStockTrendForecast({ ...baseInput, days: 500 });
+
+    expect(first.resolution).toBe("resolved");
+    expect(second.resolution).toBe("resolved");
+    expect(wider.resolution).toBe("resolved");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes("/api/market/stock-search")
+    )).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([input]) =>
+      String(input).includes("/api/market/stock-history")
+    )).toHaveLength(2);
   });
 
   it("does not substitute mock history when AkShare is disabled", async () => {

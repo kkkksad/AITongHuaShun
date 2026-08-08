@@ -3,6 +3,7 @@ import {
   boundedCryptoBridgeTimeoutMs,
   buildCryptoMarketResearch,
 } from "./cryptoMarketResearch";
+import { clearBridgeRequestCache } from "./bridgeRequest";
 
 describe("buildCryptoMarketResearch", () => {
   it("bounds crypto bridge latency without inheriting the longer market timeout", () => {
@@ -53,6 +54,42 @@ describe("buildCryptoMarketResearch", () => {
     expect(report.crypto.map((item) => item.symbol)).toEqual(["BTCUSD"]);
     expect(report.market.tone).toBe("positive");
     expect(report.aShareContext.summary).toContain("不能单独改变 A 股方向");
+  });
+
+  it("reuses the bounded crypto snapshot for repeated research reads", async () => {
+    clearBridgeRequestCache();
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      provider: "akshare",
+      source: "jin10-public-crypto",
+      fetchedAt: "2026-08-08T02:00:00.000Z",
+      items: [{
+        symbol: "BTCUSD",
+        name: "比特币",
+        priceUsd: 68_000,
+        change24hPercent: 1.5,
+        high24h: 69_000,
+        low24h: 66_000,
+        volume24h: 120_000,
+        updatedAt: "2026-08-08T02:00:00.000Z",
+        source: "jin10-public-crypto",
+      }],
+    }), { status: 200 }));
+    const input = {
+      bridgeUrl: "http://bridge-cache.test",
+      marketDataProvider: "akshare",
+      mode: "paper" as const,
+      timeoutMs: 1_000,
+      fetchImpl,
+    };
+
+    const [first, second] = await Promise.all([
+      buildCryptoMarketResearch(input),
+      buildCryptoMarketResearch(input),
+    ]);
+
+    expect(first.crypto).toHaveLength(1);
+    expect(second.crypto).toHaveLength(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it("does not fabricate prices when the bridge is unavailable", async () => {

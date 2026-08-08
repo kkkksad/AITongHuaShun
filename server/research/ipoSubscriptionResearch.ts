@@ -287,6 +287,7 @@ export async function buildIpoSubscriptionResearch(
         `/api/research/ipo-subscriptions?limit=${bridgeLimit}`,
       token: input.bridgeToken,
       timeoutMs: input.timeoutMs,
+      cacheTtlMs: 30 * 60_000,
       fetchImpl: input.fetchImpl ?? fetch,
     });
     const todayDay = dateDay(chinaDate(now))!;

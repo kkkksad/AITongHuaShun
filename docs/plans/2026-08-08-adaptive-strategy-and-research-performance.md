@@ -77,7 +77,8 @@
 ## Completion Record
 
 - Completed: 2026-08-08.
-- Server Vitest: 54 files and 813 tests passed.
+- Server Vitest: 54 files and 816 tests passed.
 - Web Vitest: 29 files and 97 tests passed.
 - TypeScript project references, Vite production build, and `git diff --check` passed.
-- Live dependency remaining: public AkShare upstreams can return HTML or partial history; bounded cached data and warnings remain visible, and no static substitute is used.
+- Verification used the workspace-bundled Node runtime because `npm` was not available on this shell path.
+- Live dependency remaining: this run did not restart ports 4173/8787/8800; the authenticated `paper + akshare` three-service check must separately confirm source freshness and coverage. Public upstream failures remain explicit, and no static substitute is used.
