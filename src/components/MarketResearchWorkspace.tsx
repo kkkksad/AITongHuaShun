@@ -17,6 +17,7 @@ import {
   Newspaper,
   ScanSearch,
   Search,
+  Sparkles,
 } from "lucide-react";
 import type { TradingBackend } from "../hooks/useTradingBackend";
 import { MarketOverview } from "./MarketOverview";
@@ -30,6 +31,7 @@ const loadFuturesPanel = () => import("./FuturesMarketPanel");
 const loadExternalPanel = () => import("./ExternalMarketImpactPanel");
 const loadCryptoPanel = () => import("./CryptoMarketPanel");
 const loadEventsPanel = () => import("./MarketEventsPanel");
+const loadEsotericPanel = () => import("./EsotericMarketPanel");
 
 const MarketAshareOverviewPanel = lazy(async () => ({
   default: (await loadAsharePanel()).MarketAshareOverviewPanel,
@@ -58,6 +60,9 @@ const CryptoMarketPanel = lazy(async () => ({
 const MarketEventsPanel = lazy(async () => ({
   default: (await loadEventsPanel()).MarketEventsPanel,
 }));
+const EsotericMarketPanel = lazy(async () => ({
+  default: (await loadEsotericPanel()).EsotericMarketPanel,
+}));
 
 type MarketWorkspaceTab =
   | "a-share"
@@ -68,7 +73,8 @@ type MarketWorkspaceTab =
   | "futures"
   | "external"
   | "crypto"
-  | "events";
+  | "events"
+  | "esoteric";
 
 interface MarketResearchWorkspaceProps {
   trading: TradingBackend;
@@ -89,6 +95,7 @@ const tabs: Array<{
   { id: "external", label: "全球影响", icon: Globe2, preload: loadExternalPanel },
   { id: "crypto", label: "数字资产", icon: Bitcoin, preload: loadCryptoPanel },
   { id: "events", label: "事件资讯", icon: Newspaper, preload: loadEventsPanel },
+  { id: "esoteric", label: "玄学观察", icon: Sparkles, preload: loadEsotericPanel },
 ];
 
 function MarketTabLoading() {
@@ -175,6 +182,7 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
             {activeTab === "external" && <ExternalMarketImpactPanel />}
             {activeTab === "crypto" && <CryptoMarketPanel />}
             {activeTab === "events" && <MarketEventsPanel />}
+            {activeTab === "esoteric" && <EsotericMarketPanel market={trading.market} />}
           </Suspense>
         </div>
       </section>

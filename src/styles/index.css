@@ -8240,6 +8240,242 @@ select:focus-visible {
   color: var(--color-primary);
 }
 
+.esoteric-market-panel {
+  min-width: 0;
+}
+
+.esoteric-market-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.esoteric-market-header h2 > svg {
+  color: var(--color-warning);
+}
+
+.esoteric-market-subtitle {
+  max-width: 720px;
+  margin: 7px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.esoteric-market-source,
+.esoteric-market-warning {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.esoteric-market-source {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 38%, var(--border-default));
+  border-radius: 5px;
+  color: var(--color-warning);
+  background: var(--color-warning-bg);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.esoteric-market-warning {
+  margin: 14px 0;
+  padding: 11px 13px;
+  border-left: 3px solid var(--color-warning);
+  color: var(--text-secondary);
+  background: var(--color-warning-bg);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.esoteric-market-warning > svg {
+  flex: 0 0 auto;
+  color: var(--color-warning);
+}
+
+.esoteric-market-controls {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.4fr) minmax(150px, 1fr) minmax(140px, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+  padding: 13px 0;
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.esoteric-market-controls label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.esoteric-market-controls label > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.esoteric-market-controls input,
+.esoteric-market-controls select {
+  width: 100%;
+  height: 35px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--border-input);
+  border-radius: 5px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+}
+
+.esoteric-market-controls select {
+  padding-right: 28px;
+}
+
+.esoteric-market-controls input:focus,
+.esoteric-market-controls select:focus {
+  outline: 2px solid var(--color-primary-border);
+  outline-offset: 1px;
+}
+
+.esoteric-market-draw {
+  min-height: 35px;
+  white-space: nowrap;
+}
+
+.esoteric-market-result-grid {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.85fr) minmax(280px, 1.35fr) minmax(220px, 0.8fr);
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.esoteric-hexagram-card,
+.esoteric-reading-card,
+.esoteric-observation-card {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-panel-alt);
+}
+
+.esoteric-hexagram-card {
+  border-top: 3px solid var(--color-warning);
+}
+
+.esoteric-hexagram-label,
+.esoteric-reading-card > span,
+.esoteric-observation-card > span,
+.esoteric-market-checks span {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.esoteric-hexagram-card > strong {
+  display: block;
+  margin: 15px 0 5px;
+  color: var(--text-heading);
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.esoteric-hexagram-card > span {
+  display: block;
+  color: var(--color-warning);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.esoteric-changing-line {
+  margin-top: 21px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-light);
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.esoteric-reading-card > strong {
+  display: block;
+  margin: 7px 0 12px;
+  color: var(--text-heading);
+  font-size: 17px;
+}
+
+.esoteric-reading-card p,
+.esoteric-observation-card p {
+  margin: 7px 0 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.esoteric-observation-card {
+  border-left: 3px solid var(--color-primary);
+}
+
+.esoteric-observation-card small {
+  display: block;
+  margin-top: 16px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.esoteric-market-checks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 14px;
+  border-top: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.esoteric-market-checks > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 13px;
+  border-right: 1px solid var(--border-light);
+}
+
+.esoteric-market-checks > div:last-child {
+  border-right: 0;
+}
+
+.esoteric-market-checks strong {
+  color: var(--text-heading);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.esoteric-market-checks small {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.esoteric-market-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.esoteric-market-footer span {
+  overflow-wrap: anywhere;
+}
+
 .market-events-stack {
   gap: 16px;
 }
@@ -8751,6 +8987,31 @@ select:focus-visible {
     width: 100%;
     min-width: 0;
     padding-inline: 8px;
+  }
+
+  .esoteric-market-controls,
+  .esoteric-market-result-grid,
+  .esoteric-market-checks {
+    grid-template-columns: 1fr;
+  }
+
+  .esoteric-market-source {
+    align-self: flex-start;
+  }
+
+  .esoteric-market-checks > div {
+    border-right: 0;
+    border-bottom: 1px solid var(--border-light);
+  }
+
+  .esoteric-market-checks > div:last-child {
+    border-bottom: 0;
+  }
+
+  .esoteric-market-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .futures-strategy-context {
