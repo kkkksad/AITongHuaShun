@@ -53,6 +53,8 @@
 - **有界 API 性能诊断** —— `/api/system/performance` 按 Fastify 路由模板聚合业务请求，最多保留 64 条路由、每路由 128 个耗时样本，输出滚动 P50/P95、平均/最大耗时、`429/5xx` 失败率、慢请求、在途数和当前行情质量；不记录查询值、正文或凭据，不写磁盘，也不影响策略和订单。模拟账户“运维 > 监控”已升级为 15 秒轮询的诊断台。
 - **研究请求去重** —— `src/lib/researchQueries.ts` 统一策略榜、候选扫描、Paper 计划和每日复盘的 Query Key、stale 时间及轮询周期；研究管线不再用 `pipeline` 展示位置拆分相同参数缓存，减少重复 REST 请求和后端计算。
 - **全链路请求可靠性** —— Fastify 行情轮询改为单飞串行调度，整轮失败按 10/20/40/60 秒有界退避并保留最后成功快照；AkShare 全市场股票/指数缓存以刷新完成时间计算默认 10 秒 TTL，失败后进入有限冷却并继续返回旧数据。服务端研究模块统一通过 `bridgeRequest` 处理超时、HTTP 详情、网络断开和无效 JSON，不再向界面暴露原始 `fetch failed`；前端研究 GET 消费 TanStack Query 的 `AbortSignal`，切走页签时取消过期浏览器请求。
+- **生产行情真实备用源与空刷新保护** —— A 股个股和四个主要指数在东方财富/新浪读取失败后可回退腾讯公开只读快照；生产桥接使用同一份 `MARKET_SYMBOLS` 有界股票池，保留交易所报价时间。股票或指数刷新返回空表、不可解析响应或网络错误时不会清空最后成功缓存；Fastify 也把空批次视为失败并保留最近成功快照，不使用固定价格补位。
+- **生产静态资源权限** —— Web 镜像构建阶段统一把 Vite 输出目录设为目录 `0755`、文件 `0644`，避免部署归档继承限制权限后导致 `manifest.json`、`sw.js` 或 PWA 图标被 Nginx 拒绝读取。
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
 - **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 的 `qualitySummary` 返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额、现金使用比例和策略覆盖；研究管线页面展示命中的策略族、未匹配候选和主要限制，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1、历史结构或仓位约束保持观望。
@@ -90,6 +92,7 @@
 - **市场研究十页签** —— 市场页按 A 股概览、变盘雷达、个股研判、板块形态、港股观察、期货研判、全球影响、数字资产、事件资讯和玄学观察拆分；页签支持方向键和 Home/End，390px 下两列排列，宽表横向滚动限制在模块内部。
 - **市场页按需加载与真实指数图表** —— 十个市场研究内容已拆为独立 `React.lazy` 异步块，并在悬停、聚焦或触屏按下页签时预取；全球影响和玄学观察页也保持独立异步块。指数图表使用当前真实指数快照的昨收、今开、最低、最新和最高点，不再显示静态模拟分时数组。
 - **玄学观察娱乐研究层** —— 市场页可按观察对象、日期和易经卦象/五行节律/数字起卦生成固定、可复现的文化观察笔记；三种方法使用不同解释镜头，并把真实快照的上涨宽度、平均涨跌、振幅、覆盖率和新鲜度作为独立盘面镜像，显示一致/冲突及收盘复盘问题。娱乐观察指数明确不是胜率或预测概率，全部结果仍不会进入策略路由、Paper 计划、自动执行器或 WxPusher 消息。
+- **单票玄学观察** —— 玄学页可在当前真实股票快照中选择单票，以代码和名称固定文化结果，并把该票真实现价、涨跌、振幅和报价新鲜度放在独立现实镜像中；相同日期、股票、方法和轮次结果可复现。单票象意仍不表示涨跌概率，也不进入策略、通知、持仓、风控或订单路径。
 - **持仓优先且双扫描器均衡的历史形态研究** —— 生成市场状态前会把当前 paper 持仓放在个股历史研究队列前部，再交错加入今日候选和每日优质股；去重后仍限制最多 12 只，既避免候选池挤掉已有持仓，也避免单一扫描器占满研究名额。
 - **趋势恶化减仓与现金观察** —— `risk-off` 下，高置信度“趋势恶化”且 T+1 可卖的持仓会生成有上限的半仓减仓计划；原有 3% 亏损退出仍是更严格的全量止损。健康趋势和洗盘候选明确保持观察；从计划开始就没有任何一手可负担候选时，只生成一条现金观察，不再重复列出十条注定资金不足的买入。
 - **风险收缩日内减仓纪律** —— 普通市场状态减仓和风险仓位再平衡按持久化订单限制为同一标的每个交易日最多一轮，避免多次“减半”突破原风险预算；3% 硬止损仍可覆盖该限制。`risk-off` 且仓位高于现金目标时，计划优先对趋势恶化、信号不清或数据不足且 T+1 可卖的持仓执行最多四分之一仓位的一手级分阶段减仓，不机械卖出健康趋势或洗盘候选。
@@ -204,6 +207,16 @@ GET  /documentation/json                  (OpenAPI JSON)
 ## 验证结果
 
 ```text
+2026-08-09 production market recovery and single-stock esoteric observation
+Server Vitest: 56 files, 827 tests passed
+Web Vitest: 30 files, 105 tests passed
+Python pytest: 114 tests passed; 1 FastAPI/httpx deprecation warning and 1 local pytest-cache permission warning
+TypeScript project-reference checks passed; Vite production build passed with 2,321 modules transformed
+Real-source check: Tencent fallback returned 4 controlled indices and the configured stock snapshot with exchange timestamps; no proxy was used
+Browser: 1440x1000 and 390x844 passed; four major indices rendered, single-stock selection displayed price/change/amplitude/freshness, page overflow remained 0, and console errors were empty
+Safety: Paper-only and real trading disabled; esoteric output remains outside strategy, notification, position, risk and execution paths
+Production: pending restricted deployment and live endpoint verification
+
 2026-08-08 全局研究证据与总览首屏性能优化
 Server Vitest: 55 files, 825 tests passed
 Web Vitest: 30 files, 103 tests passed

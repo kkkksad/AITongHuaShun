@@ -80,6 +80,16 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 
+TENCENT_QUOTE_URL = "https://qt.gtimg.cn/q={symbols}"
+TENCENT_FALLBACK_SYMBOLS = tuple(
+    symbol.strip()
+    for symbol in os.getenv(
+        "AKSHARE_BRIDGE_TENCENT_SYMBOLS",
+        "600519,000858,300750,601318,000001,600036,002594,688981",
+    ).split(",")
+    if re.fullmatch(r"\d{6}", symbol.strip())
+)
+
 if DISABLE_PROXY:
     for proxy_var in (
         "HTTP_PROXY",
@@ -583,7 +593,9 @@ class QuoteCache:
             try:
                 loop = asyncio.get_running_loop()
                 df = await loop.run_in_executor(AKSHARE_EXECUTOR, fetch_a_share_spot_dataframe)
-                self._parse_dataframe(df)
+                parsed_count = self._parse_dataframe(df)
+                if parsed_count == 0:
+                    raise ValueError("股票行情源返回空结果")
                 completed_at = time.time()
                 self._last_update = completed_at
                 self._next_refresh_at = completed_at + self.ttl_sec
@@ -636,7 +648,7 @@ class QuoteCache:
         except (ValueError, TypeError):
             return None
 
-    def _parse_dataframe(self, df) -> None:
+    def _parse_dataframe(self, df) -> int:
         new_data: dict[str, MarketQuote] = {}
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
 
@@ -660,7 +672,7 @@ class QuoteCache:
                     previousClose=previous_close,
                     changePercent=change_pct,
                     volume=volume,
-                    updatedAt=now_iso,
+                    updatedAt=normalize_quote_timestamp(row.get("更新时间"), now_iso),
                     open=self._safe_float(row.get("今开")),
                     high=self._safe_float(row.get("最高")),
                     low=self._safe_float(row.get("最低")),
@@ -671,7 +683,9 @@ class QuoteCache:
             except (ValueError, TypeError):
                 continue
 
-        self._data = new_data
+        if new_data:
+            self._data.update(new_data)
+        return len(new_data)
 
     async def get_quotes(self, symbols: list[str]) -> list[MarketQuote]:
         if self._data and self._needs_refresh():
@@ -729,7 +743,9 @@ class IndexCache:
             try:
                 loop = asyncio.get_running_loop()
                 df = await loop.run_in_executor(AKSHARE_EXECUTOR, fetch_a_share_index_dataframe)
-                self._parse_dataframe(df)
+                parsed_count = self._parse_dataframe(df)
+                if parsed_count == 0:
+                    raise ValueError("指数行情源返回空结果")
                 completed_at = time.time()
                 self._last_update = completed_at
                 self._next_refresh_at = completed_at + self.ttl_sec
@@ -782,7 +798,7 @@ class IndexCache:
         except (ValueError, TypeError):
             return None
 
-    def _parse_dataframe(self, df) -> None:
+    def _parse_dataframe(self, df) -> int:
         new_data: dict[str, MarketQuote] = {}
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
 
@@ -806,7 +822,7 @@ class IndexCache:
                     previousClose=previous_close,
                     changePercent=change_pct,
                     volume=volume,
-                    updatedAt=now_iso,
+                    updatedAt=normalize_quote_timestamp(row.get("更新时间"), now_iso),
                     open=self._safe_float(row.get("今开")),
                     high=self._safe_float(row.get("最高")),
                     low=self._safe_float(row.get("最低")),
@@ -816,7 +832,9 @@ class IndexCache:
             except (ValueError, TypeError):
                 continue
 
-        self._data = new_data
+        if new_data:
+            self._data.update(new_data)
+        return len(new_data)
 
     async def get_indices(self, symbols: list[str]) -> list[MarketQuote]:
         if self._data and self._needs_refresh():
@@ -856,6 +874,7 @@ def fetch_a_share_spot_dataframe():
     providers = (
         ("eastmoney", ak.stock_zh_a_spot_em),
         ("a-share-spot", ak.stock_zh_a_spot),
+        ("tencent-spot", fetch_tencent_a_share_spot_dataframe),
     )
     last_error: Exception | None = None
 
@@ -863,6 +882,8 @@ def fetch_a_share_spot_dataframe():
         started_at = time.time()
         try:
             df = provider()
+            if df is None or len(df) == 0:
+                raise ValueError("返回空结果")
             logger.info(
                 "行情源 %s 返回 %d 行，耗时 %.1fs",
                 provider_name,
@@ -883,6 +904,7 @@ def fetch_a_share_index_dataframe():
     providers = (
         ("eastmoney-index", ak.stock_zh_index_spot_em),
         ("sina-index", ak.stock_zh_index_spot_sina),
+        ("tencent-index", fetch_tencent_a_share_index_dataframe),
     )
     last_error: Exception | None = None
 
@@ -890,6 +912,8 @@ def fetch_a_share_index_dataframe():
         started_at = time.time()
         try:
             df = provider()
+            if df is None or len(df) == 0:
+                raise ValueError("返回空结果")
             logger.info(
                 "指数源 %s 返回 %d 行，耗时 %.1fs",
                 provider_name,
@@ -903,6 +927,108 @@ def fetch_a_share_index_dataframe():
 
     assert last_error is not None
     raise last_error
+
+
+def _tencent_symbol(symbol: str) -> str:
+    raw = str(symbol).strip().lower()
+    if re.fullmatch(r"(?:sh|sz|bj)\d{6}", raw):
+        return raw
+    normalized = normalize_a_share_symbol(symbol)
+    if normalized is None:
+        raise ValueError(f"无效的 A 股代码: {symbol}")
+    if normalized.startswith(("6", "68")):
+        return f"sh{normalized}"
+    if normalized.startswith(("0", "3")):
+        return f"sz{normalized}"
+    return f"bj{normalized}"
+
+
+def _parse_tencent_number(value: object, default: float = 0.0) -> float:
+    try:
+        parsed = float(str(value).strip())
+        return parsed if pd.notna(parsed) else default
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_quote_timestamp(value: object, fallback: str) -> str:
+    """Normalize Tencent's exchange timestamp without pretending stale data is live."""
+    raw = str(value or "").strip()
+    if not re.fullmatch(r"\d{14}", raw):
+        return fallback
+    try:
+        local_time = datetime.strptime(raw, "%Y%m%d%H%M%S").replace(
+            tzinfo=timezone(timedelta(hours=8)),
+        )
+        return local_time.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
+            "+00:00", "Z"
+        )
+    except ValueError:
+        return fallback
+
+
+def fetch_tencent_a_share_dataframe(symbols: tuple[str, ...], source: str):
+    """Read-only Tencent quote text endpoint for a bounded A-share watchlist."""
+    if not symbols:
+        raise ValueError("腾讯行情备用列表为空")
+
+    requested = {
+        _tencent_symbol(symbol): normalize_a_share_symbol(symbol)
+        for symbol in symbols
+    }
+    session = requests.Session()
+    session.trust_env = False
+    response = session.get(
+        TENCENT_QUOTE_URL.format(symbols=",".join(requested)),
+        headers={
+            "Accept": "text/plain, */*",
+            "Referer": "https://gu.qq.com/",
+            "User-Agent": "Mozilla/5.0",
+        },
+        timeout=8,
+    )
+    response.raise_for_status()
+    payload = response.content.decode("gbk", errors="replace")
+    rows: list[dict[str, object]] = []
+
+    for match in re.finditer(r'v_([a-z]+\d{6})="([^"]*)";', payload):
+        fields = match.group(2).split("~")
+        if len(fields) < 44:
+            continue
+        normalized = requested.get(match.group(1))
+        if normalized is None:
+            continue
+        price = _parse_tencent_number(fields[3])
+        previous_close = _parse_tencent_number(fields[4])
+        if price <= 0 or previous_close <= 0:
+            continue
+        rows.append({
+            "代码": match.group(1),
+            "名称": re.sub(r"\s+", "", fields[1]) or normalized,
+            "最新价": price,
+            "昨收": previous_close,
+            "今开": _parse_tencent_number(fields[5]),
+            "最高": _parse_tencent_number(fields[33]),
+            "最低": _parse_tencent_number(fields[34]),
+            "涨跌幅": _parse_tencent_number(fields[32]),
+            "成交量": int(max(0, _parse_tencent_number(fields[6]) * 100)),
+            "成交额": _parse_tencent_number(fields[37]) * 10_000,
+            "振幅": _parse_tencent_number(fields[43]),
+            "更新时间": fields[30],
+        })
+
+    if not rows:
+        raise ValueError(f"{source}返回空或不可解析结果")
+    return pd.DataFrame(rows)
+
+
+def fetch_tencent_a_share_spot_dataframe():
+    return fetch_tencent_a_share_dataframe(TENCENT_FALLBACK_SYMBOLS, "腾讯个股行情")
+
+
+def fetch_tencent_a_share_index_dataframe():
+    index_symbols = tuple(metadata[0] for metadata in A_SHARE_INDEX_WATCHLIST.values())
+    return fetch_tencent_a_share_dataframe(index_symbols, "腾讯指数行情")
 
 
 def fetch_a_share_index_history_dataframe(

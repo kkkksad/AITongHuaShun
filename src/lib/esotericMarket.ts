@@ -27,6 +27,18 @@ export interface EsotericMarketReadingInput {
   round?: number;
   method?: EsotericMethod;
   marketContext?: EsotericMarketContext;
+  stockContext?: EsotericStockContext;
+}
+
+export interface EsotericStockContext {
+  symbol: string;
+  name: string;
+  price: number;
+  previousClose: number;
+  changePercent: number;
+  amplitudePercent: number;
+  freshnessMinutes: number | null;
+  state: Exclude<EsotericMarketState, "unavailable"> | "unavailable";
 }
 
 export interface HexagramReference {
@@ -54,6 +66,12 @@ export interface EsotericMarketReading {
     focus: string;
   };
   marketMirror: {
+    state: EsotericMarketState;
+    summary: string;
+    evidence: string[];
+  };
+  focusType: "market" | "stock";
+  focusMirror: {
     state: EsotericMarketState;
     summary: string;
     evidence: string[];
@@ -257,6 +275,36 @@ export function summarizeEsotericMarketContext(
   };
 }
 
+export function summarizeEsotericStockContext(
+  quote: MarketQuote | undefined,
+  now = new Date(),
+): EsotericStockContext | undefined {
+  if (!quote) return undefined;
+  const updatedAt = new Date(quote.updatedAt).getTime();
+  const freshnessMinutes = Number.isFinite(updatedAt)
+    ? roundNumber(Math.max(0, (now.getTime() - updatedAt) / 60_000), 1)
+    : null;
+  const valid = quote.price > 0 && quote.previousClose > 0 && Number.isFinite(quote.changePercent);
+  const state: EsotericStockContext["state"] = !valid
+    ? "unavailable"
+    : quote.changePercent >= 1
+      ? "expanding"
+      : quote.changePercent <= -1
+        ? "contracting"
+        : "balanced";
+
+  return {
+    symbol: quote.symbol,
+    name: quote.name || quote.symbol,
+    price: roundNumber(quote.price),
+    previousClose: roundNumber(quote.previousClose),
+    changePercent: roundNumber(quote.changePercent),
+    amplitudePercent: roundNumber(quoteAmplitude(quote)),
+    freshnessMinutes,
+    state,
+  };
+}
+
 function symbolicState(seed: number): Exclude<EsotericMarketState, "unavailable"> {
   const index = (seed >>> 19) % 3;
   if (index === 0) return "expanding";
@@ -304,19 +352,44 @@ function buildMarketMirror(context: EsotericMarketContext | undefined): Esoteric
   };
 }
 
+function buildStockMirror(context: EsotericStockContext | undefined): EsotericMarketReading["focusMirror"] {
+  if (!context || context.state === "unavailable") {
+    return {
+      state: "unavailable",
+      summary: "该票没有可用的真实报价，今天只保留文化记录，不比较个股盘面。",
+      evidence: ["需要有效的最新价、昨收和涨跌幅，且不能用静态价格补位。"],
+    };
+  }
+  return {
+    state: context.state,
+    summary: `${context.name} ${context.symbol} 当前处于${stateLabel(context.state)}状态，现价 ${context.price.toFixed(2)}，涨跌 ${context.changePercent >= 0 ? "+" : ""}${context.changePercent.toFixed(2)}%。`,
+    evidence: [
+      `个股涨跌 ${context.changePercent >= 0 ? "+" : ""}${context.changePercent.toFixed(2)}%，振幅 ${context.amplitudePercent.toFixed(2)}%。`,
+      `报价新鲜度 ${context.freshnessMinutes?.toFixed(1) ?? "--"} 分钟；该镜像只用于复盘，不代表预测。`,
+    ],
+  };
+}
+
 function buildReviewQuestions(
   method: EsotericMethod,
   target: string,
   context: EsotericMarketContext | undefined,
+  stockContext: EsotericStockContext | undefined,
 ): [string, string] {
-  const methodQuestion = method === "wuxing"
+  const methodQuestion = stockContext
+    ? `第一个被验证或证伪的 ${target} 条件是什么，发生在什么时间？`
+    : method === "wuxing"
     ? `收盘时，${target}的量价强弱是否出现了可以记录的转换？`
     : method === "number"
       ? `本次固定索引对应的观察与${target}收盘事实有何差异？`
       : `第一个被验证或证伪的条件是什么，发生在什么时间？`;
-  const marketQuestion = context?.marketState === "unavailable"
-    ? "真实快照为何不足，数据恢复后结论是否需要标记为不可比较？"
-    : "收盘时上涨宽度、平均涨跌和振幅是否仍支持盘中看到的状态？";
+  const marketQuestion = stockContext
+    ? stockContext.state === "unavailable"
+      ? `恢复 ${target} 的真实报价后，是否需要把本次记录标记为不可比较？`
+      : `收盘时，${target}的涨跌、振幅和真实报价时间是否仍支持盘中看到的状态？`
+    : context?.marketState === "unavailable"
+      ? "真实快照为何不足，数据恢复后结论是否需要标记为不可比较？"
+      : "收盘时上涨宽度、平均涨跌和振幅是否仍支持盘中看到的状态？";
   return [methodQuestion, marketQuestion];
 }
 
@@ -340,11 +413,15 @@ export function createEsotericMarketReading(
   const changingLine = (seed % 6) + 1;
   const symbolState = symbolicState(seed);
   const marketMirror = buildMarketMirror(input.marketContext);
-  const alignment: EsotericAlignment = marketMirror.state === "unavailable"
+  const focusType = input.stockContext ? "stock" : "market";
+  const focusMirror = input.stockContext
+    ? buildStockMirror(input.stockContext)
+    : marketMirror;
+  const alignment: EsotericAlignment = focusMirror.state === "unavailable"
     ? "unavailable"
-    : symbolState === marketMirror.state ||
+    : symbolState === focusMirror.state ||
         symbolState === "balanced" ||
-        marketMirror.state === "balanced"
+        focusMirror.state === "balanced"
       ? "aligned"
       : "conflicted";
 
@@ -366,9 +443,11 @@ export function createEsotericMarketReading(
       focus: `${stateLabel(symbolState)}象意 · ${hexagram.theme}`,
     },
     marketMirror,
+    focusType,
+    focusMirror,
     alignment,
     entertainmentIndex: (seed >>> 21) % 101,
-    reviewQuestions: buildReviewQuestions(method, target, input.marketContext),
+    reviewQuestions: buildReviewQuestions(method, target, input.marketContext, input.stockContext),
   };
 }
 

@@ -15,6 +15,7 @@ import {
   formatLocalDate,
   getEsotericMethodLabel,
   summarizeEsotericMarketContext,
+  summarizeEsotericStockContext,
   type EsotericMethod,
   type EsotericMarketState,
 } from "../lib/esotericMarket";
@@ -43,7 +44,9 @@ function alignmentLabel(alignment: "aligned" | "conflicted" | "unavailable"): st
 }
 
 export function EsotericMarketPanel({ market, today = new Date() }: EsotericMarketPanelProps) {
+  const [targetMode, setTargetMode] = useState<"market" | "stock">("market");
   const [target, setTarget] = useState("今日大盘");
+  const [selectedSymbol, setSelectedSymbol] = useState("");
   const [date, setDate] = useState(() => formatLocalDate(today));
   const [method, setMethod] = useState<EsotericMethod>("yijing");
   const [round, setRound] = useState(0);
@@ -51,15 +54,33 @@ export function EsotericMarketPanel({ market, today = new Date() }: EsotericMark
     () => summarizeEsotericMarketContext(market, today),
     [market, today],
   );
+  const stockQuotes = useMemo(
+    () => (market?.quotes ?? [])
+      .filter((quote) => quote.tradable && quote.price > 0)
+      .sort((left, right) => left.symbol.localeCompare(right.symbol)),
+    [market],
+  );
+  const activeStock = stockQuotes.find((quote) => quote.symbol === selectedSymbol)
+    ?? (targetMode === "stock" ? stockQuotes[0] : undefined);
+  const readingTarget = targetMode === "stock"
+    ? activeStock ? `${activeStock.name} (${activeStock.symbol})` : "待选择单票"
+    : target;
+  const stockContext = useMemo(
+    () => targetMode === "stock"
+      ? summarizeEsotericStockContext(activeStock, today)
+      : undefined,
+    [activeStock, targetMode, today],
+  );
   const reading = useMemo(
     () => createEsotericMarketReading({
       date,
-      target,
+      target: readingTarget,
       method,
       round,
       marketContext,
+      stockContext,
     }),
-    [date, marketContext, method, round, target],
+    [date, marketContext, method, readingTarget, round, stockContext],
   );
 
   return (
@@ -88,15 +109,44 @@ export function EsotericMarketPanel({ market, today = new Date() }: EsotericMark
 
       <div className="esoteric-market-controls">
         <label>
-          <span>观察对象</span>
-          <input
-            aria-label="观察对象"
-            maxLength={32}
-            onChange={(event) => setTarget(event.target.value)}
-            placeholder="例如：今日大盘、600519、半导体"
-            value={target}
-          />
+          <span>观察层</span>
+          <select
+            aria-label="观察层"
+            onChange={(event) => setTargetMode(event.target.value as "market" | "stock")}
+            value={targetMode}
+          >
+            <option value="market">大盘观察</option>
+            <option value="stock">单票观察</option>
+          </select>
         </label>
+        {targetMode === "stock" ? (
+          <label>
+            <span>选择股票</span>
+            <select
+              aria-label="选择股票"
+              onChange={(event) => setSelectedSymbol(event.target.value)}
+              value={activeStock?.symbol ?? ""}
+            >
+              {stockQuotes.length === 0 && <option value="">当前快照暂无有效个股</option>}
+              {stockQuotes.map((quote) => (
+                <option key={quote.symbol} value={quote.symbol}>
+                  {quote.name} · {quote.symbol}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label>
+            <span>观察对象</span>
+            <input
+              aria-label="观察对象"
+              maxLength={32}
+              onChange={(event) => setTarget(event.target.value)}
+              placeholder="例如：今日大盘、半导体"
+              value={target}
+            />
+          </label>
+        )}
         <label>
           <span><CalendarDays size={14} /> 起卦日期</span>
           <input
@@ -146,11 +196,11 @@ export function EsotericMarketPanel({ market, today = new Date() }: EsotericMark
         </article>
 
         <article className={`esoteric-reading-card esoteric-alignment-${reading.alignment}`}>
-          <span><Activity size={14} /> 盘面镜像</span>
+          <span><Activity size={14} /> {reading.focusType === "stock" ? "个股现实镜像" : "盘面镜像"}</span>
           <strong>{alignmentLabel(reading.alignment)}</strong>
-          <p>{reading.marketMirror.summary}</p>
+          <p>{reading.focusMirror.summary}</p>
           <ul>
-            {reading.marketMirror.evidence.map((item) => <li key={item}>{item}</li>)}
+            {reading.focusMirror.evidence.map((item) => <li key={item}>{item}</li>)}
           </ul>
           <small>象意层为{reading.symbolLayer.focus}；发生冲突时只记录，不解释为交易信号。</small>
         </article>

@@ -19,6 +19,10 @@ RUN npm run build
 # ============================================================
 FROM nginx:1.27-alpine AS web
 COPY --from=builder /app/dist /usr/share/nginx/html
+# The deployment archive can retain restrictive Windows source modes for files
+# copied from public/. Nginx must be able to read every generated asset.
+RUN find /usr/share/nginx/html -type d -exec chmod 0755 {} + \
+    && find /usr/share/nginx/html -type f -exec chmod 0644 {} +
 
 # ============================================================
 # Stage 4: Production — minimal API runtime image

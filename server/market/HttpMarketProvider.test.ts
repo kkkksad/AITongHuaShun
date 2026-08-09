@@ -354,7 +354,16 @@ describe("HttpMarketProvider.start / stop", () => {
     const fetchMock = vi
       .fn()
       .mockRejectedValueOnce(new Error("bridge unavailable"))
-      .mockResolvedValue(mockFetchResponse([]));
+      .mockResolvedValue(mockFetchResponse([{
+        symbol: "600519",
+        name: "贵州茅台",
+        tradable: true,
+        price: 1500,
+        previousClose: 1490,
+        changePercent: 0.67,
+        volume: 1_000,
+        updatedAt: "2026-08-08T07:00:00.000Z",
+      }]));
     vi.stubGlobal("fetch", fetchMock);
     const provider = new HttpMarketProvider(
       makeConfig({ tickMs: 100, symbols: ["600519"], indexSymbols: [] }),
@@ -548,6 +557,39 @@ describe("HttpMarketProvider fetch 响应处理", () => {
     expect(snapshotAfter.quotes[0].price).toBe(snapshotBefore.quotes[0].price);
 
     provider.stop();
+  });
+
+  it("空行情批次不会覆盖最近成功快照，也不推进成功时间", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockFetchResponse([{
+        symbol: "600519",
+        name: "贵州茅台",
+        tradable: true,
+        price: 1500,
+        previousClose: 1490,
+        changePercent: 0.67,
+        volume: 1_000,
+        updatedAt: "2026-08-08T07:00:00.000Z",
+      }]))
+      .mockResolvedValue(mockFetchResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new HttpMarketProvider(
+      makeConfig({ tickMs: 100, symbols: ["600519"], indexSymbols: [] }),
+    );
+
+    provider.start();
+    await vi.advanceTimersByTimeAsync(0);
+    const successTime = provider.getLastFetchSuccessMs();
+    expect(provider.getQuote("600519")?.price).toBe(1500);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(provider.getQuote("600519")?.price).toBe(1500);
+    expect(provider.getLastFetchSuccessMs()).toBe(successTime);
+
+    provider.stop();
+    vi.useRealTimers();
   });
 
   it("API Key 通过 Authorization 头传递", async () => {

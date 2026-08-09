@@ -228,6 +228,14 @@ export class HttpMarketProvider
           success: false,
         };
       }
+      if (data.quotes.length === 0) {
+        return {
+          attempted: true,
+          error: `${label}返回空行情`,
+          quotes: [],
+          success: false,
+        };
+      }
       return {
         attempted: true,
         error: null,

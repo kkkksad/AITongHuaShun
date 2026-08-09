@@ -8340,7 +8340,7 @@ select:focus-visible {
 
 .esoteric-market-controls {
   display: grid;
-  grid-template-columns: minmax(170px, 1.4fr) minmax(150px, 1fr) minmax(140px, 1fr) auto;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(170px, 1.25fr) minmax(150px, 1fr) minmax(140px, 1fr) auto;
   align-items: end;
   gap: 10px;
   padding: 13px 0;

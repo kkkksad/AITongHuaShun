@@ -5,6 +5,7 @@ import {
   formatLocalDate,
   getEsotericMethodLabel,
   summarizeEsotericMarketContext,
+  summarizeEsotericStockContext,
 } from "./esotericMarket";
 
 const market: MarketSnapshot = {
@@ -160,5 +161,26 @@ describe("esotericMarket", () => {
   it("formats local dates without UTC shifting", () => {
     expect(formatLocalDate(new Date(2026, 7, 8, 23, 59))).toBe("2026-08-08");
     expect(getEsotericMethodLabel("number")).toBe("数字起卦");
+  });
+
+  it("builds a deterministic single-stock reality mirror without trade fields", () => {
+    const stock = market.quotes[0];
+    const context = summarizeEsotericStockContext(stock, new Date("2026-08-08T06:00:00.000Z"));
+    const input = {
+      date: "2026-08-08",
+      target: `${stock.name} (${stock.symbol})`,
+      method: "yijing" as const,
+      stockContext: context,
+    };
+    const first = createEsotericMarketReading(input);
+    const second = createEsotericMarketReading(input);
+
+    expect(first).toEqual(second);
+    expect(first.focusType).toBe("stock");
+    expect(first.focusMirror.summary).toContain("甲 600519");
+    expect(first.focusMirror.evidence.join(" ")).toContain("+2.00%");
+    expect(first.reviewQuestions[0]).toContain("600519");
+    expect(first).not.toHaveProperty("action");
+    expect(first).not.toHaveProperty("order");
   });
 });

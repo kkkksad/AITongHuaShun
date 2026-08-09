@@ -48,6 +48,8 @@ from main import (
     StockSearchResponse,
     fetch_a_share_spot_dataframe,
     fetch_a_share_index_dataframe,
+    fetch_tencent_a_share_index_dataframe,
+    fetch_tencent_a_share_spot_dataframe,
     extract_symbols,
     fetch_financial_news_batches,
     fetch_crypto_spot_dataframe,
@@ -1163,12 +1165,20 @@ class TestQuoteCache:
     def test_fetch_raises_last_error_when_all_sources_fail(self):
         with patch("main.ak.stock_zh_a_spot_em", side_effect=RuntimeError("blocked")):
             with patch("main.ak.stock_zh_a_spot", side_effect=RuntimeError("offline")):
-                with pytest.raises(RuntimeError, match="offline"):
-                    fetch_a_share_spot_dataframe()
+                with patch("main.fetch_tencent_a_share_spot_dataframe", side_effect=RuntimeError("tencent offline")):
+                    with pytest.raises(RuntimeError, match="tencent offline"):
+                        fetch_a_share_spot_dataframe()
 
     def test_success_ttl_starts_when_refresh_finishes(self):
         clock = {"now": 100.0}
-        frame = pd.DataFrame(columns=["代码", "名称"])
+        frame = pd.DataFrame([{
+            "代码": "600519",
+            "名称": "贵州茅台",
+            "最新价": 1500,
+            "昨收": 1490,
+            "涨跌幅": 0.67,
+            "成交量": 1000,
+        }])
         cache = QuoteCache(ttl_sec=3.0)
 
         def slow_fetch():
@@ -1180,6 +1190,27 @@ class TestQuoteCache:
                 asyncio.run(cache.refresh())
                 assert cache.age_sec == 0
                 assert cache._needs_refresh() is False
+
+    def test_empty_refresh_preserves_last_good_stock_quotes(self):
+        cache = QuoteCache(ttl_sec=3.0)
+        cache._data["600519"] = MarketQuote(
+            symbol="600519",
+            name="贵州茅台",
+            tradable=True,
+            price=1500,
+            previousClose=1490,
+            changePercent=0.67,
+            volume=1_000,
+            updatedAt="2026-08-08T07:00:00.000Z",
+        )
+        cache._last_update = 1.0
+
+        with patch("main.fetch_a_share_spot_dataframe", return_value=pd.DataFrame()):
+            asyncio.run(cache.refresh())
+
+        assert cache.count == 1
+        assert cache._data["600519"].price == 1500
+        assert cache.last_error == "股票行情源返回空结果"
 
     def test_failed_refresh_cools_down_before_retrying_stale_cache(self):
         clock = {"now": 100.0}
@@ -1223,7 +1254,14 @@ class TestQuoteCache:
 
     def test_index_success_ttl_starts_when_refresh_finishes(self):
         clock = {"now": 200.0}
-        frame = pd.DataFrame(columns=["代码", "名称"])
+        frame = pd.DataFrame([{
+            "代码": "sh000001",
+            "名称": "上证指数",
+            "最新价": 3900,
+            "昨收": 3880,
+            "涨跌幅": 0.52,
+            "成交量": 1000,
+        }])
         cache = IndexCache(ttl_sec=3.0)
 
         def slow_fetch():
@@ -1236,11 +1274,78 @@ class TestQuoteCache:
                 assert cache.age_sec == 0
                 assert cache._needs_refresh() is False
 
+    def test_empty_refresh_preserves_last_good_indices(self):
+        cache = IndexCache(ttl_sec=3.0)
+        cache._data["SH000001"] = MarketQuote(
+            symbol="SH000001",
+            name="上证指数",
+            tradable=False,
+            price=3900,
+            previousClose=3880,
+            changePercent=0.52,
+            volume=1_000,
+            updatedAt="2026-08-08T07:00:00.000Z",
+        )
+        cache._last_update = 1.0
+
+        with patch("main.fetch_a_share_index_dataframe", return_value=pd.DataFrame()):
+            asyncio.run(cache.refresh())
+
+        assert cache.count == 1
+        assert cache._data["SH000001"].price == 3900
+        assert cache.last_error == "指数行情源返回空结果"
+
     def test_fetch_index_uses_eastmoney_source(self):
         index_df = MagicMock()
         index_df.__len__.return_value = 4
         with patch("main.ak.stock_zh_index_spot_em", return_value=index_df):
             assert fetch_a_share_index_dataframe() is index_df
+
+    def test_tencent_index_parser_returns_controlled_real_quotes(self):
+        fields = [""] * 88
+        fields[1] = "上证指数"
+        fields[3] = "3940.04"
+        fields[4] = "3900.35"
+        fields[5] = "3896.49"
+        fields[6] = "564988582"
+        fields[30] = "20260807161402"
+        fields[32] = "1.02"
+        fields[33] = "3940.93"
+        fields[34] = "3885.62"
+        fields[37] = "120954357"
+        fields[43] = "1.42"
+        payload = f'v_sh000001="{"~".join(fields)}";'
+        response = MagicMock()
+        response.content = payload.encode("gbk")
+        response.raise_for_status.return_value = None
+        session = MagicMock()
+        session.get.return_value = response
+
+        with patch("main.requests.Session", return_value=session):
+            frame = fetch_tencent_a_share_index_dataframe()
+
+        assert frame.iloc[0]["代码"] == "sh000001"
+        assert frame.iloc[0]["名称"] == "上证指数"
+        assert frame.iloc[0]["最新价"] == 3940.04
+        assert frame.iloc[0]["昨收"] == 3900.35
+        assert frame.iloc[0]["涨跌幅"] == 1.02
+        assert frame.iloc[0]["今开"] == 3896.49
+        assert frame.iloc[0]["最高"] == 3940.93
+        assert frame.iloc[0]["最低"] == 3885.62
+
+    def test_index_fetch_falls_back_to_tencent(self):
+        fallback = pd.DataFrame([{"代码": "sh000001", "名称": "上证指数"}])
+        with patch("main.ak.stock_zh_index_spot_em", side_effect=RuntimeError("em offline")):
+            with patch("main.ak.stock_zh_index_spot_sina", side_effect=RuntimeError("sina offline")):
+                with patch("main.fetch_tencent_a_share_index_dataframe", return_value=fallback):
+                    assert fetch_a_share_index_dataframe() is fallback
+
+    def test_stock_fetch_falls_back_to_tencent_watchlist(self):
+        fallback = pd.DataFrame([{"代码": "600519", "名称": "贵州茅台"}])
+        with patch("main.ak.stock_zh_a_spot_em", side_effect=RuntimeError("em offline")):
+            with patch("main.ak.stock_zh_a_spot", side_effect=RuntimeError("sina offline")):
+                with patch("main.fetch_tencent_a_share_spot_dataframe", return_value=fallback):
+                    assert fetch_a_share_spot_dataframe() is fallback
 
     def test_index_symbol_normalization_namespaces_indices(self):
         assert normalize_index_symbol("000001") == "SH000001"
