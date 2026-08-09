@@ -4,7 +4,7 @@
 
 ## 已实现
 
-- **腾讯云单机生产部署** —— `124.221.165.45` 已作为当前生产部署目标；Nginx、Fastify 和 AkShare 容器在服务器内健康通过，公网 80 已通，公网 443 仍需在腾讯云轻量应用服务器防火墙放行后才能访问 HTTPS。API 与行情桥只在容器网络内通信。生产模式固定为 `paper + akshare`，真实交易关闭，认证保护开启，Paper JSON 历史默认保留 7 天。IP 入口暂用自签名 HTTPS，仍需域名和受信任证书。
+- **腾讯云单机生产部署** —— `124.221.165.45` 已作为当前生产部署目标；Nginx、Fastify 和 AkShare 容器在服务器内健康通过，公网 80/443 已通，API 与行情桥只在容器网络内通信。生产模式固定为 `paper + akshare`，真实交易关闭，认证保护开启，Paper JSON 历史默认保留 7 天。`kairosq.cn` 的 A 记录已指向该服务器，但腾讯云当前把域名 HTTP 请求重定向到 DNSPod webblock，TLS SNI 连接也被重置；完成 ICP 备案和受信任证书前，浏览器只能看到 IP 自签名证书警告。
 - React + TypeScript + Vite 响应式量化研究工作台。
 - 总览、策略实验室、市场观察、模拟账户和研究管线五个视图。
 - 固定种子的确定性回测、净值曲线、基准曲线、交易记录和风险指标。
@@ -216,7 +216,11 @@ TypeScript project-reference checks passed; Vite production build passed with 2,
 Real-source check: Tencent fallback returned 4 controlled indices and the configured stock snapshot with exchange timestamps; no proxy was used
 Browser: 1440x1000 and 390x844 passed; four major indices rendered, single-stock selection displayed price/change/amplitude/freshness, page overflow remained 0, and console errors were empty
 Safety: Paper-only and real trading disabled; esoteric output remains outside strategy, notification, position, risk and execution paths
-Production: pending restricted deployment and live endpoint verification
+Production: commit 615934c46d1129cb5f305db82aacb983879de482 deployed through the restricted SSH entrypoint; all three containers healthy
+Production endpoints: /healthz, /api/health, /manifest.json, /sw.js and /icon-192.svg returned HTTP 200
+Production bridge: cachedIndices=4, stock cache non-empty, proxy disabled, no latest refresh errors; logs confirmed tencent-index=4 and tencent-spot=67 after upstream failures
+Authenticated production snapshot: paper mode, 67 stocks + 4 indices, all 71 quotes had positive real prices
+Remaining infrastructure gap: kairosq.cn resolves to 124.221.165.45 but is redirected to Tencent DNSPod webblock and cannot complete TLS SNI; ICP filing and a trusted certificate are still required for browser-safe domain access
 
 2026-08-08 全局研究证据与总览首屏性能优化
 Server Vitest: 55 files, 825 tests passed
