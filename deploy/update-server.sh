@@ -8,6 +8,7 @@ ENV_FILE="${ROOT}/.env.production"
 LOCK_FILE=/tmp/kairos-production-deploy.lock
 RELEASE_ARCHIVE="/tmp/kairos-release-${COMMIT}.tar.gz"
 SOURCE_BACKUP="/tmp/kairos-source-backup-${COMMIT}.tar.gz"
+SOURCE_STAGING="/tmp/kairos-source-staging-${COMMIT}"
 SERVICES=(akshare-bridge backend web)
 IMAGES=(kairos-akshare-bridge kairos-api kairos-web)
 
@@ -36,17 +37,48 @@ previous_commit="$(git rev-parse HEAD 2>/dev/null || true)"
 
 replace_source_from_archive() {
   local archive="${1:?archive is required}"
+  local required
   if [[ ! -s "${archive}" ]]; then
     echo "Missing release archive: ${archive}." >&2
     exit 78
   fi
 
-  tar --exclude='./runtime' --exclude='./.env.production' -czf "${SOURCE_BACKUP}" -C "${ROOT}" . || true
+  rm -rf "${SOURCE_STAGING}"
+  install -d -m 0700 "${SOURCE_STAGING}"
+  if ! tar -xzf "${archive}" -C "${SOURCE_STAGING}"; then
+    rm -rf "${SOURCE_STAGING}"
+    echo "Invalid release archive: ${archive}." >&2
+    exit 78
+  fi
+  for required in \
+    Dockerfile \
+    docker-compose.production.yml \
+    package.json \
+    deploy/github-deploy-entrypoint.sh \
+    deploy/update-server.sh; do
+    if [[ ! -s "${SOURCE_STAGING}/${required}" ]]; then
+      rm -rf "${SOURCE_STAGING}"
+      echo "Release archive is missing ${required}." >&2
+      exit 78
+    fi
+  done
+
+  if ! tar --exclude='./runtime' --exclude='./.env.production' -czf "${SOURCE_BACKUP}" -C "${ROOT}" .; then
+    rm -rf "${SOURCE_STAGING}"
+    echo "Could not back up the current production source." >&2
+    exit 1
+  fi
   find "${ROOT}" -mindepth 1 -maxdepth 1 \
     ! -name runtime \
     ! -name .env.production \
     -exec rm -rf {} +
-  tar -xzf "${archive}" -C "${ROOT}"
+  if ! cp -a "${SOURCE_STAGING}/." "${ROOT}/"; then
+    rm -rf "${SOURCE_STAGING}"
+    restore_source
+    echo "Could not install the staged production source; restore attempted." >&2
+    exit 1
+  fi
+  rm -rf "${SOURCE_STAGING}"
 }
 
 restore_source() {
@@ -121,6 +153,7 @@ while (( SECONDS < deadline )); do
     for image in "${IMAGES[@]}"; do
       docker image rm "${image}:rollback" >/dev/null 2>&1 || true
     done
+    rm -rf "${SOURCE_STAGING}"
     rm -f "${RELEASE_ARCHIVE}" "${SOURCE_BACKUP}"
     docker image prune -f --filter "until=168h" >/dev/null
     echo "KAIROS production deployment completed at ${COMMIT}."

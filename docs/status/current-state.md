@@ -55,6 +55,7 @@
 - **全链路请求可靠性** —— Fastify 行情轮询改为单飞串行调度，整轮失败按 10/20/40/60 秒有界退避并保留最后成功快照；AkShare 全市场股票/指数缓存以刷新完成时间计算默认 10 秒 TTL，失败后进入有限冷却并继续返回旧数据。服务端研究模块统一通过 `bridgeRequest` 处理超时、HTTP 详情、网络断开和无效 JSON，不再向界面暴露原始 `fetch failed`；前端研究 GET 消费 TanStack Query 的 `AbortSignal`，切走页签时取消过期浏览器请求。
 - **生产行情真实备用源与空刷新保护** —— A 股个股和四个主要指数在东方财富/新浪读取失败后可回退腾讯公开只读快照；生产桥接使用同一份 `MARKET_SYMBOLS` 有界股票池，保留交易所报价时间。股票或指数刷新返回空表、不可解析响应或网络错误时不会清空最后成功缓存；Fastify 也把空批次视为失败并保留最近成功快照，不使用固定价格补位。
 - **生产静态资源权限** —— Web 镜像构建阶段统一把 Vite 输出目录设为目录 `0755`、文件 `0644`，避免部署归档继承限制权限后导致 `manifest.json`、`sw.js` 或 PWA 图标被 Nginx 拒绝读取。
+- **生产上传归档预检** —— 受限 SSH 上传的发布包先解压到提交专属临时目录，并校验 Dockerfile、Compose、`package.json` 和部署入口完整性；只有验证成功后才备份和替换 `/opt/kairos` 源码，错误格式或缺文件归档不会再清空当前源码。
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
 - **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 的 `qualitySummary` 返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额、现金使用比例和策略覆盖；研究管线页面展示命中的策略族、未匹配候选和主要限制，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1、历史结构或仓位约束保持观望。
@@ -208,7 +209,7 @@ GET  /documentation/json                  (OpenAPI JSON)
 
 ```text
 2026-08-09 production market recovery and single-stock esoteric observation
-Server Vitest: 56 files, 827 tests passed
+Server Vitest: 57 files, 828 tests passed
 Web Vitest: 30 files, 105 tests passed
 Python pytest: 114 tests passed; 1 FastAPI/httpx deprecation warning and 1 local pytest-cache permission warning
 TypeScript project-reference checks passed; Vite production build passed with 2,321 modules transformed
