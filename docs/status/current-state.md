@@ -849,6 +849,9 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - AkShare bridge pytest：101 项测试通过；仅有依赖弃用与本机 pytest 缓存目录权限警告。
 - `tsc -b` 与 Vite 生产构建通过，构建转换 2,321 个模块。
 - `git diff --check` 通过；凭据扫描只命中测试占位 SPT，没有真实 Token、UID 或明文密码进入差异。
+- 提交 `533c57d284b309b8126d3bac78132319d7eee284` 已通过受限归档入口部署到 `124.221.165.45`；Nginx、Fastify 与 AkShare 三个容器均为 healthy，公网 `/healthz` 与 `/api/health` 返回 200，受保护的自动执行状态和 Paper 计划匿名访问返回 401。
+- 生产运行时确认 `paper + akshare`、`REAL_TRADING_ENABLED=false`、自动 Paper 开启、单轮 1 笔、每日上限 4 笔、每日成交目标 2 笔。桥接代理禁用，股票缓存 5,542、指数缓存 562，重启后历史队列空闲且无拒绝。
+- 持久化 Paper 账户保留原有 100,000 元现金、0 持仓和 0 订单，没有因部署重置。部署前最后盘中运行使用 `live-read-only` 核心来源但计划质量为 `blocked`，因此没有伪造成交；新调度从下一交易时段开始接受验证。
 
 ## 当前边界
 
