@@ -75,6 +75,7 @@ services:
       RESEARCH_DATA_DIR: /app/data/research
       EXTERNAL_MARKET_FEATURE_FILE: /app/data/research/external-market-features.json
       REAL_TRADING_ENABLED: "false"
+      PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: ${PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS:-2}
     expose:
       - "3001"
     volumes:

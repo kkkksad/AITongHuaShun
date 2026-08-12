@@ -119,14 +119,9 @@ export async function buildCurrentPaperTradingPlan(input: {
     positions,
     candidates,
     qualityStocks,
-    limit: 12,
+    limit: 6,
   });
-  const [
-    leaderboard,
-    marketRegimeResearch,
-    realResearchDataFeed,
-    externalMarketImpact,
-  ] = await Promise.all([
+  const [leaderboard, marketRegimeResearch] = await Promise.all([
     buildStrategyLeaderboard(
       snapshot,
       input.system.marketDataProvider,
@@ -139,11 +134,13 @@ export async function buildCurrentPaperTradingPlan(input: {
       mode: input.config.MARKET_MODE,
       snapshot,
       preferredStocks: preferredHistoricalStocks,
-      sectorLimit: 10,
-      stockLimit: 12,
+      sectorLimit: 6,
+      stockLimit: 6,
       days: 180,
       timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
     }),
+  ]);
+  const [realResearchDataFeed, externalMarketImpact] = await Promise.all([
     buildRealResearchDataFeed({
       bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
       bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,

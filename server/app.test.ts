@@ -172,6 +172,7 @@ describe("trading API", () => {
       autoPaperExecution: {
         enabled: false,
         mode: "local-paper-broker-only",
+        targetDailyOrders: 2,
         liveTradingEnabled: false,
       },
       authentication: {
@@ -1160,6 +1161,13 @@ describe("trading API", () => {
       execution: "local-paper-broker-only",
       liveTradingEnabled: false,
       tradeWindowOnly: true,
+      targetDailyOrders: 2,
+      todayFilledOrders: 0,
+      activityTarget: {
+        targetOrders: 2,
+        filledOrders: 0,
+        remainingOrders: 2,
+      },
     });
     expect(response.json().guardrails.join("")).toContain("PaperBroker");
   });
@@ -1262,6 +1270,13 @@ describe("trading API", () => {
       );
       expect(orders.json()[0].clientOrderId).toContain("kairos-auto-paper");
       expect(status.json().todaySubmittedOrders).toBe(1);
+      expect(status.json().todayFilledOrders).toBe(1);
+      expect(status.json().activityTarget).toMatchObject({
+        status: "active",
+        targetOrders: 2,
+        filledOrders: 1,
+        remainingOrders: 1,
+      });
       expect(audit.json()).toEqual(expect.arrayContaining([
         expect.objectContaining({
           action: "paper-auto-execution.run",

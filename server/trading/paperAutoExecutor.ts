@@ -77,6 +77,14 @@ export interface PaperAutoExecutionRun {
   guardrails: string[];
 }
 
+export interface PaperActivityTargetStatus {
+  status: "met" | "active" | "blocked" | "closed";
+  targetOrders: number;
+  filledOrders: number;
+  remainingOrders: number;
+  reason: string;
+}
+
 export interface PaperAutoExecutionStatus {
   enabled: boolean;
   running: boolean;
@@ -87,7 +95,10 @@ export interface PaperAutoExecutionStatus {
   tradeWindowOnly: boolean;
   maxOrdersPerRun: number;
   maxDailyOrders: number;
+  targetDailyOrders: number;
   todaySubmittedOrders: number;
+  todayFilledOrders: number;
+  activityTarget: PaperActivityTargetStatus;
   phaseDailyOrderLimit: number;
   phaseRemainingOrders: number;
   currentSession: PaperAutoExecutionSession;
@@ -109,6 +120,7 @@ export interface PaperAutoExecutorOptions {
   tradeWindowOnly: boolean;
   maxOrdersPerRun: number;
   maxDailyOrders: number;
+  targetDailyOrders: number;
   clock?: () => Date;
   onOrder?: (order: OrderRecord, request: OrderRequest) => void;
   planNotifier?: Pick<PaperPlanNotifier, "notify">;
@@ -227,6 +239,77 @@ export function getChinaTradeDate(value = new Date()): string {
   return getChinaParts(value).date;
 }
 
+export function resolvePaperActivityTarget(input: {
+  targetOrders: number;
+  filledOrders: number;
+  session: PaperAutoExecutionSession;
+  latestRun: PaperAutoExecutionRun | null;
+  tradingDate?: string;
+}): PaperActivityTargetStatus {
+  const targetOrders = Math.max(1, Math.floor(input.targetOrders));
+  const filledOrders = Math.max(0, Math.floor(input.filledOrders));
+  const remainingOrders = Math.max(0, targetOrders - filledOrders);
+  if (remainingOrders === 0) {
+    return {
+      status: "met",
+      targetOrders,
+      filledOrders,
+      remainingOrders,
+      reason: "今日 Paper 成交活跃度目标已达到。",
+    };
+  }
+  if (input.session === "after-hours" || input.session === "weekend") {
+    return {
+      status: "closed",
+      targetOrders,
+      filledOrders,
+      remainingOrders,
+      reason: "当前不在 A 股交易时段，今日未完成的目标不会触发补单。",
+    };
+  }
+  const applicableRun = input.latestRun && (
+    input.tradingDate === undefined ||
+    input.latestRun.tradingDate === input.tradingDate
+  )
+    ? input.latestRun
+    : null;
+  const rejectedOrder = applicableRun
+    ? applicableRun.submittedOrders.find((order) => order.status === "rejected")
+    : undefined;
+  if (
+    input.session === "open" &&
+    applicableRun &&
+    (
+      applicableRun.planQuality !== "actionable" ||
+      applicableRun.researchContext?.sourceStatus === "degraded" ||
+      rejectedOrder ||
+      applicableRun.submittedOrders.length === 0
+    )
+  ) {
+    const blockedReason = rejectedOrder?.rejectionReason ??
+      applicableRun.skippedOperations.find((operation) => operation.action === "blocked")?.reason ??
+      applicableRun.skippedOperations[0]?.reason;
+    return {
+      status: "blocked",
+      targetOrders,
+      filledOrders,
+      remainingOrders,
+      reason: blockedReason
+        ? `当前计划被阻塞：${blockedReason}`
+        : "当前计划或真实历史数据不足，不能为完成目标绕过风控。",
+    };
+  }
+  return {
+    status: "active",
+    targetOrders,
+    filledOrders,
+    remainingOrders,
+    reason: input.session === "open"
+      ? "目标进行中，仅在候选通过全部数据、费用和风控检查后提交 Paper 订单。"
+      : "等待下一个 A 股交易时段，不会提前或补偿性下单。",
+  };
+}
+
 export function shouldRunScheduledPaperAutoExecution(
   value: Date,
   tradeWindowOnly: boolean,
@@ -342,7 +425,10 @@ export class PaperAutoExecutor {
     const latestRun = this.runs[0] ?? null;
     const now = this.now();
     const currentPolicy = getIntradayExecutionPolicy(now, null);
-    const todaySubmittedOrders = this.countSubmittedOrders(getChinaTradeDate(now));
+    const tradingDate = getChinaTradeDate(now);
+    const currentSession = getAshareSession(now);
+    const todaySubmittedOrders = this.countSubmittedOrders(tradingDate);
+    const todayFilledOrders = this.countFilledOrders(tradingDate);
     const phaseDailyOrderLimit = getPhaseCumulativeOrderLimit(
       this.options.maxDailyOrders,
       currentPolicy.phase,
@@ -357,10 +443,19 @@ export class PaperAutoExecutor {
       tradeWindowOnly: this.options.tradeWindowOnly,
       maxOrdersPerRun: this.options.maxOrdersPerRun,
       maxDailyOrders: this.options.maxDailyOrders,
+      targetDailyOrders: this.options.targetDailyOrders,
       todaySubmittedOrders,
+      todayFilledOrders,
+      activityTarget: resolvePaperActivityTarget({
+        targetOrders: this.options.targetDailyOrders,
+        filledOrders: todayFilledOrders,
+        session: currentSession,
+        latestRun,
+        tradingDate,
+      }),
       phaseDailyOrderLimit,
       phaseRemainingOrders: Math.max(0, phaseDailyOrderLimit - todaySubmittedOrders),
-      currentSession: getAshareSession(now),
+      currentSession,
       currentPhase: getAshareTradingPhase(now),
       phaseMaxInvestedRatio:
         latestRun?.phaseMaxInvestedRatio ?? currentPolicy.maxInvestedRatio,
@@ -808,6 +903,16 @@ export class PaperAutoExecutor {
       .length;
   }
 
+  private countFilledOrders(tradingDate: string): number {
+    const prefix = `kairos-auto-paper:${tradingDate}:`;
+    return this.options.system.store
+      .listOrders(10_000)
+      .filter((order) =>
+        order.clientOrderId?.startsWith(prefix) && order.status === "filled",
+      )
+      .length;
+  }
+
   private nextRunId(tradingDate: string): string {
     this.sequence += 1;
     return `paper-auto-${tradingDate}-${String(this.sequence).padStart(4, "0")}`;
@@ -844,6 +949,7 @@ export class PaperAutoExecutor {
       "REAL_TRADING_ENABLED must remain false and MARKET_MODE must be paper.",
       "A-share lot-size, T+1, cash, position and circuit-breaker checks still run before every order.",
       "New paper buys are paced by opening, morning, afternoon and closing invested-ratio caps.",
+      "The daily filled-order target is an observability goal and never overrides plan eligibility or risk checks.",
       "No TongHuaShun, Zhongxin, SuperMind, browser cookie, password, SMS code or live broker token is used.",
     ];
   }

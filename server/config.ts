@@ -86,6 +86,12 @@ const envSchema = z.object({
     .min(1)
     .max(100)
     .default(4),
+  PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(2),
   PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: z.coerce
     .number()
     .min(0)
@@ -153,6 +159,14 @@ export type ServerConfig = ReturnType<typeof getConfig>;
 
 export function parseServerConfig(environment: NodeJS.ProcessEnv) {
   const config = envSchema.parse(environment);
+  if (
+    config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS >
+    config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS
+  ) {
+    throw new Error(
+      "paper auto execution target daily orders cannot exceed max daily orders",
+    );
+  }
   if (!config.AUTH_ENABLED && environment.NODE_ENV !== "test") {
     throw new Error("AUTH_ENABLED=false is only allowed when NODE_ENV=test");
   }

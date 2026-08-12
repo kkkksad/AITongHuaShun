@@ -498,6 +498,7 @@ export async function buildTradingApp(
     tradeWindowOnly: options.config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY,
     maxOrdersPerRun: options.config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN,
     maxDailyOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
+    targetDailyOrders: options.config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS,
     clock: options.clock,
     planNotifier: paperPlanNotifier,
     onOrder: (order, request) => {
@@ -665,6 +666,7 @@ export async function buildTradingApp(
       intervalMs: options.config.PAPER_AUTO_EXECUTION_INTERVAL_MS,
       maxOrdersPerRun: options.config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN,
       maxDailyOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
+      targetDailyOrders: options.config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS,
       liveTradingEnabled: false,
     },
     credentials: {

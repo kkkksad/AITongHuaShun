@@ -46,6 +46,7 @@ export interface CapabilitiesSnapshot {
     intervalMs: number;
     maxOrdersPerRun: number;
     maxDailyOrders: number;
+    targetDailyOrders: number;
     liveTradingEnabled: false;
   };
   credentials: {
@@ -794,7 +795,16 @@ export interface PaperAutoExecutionStatus {
   tradeWindowOnly: boolean;
   maxOrdersPerRun: number;
   maxDailyOrders: number;
+  targetDailyOrders: number;
   todaySubmittedOrders: number;
+  todayFilledOrders: number;
+  activityTarget: {
+    status: "met" | "active" | "blocked" | "closed";
+    targetOrders: number;
+    filledOrders: number;
+    remainingOrders: number;
+    reason: string;
+  };
   phaseDailyOrderLimit: number;
   phaseRemainingOrders: number;
   currentSession: PaperAutoExecutionSession;

@@ -71,6 +71,27 @@ describe("buildPreferredHistoricalStocks", () => {
   });
 });
 
+describe("critical paper research bounds", () => {
+  it("keeps the critical stock pool small enough to finish before auxiliary history work", () => {
+    const candidates = {
+      candidates: Array.from({ length: 12 }, (_, index) => ({
+        symbol: `600${String(index).padStart(3, "0")}`,
+        name: `候选${index}`,
+        action: "paper-buy",
+        score: 90 - index,
+      })),
+    } as unknown as DailyCandidateReport;
+    const qualityStocks = { stocks: [] } as unknown as DailyQualityStockReport;
+
+    expect(buildPreferredHistoricalStocks({
+      positions: [],
+      candidates,
+      qualityStocks,
+      limit: 6,
+    })).toHaveLength(6);
+  });
+});
+
 describe("findLatestConfirmedRestrictiveRouting", () => {
   it("uses only a live intraday defensive route from the requested trading date", () => {
     const audits: AuditEvent[] = [

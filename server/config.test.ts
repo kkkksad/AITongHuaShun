@@ -95,6 +95,12 @@ const envSchema = z.object({
     .min(1)
     .max(100)
     .default(4),
+  PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(20)
+    .default(2),
   PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: z.coerce
     .number()
     .min(0)
@@ -149,7 +155,16 @@ function parse(overrides: Record<string, string | undefined> = {}) {
       Object.entries(overrides).filter(([, v]) => v !== undefined)
     ),
   };
-  return envSchema.parse(env);
+  const config = envSchema.parse(env);
+  if (
+    config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS >
+    config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS
+  ) {
+    throw new Error(
+      "paper auto execution target daily orders cannot exceed max daily orders",
+    );
+  }
+  return config;
 }
 
 describe("ServerConfig", () => {
@@ -175,6 +190,7 @@ describe("ServerConfig", () => {
       expect(config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY).toBe(true);
       expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(1);
       expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(4);
+      expect(config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS).toBe(2);
       expect(config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0.1);
       expect(config.AUTH_ENABLED).toBe(true);
       expect(config.AUTH_SESSION_TTL_SECONDS).toBe(28_800);
@@ -401,6 +417,7 @@ describe("ServerConfig", () => {
         PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: "false",
         PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: "4",
         PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "20",
+        PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: "3",
         PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: "0.2",
       });
       expect(config.PAPER_AUTO_EXECUTION_ENABLED).toBe(true);
@@ -408,6 +425,7 @@ describe("ServerConfig", () => {
       expect(config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY).toBe(false);
       expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(4);
       expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(20);
+      expect(config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS).toBe(3);
       expect(config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0.2);
     });
   });
@@ -516,6 +534,10 @@ describe("ServerConfig", () => {
       expect(parse({ PAPER_AUTO_EXECUTION_INTERVAL_MS: "3600000" }).PAPER_AUTO_EXECUTION_INTERVAL_MS).toBe(3_600_000);
       expect(parse({ PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: "20" }).PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(20);
       expect(parse({ PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "100" }).PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(100);
+      expect(parse({
+        PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: "20",
+        PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "20",
+      }).PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS).toBe(20);
     });
   });
 
@@ -609,6 +631,11 @@ describe("ServerConfig", () => {
       expect(() => parse({ PAPER_AUTO_EXECUTION_INTERVAL_MS: "9999" })).toThrow();
       expect(() => parse({ PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: "0" })).toThrow();
       expect(() => parse({ PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "101" })).toThrow();
+      expect(() => parse({ PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: "0" })).toThrow();
+      expect(() => parse({
+        PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: "5",
+        PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "4",
+      })).toThrow(/target daily orders/i);
       expect(() => parse({ PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: "0.51" })).toThrow();
     });
   });
@@ -657,6 +684,15 @@ describe("ServerConfig", () => {
       expect(typeof config.API_PORT).toBe("number");
       expect(typeof config.MARKET_MODE).toBe("string");
       expect(typeof config.REAL_TRADING_ENABLED).toBe("boolean");
+    });
+
+    it("rejects an activity target above the daily cap in the actual config parser", () => {
+      expect(() => parseServerConfig({
+        NODE_ENV: "test",
+        AUTH_ENABLED: "false",
+        PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: "5",
+        PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "4",
+      })).toThrow(/target daily orders/i);
     });
 
     it("fails closed without credentials and requires secure cookies in production", async () => {

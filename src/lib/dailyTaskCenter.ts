@@ -143,13 +143,27 @@ function executionPresentation(execution: PaperAutoExecutionStatus | null | unde
   if (execution.running) {
     return {
       label: "本轮运行中",
-      detail: `今日已提交 ${execution.todaySubmittedOrders} 笔，阶段剩余 ${execution.phaseRemainingOrders} 笔。`,
+      detail: `今日已成交 ${execution.todayFilledOrders}/${execution.targetDailyOrders} 笔，阶段剩余 ${execution.phaseRemainingOrders} 笔。`,
       tone: "positive" as const,
     };
   }
+  if (execution.activityTarget.status === "blocked") {
+    return {
+      label: "目标受阻",
+      detail: `今日已成交 ${execution.todayFilledOrders}/${execution.targetDailyOrders} 笔。${execution.activityTarget.reason}`,
+      tone: "warning" as const,
+    };
+  }
+  if (execution.activityTarget.status === "closed") {
+    return {
+      label: "交易时段结束",
+      detail: `今日已成交 ${execution.todayFilledOrders}/${execution.targetDailyOrders} 笔，不为补足目标追单。`,
+      tone: "neutral" as const,
+    };
+  }
   return {
-    label: "已启用",
-    detail: `今日已提交 ${execution.todaySubmittedOrders}/${execution.phaseDailyOrderLimit} 笔，阶段剩余 ${execution.phaseRemainingOrders} 笔。`,
+    label: execution.activityTarget.status === "met" ? "目标已完成" : "已启用",
+    detail: `今日已成交 ${execution.todayFilledOrders}/${execution.targetDailyOrders} 笔，已提交 ${execution.todaySubmittedOrders} 笔，阶段剩余 ${execution.phaseRemainingOrders} 笔。`,
     tone: "positive" as const,
   };
 }

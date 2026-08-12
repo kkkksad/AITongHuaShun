@@ -7,6 +7,7 @@ import {
   isPaperOperationBlockedByPhaseBudget,
   shouldPersistPaperAutoExecutionRun,
   shouldRunScheduledPaperAutoExecution,
+  resolvePaperActivityTarget,
   type PaperAutoExecutionRun,
 } from "./paperAutoExecutor";
 
@@ -33,6 +34,46 @@ function run(overrides: Partial<PaperAutoExecutionRun> = {}): PaperAutoExecution
 }
 
 describe("shouldRunScheduledPaperAutoExecution", () => {
+  it("tracks a daily filled-order target without turning it into an execution override", () => {
+    expect(resolvePaperActivityTarget({
+      targetOrders: 2,
+      filledOrders: 2,
+      session: "open",
+      latestRun: run({ planQuality: "actionable" }),
+    })).toMatchObject({ status: "met", remainingOrders: 0 });
+
+    expect(resolvePaperActivityTarget({
+      targetOrders: 2,
+      filledOrders: 0,
+      session: "open",
+      latestRun: run({ planQuality: "blocked" }),
+    })).toMatchObject({ status: "blocked", remainingOrders: 2 });
+
+    expect(resolvePaperActivityTarget({
+      targetOrders: 2,
+      filledOrders: 0,
+      session: "after-hours",
+      latestRun: run({ planQuality: "watch-only" }),
+    })).toMatchObject({ status: "closed", remainingOrders: 2 });
+
+    expect(resolvePaperActivityTarget({
+      targetOrders: 2,
+      filledOrders: 0,
+      session: "open",
+      latestRun: run({ planQuality: "watch-only" }),
+    })).toMatchObject({ status: "blocked", remainingOrders: 2 });
+
+    expect(resolvePaperActivityTarget({
+      targetOrders: 2,
+      filledOrders: 0,
+      session: "pre-market",
+      tradingDate: "2026-07-18",
+      latestRun: run({
+        tradingDate: "2026-07-17",
+        planQuality: "blocked",
+      }),
+    })).toMatchObject({ status: "active", remainingOrders: 2 });
+  });
   it("schedules the next timer only after the current async task completes", async () => {
     const callbacks: Array<() => void> = [];
     let resolveCurrent: () => void = () => undefined;
