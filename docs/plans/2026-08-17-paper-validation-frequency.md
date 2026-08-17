@@ -123,17 +123,19 @@ Run: `git diff --check`
 
 Expected: 全部通过。
 
-- [ ] **Step 2: 提交并推送**
+- [x] **Step 2: 提交并推送**
 
 提交验证档代码、测试和文档，推送 `codex/hourly-project-optimization`。不得提交 `.env.production`、WxPusher SPT/UID、密码或运行状态文件。
 
-- [ ] **Step 3: 部署并更新生产非敏感配置**
+- [x] **Step 3: 部署并更新生产非敏感配置**
 
 通过受限 `deploy-upload <full-sha>` 部署。随后只把服务器 `.env.production` 中的活动模式、目标和日上限更新为 `validation-probe/6/10`，强制重建 backend；不得读取、输出或修改其他凭据。
 
-- [ ] **Step 4: 生产验收**
+- [x] **Step 4: 生产验收**
 
 确认三容器 healthy、健康接口 200、受保护接口匿名 401、`MARKET_MODE=paper`、`REAL_TRADING_ENABLED=false`、目标 6、日上限 10、单轮 1、验证档生效、WxPusher 已配置且账户历史未重置。下一交易日检查实际成交、策略键和具体阻塞原因。
+
+验证结果：提交 `5ee398af13bccf6a029668a6b937a35c6167c3a0` 已推送并通过受限归档入口部署。首次启动因服务器仍显式保留旧日上限 4、而新目标默认值为 6 而失败；先使用兼容过渡值恢复服务并重新部署，随后只更新四个自动执行参数。最终三容器 healthy，公网健康接口返回 200，匿名受保护接口返回 401，Paper 账户仍为 100,000 元现金、0 持仓、0 订单。
 
 ---
 
