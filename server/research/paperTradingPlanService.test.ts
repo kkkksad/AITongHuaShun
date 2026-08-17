@@ -6,6 +6,7 @@ import {
   buildPreferredHistoricalStocks,
   findLatestConfirmedRestrictiveRouting,
   resolveChinaTradingDate,
+  summarizeRecentPaperStrategyUsage,
 } from "./paperTradingPlanService";
 
 describe("buildPreferredHistoricalStocks", () => {
@@ -148,5 +149,52 @@ describe("resolveChinaTradingDate", () => {
   it("anchors routing stability to the current Shanghai date instead of a stale snapshot date", () => {
     expect(resolveChinaTradingDate(new Date("2026-07-22T16:30:00.000Z")))
       .toBe("2026-07-23");
+  });
+});
+
+describe("summarizeRecentPaperStrategyUsage", () => {
+  it("counts only recently filled automatic decisions and extracts legacy rule checks", () => {
+    const audits = [
+      {
+        id: "filled-explicit",
+        category: "system",
+        action: "paper-auto-execution.decision",
+        message: "decision",
+        timestamp: "2026-08-17T05:10:00.000Z",
+        data: { status: "filled", strategyKey: "kairosRangeRotation" },
+      },
+      {
+        id: "filled-legacy",
+        category: "system",
+        action: "paper-auto-execution.decision",
+        message: "decision",
+        timestamp: "2026-08-16T05:10:00.000Z",
+        data: {
+          status: "filled",
+          ruleChecks: ["paper-only", "strategy-route: pass (rsi)"],
+        },
+      },
+      {
+        id: "rejected",
+        category: "system",
+        action: "paper-auto-execution.decision",
+        message: "decision",
+        timestamp: "2026-08-17T05:20:00.000Z",
+        data: { status: "rejected", strategyKey: "kairosRangeRotation" },
+      },
+      {
+        id: "expired",
+        category: "system",
+        action: "paper-auto-execution.decision",
+        message: "decision",
+        timestamp: "2026-08-01T05:10:00.000Z",
+        data: { status: "filled", strategyKey: "momentum" },
+      },
+    ] as AuditEvent[];
+
+    expect(summarizeRecentPaperStrategyUsage(
+      audits,
+      new Date("2026-08-17T07:00:00.000Z"),
+    )).toEqual({ kairosRangeRotation: 1, rsi: 1 });
   });
 });

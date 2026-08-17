@@ -14,7 +14,10 @@ import {
 import type { DailyCandidateReport } from "./dailyCandidates";
 import type { DailyQualityStockReport } from "./dailyQualityStocks";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
-import { rankAdaptiveCandidateStrategies } from "./adaptiveCandidateStrategy";
+import {
+  rankAdaptiveCandidateStrategies,
+  selectAdaptiveCandidateStrategyWithUsage,
+} from "./adaptiveCandidateStrategy";
 import type {
   MarketRegimeResearchReport,
   StockRegimeResult,
@@ -39,6 +42,7 @@ export interface PaperTradingOperation {
   estimatedNotional: number;
   reason: string;
   ruleChecks: string[];
+  strategyKey?: string;
 }
 
 export interface PaperTradingPlanQualitySummary {
@@ -181,6 +185,18 @@ function estimatedCommission(
 
 const MAX_ENTRY_ROUND_TRIP_FEE_RATIO = 0.01;
 
+function minimumFeeEfficientQuantity(
+  price: number,
+  lotSize: number,
+  minimumCommission: number,
+): number {
+  const minimumNotional = minimumCommission * 2 / MAX_ENTRY_ROUND_TRIP_FEE_RATIO;
+  return Math.max(
+    lotSize,
+    Math.ceil(minimumNotional / Math.max(price, 0.01) / lotSize) * lotSize,
+  );
+}
+
 function assessEntryPersistence(input: {
   required: boolean;
   stockRegime: StockRegimeResult | undefined;
@@ -222,7 +238,12 @@ function assessEntryPersistence(input: {
     };
   }
   const rangeStructureValidated =
-    (input.strategyKey === "rsi" || input.strategyKey === "bollingerBands") &&
+    (
+      input.strategyKey === "rsi" ||
+      input.strategyKey === "bollingerBands" ||
+      input.strategyKey === "kairosRangeRotation" ||
+      input.strategyKey === "kairosQualifiedProbe"
+    ) &&
     stock.regime === "unclear" &&
     stock.barCount >= 120 &&
     stock.confidence >= 0.55 &&
@@ -428,6 +449,8 @@ export function buildPaperTradingPlan(input: {
   minimumCommission: number;
   cashReserveRatio: number;
   strategyProfile?: PaperStrategyProfile;
+  activityTargetActive?: boolean;
+  strategyUsage?: Record<string, number>;
 }): PaperTradingPlan {
   const marketTime = new Date(input.snapshot.marketTime);
   const now = marketTime.toISOString();
@@ -695,9 +718,13 @@ export function buildPaperTradingPlan(input: {
           stockRegime: stockRegimeMap.get(base.symbol),
           routing: input.adaptiveRouting,
           candidateScore: base.score,
+          activityTargetActive: input.activityTargetActive,
         })
       : [];
-    const signal = rankedSignals[0] ?? null;
+    const signal = selectAdaptiveCandidateStrategyWithUsage(
+      rankedSignals,
+      input.strategyUsage,
+    );
     return {
       ...base,
       strategy: signal?.strategyName ?? base.strategy,
@@ -779,7 +806,7 @@ export function buildPaperTradingPlan(input: {
     .slice(0, 12);
   const candidatePoolSize = candidatePool.length;
   const affordableCandidateCount = candidatePool.filter((candidate) => {
-    const quantity = candidateQuantity(
+    const candidateOrderQuantity = candidateQuantity(
       candidate,
       plannedCashBudget,
       maxSingleOrderNotional,
@@ -787,6 +814,19 @@ export function buildPaperTradingPlan(input: {
       input.commissionRate,
       input.minimumCommission,
     );
+    const quantity = candidate.strategyKey === "kairosQualifiedProbe"
+      ? candidateOrderQuantity >= minimumFeeEfficientQuantity(
+          candidate.price,
+          input.lotSize,
+          input.minimumCommission,
+        )
+        ? minimumFeeEfficientQuantity(
+            candidate.price,
+            input.lotSize,
+            input.minimumCommission,
+          )
+        : 0
+      : candidateOrderQuantity;
     return quantity >= input.lotSize;
   }).length;
   const positionConflictCount = candidatePool.filter((candidate) =>
@@ -861,7 +901,7 @@ export function buildPaperTradingPlan(input: {
     ? candidatePool
     : []) {
     const existing = positionMap.get(candidate.symbol);
-    const quantity = candidateQuantity(
+    const candidateOrderQuantity = candidateQuantity(
       candidate,
       remainingPlannedCash,
       maxSingleOrderNotional,
@@ -869,6 +909,19 @@ export function buildPaperTradingPlan(input: {
       input.commissionRate,
       input.minimumCommission,
     );
+    const quantity = candidate.strategyKey === "kairosQualifiedProbe"
+      ? candidateOrderQuantity >= minimumFeeEfficientQuantity(
+          candidate.price,
+          input.lotSize,
+          input.minimumCommission,
+        )
+        ? minimumFeeEfficientQuantity(
+            candidate.price,
+            input.lotSize,
+            input.minimumCommission,
+          )
+        : 0
+      : candidateOrderQuantity;
     const estimatedNotional = Number((quantity * candidate.price).toFixed(2));
     const estimatedFee = estimatedCommission(
       estimatedNotional,
@@ -1031,6 +1084,7 @@ export function buildPaperTradingPlan(input: {
       name: candidate.name,
       action: "paper-buy-plan",
       strategy: candidate.strategy,
+      strategyKey: candidate.strategyKey,
       quantity,
       price: candidate.price,
       estimatedNotional,
@@ -1046,6 +1100,9 @@ export function buildPaperTradingPlan(input: {
         `cash-reservation: pass (${estimatedCashRequired.toFixed(2)})`,
         `defensive-score: pass (${candidate.defensiveScore})`,
         `strategy-route: pass (${candidate.strategyKey})`,
+        ...(candidate.strategyKey === "kairosQualifiedProbe"
+          ? ["activity-target-qualified-probe"]
+          : []),
         ...entryRuleChecks,
         "T+1-after-buy",
       ],

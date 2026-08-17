@@ -94,6 +94,8 @@ const ALL_STRATEGY_KEYS = [
   "turtle",
   "rsi",
   "bollingerBands",
+  "kairosRangeRotation",
+  "kairosQualifiedProbe",
 ] as const;
 
 const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
@@ -104,21 +106,27 @@ const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
     "momentum",
     "macd",
     "turtle",
+    "kairosQualifiedProbe",
   ],
   "trend-up-high-volatility": [
     "kairosQuietPullback",
     "kairosWashoutRecovery",
     "aSharePullback",
+    "kairosQualifiedProbe",
     "kairosCapitalShield",
   ],
   "range-low-volatility": [
     "rsi",
     "bollingerBands",
+    "kairosRangeRotation",
+    "kairosQualifiedProbe",
     "kairosCapitalShield",
   ],
   "range-high-volatility": [
+    "kairosRangeRotation",
     "kairosQuietPullback",
     "rsi",
+    "kairosQualifiedProbe",
     "kairosCapitalShield",
   ],
   "risk-off-recovery": [
@@ -143,14 +151,14 @@ const STRATEGY_PLAYBOOKS: Record<AdaptiveMarketRegime, AdaptiveStrategyPlaybook>
     recheckTriggers: ["回踩后重新站稳", "波动回落", "板块趋势转弱"],
   },
   "range-low-volatility": {
-    primaryStrategyKeys: ["rsi", "bollingerBands"],
+    primaryStrategyKeys: ["rsi", "bollingerBands", "kairosRangeRotation"],
     useWhen: "趋势共振不足且波动较低时，仅在区间边缘做小仓位均值回归研究。",
     avoidWhen: "避免把单次突破当成趋势启动，也不在区间中部追价。",
     recheckTriggers: ["区间边缘确认", "趋势与宽度同步转强", "波动显著放大"],
   },
   "range-high-volatility": {
-    primaryStrategyKeys: ["kairosCapitalShield", "kairosQuietPullback"],
-    useWhen: "无趋势且波动较高时优先现金防守，只观察高质量回踩确认。",
+    primaryStrategyKeys: ["kairosRangeRotation", "kairosQuietPullback", "kairosCapitalShield"],
+    useWhen: "无趋势且波动较高时优先受控区间轮动和高质量回踩，其余资金保持防守。",
     avoidWhen: "避免网格加仓、逆势摊薄和高波动反弹追入。",
     recheckTriggers: ["波动回落", "板块宽度恢复", "趋势恶化占比上升"],
   },

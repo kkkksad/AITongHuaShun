@@ -413,6 +413,7 @@ describe("routeAdaptiveStrategies", () => {
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
       "rsi",
       "bollingerBands",
+      "kairosRangeRotation",
     ]);
     expect(result.strategyPlaybook.avoidWhen).toContain("突破");
   });
@@ -434,8 +435,9 @@ describe("routeAdaptiveStrategies", () => {
 
     expect(result.regime).toBe("range-high-volatility");
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
-      "kairosCapitalShield",
+      "kairosRangeRotation",
       "kairosQuietPullback",
+      "kairosCapitalShield",
     ]);
     expect(result.capitalPacing.closingMaxInvestedRatio).toBeLessThanOrEqual(0.6);
   });

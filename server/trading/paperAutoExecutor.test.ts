@@ -8,6 +8,7 @@ import {
   shouldPersistPaperAutoExecutionRun,
   shouldRunScheduledPaperAutoExecution,
   resolvePaperActivityTarget,
+  shouldActivateQualifiedPaperProbe,
   type PaperAutoExecutionRun,
 } from "./paperAutoExecutor";
 
@@ -133,6 +134,46 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
       reason: "真实历史形态仍处于健康趋势，保持原仓位。",
       ruleChecks: ["paper-only"],
     })).toBe("正常观望：真实历史形态仍处于健康趋势，保持原仓位。");
+    expect(paperNonExecutableReason({
+      timestamp: "2026-08-17T06:50:00.000Z",
+      symbol: "601398",
+      name: "工商银行",
+      action: "blocked",
+      strategy: "市场策略路由",
+      quantity: 0,
+      price: 7.56,
+      estimatedNotional: 0,
+      reason: "当前高波震荡路由没有匹配到合格信号。",
+      ruleChecks: ["strategy-route: blocked"],
+    })).toBe("计划阻塞：当前高波震荡路由没有匹配到合格信号。");
+  });
+
+  it("activates qualified probes only in the afternoon while the target has a gap", () => {
+    expect(shouldActivateQualifiedPaperProbe({
+      mode: "qualified-probe",
+      phase: "afternoon-confirmation",
+      remainingTargetOrders: 2,
+    })).toBe(true);
+    expect(shouldActivateQualifiedPaperProbe({
+      mode: "qualified-probe",
+      phase: "closing-risk-review",
+      remainingTargetOrders: 1,
+    })).toBe(true);
+    expect(shouldActivateQualifiedPaperProbe({
+      mode: "qualified-probe",
+      phase: "morning-confirmation",
+      remainingTargetOrders: 2,
+    })).toBe(false);
+    expect(shouldActivateQualifiedPaperProbe({
+      mode: "observe",
+      phase: "closing-risk-review",
+      remainingTargetOrders: 2,
+    })).toBe(false);
+    expect(shouldActivateQualifiedPaperProbe({
+      mode: "qualified-probe",
+      phase: "closing-risk-review",
+      remainingTargetOrders: 0,
+    })).toBe(false);
   });
 
   it("does not disable sector pulse tracking for auxiliary news degradation", () => {
@@ -216,6 +257,7 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
           status: "filled",
           orderId: "order-1",
           strategy: "市场状态减仓",
+          strategyKey: null,
           reason: "risk-off",
           ruleChecks: ["paper-only"],
           estimatedNotional: 215,

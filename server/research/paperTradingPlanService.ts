@@ -92,6 +92,39 @@ export function resolveChinaTradingDate(value: Date): string {
     .slice(0, 10);
 }
 
+function strategyKeyFromDecision(audit: AuditEvent): string | null {
+  const explicit = audit.data?.strategyKey;
+  if (typeof explicit === "string" && explicit.length > 0) return explicit;
+  const ruleChecks = audit.data?.ruleChecks;
+  if (!Array.isArray(ruleChecks)) return null;
+  for (const ruleCheck of ruleChecks) {
+    if (typeof ruleCheck !== "string") continue;
+    const match = /^strategy-route: pass \(([^)]+)\)$/.exec(ruleCheck);
+    if (match?.[1]) return match[1];
+  }
+  return null;
+}
+
+export function summarizeRecentPaperStrategyUsage(
+  audits: AuditEvent[],
+  now = new Date(),
+  lookbackDays = 7,
+): Record<string, number> {
+  const cutoff = now.getTime() - Math.max(1, lookbackDays) * 24 * 60 * 60_000;
+  const usage: Record<string, number> = {};
+  for (const audit of audits) {
+    if (
+      audit.action !== "paper-auto-execution.decision" ||
+      audit.data?.status !== "filled" ||
+      Date.parse(audit.timestamp) < cutoff
+    ) continue;
+    const strategyKey = strategyKeyFromDecision(audit);
+    if (!strategyKey) continue;
+    usage[strategyKey] = (usage[strategyKey] ?? 0) + 1;
+  }
+  return usage;
+}
+
 export async function buildCurrentPaperTradingPlan(input: {
   system: TradingSystem;
   config: ServerConfig;
@@ -100,6 +133,7 @@ export async function buildCurrentPaperTradingPlan(input: {
   candidateLimit?: number;
   qualityLimit?: number;
   now?: Date;
+  activityTargetActive?: boolean;
 }): Promise<CurrentPaperTradingPlanResult> {
   const snapshot = input.system.market.getSnapshot();
   const account = input.system.broker.getAccount(snapshot);
@@ -202,6 +236,11 @@ export async function buildCurrentPaperTradingPlan(input: {
     minimumCommission: input.config.MIN_COMMISSION,
     cashReserveRatio: input.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
     strategyProfile,
+    activityTargetActive: input.activityTargetActive,
+    strategyUsage: summarizeRecentPaperStrategyUsage(
+      input.system.store.listAudit(10_000),
+      input.now ?? new Date(),
+    ),
   });
 
   return {

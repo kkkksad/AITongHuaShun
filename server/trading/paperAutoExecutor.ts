@@ -22,6 +22,7 @@ import {
 } from "./intradayExecutionPolicy";
 
 export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
+export type PaperAutoExecutionActivityMode = "observe" | "qualified-probe";
 export type PaperAutoExecutionSession =
   | "open"
   | "pre-market"
@@ -38,6 +39,7 @@ export interface PaperAutoExecutionOrder {
   orderId: string;
   rejectionReason?: string;
   strategy: string;
+  strategyKey: string | null;
   reason: string;
   ruleChecks: string[];
   estimatedNotional: number;
@@ -96,6 +98,8 @@ export interface PaperAutoExecutionStatus {
   maxOrdersPerRun: number;
   maxDailyOrders: number;
   targetDailyOrders: number;
+  activityMode: PaperAutoExecutionActivityMode;
+  qualifiedProbeActive: boolean;
   todaySubmittedOrders: number;
   todayFilledOrders: number;
   activityTarget: PaperActivityTargetStatus;
@@ -370,7 +374,30 @@ export function paperNonExecutableReason(operation: PaperTradingOperation): stri
   if (operation.action === "hold" || operation.action === "observe") {
     return `正常观望：${operation.reason}`;
   }
+  if (operation.action === "blocked") return `计划阻塞：${operation.reason}`;
   return "operation is not an executable paper auto action";
+}
+
+export function shouldActivateQualifiedPaperProbe(input: {
+  mode: PaperAutoExecutionActivityMode;
+  phase: AShareTradingPhase;
+  remainingTargetOrders: number;
+}): boolean {
+  return input.mode === "qualified-probe" &&
+    input.remainingTargetOrders > 0 &&
+    (
+      input.phase === "afternoon-confirmation" ||
+      input.phase === "closing-risk-review"
+    );
+}
+
+function paperOperationStrategyKey(operation: PaperTradingOperation): string | null {
+  if (operation.strategyKey) return operation.strategyKey;
+  for (const ruleCheck of operation.ruleChecks) {
+    const match = /^strategy-route: pass \(([^)]+)\)$/.exec(ruleCheck);
+    if (match?.[1]) return match[1];
+  }
+  return null;
 }
 
 type NotificationResearchSourceStatus =
@@ -433,6 +460,14 @@ export class PaperAutoExecutor {
       this.options.maxDailyOrders,
       currentPolicy.phase,
     );
+    const qualifiedProbeActive = shouldActivateQualifiedPaperProbe({
+      mode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
+      phase: currentPolicy.phase,
+      remainingTargetOrders: Math.max(
+        0,
+        this.options.targetDailyOrders - todayFilledOrders,
+      ),
+    });
     return {
       enabled: this.options.enabled,
       running: this.running,
@@ -444,6 +479,8 @@ export class PaperAutoExecutor {
       maxOrdersPerRun: this.options.maxOrdersPerRun,
       maxDailyOrders: this.options.maxDailyOrders,
       targetDailyOrders: this.options.targetDailyOrders,
+      activityMode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
+      qualifiedProbeActive,
       todaySubmittedOrders,
       todayFilledOrders,
       activityTarget: resolvePaperActivityTarget({
@@ -538,6 +575,14 @@ export class PaperAutoExecutor {
         system: this.options.system,
         config: this.options.config,
         now: started,
+        activityTargetActive: shouldActivateQualifiedPaperProbe({
+          mode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
+          phase: initialPolicy.phase,
+          remainingTargetOrders: Math.max(
+            0,
+            this.options.targetDailyOrders - this.countFilledOrders(tradingDate),
+          ),
+        }),
       });
       const policy = getIntradayExecutionPolicy(started, plan.adaptiveRouting);
       const marketAssessment = assessMarketSnapshot(
@@ -606,6 +651,7 @@ export class PaperAutoExecutor {
           orderId: order.id,
           rejectionReason: order.rejectionReason,
           strategy: operation.strategy,
+          strategyKey: paperOperationStrategyKey(operation),
           reason: operation.reason,
           ruleChecks: [...operation.ruleChecks],
           estimatedNotional: operation.estimatedNotional,
@@ -622,6 +668,7 @@ export class PaperAutoExecutor {
             side,
             quantity: operation.quantity,
             strategy: operation.strategy,
+            strategyKey: paperOperationStrategyKey(operation),
             reason: operation.reason,
             ruleChecks: operation.ruleChecks,
             estimatedNotional: operation.estimatedNotional,
@@ -949,7 +996,8 @@ export class PaperAutoExecutor {
       "REAL_TRADING_ENABLED must remain false and MARKET_MODE must be paper.",
       "A-share lot-size, T+1, cash, position and circuit-breaker checks still run before every order.",
       "New paper buys are paced by opening, morning, afternoon and closing invested-ratio caps.",
-      "The daily filled-order target is an observability goal and never overrides plan eligibility or risk checks.",
+      "The daily target may activate a qualified afternoon probe but never overrides plan eligibility or risk checks.",
+      "Qualified probes can activate only in the afternoon and still require live history, fees, cash, position, and broker risk checks.",
       "No TongHuaShun, Zhongxin, SuperMind, browser cookie, password, SMS code or live broker token is used.",
     ];
   }

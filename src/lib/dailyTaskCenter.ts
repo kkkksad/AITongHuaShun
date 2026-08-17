@@ -147,9 +147,19 @@ function executionPresentation(execution: PaperAutoExecutionStatus | null | unde
       tone: "positive" as const,
     };
   }
+  if (
+    execution.qualifiedProbeActive &&
+    execution.activityTarget.status === "active"
+  ) {
+    return {
+      label: "下午合格补足",
+      detail: `今日已成交 ${execution.todayFilledOrders}/${execution.targetDailyOrders} 笔，正在从通过真实历史、费用和风控的候选中补足 Paper 样本。`,
+      tone: "positive" as const,
+    };
+  }
   if (execution.activityTarget.status === "blocked") {
     return {
-      label: "目标受阻",
+      label: execution.qualifiedProbeActive ? "合格补足受阻" : "目标受阻",
       detail: `今日已成交 ${execution.todayFilledOrders}/${execution.targetDailyOrders} 笔。${execution.activityTarget.reason}`,
       tone: "warning" as const,
     };

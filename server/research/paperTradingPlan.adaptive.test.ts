@@ -248,6 +248,8 @@ function build(input: {
   includeCandidate?: boolean;
   orders?: OrderRecord[];
   cash?: number;
+  activityTargetActive?: boolean;
+  strategyUsage?: Record<string, number>;
 }) {
   return buildPaperTradingPlan({
     snapshot,
@@ -267,6 +269,8 @@ function build(input: {
     commissionRate: 0.0003,
     minimumCommission: 5,
     cashReserveRatio: 0.1,
+    activityTargetActive: input.activityTargetActive,
+    strategyUsage: input.strategyUsage,
   });
 }
 
@@ -529,5 +533,50 @@ describe("adaptive paper trading plan", () => {
         operation.action === "paper-buy-plan"
       )).toBe(false);
     }
+  });
+
+  it("creates a minimum fee-efficient paper probe only when the afternoon target is active", () => {
+    const probeRouting = routing({
+      regime: "range-high-volatility",
+      positionPosture: "hold",
+      cashReserveRatio: 0.4,
+      newPositionScale: 1,
+      eligibleStrategyKeys: ["kairosQualifiedProbe"],
+      strategyPlaybook: {
+        primaryStrategyKeys: ["kairosQualifiedProbe"],
+        useWhen: "下午活跃目标仍有缺口",
+        avoidWhen: "数据、费用或风控未通过",
+        recheckTriggers: ["目标完成"],
+      },
+    });
+    const inactive = build({
+      cash: 8_000,
+      includeCandidate: true,
+      adaptiveRouting: probeRouting,
+      research: marketRegime("healthy-trend", 0.72, "601988"),
+    });
+    const active = build({
+      cash: 8_000,
+      includeCandidate: true,
+      adaptiveRouting: probeRouting,
+      research: marketRegime("healthy-trend", 0.72, "601988"),
+      activityTargetActive: true,
+    });
+
+    expect(inactive.operations.some((operation) =>
+      operation.action === "paper-buy-plan"
+    )).toBe(false);
+    expect(active.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "601988",
+        action: "paper-buy-plan",
+        quantity: 200,
+        strategy: "KAIROS合格样本验证",
+        ruleChecks: expect.arrayContaining([
+          "strategy-route: pass (kairosQualifiedProbe)",
+          "activity-target-qualified-probe",
+        ]),
+      }),
+    ]));
   });
 });

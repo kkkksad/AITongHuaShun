@@ -4,6 +4,7 @@ import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
 import {
   rankAdaptiveCandidateStrategies,
   selectAdaptiveCandidateStrategy,
+  selectAdaptiveCandidateStrategyWithUsage,
 } from "./adaptiveCandidateStrategy";
 import type { StockRegimeResult } from "./marketRegimeResearch";
 
@@ -256,6 +257,119 @@ describe("adaptive candidate strategy routing", () => {
       "rsi",
       "bollingerBands",
     ]));
+  });
+
+  it("adds a controlled range-rotation signal in a high-volatility range", () => {
+    const rangeQuote = {
+      ...quote,
+      price: 99.8,
+      changePercent: -0.2,
+      open: 100,
+      high: 101,
+      low: 98.6,
+      amplitude: 3.4,
+    };
+    const rangeStock = stock("healthy-trend", {
+      confidence: 0.64,
+      features: {
+        ...stock("healthy-trend").features,
+        return20d: 0.025,
+        return60d: 0.06,
+        distanceFromMa20: 0.012,
+        ma20Slope5d: 0.004,
+      },
+    });
+    const rangeRouting = routing({
+      regime: "range-high-volatility",
+      eligibleStrategyKeys: ["kairosRangeRotation", "kairosQualifiedProbe", "rsi"],
+      strategyPlaybook: {
+        primaryStrategyKeys: ["kairosRangeRotation", "rsi"],
+        useWhen: "高波震荡中的受控轮动",
+        avoidWhen: "趋势恶化或追高",
+        recheckTriggers: ["波动继续放大"],
+      },
+    });
+
+    expect(rankAdaptiveCandidateStrategies({
+      quote: rangeQuote,
+      stockRegime: rangeStock,
+      routing: rangeRouting,
+      candidateScore: 78,
+    }).map((signal) => signal.strategyKey)).toContain("kairosRangeRotation");
+
+    const afternoonSignals = rankAdaptiveCandidateStrategies({
+      quote: rangeQuote,
+      stockRegime: rangeStock,
+      routing: rangeRouting,
+      candidateScore: 78,
+      activityTargetActive: true,
+    });
+    expect(selectAdaptiveCandidateStrategyWithUsage(afternoonSignals, {
+      kairosRangeRotation: 1,
+      kairosQualifiedProbe: 0,
+    })).toMatchObject({ strategyKey: "kairosQualifiedProbe" });
+  });
+
+  it("only emits a qualified probe when the afternoon activity target activates it", () => {
+    const probeRouting = routing({
+      regime: "range-high-volatility",
+      eligibleStrategyKeys: ["kairosQualifiedProbe"],
+      strategyPlaybook: {
+        primaryStrategyKeys: ["kairosQualifiedProbe"],
+        useWhen: "下午目标缺口",
+        avoidWhen: "数据或风控不完整",
+        recheckTriggers: ["目标已完成"],
+      },
+    });
+    const input = {
+      quote,
+      stockRegime: stock("healthy-trend"),
+      routing: probeRouting,
+      candidateScore: 78,
+    };
+
+    expect(rankAdaptiveCandidateStrategies(input)).toEqual([]);
+    expect(rankAdaptiveCandidateStrategies({
+      ...input,
+      activityTargetActive: true,
+    })).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        strategyKey: "kairosQualifiedProbe",
+        strategyName: "KAIROS合格样本验证",
+      }),
+    ]));
+  });
+
+  it("rotates among near-top qualified strategies using recent filled usage", () => {
+    const signals = [
+      {
+        strategyKey: "kairosLowVolTrend" as const,
+        strategyName: "KAIROS低波趋势",
+        score: 88,
+        evidence: ["低波趋势"],
+      },
+      {
+        strategyKey: "kairosTrendHealth" as const,
+        strategyName: "KAIROS趋势健康",
+        score: 84,
+        evidence: ["趋势健康"],
+      },
+      {
+        strategyKey: "momentum" as const,
+        strategyName: "趋势动量确认",
+        score: 72,
+        evidence: ["动量"],
+      },
+    ];
+
+    expect(selectAdaptiveCandidateStrategyWithUsage(signals, {
+      kairosLowVolTrend: 3,
+      kairosTrendHealth: 0,
+    })).toMatchObject({ strategyKey: "kairosTrendHealth" });
+    expect(selectAdaptiveCandidateStrategyWithUsage(signals, {
+      kairosLowVolTrend: 3,
+      kairosTrendHealth: 3,
+    })).toMatchObject({ strategyKey: "kairosLowVolTrend" });
   });
 
   it("blocks range signals for a deteriorating stock even when the route allows them", () => {

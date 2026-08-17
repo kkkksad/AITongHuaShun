@@ -667,6 +667,7 @@ export async function buildTradingApp(
       maxOrdersPerRun: options.config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN,
       maxDailyOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
       targetDailyOrders: options.config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS,
+      activityMode: options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
       liveTradingEnabled: false,
     },
     credentials: {

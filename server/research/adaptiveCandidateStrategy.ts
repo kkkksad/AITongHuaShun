@@ -15,7 +15,9 @@ export interface AdaptiveCandidateStrategySignal {
     | "turtle"
     | "rsi"
     | "bollingerBands"
-    | "kairosRiskOffRecovery";
+    | "kairosRiskOffRecovery"
+    | "kairosRangeRotation"
+    | "kairosQualifiedProbe";
   strategyName: string;
   score: number;
   evidence: string[];
@@ -26,6 +28,7 @@ export interface AdaptiveCandidateStrategyInput {
   stockRegime: StockRegimeResult | undefined;
   routing: AdaptiveStrategyRouting;
   candidateScore: number;
+  activityTargetActive?: boolean;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -69,6 +72,23 @@ function hasControlledIntradayMove(quote: MarketQuote, maximumChange: number): b
   return quote.changePercent >= -1.8 &&
     quote.changePercent <= maximumChange &&
     amplitude(quote) <= 5.5;
+}
+
+function hasControlledLiquidity(quote: MarketQuote): boolean {
+  return (quote.amount ?? 0) >= 100_000_000 || quote.volume >= 5_000_000;
+}
+
+function hasQualifiedProbeHistory(stock: StockRegimeResult): boolean {
+  if (stock.regime === "healthy-trend" && stock.confidence >= 0.55) return true;
+  if (isValidatedWashout(stock)) return true;
+  return stock.regime === "unclear" &&
+    stock.barCount >= 120 &&
+    stock.confidence >= 0.55 &&
+    stock.features.return20d >= -0.06 &&
+    stock.features.return20d <= 0.08 &&
+    stock.features.distanceFromMa20 >= -0.1 &&
+    stock.features.distanceFromMa20 <= 0.03 &&
+    stock.features.ma20Slope5d >= -0.01;
 }
 
 export function rankAdaptiveCandidateStrategies(
@@ -341,6 +361,62 @@ export function rankAdaptiveCandidateStrategies(
 
   if (
     isRangeRegime(routing) &&
+    stock.barCount >= 120 &&
+    stock.confidence >= 0.55 &&
+    (stock.regime === "healthy-trend" || stock.regime === "unclear") &&
+    input.candidateScore >= 65 &&
+    stock.features.return20d >= -0.04 &&
+    stock.features.return20d <= 0.1 &&
+    stock.features.ma20Slope5d >= -0.005 &&
+    stock.features.distanceFromMa20 >= -0.06 &&
+    stock.features.distanceFromMa20 <= 0.05 &&
+    currentPosition !== null &&
+    currentPosition >= 0.18 &&
+    currentPosition <= 0.72 &&
+    quote.changePercent >= -1.5 &&
+    quote.changePercent <= 2 &&
+    currentAmplitude <= 6.5 &&
+    hasControlledLiquidity(quote)
+  ) {
+    add(
+      "kairosRangeRotation",
+      "KAIROS区间轮动",
+      66 +
+        input.candidateScore * 0.12 +
+        stock.confidence * 6 +
+        clamp((0.72 - currentPosition) * 5, 0, 2.5),
+      [
+        "真实历史样本、均线斜率和价格偏离处于受控区间。",
+        "当前价格未进入追高区，流动性满足小仓位 Paper 轮动观察。",
+      ],
+    );
+  }
+
+  if (
+    input.activityTargetActive === true &&
+    routing.regime !== "risk-off" &&
+    routing.regime !== "risk-off-recovery" &&
+    routing.regime !== "unclear" &&
+    hasQualifiedProbeHistory(stock) &&
+    input.candidateScore >= 65 &&
+    quote.changePercent >= -2.2 &&
+    quote.changePercent <= 2.2 &&
+    currentAmplitude <= 6.5 &&
+    hasControlledLiquidity(quote)
+  ) {
+    add(
+      "kairosQualifiedProbe",
+      "KAIROS合格样本验证",
+      66 + input.candidateScore * 0.12 + stock.confidence * 5,
+      [
+        "下午 Paper 活跃目标仍有缺口，仅启用最低费用有效整手的合格样本验证。",
+        "真实历史、流动性和追价过滤已通过，仍需费用、现金、仓位和 PaperBroker 风控复核。",
+      ],
+    );
+  }
+
+  if (
+    isRangeRegime(routing) &&
     (stock.regime === "healthy-trend" || stock.regime === "unclear") &&
     currentPosition !== null &&
     currentPosition <= 0.35 &&
@@ -376,4 +452,21 @@ export function selectAdaptiveCandidateStrategy(
   input: AdaptiveCandidateStrategyInput,
 ): AdaptiveCandidateStrategySignal | null {
   return rankAdaptiveCandidateStrategies(input)[0] ?? null;
+}
+
+export function selectAdaptiveCandidateStrategyWithUsage(
+  signals: AdaptiveCandidateStrategySignal[],
+  usage: Record<string, number> = {},
+): AdaptiveCandidateStrategySignal | null {
+  const topScore = signals[0]?.score;
+  if (topScore === undefined) return null;
+  return signals
+    .filter((signal) => signal.score >= topScore - 10)
+    .sort((left, right) => {
+      const usageDifference = (usage[left.strategyKey] ?? 0) -
+        (usage[right.strategyKey] ?? 0);
+      if (usageDifference !== 0) return usageDifference;
+      if (right.score !== left.score) return right.score - left.score;
+      return left.strategyKey.localeCompare(right.strategyKey);
+    })[0] ?? null;
 }

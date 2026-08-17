@@ -206,6 +206,8 @@ function makeExecution(session: PaperAutoExecutionSession): PaperAutoExecutionSt
     maxOrdersPerRun: 2,
     maxDailyOrders: 8,
     targetDailyOrders: 2,
+    activityMode: "qualified-probe",
+    qualifiedProbeActive: false,
     todaySubmittedOrders: 2,
     todayFilledOrders: 2,
     activityTarget: {
@@ -294,5 +296,27 @@ describe("buildDailyTaskCenterModel", () => {
     expect(model.tasks[2]).toMatchObject({ state: "current" });
     expect(model.tasks[3]).toMatchObject({ state: "attention" });
     expect(model.nextAction).toContain("最近交易日");
+  });
+
+  it("shows the qualified afternoon activity phase without promising a fill", () => {
+    const execution = {
+      ...makeExecution("open"),
+      qualifiedProbeActive: true,
+      todaySubmittedOrders: 0,
+      todayFilledOrders: 0,
+      activityTarget: {
+        status: "active" as const,
+        targetOrders: 2,
+        filledOrders: 0,
+        remainingOrders: 2,
+        reason: "下午合格样本验证已开启。",
+      },
+    };
+    const model = buildDailyTaskCenterModel({ execution });
+
+    expect(model.execution).toMatchObject({
+      label: "下午合格补足",
+      detail: expect.stringContaining("真实历史、费用和风控"),
+    });
   });
 });

@@ -101,6 +101,9 @@ const envSchema = z.object({
     .min(1)
     .max(20)
     .default(2),
+  PAPER_AUTO_EXECUTION_ACTIVITY_MODE: z
+    .enum(["observe", "qualified-probe"])
+    .default("observe"),
   PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: z.coerce
     .number()
     .min(0)
@@ -191,6 +194,7 @@ describe("ServerConfig", () => {
       expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(1);
       expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(4);
       expect(config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS).toBe(2);
+      expect(config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE).toBe("observe");
       expect(config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0.1);
       expect(config.AUTH_ENABLED).toBe(true);
       expect(config.AUTH_SESSION_TTL_SECONDS).toBe(28_800);
@@ -418,6 +422,7 @@ describe("ServerConfig", () => {
         PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: "4",
         PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: "20",
         PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: "3",
+        PAPER_AUTO_EXECUTION_ACTIVITY_MODE: "qualified-probe",
         PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: "0.2",
       });
       expect(config.PAPER_AUTO_EXECUTION_ENABLED).toBe(true);
@@ -426,6 +431,7 @@ describe("ServerConfig", () => {
       expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(4);
       expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(20);
       expect(config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS).toBe(3);
+      expect(config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE).toBe("qualified-probe");
       expect(config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0.2);
     });
   });
