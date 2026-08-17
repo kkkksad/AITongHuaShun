@@ -92,6 +92,12 @@ export function resolveChinaTradingDate(value: Date): string {
     .slice(0, 10);
 }
 
+export function resolveCriticalHistoryStockLimit(
+  activityTargetActive: boolean,
+): number {
+  return activityTargetActive ? 12 : 6;
+}
+
 function strategyKeyFromDecision(audit: AuditEvent): string | null {
   const explicit = audit.data?.strategyKey;
   if (typeof explicit === "string" && explicit.length > 0) return explicit;
@@ -149,11 +155,14 @@ export async function buildCurrentPaperTradingPlan(input: {
     input.system.marketDataProvider,
     input.qualityLimit ?? 60,
   );
+  const criticalHistoryStockLimit = resolveCriticalHistoryStockLimit(
+    input.activityTargetActive === true,
+  );
   const preferredHistoricalStocks = buildPreferredHistoricalStocks({
     positions,
     candidates,
     qualityStocks,
-    limit: 6,
+    limit: criticalHistoryStockLimit,
   });
   const [leaderboard, marketRegimeResearch] = await Promise.all([
     buildStrategyLeaderboard(
@@ -169,7 +178,7 @@ export async function buildCurrentPaperTradingPlan(input: {
       snapshot,
       preferredStocks: preferredHistoricalStocks,
       sectorLimit: 6,
-      stockLimit: 6,
+      stockLimit: criticalHistoryStockLimit,
       days: 180,
       timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
     }),

@@ -22,7 +22,10 @@ import {
 } from "./intradayExecutionPolicy";
 
 export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
-export type PaperAutoExecutionActivityMode = "observe" | "qualified-probe";
+export type PaperAutoExecutionActivityMode =
+  | "observe"
+  | "qualified-probe"
+  | "validation-probe";
 export type PaperAutoExecutionSession =
   | "open"
   | "pre-market"
@@ -383,12 +386,17 @@ export function shouldActivateQualifiedPaperProbe(input: {
   phase: AShareTradingPhase;
   remainingTargetOrders: number;
 }): boolean {
-  return input.mode === "qualified-probe" &&
-    input.remainingTargetOrders > 0 &&
-    (
+  if (input.remainingTargetOrders <= 0) return false;
+  if (input.mode === "qualified-probe") {
+    return input.phase === "afternoon-confirmation" ||
+      input.phase === "closing-risk-review";
+  }
+  if (input.mode === "validation-probe") {
+    return input.phase === "morning-confirmation" ||
       input.phase === "afternoon-confirmation" ||
-      input.phase === "closing-risk-review"
-    );
+      input.phase === "closing-risk-review";
+  }
+  return false;
 }
 
 function paperOperationStrategyKey(operation: PaperTradingOperation): string | null {

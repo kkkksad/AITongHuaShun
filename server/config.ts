@@ -93,7 +93,7 @@ const envSchema = z.object({
     .max(20)
     .default(2),
   PAPER_AUTO_EXECUTION_ACTIVITY_MODE: z
-    .enum(["observe", "qualified-probe"])
+    .enum(["observe", "qualified-probe", "validation-probe"])
     .default("observe"),
   PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: z.coerce
     .number()

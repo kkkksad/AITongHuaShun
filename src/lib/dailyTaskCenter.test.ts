@@ -319,4 +319,29 @@ describe("buildDailyTaskCenterModel", () => {
       detail: expect.stringContaining("真实历史、费用和风控"),
     });
   });
+
+  it("shows the bounded validation mode without promising the daily target", () => {
+    const execution = {
+      ...makeExecution("open"),
+      activityMode: "validation-probe" as const,
+      qualifiedProbeActive: true,
+      maxDailyOrders: 10,
+      targetDailyOrders: 6,
+      todaySubmittedOrders: 1,
+      todayFilledOrders: 1,
+      activityTarget: {
+        status: "active" as const,
+        targetOrders: 6,
+        filledOrders: 1,
+        remainingOrders: 5,
+        reason: "验证档合格样本补足已开启。",
+      },
+    };
+    const model = buildDailyTaskCenterModel({ execution });
+
+    expect(model.execution).toMatchObject({
+      label: "验证档样本补足",
+      detail: expect.stringContaining("每日硬上限 10 笔"),
+    });
+  });
 });

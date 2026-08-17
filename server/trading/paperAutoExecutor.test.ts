@@ -176,6 +176,29 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
     })).toBe(false);
   });
 
+  it("starts validation probes after the opening phase and stops when the target is met", () => {
+    expect(shouldActivateQualifiedPaperProbe({
+      mode: "validation-probe",
+      phase: "opening",
+      remainingTargetOrders: 6,
+    })).toBe(false);
+    expect(shouldActivateQualifiedPaperProbe({
+      mode: "validation-probe",
+      phase: "morning-confirmation",
+      remainingTargetOrders: 6,
+    })).toBe(true);
+    expect(shouldActivateQualifiedPaperProbe({
+      mode: "validation-probe",
+      phase: "afternoon-confirmation",
+      remainingTargetOrders: 2,
+    })).toBe(true);
+    expect(shouldActivateQualifiedPaperProbe({
+      mode: "validation-probe",
+      phase: "closing-risk-review",
+      remainingTargetOrders: 0,
+    })).toBe(false);
+  });
+
   it("does not disable sector pulse tracking for auxiliary news degradation", () => {
     expect(resolveNotificationSourceStatus({
       marketRegime: "live-read-only",

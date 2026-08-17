@@ -796,7 +796,7 @@ export interface PaperAutoExecutionStatus {
   maxOrdersPerRun: number;
   maxDailyOrders: number;
   targetDailyOrders: number;
-  activityMode: "observe" | "qualified-probe";
+  activityMode: "observe" | "qualified-probe" | "validation-probe";
   qualifiedProbeActive: boolean;
   todaySubmittedOrders: number;
   todayFilledOrders: number;

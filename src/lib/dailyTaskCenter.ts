@@ -151,15 +151,20 @@ function executionPresentation(execution: PaperAutoExecutionStatus | null | unde
     execution.qualifiedProbeActive &&
     execution.activityTarget.status === "active"
   ) {
+    const validationMode = execution.activityMode === "validation-probe";
     return {
-      label: "下午合格补足",
-      detail: `今日已成交 ${execution.todayFilledOrders}/${execution.targetDailyOrders} 笔，正在从通过真实历史、费用和风控的候选中补足 Paper 样本。`,
+      label: validationMode ? "验证档样本补足" : "下午合格补足",
+      detail: `今日已成交 ${execution.todayFilledOrders}/${execution.targetDailyOrders} 笔，正在从通过真实历史、费用和风控的候选中补足 Paper 样本；每日硬上限 ${execution.maxDailyOrders} 笔。`,
       tone: "positive" as const,
     };
   }
   if (execution.activityTarget.status === "blocked") {
     return {
-      label: execution.qualifiedProbeActive ? "合格补足受阻" : "目标受阻",
+      label: execution.qualifiedProbeActive
+        ? execution.activityMode === "validation-probe"
+          ? "验证档补足受阻"
+          : "合格补足受阻"
+        : "目标受阻",
       detail: `今日已成交 ${execution.todayFilledOrders}/${execution.targetDailyOrders} 笔。${execution.activityTarget.reason}`,
       tone: "warning" as const,
     };

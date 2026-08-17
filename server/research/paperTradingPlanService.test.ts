@@ -6,6 +6,7 @@ import {
   buildPreferredHistoricalStocks,
   findLatestConfirmedRestrictiveRouting,
   resolveChinaTradingDate,
+  resolveCriticalHistoryStockLimit,
   summarizeRecentPaperStrategyUsage,
 } from "./paperTradingPlanService";
 
@@ -73,6 +74,11 @@ describe("buildPreferredHistoricalStocks", () => {
 });
 
 describe("critical paper research bounds", () => {
+  it("expands the bounded history pool only while an activity target is active", () => {
+    expect(resolveCriticalHistoryStockLimit(false)).toBe(6);
+    expect(resolveCriticalHistoryStockLimit(true)).toBe(12);
+  });
+
   it("keeps the critical stock pool small enough to finish before auxiliary history work", () => {
     const candidates = {
       candidates: Array.from({ length: 12 }, (_, index) => ({
