@@ -131,13 +131,15 @@ Run: `git diff --check`
 
 Expected: 全部通过。
 
-- [ ] **Step 3: 提交、推送和部署**
+- [x] **Step 3: 提交、推送和部署**
 
 提交业务代码和文档，推送 `codex/hourly-project-optimization`，通过受限 `deploy-upload <full-sha>` 部署生产归档。
 
-- [ ] **Step 4: 生产验收**
+- [x] **Step 4: 生产验收**
 
 确认三个容器健康、`MARKET_MODE=paper`、`REAL_TRADING_ENABLED=false`、活跃模式为 `qualified-probe`，账户历史未重置。下一交易日检查成交目标、策略键、具体阻塞原因和 WxPusher 汇总。
+
+验收结果：提交 `df9d8b78e744dad600673518a8c5635be73816b3` 已部署，三个容器均为 healthy，健康接口返回 200，匿名受保护接口返回 401；生产模式、订单限额、活动模式和 WxPusher 配置存在性符合预期，持久化账户仍为 100,000 元现金、0 持仓、0 订单。部署发生在收盘后，下一交易时段继续观察实际成交与阻塞审计，不把目标解释为成交保证。
 
 ---
 

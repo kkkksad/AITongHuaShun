@@ -861,6 +861,9 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 新增显式 `PAPER_AUTO_EXECUTION_ACTIVITY_MODE`。默认 `observe` 保持诊断语义；生产 Compose 使用 `qualified-probe`，仅在 13:00 后且每日 2 笔目标仍有缺口时增加 `KAIROS合格样本验证`。数量使用满足 1% 往返最低手续费纪律的最小整手，并继续经过真实历史、费用、现金、仓位、T+1、阶段仓位、熔断、日上限和幂等检查。
 - 计划服务从最近 7 天已成交自动决策审计汇总策略使用次数，只在距最高策略分不超过 10 分的合格信号中优先选择较少使用者；本轮计划内仍按策略分、防守分、候选优先级和可负担性排序。阻塞审计保留原始原因，新成交审计记录 `strategyKey`。
 - 本地验证：Server Vitest 57 个文件、837 项通过；Web Vitest 30 个文件、106 项通过，新增任务中心聚焦测试后对应文件为 5 项通过；AkShare bridge 114 项通过；`tsc -b` 和 Vite 生产构建通过，转换 2,321 个模块。Python 只有依赖弃用和本机 pytest 缓存目录权限警告。
+- 提交 `df9d8b78e744dad600673518a8c5635be73816b3` 已通过受限归档入口部署到 `124.221.165.45`。AkShare、Fastify 和 Nginx 三个容器均为 healthy，`/healthz` 与 `/api/health` 返回 200，匿名自动执行状态请求返回 401。
+- 生产运行时确认 `paper + akshare`、`REAL_TRADING_ENABLED=false`、自动 Paper 开启、`PAPER_AUTO_EXECUTION_ACTIVITY_MODE=qualified-probe`、目标 2、每日上限 4、单轮上限 1。WxPusher 服务端配置存在，但验收没有读取或输出凭据。
+- 部署前后持久化账户均保持 100,000 元现金、0 持仓、0 订单和订单序号 0，没有重置或伪造成交。部署发生在收盘后，实际成交策略键、具体阻塞原因和 WxPusher 盘中汇总仍需在下一交易时段观察。
 
 ## 当前边界
 
