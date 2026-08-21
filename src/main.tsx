@@ -1,15 +1,20 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { StrictMode, Suspense, lazy } from "react";
+import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider } from "./hooks/useTheme";
 import { I18nProvider } from "./i18n";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { shouldRetryQuery } from "./lib/apiError";
+import {
+  clearChunkRecoveryAttempt,
+  lazyWithChunkRecovery,
+  recoverFromChunkLoadError,
+} from "./lib/chunkRecovery";
 import "./styles/index.css";
 import "./styles/trading-strategies.css";
 
-const App = lazy(() => import("./App"));
+const App = lazyWithChunkRecovery(() => import("./App"));
 
 function PageLoader() {
   return (
@@ -44,6 +49,7 @@ async function unregisterDevelopmentServiceWorkers(): Promise<void> {
 // stale cached JS/CSS cannot mask the current Vite build.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
+    clearChunkRecoveryAttempt(window.sessionStorage);
     if (import.meta.env.DEV) {
       unregisterDevelopmentServiceWorkers()
         .then(() => {
@@ -65,6 +71,16 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
+
+window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
+  recoverFromChunkLoadError({
+    error: new Error("vite:preloadError"),
+    storage: window.sessionStorage,
+    pageKey: window.location.href,
+    reload: () => window.location.reload(),
+  });
+});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

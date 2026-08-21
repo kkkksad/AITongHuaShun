@@ -84,13 +84,13 @@ const envSchema = z.object({
     .number()
     .int()
     .min(1)
-    .max(100)
+    .max(10)
     .default(4),
   PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS: z.coerce
     .number()
     .int()
     .min(1)
-    .max(20)
+    .max(10)
     .default(2),
   PAPER_AUTO_EXECUTION_ACTIVITY_MODE: z
     .enum(["observe", "qualified-probe", "validation-probe"])

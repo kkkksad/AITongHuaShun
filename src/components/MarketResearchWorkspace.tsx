@@ -1,5 +1,4 @@
 import {
-  lazy,
   Suspense,
   useRef,
   useState,
@@ -21,6 +20,7 @@ import {
 } from "lucide-react";
 import type { TradingBackend } from "../hooks/useTradingBackend";
 import { MarketOverview } from "./MarketOverview";
+import { lazyWithChunkRecovery } from "../lib/chunkRecovery";
 
 const loadAsharePanel = () => import("./MarketAshareOverviewPanel");
 const loadTurningPanel = () => import("./TurningPointPanel");
@@ -33,34 +33,34 @@ const loadCryptoPanel = () => import("./CryptoMarketPanel");
 const loadEventsPanel = () => import("./MarketEventsPanel");
 const loadEsotericPanel = () => import("./EsotericMarketPanel");
 
-const MarketAshareOverviewPanel = lazy(async () => ({
+const MarketAshareOverviewPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadAsharePanel()).MarketAshareOverviewPanel,
 }));
-const TurningPointPanel = lazy(async () => ({
+const TurningPointPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadTurningPanel()).TurningPointPanel,
 }));
-const StockTrendForecastPanel = lazy(async () => ({
+const StockTrendForecastPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadStockPanel()).StockTrendForecastPanel,
 }));
-const MarketRegimePanel = lazy(async () => ({
+const MarketRegimePanel = lazyWithChunkRecovery(async () => ({
   default: (await loadRegimePanel()).MarketRegimePanel,
 }));
-const HongKongMarketPanel = lazy(async () => ({
+const HongKongMarketPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadHongKongPanel()).HongKongMarketPanel,
 }));
-const FuturesMarketPanel = lazy(async () => ({
+const FuturesMarketPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadFuturesPanel()).FuturesMarketPanel,
 }));
-const ExternalMarketImpactPanel = lazy(async () => ({
+const ExternalMarketImpactPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadExternalPanel()).ExternalMarketImpactPanel,
 }));
-const CryptoMarketPanel = lazy(async () => ({
+const CryptoMarketPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadCryptoPanel()).CryptoMarketPanel,
 }));
-const MarketEventsPanel = lazy(async () => ({
+const MarketEventsPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadEventsPanel()).MarketEventsPanel,
 }));
-const EsotericMarketPanel = lazy(async () => ({
+const EsotericMarketPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadEsotericPanel()).EsotericMarketPanel,
 }));
 

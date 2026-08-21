@@ -10,6 +10,8 @@
 - 防火墙只向公网开放 `80/443`；Fastify `3001` 不得直接发布，前端 `4173` 只绑定 `127.0.0.1`。
 - 继续保持 `MARKET_MODE=paper`、`REAL_TRADING_ENABLED=false`。
 
+域名证书必须是受信任的 CA 证书，并同时包含 `kairosq.cn` 与 `www.kairosq.cn`。当前服务器上的 IP 自签名证书不能用于域名入口；浏览器会在前端 JavaScript 加载前拒绝它，因此这类问题不是 React 代码或缓存可以单独解决的。
+
 当前会话存储在单个 Fastify 进程内。服务重启会让全部用户重新登录；不得横向扩成多个后端副本。多实例部署前必须把会话替换为 Redis 等共享、可撤销存储，并重新验证限流与 CSRF 边界。
 
 ## 初始化部署环境
@@ -50,6 +52,15 @@ docker compose --profile prod ps
 生产 Compose 只把前端绑定到宿主机 `127.0.0.1:4173`，后端 `3001` 只在容器网络暴露。认证变量缺失、密码散列损坏或生产安全 Cookie 被关闭时，后端会拒绝启动。
 
 ## HTTPS 反向代理
+
+Nginx 证书目录使用 `runtime/certs/kairos.crt` 与 `runtime/certs/kairos.key`。可在服务器上使用受信任 CA 签发的域名证书替换这两个文件，并确认私钥权限为 `600`、证书权限为 `644`，然后执行：
+
+```bash
+sudo nginx -t
+docker compose --env-file .env.production -f docker-compose.production.yml up -d --force-recreate web
+```
+
+换证书前确认 DNS 的 `@` 和 `www` A 记录都指向 `124.221.165.45`；换证书后分别检查 `https://kairosq.cn/healthz`、`https://www.kairosq.cn/healthz` 和浏览器证书 SAN。
 
 Caddy 示例：
 

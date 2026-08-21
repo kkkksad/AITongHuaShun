@@ -59,7 +59,7 @@
 - **A 股 T+1 纸面规则** —— 持仓快照新增 `availableQuantity` 与 `t1LockedQuantity`；当天买入数量在本地 paper 账户中会被锁定，当天卖出会被风控拒绝。
 - **每日纸面操作计划** —— `/api/research/paper-trading-plan` 基于策略排行榜、今日候选、每日优质股、账户资金和 A 股交易规则生成只读操作过程；计划会从更大候选池里优先选择 10000 元 paper 账户买得起一手的标的，同时继续展示 T+1、现金和仓位拦截原因。
 - **纸面计划质量诊断** —— `/api/research/paper-trading-plan` 的 `qualitySummary` 返回候选池数量、可买候选数量、持仓冲突数量、动作分布、拦截原因、拟买入/卖出金额、现金使用比例和策略覆盖；研究管线页面展示命中的策略族、未匹配候选和主要限制，用于判断系统是在主动生成可执行 paper 计划，还是因为资金、T+1、历史结构或仓位约束保持观望。
-- **本地 paper 自动执行器** —— `PAPER_AUTO_EXECUTION_ENABLED=true` 时，Fastify 会在 A 股交易时段按间隔读取纸面计划，把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`；状态接口为 `/api/trading/auto-paper-execution/status`，手动触发接口为 `/api/trading/auto-paper-execution/run`。`PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS` 默认把每日 2 笔已成交 Paper 订单作为活跃度目标，状态会区分进行中、已完成、数据/计划阻塞和收盘未达成；该目标不强制补单，也不改变每日 4 笔上限、单轮 1 笔上限或任何数据与风控检查。定时调度从上一轮完成后才开始计算下一间隔，研究耗时超过配置间隔时不会并发空跑。该执行器只作用于本地模拟账户，继续受 100 股一手、T+1、现金、仓位、熔断和幂等键限制，不连接真实券商。
+- **本地 paper 自动执行器** —— `PAPER_AUTO_EXECUTION_ENABLED=true` 时，Fastify 会在 A 股交易时段按间隔读取纸面计划，把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`；状态接口为 `/api/trading/auto-paper-execution/status`，手动触发接口为 `/api/trading/auto-paper-execution/run`。本地默认仍是观察模式；生产验证档把每日 6 笔已成交 Paper 订单作为活跃度目标，每日硬上限固定为 10 笔，单轮最多 1 笔。目标不强制补单，也不改变数据、费用、现金、仓位、T+1、熔断、阶段预算或幂等检查；配置解析器拒绝超过 10 笔的日上限。定时调度从上一轮完成后才开始计算下一间隔，研究耗时超过配置间隔时不会并发空跑。该执行器只作用于本地模拟账户，不连接真实券商。
 - **Paper 关键历史优先级** —— 当前计划先完成有界的 A 股核心研究，再启动新闻和全球市场辅助研究；核心池限制为 6 个分散行业和 6 只优先股票，持仓优先，其后交错纳入策略候选与质量候选。此改动减少 AkShare 历史队列冷启动竞争，不缓存包含账户状态的完整计划，也不把降级数据提升为可交易证据。
 - **WxPusher 模拟计划提醒** —— 可选 `WXPUSHER_ENABLED=true` 使用服务端 SPT，在可执行 paper 计划提交到本地 `PaperBroker` 前发送一次模拟研究提醒；同一交易日相同操作签名会去重，成功和失败均写入不含凭据的审计事件。提醒不连接同花顺或任何真实券商，也不代表真实交易建议。
 - **自动执行完整留痕** —— 本地 paper 自动运行按状态变化和有界心跳追加 `paper-auto-execution.run` 审计，记录交易时段、计划质量、观察/生效市场状态、路由稳定方式、上一条确认时间、数据源状态、候选数量、订单状态和跳过原因；即使没有订单，也能在重启后通过 JSON 审计复盘，复盘不依赖 WxPusher 是否启用。
@@ -907,3 +907,4 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 
 
 - 2026-08-22 Paper 活跃度升级：新增 `kairosValidationBasket` 受控验证路由。它只在 `validation-probe`、非 `risk-off`/`unclear`、主策略无信号、真实历史至少 120 根、候选评分/流动性/价格波动通过时出现；仍使用费用效率最小整手，并继续经过现金、仓位、T+1、阶段预算、每日 10 笔上限、熔断和幂等检查。该路由只增加可验证 Paper 样本机会，不承诺每天成交、胜率或收益。核心回归测试与 TypeScript 类型检查已通过。
+- 2026-08-22 线上闪退排查：前端增加 Vite 动态 chunk 单次刷新恢复、懒加载统一恢复包装和 Service Worker `kairos-v2` 资源更新优先；旧 HTML 与新 chunk 不匹配时最多自动刷新一次，避免无限刷新。线上域名当前仍使用仅包含 `124.221.165.45` 的自签名证书，浏览器会在 JavaScript 运行前报证书不受信任；必须在服务器为 `kairosq.cn` 与 `www.kairosq.cn` 部署受信任证书，并让 Nginx 使用该证书后，域名入口才算完成。

@@ -130,8 +130,9 @@ PAPER_AUTO_EXECUTION_ENABLED=true
 PAPER_AUTO_EXECUTION_INTERVAL_MS=60000
 PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY=true
 PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN=1
-PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS=4
-PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS=2
+PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS=10
+PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS=6
+PAPER_AUTO_EXECUTION_ACTIVITY_MODE=validation-probe
 PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO=0.10
 ```
 
@@ -148,7 +149,7 @@ WXPUSHER_DAILY_MESSAGE_LIMIT=10
 
 每日硬上限为 10 条：四条固定简报加最多六条事件预留。事件预留只用于市场转为 `risk-off`、核心板块研究降级、本地 paper 订单出现拒单、模拟交易暂停、科技板块从已观察高点回撤至少 1.5 个百分点，或非科技强势板块从至少 4% 高点回撤至少 2 个百分点；同类事件同一交易日只提醒一次，多类事件同轮出现时合并成一条。回撤快报显示板块名称、观察高点、当前涨幅和回撤百分点，但不把盘中回撤描述成趋势反转。辅助新闻或外盘源降级只进入固定简报的数据质量区，不会停止核心板块脉冲积累。成功和失败的提供方请求都会计入尝试次数，失败后不会在同一阶段循环重试。提供方失败只写入不含凭据的 `wxpusher.paper-plan.failed` 审计，不会改变本地 paper 风控或授权真实下单。
 
-该自动执行器只会把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`，不会连接同花顺、中信、SuperMind 或任何真实券商。盘外启动时会保持等待，直到 A 股交易时段才自动运行。默认每轮最多 1 笔、每天最多 4 笔，并把 2 笔已成交 Paper 订单作为每日活跃度目标；开盘、上午、下午和尾盘累计最多使用 2、3、4、4 笔，保留后续确认额度。活跃度目标只进入状态诊断，不会绕过计划资格、历史数据、费用、现金、仓位、T+1、熔断、交易时段或幂等检查；收盘后也不会补单。调度器从上一轮完成后才等待 `PAPER_AUTO_EXECUTION_INTERVAL_MS`，研究计算超过间隔时不会启动重叠轮次。`回撤控制` 硬止损可绕过阶段预算，但仍受全天上限和全部风控。当日提交数与成交数都从持久化自动订单统计，服务重启不会重置；买入计划继续累计预留成交额、滑点和手续费，并保留当前 paper 权益的 10% 作为现金缓冲。
+该自动执行器只会把 `paper-buy-plan` / `paper-sell-plan` 提交到本地 `PaperBroker`，不会连接同花顺、中信、SuperMind 或任何真实券商。盘外启动时会保持等待，直到 A 股交易时段才自动运行。生产验证档每轮最多 1 笔、每天争取 6 笔、每日硬上限 10 笔；阶段预算按开盘、上午、下午和尾盘逐步放行，保留后续确认额度。活跃度目标只增加合格 Paper 样本机会，不会绕过计划资格、历史数据、费用、现金、仓位、T+1、熔断、交易时段或幂等检查；收盘后也不会补单，实际成交可以低于 6 笔甚至为零。配置解析器拒绝超过 10 笔的日上限。调度器从上一轮完成后才等待 `PAPER_AUTO_EXECUTION_INTERVAL_MS`，研究计算超过间隔时不会启动重叠轮次。`回撤控制` 硬止损可绕过阶段预算，但仍受全天上限和全部风控。当日提交数与成交数都从持久化自动订单统计，服务重启不会重置；买入计划继续累计预留成交额、滑点和手续费，并保留当前 paper 权益的 10% 作为现金缓冲。
 
 `TRADING_SEED_PORTFOLIO=true` 是默认演示模式，会在新账户中预置样例持仓；用于新建纯现金账户时应设为 `false`。若 `STORE_BACKEND=json` 已有状态，系统会正常恢复旧账户；需要重新开始时应在设置页输入新初始资金、确认短语和复选确认，使用受保护的账户重置流程，不要手动编辑状态文件。
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode, lazy, Suspense } from "react";
+import { useEffect, useMemo, useState, type ReactNode, Suspense } from "react";
 import {
   Activity,
   ArrowRight,
@@ -40,13 +40,14 @@ import {
   type AuthUser,
 } from "./lib/tradingApi";
 import { useTradingBackend } from "./hooks/useTradingBackend";
+import { lazyWithChunkRecovery } from "./lib/chunkRecovery";
 import type { StrategyId, StrategyParameters } from "./types";
 
 // ── Helper for lazy-loading named exports ────────────────────
 // eslint-disable-next-line
 function lazyNamed(importer: () => Promise<any>, name: string): any {
   // eslint-disable-next-line
-  return lazy(() => importer().then((m: any) => ({ default: m[name] })));
+  return lazyWithChunkRecovery(() => importer().then((m: any) => ({ default: m[name] })));
 }
 
 // ── Lazy-loaded heavy components ──────────────────────────────
@@ -55,10 +56,10 @@ const DailyCandidates = lazyNamed(() => import("./components/DailyCandidates"), 
 const DailyQualityStocks = lazyNamed(() => import("./components/DailyQualityStocks"), "DailyQualityStocks");
 const DailyTaskCenter = lazyNamed(() => import("./components/DailyTaskCenter"), "DailyTaskCenter");
 const FlowPanel = lazyNamed(() => import("./components/FlowPanel"), "FlowPanel");
-const LearningPipeline = lazy(() => import("./components/LearningPipeline"));
+const LearningPipeline = lazyWithChunkRecovery(() => import("./components/LearningPipeline"));
 const LogViewer = lazyNamed(() => import("./components/LogViewer"), "LogViewer");
 const MarketOverview = lazyNamed(() => import("./components/MarketOverview"), "MarketOverview");
-const MarketPage = lazy(() => import("./pages/MarketPage"));
+const MarketPage = lazyWithChunkRecovery(() => import("./pages/MarketPage"));
 const NewsPanel = lazyNamed(() => import("./components/NewsPanel"), "NewsPanel");
 const OrderHistory = lazyNamed(() => import("./components/OrderHistory"), "OrderHistory");
 const PaperAccount = lazyNamed(() => import("./components/PaperAccount"), "PaperAccount");
