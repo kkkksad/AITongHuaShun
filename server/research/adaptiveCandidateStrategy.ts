@@ -17,7 +17,8 @@ export interface AdaptiveCandidateStrategySignal {
     | "bollingerBands"
     | "kairosRiskOffRecovery"
     | "kairosRangeRotation"
-    | "kairosQualifiedProbe";
+    | "kairosQualifiedProbe"
+    | "kairosValidationBasket";
   strategyName: string;
   score: number;
   evidence: string[];
@@ -29,6 +30,7 @@ export interface AdaptiveCandidateStrategyInput {
   routing: AdaptiveStrategyRouting;
   candidateScore: number;
   activityTargetActive?: boolean;
+  validationProbeActive?: boolean;
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -394,6 +396,7 @@ export function rankAdaptiveCandidateStrategies(
 
   if (
     input.activityTargetActive === true &&
+    input.validationProbeActive !== true &&
     routing.regime !== "risk-off" &&
     routing.regime !== "risk-off-recovery" &&
     routing.regime !== "unclear" &&
@@ -411,6 +414,33 @@ export function rankAdaptiveCandidateStrategies(
       [
         "下午 Paper 活跃目标仍有缺口，仅启用最低费用有效整手的合格样本验证。",
         "真实历史、流动性和追价过滤已通过，仍需费用、现金、仓位和 PaperBroker 风控复核。",
+      ],
+    );
+  }
+
+  if (
+    input.validationProbeActive === true &&
+    input.activityTargetActive === true &&
+    signals.length === 0 &&
+    routing.regime !== "risk-off" &&
+    routing.regime !== "risk-off-recovery" &&
+    routing.regime !== "unclear" &&
+    stock.barCount >= 120 &&
+    stock.confidence >= 0.55 &&
+    hasQualifiedProbeHistory(stock) &&
+    input.candidateScore >= 65 &&
+    quote.changePercent >= -2.2 &&
+    quote.changePercent <= 2.2 &&
+    currentAmplitude <= 6.5 &&
+    hasControlledLiquidity(quote)
+  ) {
+    add(
+      "kairosValidationBasket",
+      "KAIROS验证篮子",
+      64 + input.candidateScore * 0.12 + stock.confidence * 5,
+      [
+        "主策略信号暂未形成，但真实历史至少覆盖 120 根且形态通过验证篮子门槛。",
+        "当前价格波动和流动性受控，仅用于收集 Paper 样本，不代表收益保证。",
       ],
     );
   }

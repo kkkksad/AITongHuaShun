@@ -340,6 +340,45 @@ describe("adaptive candidate strategy routing", () => {
     ]));
   });
 
+  it("only emits the validation basket in validation-probe mode as a fallback", () => {
+    const validationRouting = routing({
+      regime: "range-high-volatility",
+      eligibleStrategyKeys: ["kairosValidationBasket"],
+      strategyPlaybook: {
+        primaryStrategyKeys: ["kairosRangeRotation"],
+        useWhen: "非 risk-off 的验证样本收集",
+        avoidWhen: "数据、流动性或风控未通过",
+        recheckTriggers: ["历史覆盖恢复"],
+      },
+    });
+    const input = {
+      quote: { ...quote, changePercent: -0.6, amplitude: 4.2 },
+      stockRegime: stock("unclear", {
+        confidence: 0.6,
+        features: {
+          ...stock("unclear").features,
+          return20d: 0.01,
+          distanceFromMa20: -0.02,
+          ma20Slope5d: -0.002,
+        },
+      }),
+      routing: validationRouting,
+      candidateScore: 72,
+      activityTargetActive: true,
+    };
+
+    expect(rankAdaptiveCandidateStrategies(input)).toEqual([]);
+    expect(rankAdaptiveCandidateStrategies({
+      ...input,
+      validationProbeActive: true,
+    })).toEqual([
+      expect.objectContaining({
+        strategyKey: "kairosValidationBasket",
+        strategyName: "KAIROS验证篮子",
+      }),
+    ]);
+  });
+
   it("rotates among near-top qualified strategies using recent filled usage", () => {
     const signals = [
       {

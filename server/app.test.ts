@@ -15,10 +15,7 @@ async function useGrowthPaperProfile(app: FastifyInstance): Promise<void> {
 }
 
 function todayAtChinaTime(time: string): Date {
-  const chinaDate = new Date(Date.now() + 8 * 60 * 60_000)
-    .toISOString()
-    .slice(0, 10);
-  return new Date(`${chinaDate}T${time}+08:00`);
+  return new Date(`2026-08-21T${time}+08:00`);
 }
 
 describe("trading API", () => {

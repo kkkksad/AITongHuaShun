@@ -285,7 +285,7 @@ export async function buildTradingApp(
     logger: options.startMarket !== false,
     trustProxy: options.config.TRUST_PROXY,
   });
-  const system = options.system ?? createTradingSystem(options.config);
+  const system = options.system ?? createTradingSystem(options.config, options.clock);
   const hub = new WebSocketHub();
   const researchStore = new InMemoryResearchStore();
   const requestTelemetry = new RequestTelemetry();

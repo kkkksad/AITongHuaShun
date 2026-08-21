@@ -249,6 +249,7 @@ function build(input: {
   orders?: OrderRecord[];
   cash?: number;
   activityTargetActive?: boolean;
+  activityMode?: "observe" | "qualified-probe" | "validation-probe";
   strategyUsage?: Record<string, number>;
 }) {
   return buildPaperTradingPlan({
@@ -270,6 +271,7 @@ function build(input: {
     minimumCommission: 5,
     cashReserveRatio: 0.1,
     activityTargetActive: input.activityTargetActive,
+    activityMode: input.activityMode,
     strategyUsage: input.strategyUsage,
   });
 }
@@ -575,6 +577,39 @@ describe("adaptive paper trading plan", () => {
         ruleChecks: expect.arrayContaining([
           "strategy-route: pass (kairosQualifiedProbe)",
           "activity-target-qualified-probe",
+        ]),
+      }),
+    ]));
+  });
+
+  it("creates a one-lot validation basket only in validation-probe mode", () => {
+    const validationRouting = routing({
+      regime: "range-high-volatility",
+      eligibleStrategyKeys: ["kairosValidationBasket"],
+      strategyPlaybook: {
+        primaryStrategyKeys: ["kairosRangeRotation"],
+        useWhen: "非 risk-off 的验证样本收集",
+        avoidWhen: "数据、流动性或风控未通过",
+        recheckTriggers: ["历史覆盖恢复"],
+      },
+    });
+    const plan = build({
+      cash: 8_000,
+      includeCandidate: true,
+      adaptiveRouting: validationRouting,
+      research: marketRegime("unclear", 0.6, "601988"),
+      activityTargetActive: true,
+      activityMode: "validation-probe",
+    });
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "601988",
+        action: "paper-buy-plan",
+        strategyKey: "kairosValidationBasket",
+        quantity: 200,
+        ruleChecks: expect.arrayContaining([
+          "activity-target-validation-basket",
         ]),
       }),
     ]));

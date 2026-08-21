@@ -905,3 +905,5 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 
 本页只记录可从仓库核实的当前事实。目标设计写入 `architecture/`，产品意图写入 `product/`，实施步骤写入 `plans/`。
 
+
+- 2026-08-22 Paper 活跃度升级：新增 `kairosValidationBasket` 受控验证路由。它只在 `validation-probe`、非 `risk-off`/`unclear`、主策略无信号、真实历史至少 120 根、候选评分/流动性/价格波动通过时出现；仍使用费用效率最小整手，并继续经过现金、仓位、T+1、阶段预算、每日 10 笔上限、熔断和幂等检查。该路由只增加可验证 Paper 样本机会，不承诺每天成交、胜率或收益。核心回归测试与 TypeScript 类型检查已通过。

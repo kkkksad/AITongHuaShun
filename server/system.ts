@@ -31,7 +31,7 @@ function parseMarketSymbols(value: string): string[] {
   return [...new Set(symbols)];
 }
 
-function createMarket(config: ServerConfig): MarketDataProvider {
+function createMarket(config: ServerConfig, now: () => Date): MarketDataProvider {
   if (config.MARKET_DATA_PROVIDER === "akshare") {
     if (config.MARKET_MODE !== "paper") {
       throw new Error("AkShare 只读行情必须使用 MARKET_MODE=paper");
@@ -47,25 +47,29 @@ function createMarket(config: ServerConfig): MarketDataProvider {
     });
   }
 
-  return new MockMarket(config.MARKET_MODE, config.MARKET_TICK_MS);
+  return new MockMarket(config.MARKET_MODE, config.MARKET_TICK_MS, now);
 }
 
-function createStore(config: ServerConfig): TradingStore {
+function createStore(config: ServerConfig, now: () => Date): TradingStore {
   if (config.STORE_BACKEND === "json") {
     return new JsonFileTradingStore(
       config.DATA_DIR,
       config.TRADING_STARTING_CASH,
       config.TRADING_SEED_PORTFOLIO,
-      { retentionDays: config.TRADING_HISTORY_RETENTION_DAYS },
+      { retentionDays: config.TRADING_HISTORY_RETENTION_DAYS, now },
     );
   }
   return new InMemoryTradingStore(
     config.TRADING_STARTING_CASH,
     config.TRADING_SEED_PORTFOLIO,
+    now,
   );
 }
 
-export function createTradingSystem(config: ServerConfig): TradingSystem {
+export function createTradingSystem(
+  config: ServerConfig,
+  now?: () => Date,
+): TradingSystem {
   if (config.REAL_TRADING_ENABLED) {
     throw new Error("真实交易尚未实现，REAL_TRADING_ENABLED 必须保持 false");
   }
@@ -89,8 +93,9 @@ export function createTradingSystem(config: ServerConfig): TradingSystem {
     dynamicPositionScaling: config.DYNAMIC_POSITION_SCALING,
     maxDrawdownReductionFactor: config.MAX_DRAWDOWN_REDUCTION_FACTOR,
   };
-  const market = createMarket(config);
-  const store: TradingStore = createStore(config);
+  const clock = now ?? (() => new Date());
+  const market = createMarket(config, clock);
+  const store: TradingStore = createStore(config, clock);
   const risk = new RiskEngine(limits);
   const broker = new PaperBroker(market, store, risk, {
     mode: config.MARKET_MODE,

@@ -64,23 +64,25 @@ const initialQuotes = [
 export class MockMarket extends EventEmitter implements MarketDataProvider {
   private readonly mode: TradingMode;
   private readonly tickMs: number;
+  private readonly now: () => Date;
   private readonly quotes = new Map<string, MarketQuote>();
   private sequence = 0;
   private randomState = 0x9e3779b9;
   private timer?: NodeJS.Timeout;
 
-  constructor(mode: TradingMode, tickMs: number) {
+  constructor(mode: TradingMode, tickMs: number, now: () => Date = () => new Date()) {
     super();
     this.mode = mode;
     this.tickMs = tickMs;
+    this.now = now;
 
-    const now = new Date().toISOString();
+    const timestamp = this.now().toISOString();
     for (const quote of initialQuotes) {
       this.quotes.set(quote.symbol, {
         ...quote,
         changePercent: ((quote.price - quote.previousClose) / quote.previousClose) * 100,
         volume: 10_000_000 + this.sequence * 100_000,
-        updatedAt: now,
+        updatedAt: timestamp,
       });
       this.sequence += 1;
     }
@@ -114,13 +116,13 @@ export class MockMarket extends EventEmitter implements MarketDataProvider {
     return {
       mode: this.mode,
       sequence: this.sequence,
-      marketTime: new Date().toISOString(),
+      marketTime: this.now().toISOString(),
       quotes: [...this.quotes.values()].map((quote) => ({ ...quote })),
     };
   }
 
   tick(): MarketSnapshot {
-    const now = new Date().toISOString();
+    const timestamp = this.now().toISOString();
 
     for (const [symbol, quote] of this.quotes) {
       const volatility = symbol.startsWith("3") || symbol.startsWith("6") ? 0.0015 : 0.00055;
@@ -135,7 +137,7 @@ export class MockMarket extends EventEmitter implements MarketDataProvider {
           (((nextPrice - quote.previousClose) / quote.previousClose) * 100).toFixed(3),
         ),
         volume: quote.volume + Math.round(20_000 + this.nextRandom() * 80_000),
-        updatedAt: now,
+        updatedAt: timestamp,
       });
     }
 

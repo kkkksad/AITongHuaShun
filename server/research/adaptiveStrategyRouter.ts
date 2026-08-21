@@ -96,6 +96,7 @@ const ALL_STRATEGY_KEYS = [
   "bollingerBands",
   "kairosRangeRotation",
   "kairosQualifiedProbe",
+  "kairosValidationBasket",
 ] as const;
 
 const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
@@ -107,12 +108,14 @@ const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
     "macd",
     "turtle",
     "kairosQualifiedProbe",
+    "kairosValidationBasket",
   ],
   "trend-up-high-volatility": [
     "kairosQuietPullback",
     "kairosWashoutRecovery",
     "aSharePullback",
     "kairosQualifiedProbe",
+    "kairosValidationBasket",
     "kairosCapitalShield",
   ],
   "range-low-volatility": [
@@ -120,6 +123,7 @@ const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
     "bollingerBands",
     "kairosRangeRotation",
     "kairosQualifiedProbe",
+    "kairosValidationBasket",
     "kairosCapitalShield",
   ],
   "range-high-volatility": [
@@ -127,6 +131,7 @@ const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
     "kairosQuietPullback",
     "rsi",
     "kairosQualifiedProbe",
+    "kairosValidationBasket",
     "kairosCapitalShield",
   ],
   "risk-off-recovery": [

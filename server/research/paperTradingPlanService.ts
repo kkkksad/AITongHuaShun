@@ -16,7 +16,7 @@ import type { MarketRegimeResearchReport } from "./marketRegimeResearch";
 import { buildExternalMarketImpact } from "./externalMarketImpact";
 import type { ExternalMarketImpactReport } from "./externalMarketImpact";
 import { buildPaperTradingPlan } from "./paperTradingPlan";
-import type { PaperTradingPlan } from "./paperTradingPlan";
+import type { PaperTradingActivityMode, PaperTradingPlan } from "./paperTradingPlan";
 import { buildRealResearchDataFeed } from "./realResearchData";
 import type { RealResearchDataFeed } from "./realResearchData";
 import { buildStrategyLeaderboard } from "./strategyLeaderboard";
@@ -140,6 +140,7 @@ export async function buildCurrentPaperTradingPlan(input: {
   qualityLimit?: number;
   now?: Date;
   activityTargetActive?: boolean;
+  activityMode?: PaperTradingActivityMode;
 }): Promise<CurrentPaperTradingPlanResult> {
   const snapshot = input.system.market.getSnapshot();
   const account = input.system.broker.getAccount(snapshot);
@@ -246,6 +247,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     cashReserveRatio: input.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
     strategyProfile,
     activityTargetActive: input.activityTargetActive,
+    activityMode: input.activityMode,
     strategyUsage: summarizeRecentPaperStrategyUsage(
       input.system.store.listAudit(10_000),
       input.now ?? new Date(),

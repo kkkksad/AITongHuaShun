@@ -31,6 +31,11 @@ export type PaperTradingOperationAction =
   | "blocked"
   | "hold";
 
+export type PaperTradingActivityMode =
+  | "observe"
+  | "qualified-probe"
+  | "validation-probe";
+
 export interface PaperTradingOperation {
   timestamp: string;
   symbol: string;
@@ -242,7 +247,8 @@ function assessEntryPersistence(input: {
       input.strategyKey === "rsi" ||
       input.strategyKey === "bollingerBands" ||
       input.strategyKey === "kairosRangeRotation" ||
-      input.strategyKey === "kairosQualifiedProbe"
+      input.strategyKey === "kairosQualifiedProbe" ||
+      input.strategyKey === "kairosValidationBasket"
     ) &&
     stock.regime === "unclear" &&
     stock.barCount >= 120 &&
@@ -450,6 +456,7 @@ export function buildPaperTradingPlan(input: {
   cashReserveRatio: number;
   strategyProfile?: PaperStrategyProfile;
   activityTargetActive?: boolean;
+  activityMode?: PaperTradingActivityMode;
   strategyUsage?: Record<string, number>;
 }): PaperTradingPlan {
   const marketTime = new Date(input.snapshot.marketTime);
@@ -719,6 +726,7 @@ export function buildPaperTradingPlan(input: {
           routing: input.adaptiveRouting,
           candidateScore: base.score,
           activityTargetActive: input.activityTargetActive,
+          validationProbeActive: input.activityMode === "validation-probe",
         })
       : [];
     const signal = selectAdaptiveCandidateStrategyWithUsage(
@@ -814,7 +822,8 @@ export function buildPaperTradingPlan(input: {
       input.commissionRate,
       input.minimumCommission,
     );
-    const quantity = candidate.strategyKey === "kairosQualifiedProbe"
+    const quantity = candidate.strategyKey === "kairosQualifiedProbe" ||
+      candidate.strategyKey === "kairosValidationBasket"
       ? candidateOrderQuantity >= minimumFeeEfficientQuantity(
           candidate.price,
           input.lotSize,
@@ -909,7 +918,8 @@ export function buildPaperTradingPlan(input: {
       input.commissionRate,
       input.minimumCommission,
     );
-    const quantity = candidate.strategyKey === "kairosQualifiedProbe"
+    const quantity = candidate.strategyKey === "kairosQualifiedProbe" ||
+      candidate.strategyKey === "kairosValidationBasket"
       ? candidateOrderQuantity >= minimumFeeEfficientQuantity(
           candidate.price,
           input.lotSize,
@@ -1102,7 +1112,9 @@ export function buildPaperTradingPlan(input: {
         `strategy-route: pass (${candidate.strategyKey})`,
         ...(candidate.strategyKey === "kairosQualifiedProbe"
           ? ["activity-target-qualified-probe"]
-          : []),
+          : candidate.strategyKey === "kairosValidationBasket"
+            ? ["activity-target-validation-basket"]
+            : []),
         ...entryRuleChecks,
         "T+1-after-buy",
       ],

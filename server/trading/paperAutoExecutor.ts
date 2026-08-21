@@ -76,6 +76,7 @@ export interface PaperAutoExecutionRun {
   phase: AShareTradingPhase;
   phaseMaxInvestedRatio: number;
   planQuality: PaperTradingPlan["qualitySummary"]["planQuality"] | "not-run";
+  activityMode?: PaperAutoExecutionActivityMode;
   researchContext?: PaperAutoExecutionResearchContext;
   submittedOrders: PaperAutoExecutionOrder[];
   skippedOperations: PaperAutoExecutionSkip[];
@@ -378,7 +379,7 @@ export function paperNonExecutableReason(operation: PaperTradingOperation): stri
     return `正常观望：${operation.reason}`;
   }
   if (operation.action === "blocked") return `计划阻塞：${operation.reason}`;
-  return "operation is not an executable paper auto action";
+  return `non-executable paper action ${operation.action}: ${operation.reason}`;
 }
 
 export function shouldActivateQualifiedPaperProbe(input: {
@@ -591,6 +592,7 @@ export class PaperAutoExecutor {
             this.options.targetDailyOrders - this.countFilledOrders(tradingDate),
           ),
         }),
+        activityMode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
       });
       const policy = getIntradayExecutionPolicy(started, plan.adaptiveRouting);
       const marketAssessment = assessMarketSnapshot(
@@ -885,6 +887,7 @@ export class PaperAutoExecutor {
       phase: policy.phase,
       phaseMaxInvestedRatio: policy.maxInvestedRatio,
       planQuality,
+      activityMode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
       researchContext,
       submittedOrders,
       skippedOperations,
@@ -917,6 +920,7 @@ export class PaperAutoExecutor {
         phase: run.phase,
         phaseMaxInvestedRatio: run.phaseMaxInvestedRatio,
         planQuality: run.planQuality,
+        activityMode: run.activityMode ?? null,
         regime: run.researchContext?.regime,
         observedRegime: run.researchContext?.observedRegime,
         routingStability: run.researchContext?.routingStability,
@@ -936,6 +940,7 @@ export class PaperAutoExecutor {
           status: order.status,
           rejectionReason: order.rejectionReason,
           strategy: order.strategy,
+          strategyKey: order.strategyKey,
           reason: order.reason,
         })),
         skippedReasons: run.skippedOperations.slice(0, 8).map((operation) => ({
