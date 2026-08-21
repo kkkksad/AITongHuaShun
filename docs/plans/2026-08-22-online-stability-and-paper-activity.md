@@ -48,9 +48,9 @@
 **Files:**
 - No credentials or populated environment files.
 
-- [ ] **Step 1: Commit the code and documentation changes.**
-- [ ] **Step 2: Push the verified commit to the production workflow branch `codex/real-market-regime`; the restricted GitHub Action is the only supported remote deployment path.**
-- [ ] **Step 3: Recheck public health, HTML timestamp, and asset responses.**
+- [x] **Step 1: Commit the code and documentation changes.** Commit `0d3f4b9` contains the code and initial documentation; the follow-up release note is recorded after deployment.
+- [x] **Step 2: Push the verified commit to the production workflow branch `codex/real-market-regime`; the restricted GitHub Action is the only supported remote deployment path.** The published release is merge commit `d01be84`.
+- [x] **Step 3: Recheck public health, HTML timestamp, and asset responses.** GitHub Actions run `32512350838` succeeded; public health and current static assets returned 200.
 
 ---
 
@@ -58,4 +58,4 @@
 
 ## Implementation status
 
-- Tasks 1-3 completed. Final verification passed for server/web tests, TypeScript, Vite build, and diff hygiene; Python bridge tests remain unrun because `pytest` is unavailable in the current runtime. Task 4 commit, push, and public deployment verification remain.
+- Tasks 1-4 completed. Server/web tests, TypeScript, Vite build, diff hygiene, GitHub Actions deployment, public health, and static resource checks passed. Python bridge tests remain unrun because `pytest` is unavailable in the current runtime. The domain certificate replacement remains an operator-side task.

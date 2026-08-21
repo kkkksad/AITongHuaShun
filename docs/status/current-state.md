@@ -1,10 +1,10 @@
 # 当前状态
 
-**核对日期：** 2026-08-12
+**核对日期：** 2026-08-22
 
 ## 已实现
 
-- **腾讯云单机生产部署** —— `124.221.165.45` 已作为当前生产部署目标；Nginx、Fastify 和 AkShare 容器在服务器内健康通过，公网 80/443 已通，API 与行情桥只在容器网络内通信。生产模式固定为 `paper + akshare`，真实交易关闭，认证保护开启，Paper JSON 历史默认保留 7 天。`kairosq.cn` 的 A 记录已指向该服务器，但腾讯云当前把域名 HTTP 请求重定向到 DNSPod webblock，TLS SNI 连接也被重置；完成 ICP 备案和受信任证书前，浏览器只能看到 IP 自签名证书警告。
+- **腾讯云单机生产部署** —— `124.221.165.45` 已作为当前生产部署目标；Nginx、Fastify 和 AkShare 容器在服务器内健康通过，公网 80/443 已通，API 与行情桥只在容器网络内通信。生产模式固定为 `paper + akshare`，真实交易关闭，认证保护开启，Paper JSON 历史默认保留 7 天。`kairosq.cn` 与 `www.kairosq.cn` 的 A 记录已指向该服务器，当前域名 HTTP/HTTPS 可到达 Nginx，但证书仍是只含 IP 的自签名证书；浏览器信任域名入口前仍需替换为同时包含两个域名的受信任证书。
 - React + TypeScript + Vite 响应式量化研究工作台。
 - 总览、策略实验室、市场观察、模拟账户和研究管线五个视图。
 - 固定种子的确定性回测、净值曲线、基准曲线、交易记录和风险指标。
@@ -908,3 +908,4 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 
 - 2026-08-22 Paper 活跃度升级：新增 `kairosValidationBasket` 受控验证路由。它只在 `validation-probe`、非 `risk-off`/`unclear`、主策略无信号、真实历史至少 120 根、候选评分/流动性/价格波动通过时出现；仍使用费用效率最小整手，并继续经过现金、仓位、T+1、阶段预算、每日 10 笔上限、熔断和幂等检查。该路由只增加可验证 Paper 样本机会，不承诺每天成交、胜率或收益。核心回归测试与 TypeScript 类型检查已通过。
 - 2026-08-22 线上闪退排查：前端增加 Vite 动态 chunk 单次刷新恢复、懒加载统一恢复包装和 Service Worker `kairos-v2` 资源更新优先；旧 HTML 与新 chunk 不匹配时最多自动刷新一次，避免无限刷新。线上域名当前仍使用仅包含 `124.221.165.45` 的自签名证书，浏览器会在 JavaScript 运行前报证书不受信任；必须在服务器为 `kairosq.cn` 与 `www.kairosq.cn` 部署受信任证书，并让 Nginx 使用该证书后，域名入口才算完成。
+- 2026-08-22 发布验证：提交 `d01be84a3b6d5b06e9c88e9fba714275b6141604` 已推送到 `codex/real-market-regime`，GitHub Actions 测试/构建与腾讯云部署均成功。公网主页 `Last-Modified` 已更新，`/healthz`、`/api/health`、`/sw.js` 和当前入口 hashed JS 均返回 200；最终仍需更换域名受信任证书。
