@@ -19,6 +19,7 @@ import {
   cancelPaperOrder,
   fetchTradingBootstrap,
   getTradingSocketUrl,
+  isUnauthorizedWebSocketClose,
   notifyAuthExpired,
   setPaperTradingPaused,
   resetPaperAccount,
@@ -262,7 +263,7 @@ export function useTradingBackend(
       });
 
       currentSocket.addEventListener("close", (event) => {
-        if (event.code === 1008) {
+        if (isUnauthorizedWebSocketClose(event)) {
           notifyAuthExpired();
           return;
         }

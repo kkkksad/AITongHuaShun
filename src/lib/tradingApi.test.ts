@@ -22,6 +22,7 @@ import {
   fetchStockTrendForecast,
   fetchTurningPointResearch,
   getTradingSocketUrl,
+  isUnauthorizedWebSocketClose,
   login,
   notifyAuthExpired,
   runPaperAutoExecutionOnce,
@@ -40,6 +41,12 @@ describe("session-aware trading API", () => {
   beforeEach(() => {
     notifyAuthExpired();
     window.localStorage.clear();
+  });
+
+  it("only treats an explicit unauthorized WebSocket close as session expiry", () => {
+    expect(isUnauthorizedWebSocketClose({ code: 1008, reason: "UNAUTHORIZED" })).toBe(true);
+    expect(isUnauthorizedWebSocketClose({ code: 1008, reason: "ORIGIN_MISMATCH" })).toBe(false);
+    expect(isUnauthorizedWebSocketClose({ code: 1006, reason: "" })).toBe(false);
   });
 
   afterEach(() => {

@@ -1496,6 +1496,12 @@ const API_PROXY_MISS_HINT =
 export const AUTH_EXPIRED_EVENT = "kairos:auth-expired";
 let csrfToken: string | null = null;
 
+export function isUnauthorizedWebSocketClose(
+  event: Pick<CloseEvent, "code" | "reason">,
+): boolean {
+  return event.code === 1008 && event.reason === "UNAUTHORIZED";
+}
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }

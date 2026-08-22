@@ -77,6 +77,7 @@ import { buildTurningPointReport } from "./research/turningPointScanner";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
 import { PaperAutoExecutor } from "./trading/paperAutoExecutor";
+import { isTrustedWebSocketOrigin } from "./webOrigin";
 
 const orderRequestSchema = z.object({
   symbol: z.string().trim().regex(/^\d{6}$/, "标的代码必须是 6 位数字"),
@@ -1692,8 +1693,17 @@ export async function buildTradingApp(
   }, (socket, request) => {
     if (authConfig && sessions) {
       const token = extractSessionToken(request);
-      const originMatches = request.headers.origin === options.config.WEB_ORIGIN;
-      if (!originMatches || !token || !sessions.verify(token)) {
+      const originMatches = isTrustedWebSocketOrigin({
+        headers: request.headers,
+        protocol: request.protocol,
+        configuredOrigin: options.config.WEB_ORIGIN,
+        trustProxy: options.config.TRUST_PROXY,
+      });
+      if (!originMatches) {
+        socket.close(1008, "ORIGIN_MISMATCH");
+        return;
+      }
+      if (!token || !sessions.verify(token)) {
         socket.close(1008, "UNAUTHORIZED");
         return;
       }

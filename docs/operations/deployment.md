@@ -5,12 +5,12 @@
 ## 前置条件
 
 - Linux 云服务器、Docker Engine 与 Docker Compose。
-- 一个指向服务器的域名。
+- 一个指向服务器的域名；生产示例使用 `kairosq.cn`。
 - Caddy、Nginx 或云负载均衡器负责 HTTPS 终止。
 - 防火墙只向公网开放 `80/443`；Fastify `3001` 不得直接发布，前端 `4173` 只绑定 `127.0.0.1`。
 - 继续保持 `MARKET_MODE=paper`、`REAL_TRADING_ENABLED=false`。
 
-域名证书必须是受信任的 CA 证书，并同时包含 `kairosq.cn` 与 `www.kairosq.cn`。当前服务器上的 IP 自签名证书不能用于域名入口；浏览器会在前端 JavaScript 加载前拒绝它，因此这类问题不是 React 代码或缓存可以单独解决的。
+域名证书必须是受信任的 CA 证书，并同时包含 `kairosq.cn` 与 `www.kairosq.cn`。生产反向代理应保留原始 `Host` 和 `X-Forwarded-Proto`，后端会在 `TRUST_PROXY=true` 时据此校验实际域名的 WebSocket 同源请求。当前服务器上的 IP 自签名证书不能用于域名入口；浏览器会在前端 JavaScript 加载前拒绝它，因此这类问题不是 React 代码或缓存可以单独解决的。
 
 当前会话存储在单个 Fastify 进程内。服务重启会让全部用户重新登录；不得横向扩成多个后端副本。多实例部署前必须把会话替换为 Redis 等共享、可撤销存储，并重新验证限流与 CSRF 边界。
 
