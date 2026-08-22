@@ -25,4 +25,4 @@ No credentials, broker connections, order limits, fees, cash, position, T+1, cir
 
 ## Status
 
-Code fix verified locally; commit and production deployment are pending.
+Code fix is in commit `54af637`; GitHub Actions run `32550879081` completed successfully and the online homepage was updated at `2026-08-22 04:10 UTC`. `root`, `healthz`, and `api_health` returned 200 after deployment.
