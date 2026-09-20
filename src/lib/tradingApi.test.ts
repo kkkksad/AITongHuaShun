@@ -53,6 +53,7 @@ describe("session-aware trading API", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("uses cookies and sends the in-memory CSRF token for mutations", async () => {
@@ -439,7 +440,14 @@ describe("session-aware trading API", () => {
     }
   });
 
-  it("requests the selected weekly Paper review period", async () => {
+  it.each([
+    { baseUrl: "", expectedUrl: "/api/research/weekly-paper-review?period=previous" },
+    {
+      baseUrl: "http://127.0.0.1:8787/",
+      expectedUrl: "http://127.0.0.1:8787/api/research/weekly-paper-review?period=previous",
+    },
+  ])("requests the selected weekly Paper review period with base '$baseUrl'", async ({ baseUrl, expectedUrl }) => {
+    vi.stubEnv("VITE_API_BASE_URL", baseUrl);
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({ period: { window: "previous" } }),
     );
@@ -448,7 +456,7 @@ describe("session-aware trading API", () => {
     await fetchWeeklyPaperReview(undefined, "previous");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/research/weekly-paper-review?period=previous",
+      expectedUrl,
       expect.objectContaining({ credentials: "include" }),
     );
   });

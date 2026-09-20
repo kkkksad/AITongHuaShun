@@ -1,6 +1,6 @@
 # Paper Research Resilience and Rotation
 
-**Date:** 2026-08-30  
+**Date:** 2026-08-30
 **Status:** Completed locally; not deployed
 
 ## Goal

@@ -65,3 +65,5 @@ User requested deployment after the local verification. Target: existing product
 - [ ] Verify container health, HTTPS, protected API authorization and new frontend assets; record the exact deployed revision.
 
 Pre-existing TLS issue confirmed: `kairosq.cn` resolves to the target, but the installed certificate is self-signed and only lists IP `124.221.165.45` (valid August 2026 to August 2027). Standard client trust validation fails before deployment. A trusted domain certificate is a separate follow-up; this release does not silently replace it or bypass browser warnings.
+
+First workflow attempt `35520517204` stopped at web tests without deploying. Its annotation identified an old weekly API test that depended on the local `VITE_API_BASE_URL`; the production same-origin path correctly lacks that prefix. The test now explicitly exercises both same-origin and configured-base requests with isolated environment stubs. Application URL behavior is unchanged.

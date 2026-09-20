@@ -1,6 +1,6 @@
 # Weekly Paper Capital Efficiency Upgrade
 
-**Date:** 2026-08-29  
+**Date:** 2026-08-29
 **Status:** Completed
 
 ## Goal
