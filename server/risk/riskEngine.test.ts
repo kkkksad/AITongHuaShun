@@ -119,6 +119,27 @@ describe("RiskEngine - basic checks", () => {
     expect(result.code).toBe("NON_TRADABLE_SYMBOL");
   });
 
+  it.each([0, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects an invalid market price (%s)",
+    (price) => {
+      const risk = createRiskEngine();
+      const result = risk.evaluate({
+        request: {
+          symbol: quote.symbol,
+          side: "buy",
+          type: "market",
+          quantity: 100,
+        },
+        quote: { ...quote, price },
+        account,
+        mode: "mock",
+      });
+
+      expect(result.code).toBe("INVALID_MARKET_PRICE");
+      expect(result.allowed).toBe(false);
+    },
+  );
+
   it("rejects orders while trading is paused", () => {
     const risk = createRiskEngine();
 

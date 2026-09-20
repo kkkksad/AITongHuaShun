@@ -64,6 +64,111 @@ describe("fetchBridgeJson", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it("refreshes a partial HTTP 200 response after five seconds instead of the healthy TTL", async () => {
+    vi.useFakeTimers();
+    const partial = { series: [], warning: "History is warming" };
+    const healthy = { series: [{ symbol: "600519", bars: [1] }], warning: null };
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(partial))
+      .mockImplementation(async () => jsonResponse(healthy));
+    const input = {
+      url: "http://127.0.0.1:8800/api/market/stock-history?symbols=600519",
+      timeoutMs: 1_000,
+      cacheTtlMs: 600_000,
+      fetchImpl,
+    };
+
+    expect(await fetchBridgeJson(input)).toEqual(partial);
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(await fetchBridgeJson(input)).toEqual(partial);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await fetchBridgeJson(input)).toEqual(healthy);
+    await vi.advanceTimersByTimeAsync(5_001);
+    expect(await fetchBridgeJson(input)).toEqual(healthy);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not extend a shorter configured TTL for warned data", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn().mockImplementation(async () =>
+      jsonResponse({ warning: "Partial data" }));
+    const input = { url: "http://bridge/short", timeoutMs: 100, cacheTtlMs: 50, fetchImpl };
+    await fetchBridgeJson(input);
+    await vi.advanceTimersByTimeAsync(50);
+    await fetchBridgeJson(input);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares slow pending requests and starts the healthy TTL at completion", async () => {
+    vi.useFakeTimers();
+    let resolve!: (response: Response) => void;
+    const fetchImpl = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((done) => { resolve = done; }))
+      .mockImplementation(async () => jsonResponse({ sequence: 2 }));
+    const input = { url: "http://bridge/slow", timeoutMs: 10_000, cacheTtlMs: 1_000, fetchImpl };
+    const first = fetchBridgeJson(input);
+    await vi.advanceTimersByTimeAsync(2_000);
+    const second = fetchBridgeJson(input);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    resolve(jsonResponse({ sequence: 1, warning: null }));
+    expect(await second).toBe(await first);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(await fetchBridgeJson(input)).toBe(await first);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await fetchBridgeJson(input)).toEqual({ sequence: 2 });
+  });
+
+  it("does not evict a pending request when completed entries fill the cache", async () => {
+    let resolve!: (response: Response) => void;
+    const fetchImpl = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((done) => { resolve = done; }))
+      .mockImplementation(async () => jsonResponse({ ok: true }));
+    const input = { url: "http://bridge/pending", timeoutMs: 10_000, cacheTtlMs: 60_000, fetchImpl };
+    const pending = fetchBridgeJson(input);
+    for (let index = 0; index < 64; index += 1) {
+      await fetchBridgeJson({ ...input, url: `http://bridge/completed/${index}` });
+    }
+    const again = fetchBridgeJson(input);
+    resolve(jsonResponse({ pending: false }));
+    expect(await again).toBe(await pending);
+    expect(fetchImpl).toHaveBeenCalledTimes(65);
+  });
+
+  it("does not let an old settlement overwrite a replacement cache entry", async () => {
+    vi.useFakeTimers();
+    let resolve!: (response: Response) => void;
+    const fetchImpl = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((done) => { resolve = done; }))
+      .mockImplementation(async () => jsonResponse({ recovered: true }));
+    const input = { url: "http://bridge/replaced", timeoutMs: 10_000, cacheTtlMs: 60_000, fetchImpl };
+    const old = fetchBridgeJson(input);
+    clearBridgeRequestCache();
+    const replacement = await fetchBridgeJson(input);
+    resolve(jsonResponse({ warning: "Old partial response" }));
+    await old;
+    await vi.advanceTimersByTimeAsync(5_001);
+    expect(await fetchBridgeJson(input)).toBe(replacement);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves all 64 pending reads and bypasses caching for an overflow key", async () => {
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchImpl = vi.fn().mockImplementation(() =>
+      new Promise<Response>((resolve) => { resolvers.push(resolve); }));
+    const input = { url: "http://bridge/busy/0", timeoutMs: 10_000, cacheTtlMs: 60_000, fetchImpl };
+    const pending = Array.from({ length: 65 }, (_, index) =>
+      fetchBridgeJson({ ...input, url: `http://bridge/busy/${index}` }));
+    const firstAgain = fetchBridgeJson(input);
+    expect(fetchImpl).toHaveBeenCalledTimes(65);
+    resolvers.forEach((resolve, index) => resolve(jsonResponse({ index })));
+    const results = await Promise.all(pending);
+    expect(await firstAgain).toBe(results[0]);
+    fetchImpl.mockImplementation(async () => jsonResponse({ overflow: true }));
+    expect(await fetchBridgeJson({ ...input, url: "http://bridge/busy/64" })).toEqual({ overflow: true });
+    expect(fetchImpl).toHaveBeenCalledTimes(66);
+  });
+
   it("keeps cached reads isolated by bearer-token scope", async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ scope: "alpha" }))

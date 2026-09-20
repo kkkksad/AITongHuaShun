@@ -21,4 +21,34 @@ describe("LearningPipeline", () => {
     expect(source).toContain("dailyReview.entryReview.reasons.map");
     expect(source).toContain("为什么没有入场 / 为什么入场");
   });
+
+  it("shows weekly capital use and closed-fill strategy evidence", () => {
+    const source = readFileSync("src/components/LearningPipeline.tsx", "utf8");
+
+    expect(source).toContain("{weeklyPeriodLabel} Paper 复盘");
+    expect(source).toContain("weeklyPaperReviewQueryOptions(weeklyPeriod)");
+    expect(source).toContain("weeklyPaperReview.capital.initialCapital");
+    expect(source).toContain("weeklyPaperReview.capital.averageFilledOrderNotional");
+    expect(source).toContain("weeklyPaperReview?.capital.plannedBuyNotional");
+    expect(source).toContain("weeklyPaperReview?.capital.automaticFilledBuyNotional");
+    expect(source).toContain("weeklyPaperReview?.capital.planRealizationRatio");
+    expect(source).toContain("weeklyPaperReview?.sample.planSnapshotDays");
+    expect(source).toContain("weeklyPaperReview?.capital.maxDailyPlannedBuyNotional");
+    expect(source).toContain("每日金额对账");
+    expect(source).toContain("weeklyDailyReconciliation.map");
+    expect(source).toContain("day.planRealizationRatio");
+    expect(source).toContain("weeklyPaperReview.capital.maxSingleOrderNotional");
+    expect(source).toContain("weeklyPaperReview.capital.maxOrderCapitalRatio");
+    expect(source).toContain("weeklyPaperReview.capital.sizingConstraint");
+    expect(source).toContain('"cash-or-reserve": "现金/现金缓冲"');
+    expect(source).toContain('"phase-budget": "阶段订单额度"');
+    expect(source).toContain("weeklyPaperReview?.sample.historyCoverage");
+    expect(source).toContain("weeklyHistoryCoverage &&");
+    expect(source).toContain("可能已被清理");
+    expect(source).toContain("weeklyPaperReview.performance.winRate");
+    expect(source).toContain("仅已成交 FIFO");
+    expect(source).toContain("strategy.winRate === null");
+    expect(source).toContain("weeklyPaperReview.blockers.slice(0, 4)");
+    expect(source).toContain("记录估算金额");
+  });
 });

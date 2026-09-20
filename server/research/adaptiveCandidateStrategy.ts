@@ -412,7 +412,7 @@ export function rankAdaptiveCandidateStrategies(
       "KAIROS合格样本验证",
       66 + input.candidateScore * 0.12 + stock.confidence * 5,
       [
-        "下午 Paper 活跃目标仍有缺口，仅启用最低费用有效整手的合格样本验证。",
+        "下午 Paper 活跃目标仍有缺口，按信号强度分配有界的合格样本验证预算。",
         "真实历史、流动性和追价过滤已通过，仍需费用、现金、仓位和 PaperBroker 风控复核。",
       ],
     );

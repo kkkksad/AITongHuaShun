@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { LucideProps } from "lucide-react";
 import {
+  AlertTriangle,
   Activity,
   BarChart3,
   Bitcoin,
@@ -17,9 +18,11 @@ import {
   ScanSearch,
   Search,
   Sparkles,
+  RefreshCw,
 } from "lucide-react";
 import type { TradingBackend } from "../hooks/useTradingBackend";
 import { MarketOverview } from "./MarketOverview";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { lazyWithChunkRecovery } from "../lib/chunkRecovery";
 
 const loadAsharePanel = () => import("./MarketAshareOverviewPanel");
@@ -107,6 +110,26 @@ function MarketTabLoading() {
   );
 }
 
+function MarketTabError() {
+  return (
+    <div aria-live="polite" className="market-tab-error" role="alert">
+      <AlertTriangle size={20} />
+      <div>
+        <strong>该研究模块暂时不可用</strong>
+        <p>其它市场页面仍可继续使用。刷新后会重新加载当前模块。</p>
+        <button
+          className="secondary-button"
+          onClick={() => window.location.reload()}
+          type="button"
+        >
+          <RefreshCw size={15} />
+          刷新模块
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<MarketWorkspaceTab>("a-share");
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -143,10 +166,11 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
                 id={`market-workspace-tab-${tab.id}`}
                 key={tab.id}
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => {
+                  void tab.preload();
+                  setActiveTab(tab.id);
+                }}
                 onFocus={() => void tab.preload()}
-                onMouseEnter={() => void tab.preload()}
-                onPointerDown={() => void tab.preload()}
                 ref={(element) => {
                   tabRefs.current[index] = element;
                 }}
@@ -167,23 +191,25 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
           id={`market-workspace-panel-${activeTab}`}
           role="tabpanel"
         >
-          <Suspense fallback={<MarketTabLoading />}>
-            {activeTab === "a-share" && (
-              <MarketAshareOverviewPanel
-                connectionState={trading.connectionState}
-                market={trading.market}
-              />
-            )}
-            {activeTab === "turning" && <TurningPointPanel />}
-            {activeTab === "stock" && <StockTrendForecastPanel />}
-            {activeTab === "regime" && <MarketRegimePanel />}
-            {activeTab === "hong-kong" && <HongKongMarketPanel />}
-            {activeTab === "futures" && <FuturesMarketPanel />}
-            {activeTab === "external" && <ExternalMarketImpactPanel />}
-            {activeTab === "crypto" && <CryptoMarketPanel />}
-            {activeTab === "events" && <MarketEventsPanel />}
-            {activeTab === "esoteric" && <EsotericMarketPanel market={trading.market} />}
-          </Suspense>
+          <ErrorBoundary fallback={<MarketTabError />} key={activeTab}>
+            <Suspense fallback={<MarketTabLoading />}>
+              {activeTab === "a-share" && (
+                <MarketAshareOverviewPanel
+                  connectionState={trading.connectionState}
+                  market={trading.market}
+                />
+              )}
+              {activeTab === "turning" && <TurningPointPanel />}
+              {activeTab === "stock" && <StockTrendForecastPanel />}
+              {activeTab === "regime" && <MarketRegimePanel />}
+              {activeTab === "hong-kong" && <HongKongMarketPanel />}
+              {activeTab === "futures" && <FuturesMarketPanel />}
+              {activeTab === "external" && <ExternalMarketImpactPanel />}
+              {activeTab === "crypto" && <CryptoMarketPanel />}
+              {activeTab === "events" && <MarketEventsPanel />}
+              {activeTab === "esoteric" && <EsotericMarketPanel market={trading.market} />}
+            </Suspense>
+          </ErrorBoundary>
         </div>
       </section>
     </div>

@@ -39,7 +39,7 @@ const snapshot: MarketSnapshot = {
       tradable: true,
       price: 4.92,
       previousClose: 4.96,
-      changePercent: -0.81,
+      changePercent: 0,
       volume: 20_000_000,
       amount: 100_000_000,
       turnover: 1.5,
@@ -47,6 +47,22 @@ const snapshot: MarketSnapshot = {
       open: 4.98,
       high: 5.04,
       low: 4.88,
+      updatedAt: "2026-07-15T02:00:00.000Z",
+    },
+    {
+      symbol: "000858",
+      name: "第二候选",
+      tradable: true,
+      price: 5,
+      previousClose: 5,
+      changePercent: 0,
+      volume: 20_000_000,
+      amount: 100_000_000,
+      turnover: 1.5,
+      amplitude: 3.2,
+      open: 5,
+      high: 5.1,
+      low: 4.9,
       updatedAt: "2026-07-15T02:00:00.000Z",
     },
   ],
@@ -226,17 +242,33 @@ function candidates(): DailyCandidateReport {
   } as unknown as DailyCandidateReport;
 }
 
-function qualityStocks(includeCandidate = false): DailyQualityStockReport {
+function qualityStocks(
+  includeCandidate = false,
+  candidateCount = 1,
+  scores: number[] = [],
+): DailyQualityStockReport {
   return {
     stocks: includeCandidate
-      ? [{
-          symbol: "601988",
-          name: "低价候选",
-          price: 5,
-          score: 90,
-          action: "focus",
-          reasons: ["流动性充足"],
-        }]
+      ? [
+          {
+            symbol: "601988",
+            name: "低价候选",
+            price: 5,
+            score: scores[0] ?? 90,
+            action: "focus",
+            reasons: ["流动性充足"],
+          },
+          ...(candidateCount > 1
+            ? [{
+                symbol: "000858",
+                name: "第二候选",
+                price: 5,
+                score: scores[1] ?? 90,
+                action: "focus" as const,
+                reasons: ["流动性充足"],
+              }]
+            : []),
+        ]
       : [],
   } as unknown as DailyQualityStockReport;
 }
@@ -251,6 +283,8 @@ function build(input: {
   activityTargetActive?: boolean;
   activityMode?: "observe" | "qualified-probe" | "validation-probe";
   strategyUsage?: Record<string, number>;
+  candidateCount?: number;
+  candidateScores?: number[];
 }) {
   return buildPaperTradingPlan({
     snapshot,
@@ -260,7 +294,11 @@ function build(input: {
     orders: input.orders ?? [],
     leaderboard: leaderboard(),
     candidates: candidates(),
-    qualityStocks: qualityStocks(input.includeCandidate),
+    qualityStocks: qualityStocks(
+      input.includeCandidate,
+      input.candidateCount,
+      input.candidateScores,
+    ),
     adaptiveRouting: input.adaptiveRouting ?? routing(),
     marketRegimeResearch: input.research ?? marketRegime("healthy-trend"),
     initialCapital: 10_000,
@@ -537,7 +575,129 @@ describe("adaptive paper trading plan", () => {
     }
   });
 
-  it("creates a minimum fee-efficient paper probe only when the afternoon target is active", () => {
+  it("balances close-scoring strategies across candidates in one plan", () => {
+    const plan = build({
+      cash: 10_000,
+      includeCandidate: true,
+      candidateCount: 2,
+      adaptiveRouting: routing({
+        eligibleStrategyKeys: ["kairosLowVolTrend", "movingAverageCross"],
+        strategyPlaybook: {
+          primaryStrategyKeys: ["kairosLowVolTrend", "movingAverageCross"],
+          useWhen: "趋势确认",
+          avoidWhen: "趋势恶化",
+          recheckTriggers: ["宽度转弱"],
+        },
+      }),
+      research: {
+        ...marketRegime("healthy-trend", 0.72, "601988"),
+        stockRegimes: [
+          marketRegime("healthy-trend", 0.72, "601988").stockRegimes[0],
+          {
+            ...marketRegime("healthy-trend", 0.72, "000858").stockRegimes[0],
+            name: "第二候选",
+          },
+        ],
+      },
+    });
+
+    const buys = plan.operations.filter((operation) =>
+      operation.action === "paper-buy-plan" && operation.symbol !== "CASH",
+    );
+    expect(buys).toHaveLength(2);
+    expect(new Set(buys.map((operation) => operation.strategyKey))).toEqual(
+      new Set(["kairosLowVolTrend", "movingAverageCross"]),
+    );
+  });
+
+  it("applies local strategy usage after candidate ranking", () => {
+    const plan = build({
+      cash: 10_000,
+      includeCandidate: true,
+      candidateCount: 2,
+      candidateScores: [70, 95],
+      adaptiveRouting: routing({
+        eligibleStrategyKeys: ["kairosLowVolTrend", "movingAverageCross"],
+        strategyPlaybook: {
+          primaryStrategyKeys: ["kairosLowVolTrend", "movingAverageCross"],
+          useWhen: "趋势确认",
+          avoidWhen: "趋势恶化",
+          recheckTriggers: ["宽度转弱"],
+        },
+      }),
+      research: {
+        ...marketRegime("healthy-trend", 0.72, "601988"),
+        stockRegimes: [
+          marketRegime("healthy-trend", 0.72, "601988").stockRegimes[0],
+          {
+            ...marketRegime("healthy-trend", 0.72, "000858").stockRegimes[0],
+            name: "第二候选",
+          },
+        ],
+      },
+    });
+
+    const buys = plan.operations.filter((operation) =>
+      operation.action === "paper-buy-plan" && operation.symbol !== "CASH",
+    );
+    expect(buys).toHaveLength(2);
+    expect(buys.find((operation) => operation.symbol === "000858")).toMatchObject({
+      strategyKey: "kairosLowVolTrend",
+    });
+    expect(buys.find((operation) => operation.symbol === "601988")).toMatchObject({
+      strategyKey: "movingAverageCross",
+    });
+  });
+
+  it("does not let an existing position consume the primary strategy slot", () => {
+    const plan = build({
+      cash: 8_000,
+      includeCandidate: true,
+      candidateCount: 2,
+      candidateScores: [95, 90],
+      positions: [{
+        ...position(),
+        symbol: "601988",
+        name: "低价候选",
+        quantity: 200,
+        availableQuantity: 200,
+        averagePrice: 4.8,
+        currentPrice: 4.92,
+        marketValue: 984,
+        weight: 0.0984,
+      }],
+      adaptiveRouting: routing({
+        eligibleStrategyKeys: ["kairosLowVolTrend", "movingAverageCross"],
+        strategyPlaybook: {
+          primaryStrategyKeys: ["kairosLowVolTrend", "movingAverageCross"],
+          useWhen: "趋势确认",
+          avoidWhen: "趋势恶化",
+          recheckTriggers: ["宽度转弱"],
+        },
+      }),
+      research: {
+        ...marketRegime("healthy-trend", 0.72, "601988"),
+        stockRegimes: [
+          marketRegime("healthy-trend", 0.72, "601988").stockRegimes[0],
+          {
+            ...marketRegime("healthy-trend", 0.72, "000858").stockRegimes[0],
+            name: "第二候选",
+          },
+        ],
+      },
+    });
+
+    expect(plan.operations.find((operation) =>
+      operation.symbol === "601988" && operation.action === "hold"
+    )).toBeDefined();
+    expect(plan.operations.find((operation) =>
+      operation.symbol === "000858" && operation.action === "paper-buy-plan"
+    )).toMatchObject({
+      strategyKey: "kairosLowVolTrend",
+    });
+  });
+
+  it("creates a bounded fee-efficient paper probe only when the afternoon target is active", () => {
     const probeRouting = routing({
       regime: "range-high-volatility",
       positionPosture: "hold",
@@ -572,17 +732,24 @@ describe("adaptive paper trading plan", () => {
       expect.objectContaining({
         symbol: "601988",
         action: "paper-buy-plan",
-        quantity: 200,
+        quantity: expect.any(Number),
         strategy: "KAIROS合格样本验证",
         ruleChecks: expect.arrayContaining([
           "strategy-route: pass (kairosQualifiedProbe)",
           "activity-target-qualified-probe",
+          expect.stringContaining("validation-budget:"),
         ]),
       }),
     ]));
+    const operation = active.operations.find((item) =>
+      item.symbol === "601988" && item.action === "paper-buy-plan"
+    );
+    expect(operation?.quantity ?? 0).toBeGreaterThan(100);
+    expect(operation?.estimatedNotional ?? 0)
+      .toBeLessThanOrEqual(active.capitalPlan.maxSingleOrderNotional);
   });
 
-  it("creates a one-lot validation basket only in validation-probe mode", () => {
+  it("creates a bounded validation basket only in validation-probe mode", () => {
     const validationRouting = routing({
       regime: "range-high-volatility",
       eligibleStrategyKeys: ["kairosValidationBasket"],
@@ -607,11 +774,18 @@ describe("adaptive paper trading plan", () => {
         symbol: "601988",
         action: "paper-buy-plan",
         strategyKey: "kairosValidationBasket",
-        quantity: 200,
+        quantity: expect.any(Number),
         ruleChecks: expect.arrayContaining([
           "activity-target-validation-basket",
+          expect.stringContaining("validation-budget:"),
         ]),
       }),
     ]));
+    const operation = plan.operations.find((item) =>
+      item.symbol === "601988" && item.action === "paper-buy-plan"
+    );
+    expect(operation?.quantity ?? 0).toBeGreaterThan(100);
+    expect(operation?.estimatedNotional ?? 0)
+      .toBeLessThanOrEqual(plan.capitalPlan.maxSingleOrderNotional);
   });
 });

@@ -133,6 +133,23 @@ describe("TradingStore \u5951\u7ea6\u4e00\u81f4\u6027", () => {
     expect(moutai!.averagePrice).toBe(1468.2);
   });
 
+  it("uses position cost when a quote price is invalid", () => {
+    const staleSnapshot = {
+      ...snapshot,
+      quotes: snapshot.quotes.map((quote) => quote.symbol === "600519"
+        ? { ...quote, price: 0 }
+        : quote),
+    };
+    const moutai = store.getPositions(staleSnapshot)
+      .find((position) => position.symbol === "600519");
+
+    expect(moutai).toMatchObject({
+      currentPrice: 1468.2,
+      marketValue: 146_820,
+      unrealizedPnl: 0,
+    });
+  });
+
   it("getAccount \u8fd4\u56de\u5b8c\u6574\u7684\u8d26\u6237\u5feb\u7167", () => {
     const account = store.getAccount("paper", snapshot, demoLimits);
 
@@ -243,6 +260,19 @@ describe("TradingStore \u5951\u7ea6\u4e00\u81f4\u6027", () => {
     expect(store.checkLimitOrderFill(sellLimit, { symbol: "600519", name: "\u8d35\u5dde\u8305\u53f0", price: 1510 })).toBe(true);
     // \u5e02\u4ef7\u4f4e\u4e8e\u9650\u4ef7\uff1a\u5356\u51fa\u9650\u4ef7\u5355\u4e0d\u5e94\u6210\u4ea4
     expect(store.checkLimitOrderFill(sellLimit, { symbol: "600519", name: "\u8d35\u5dde\u8305\u53f0", price: 1490 })).toBe(false);
+  });
+
+  it("ignores invalid quote prices for limit matching", () => {
+    const order = store.createOrder(
+      { symbol: "600519", side: "buy", type: "limit", quantity: 100, limitPrice: 2_000 },
+      1_492.6,
+    );
+
+    expect(store.checkLimitOrderFill(order, {
+      symbol: "600519",
+      name: "贵州茅台",
+      price: 0,
+    })).toBe(false);
   });
 
   it("findByClientOrderId \u5e42\u7b49\u68c0\u6d4b", () => {

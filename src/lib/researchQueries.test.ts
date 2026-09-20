@@ -5,6 +5,7 @@ import {
   paperTradingPlanQueryOptions,
   realResearchNewsFeedQueryOptions,
   strategyLeaderboardQueryOptions,
+  weeklyPaperReviewQueryOptions,
 } from "./researchQueries";
 
 describe("research query options", () => {
@@ -39,16 +40,30 @@ describe("research query options", () => {
     ]);
   });
 
-  it("defines paper plan and daily review refresh behavior once", () => {
+  it("defines paper plan, daily review and weekly review refresh behavior once", () => {
     const plan = paperTradingPlanQueryOptions();
     const review = dailyMarketReviewQueryOptions();
+    const weeklyReview = weeklyPaperReviewQueryOptions("previous");
 
     expect(plan.queryKey).toEqual(["paper-trading-plan"]);
     expect(review.queryKey).toEqual(["daily-market-review"]);
+    expect(weeklyReview.queryKey).toEqual(["weekly-paper-review", "previous"]);
     expect(plan.refetchInterval).toBe(60_000);
     expect(review.refetchInterval).toBe(60_000);
-    expect(plan.staleTime).toBe(30_000);
-    expect(review.staleTime).toBe(30_000);
+    expect(weeklyReview.refetchInterval).toBe(60_000);
+    expect(plan.staleTime).toBe(45_000);
+    expect(review.staleTime).toBe(45_000);
+    expect(weeklyReview.staleTime).toBe(45_000);
+    expect(plan.placeholderData).toBeTypeOf("function");
+    expect(review.placeholderData).toBeTypeOf("function");
+    expect(weeklyReview.placeholderData).toBeUndefined();
+  });
+
+  it("keeps current and previous weekly review cache entries separate", () => {
+    expect(weeklyPaperReviewQueryOptions("current").queryKey).toEqual([
+      "weekly-paper-review",
+      "current",
+    ]);
   });
 
   it("keeps the overview news request lightweight and cached", () => {

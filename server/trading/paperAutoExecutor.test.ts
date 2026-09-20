@@ -7,6 +7,7 @@ import {
   isPaperOperationBlockedByPhaseBudget,
   shouldPersistPaperAutoExecutionRun,
   shouldRunScheduledPaperAutoExecution,
+  hasUsableTradingQuote,
   resolvePaperActivityTarget,
   shouldActivateQualifiedPaperProbe,
   type PaperAutoExecutionRun,
@@ -35,6 +36,18 @@ function run(overrides: Partial<PaperAutoExecutionRun> = {}): PaperAutoExecution
 }
 
 describe("shouldRunScheduledPaperAutoExecution", () => {
+  it("only treats positive tradable prices as usable execution input", () => {
+    expect(hasUsableTradingQuote({
+      quotes: [{ tradable: false, price: 100 }, { tradable: true, price: 0 }],
+    })).toBe(false);
+    expect(hasUsableTradingQuote({
+      quotes: [{ tradable: true, price: Number.NaN }],
+    })).toBe(false);
+    expect(hasUsableTradingQuote({
+      quotes: [{ tradable: true, price: 10 }],
+    })).toBe(true);
+  });
+
   it("tracks a daily filled-order target without turning it into an execution override", () => {
     expect(resolvePaperActivityTarget({
       targetOrders: 2,
@@ -320,6 +333,53 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
 
     expect(paperAutoExecutionAuditSignature(defensive)).not.toBe(
       paperAutoExecutionAuditSignature(recovery),
+    );
+  });
+
+  it("treats a changed plan snapshot as a material audit change", () => {
+    const first = run({
+      planSnapshot: {
+        operationCount: 1,
+        buyPlanCount: 1,
+        sellPlanCount: 0,
+        buyNotional: 1_000,
+        sellNotional: 0,
+      },
+    });
+    const second = run({
+      planSnapshot: {
+        ...first.planSnapshot!,
+        buyNotional: 2_000,
+      },
+    });
+
+    expect(paperAutoExecutionAuditSignature(first)).not.toBe(
+      paperAutoExecutionAuditSignature(second),
+    );
+  });
+
+  it("includes skipped sizing metadata in the audit signature", () => {
+    const first = run({
+      skippedOperations: [{
+        symbol: "600000",
+        action: "paper-buy-plan",
+        reason: "现金缓冲不足",
+        strategy: "验证篮子",
+        strategyKey: "kairosValidationBasket",
+        quantity: 100,
+        price: 10,
+        estimatedNotional: 1_000,
+      }],
+    });
+    const second = run({
+      skippedOperations: [{
+        ...first.skippedOperations[0],
+        estimatedNotional: 2_000,
+      }],
+    });
+
+    expect(paperAutoExecutionAuditSignature(first)).not.toBe(
+      paperAutoExecutionAuditSignature(second),
     );
   });
 

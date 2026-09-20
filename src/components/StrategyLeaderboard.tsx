@@ -171,6 +171,13 @@ export function StrategyLeaderboard() {
                     <td className="research-params">{formatParams(entry.bestParams)}</td>
                   </tr>
                 ))}
+                {entries.length === 0 && (
+                  <tr>
+                    <td className="empty-copy" colSpan={9}>
+                      {report.dataQuality.summary}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

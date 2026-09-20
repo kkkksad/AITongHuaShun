@@ -70,10 +70,14 @@ import { buildCurrentPaperTradingPlan } from "./research/paperTradingPlanService
 import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStockTrendForecast } from "./research/stockTrendForecast";
-import { buildStrategyLeaderboard } from "./research/strategyLeaderboard";
+import {
+  buildStrategyLeaderboard,
+  buildUnavailableStrategyLeaderboard,
+} from "./research/strategyLeaderboard";
 import { buildStrategyRobustnessReport } from "./research/strategyRobustness";
 import { buildSuperMindSignalPackage } from "./research/supermindSignalBridge";
 import { buildTurningPointReport } from "./research/turningPointScanner";
+import { buildWeeklyPaperReview } from "./research/weeklyPaperReview";
 import { WebSocketHub } from "./realtime/webSocketHub";
 import { createTradingSystem, type TradingSystem } from "./system";
 import { PaperAutoExecutor } from "./trading/paperAutoExecutor";
@@ -152,6 +156,10 @@ const dailyCandidatesQuerySchema = z.object({
 
 const dailyQualityStocksQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(120).default(30),
+});
+
+const weeklyPaperReviewQuerySchema = z.object({
+  period: z.enum(["current", "previous"]).default("current"),
 });
 
 const marketRegimeQuerySchema = z.object({
@@ -753,11 +761,17 @@ export async function buildTradingApp(
     },
   }, async (request) => {
     const { bars } = strategyLeaderboardQuerySchema.parse(request.query);
+    const snapshot = system.market.getSnapshot();
     const report = await buildStrategyLeaderboard(
-      system.market.getSnapshot(),
+      snapshot,
       system.marketDataProvider,
       bars,
-    );
+    ).catch((error) => buildUnavailableStrategyLeaderboard(
+      snapshot,
+      system.marketDataProvider,
+      bars,
+      error instanceof Error ? error.message : "策略研究暂时不可用",
+    ));
     researchStore.recordStrategyLeaderboard(report);
     return report;
   });
@@ -1197,6 +1211,42 @@ export async function buildTradingApp(
       positions: system.broker.getPositions(snapshot),
       orders: system.broker.getOrders(10_000),
       auditEvents: system.store.listAudit(10_000),
+      maxDailyAutoOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
+    });
+  });
+
+  app.get("/api/research/weekly-paper-review", {
+    schema: {
+      tags: ["研究"],
+      summary: "获取周度 Paper 交易质量复盘",
+      description:
+        "统计本地 Paper 订单、资金使用、阻塞原因、策略分布和已闭合交易表现。胜率只基于已成交且买卖闭合的样本，不代表真实收益。",
+      querystring: {
+        type: "object",
+        properties: {
+          period: {
+            type: "string",
+            enum: ["current", "previous"],
+            default: "current",
+            description: "复盘本周至今或上一完整周",
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const { period } = weeklyPaperReviewQuerySchema.parse(request.query);
+    const snapshot = system.market.getSnapshot();
+    const account = system.broker.getAccount(snapshot);
+    return buildWeeklyPaperReview({
+      period,
+      initialCapital: account.startingEquity ??
+        options.config.TRADING_STARTING_CASH,
+      maxSingleOrderNotional: system.risk.getEffectiveMaxOrderNotional(),
+      account,
+      positions: system.broker.getPositions(snapshot),
+      orders: system.broker.getOrders(10_000),
+      auditEvents: system.store.listAudit(10_000),
+      historyRetentionDays: options.config.TRADING_HISTORY_RETENTION_DAYS,
       maxDailyAutoOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
     });
   });

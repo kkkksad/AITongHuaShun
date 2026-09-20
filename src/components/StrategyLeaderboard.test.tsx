@@ -8,6 +8,7 @@ describe("StrategyLeaderboard", () => {
     expect(source).toContain('import { ResearchQueryState } from "./ResearchQueryState";');
     expect(source).toContain("<ResearchQueryState");
     expect(source).toContain("hasData={Boolean(report)}");
+    expect(source).toContain("entries.length === 0");
     expect(source).not.toContain("leaderboardQuery.isLoading &&");
     expect(source).not.toContain("leaderboardQuery.isError &&");
   });

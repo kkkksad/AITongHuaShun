@@ -51,13 +51,20 @@ export function DailyTaskCenter({
   onOpenMarket,
   onOpenOrders,
 }: DailyTaskCenterProps) {
-  const planQuery = useQuery(paperTradingPlanQueryOptions());
-  const reviewQuery = useQuery(dailyMarketReviewQueryOptions());
   const executionQuery = useQuery({
     queryKey: ["paper-auto-execution-status"],
     queryFn: ({ signal }) => fetchPaperAutoExecutionStatus(signal),
     refetchInterval: 30_000,
     staleTime: 15_000,
+  });
+  const taskCenterFoundationReady = executionQuery.isFetched;
+  const planQuery = useQuery({
+    ...paperTradingPlanQueryOptions(),
+    enabled: taskCenterFoundationReady,
+  });
+  const reviewQuery = useQuery({
+    ...dailyMarketReviewQueryOptions(),
+    enabled: taskCenterFoundationReady,
   });
   const model = buildDailyTaskCenterModel({
     plan: planQuery.data,

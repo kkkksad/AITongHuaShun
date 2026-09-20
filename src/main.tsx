@@ -8,6 +8,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { shouldRetryQuery } from "./lib/apiError";
 import {
   clearChunkRecoveryAttempt,
+  getChunkRecoveryStorage,
   lazyWithChunkRecovery,
   recoverFromChunkLoadError,
 } from "./lib/chunkRecovery";
@@ -49,7 +50,7 @@ async function unregisterDevelopmentServiceWorkers(): Promise<void> {
 // stale cached JS/CSS cannot mask the current Vite build.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    clearChunkRecoveryAttempt(window.sessionStorage);
+    clearChunkRecoveryAttempt(getChunkRecoveryStorage());
     if (import.meta.env.DEV) {
       unregisterDevelopmentServiceWorkers()
         .then(() => {
@@ -76,7 +77,7 @@ window.addEventListener("vite:preloadError", (event) => {
   event.preventDefault();
   recoverFromChunkLoadError({
     error: new Error("vite:preloadError"),
-    storage: window.sessionStorage,
+    storage: getChunkRecoveryStorage(),
     pageKey: window.location.href,
     reload: () => window.location.reload(),
   });

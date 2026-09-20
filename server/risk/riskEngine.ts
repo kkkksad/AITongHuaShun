@@ -169,6 +169,10 @@ export class RiskEngine {
       return this.reject("UNKNOWN_SYMBOL", "没有可用的行情报价");
     }
 
+    if (!Number.isFinite(quote.price) || quote.price <= 0) {
+      return this.reject("INVALID_MARKET_PRICE", "行情尚未就绪，暂不创建订单");
+    }
+
     if (!quote.tradable) {
       return this.reject(
         "NON_TRADABLE_SYMBOL",

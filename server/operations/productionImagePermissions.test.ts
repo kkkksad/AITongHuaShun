@@ -3,6 +3,15 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("production web image permissions", () => {
+  it("excludes production environment credentials from the Docker build context", () => {
+    const patterns = readFileSync(resolve(process.cwd(), ".dockerignore"), "utf8")
+      .split(/\r?\n/)
+      .map((line) => line.trim());
+    expect(patterns).toContain(".env");
+    expect(patterns).toContain(".env.*");
+    expect(patterns).not.toContain("!.env.production");
+  });
+
   it("makes copied Vite assets readable by the unprivileged Nginx worker", () => {
     const dockerfile = readFileSync(resolve(process.cwd(), "Dockerfile"), "utf8");
 

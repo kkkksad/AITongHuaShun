@@ -61,6 +61,23 @@ describe("JsonFileTradingStore", () => {
     expect(account.paused).toBe(false);
   });
 
+  it("uses position cost when a quote price is invalid", () => {
+    const staleSnapshot = {
+      ...snapshot,
+      quotes: snapshot.quotes.map((quote) => quote.symbol === "600519"
+        ? { ...quote, price: 0 }
+        : quote),
+    };
+    const moutai = store.getPositions(staleSnapshot)
+      .find((position) => position.symbol === "600519");
+
+    expect(moutai).toMatchObject({
+      currentPrice: 1468.2,
+      marketValue: 146_820,
+      unrealizedPnl: 0,
+    });
+  });
+
   it("createOrder + fillOrder 后状态持久化到磁盘", () => {
     const order = store.createOrder(
       { symbol: "601318", side: "buy", type: "market", quantity: 100 },

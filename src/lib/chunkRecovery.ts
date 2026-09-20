@@ -4,6 +4,26 @@ export const CHUNK_RECOVERY_SESSION_KEY = "kairos:chunk-recovery-url";
 
 type RecoveryStorage = Pick<Storage, "getItem" | "removeItem" | "setItem">;
 
+const fallbackRecoveryValues = new Map<string, string>();
+const fallbackRecoveryStorage: RecoveryStorage = {
+  getItem: (key) => fallbackRecoveryValues.get(key) ?? null,
+  removeItem: (key) => {
+    fallbackRecoveryValues.delete(key);
+  },
+  setItem: (key, value) => {
+    fallbackRecoveryValues.set(key, value);
+  },
+};
+
+export function getChunkRecoveryStorage(): RecoveryStorage {
+  if (typeof window === "undefined") return fallbackRecoveryStorage;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return fallbackRecoveryStorage;
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return typeof error === "string" ? error : String(error);
@@ -70,7 +90,7 @@ export function lazyWithChunkRecovery(importer: () => Promise<{ default: any }>)
       if (typeof window !== "undefined") {
         recoverFromChunkLoadError({
           error,
-          storage: window.sessionStorage,
+          storage: getChunkRecoveryStorage(),
           pageKey: window.location.href,
           reload: () => window.location.reload(),
         });

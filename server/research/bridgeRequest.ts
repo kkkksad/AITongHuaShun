@@ -26,11 +26,12 @@ interface FetchBridgeJsonInput {
 }
 
 interface BridgeRequestCacheEntry {
-  expiresAt: number;
+  expiresAt: number | null;
   promise: Promise<unknown>;
 }
 
 const MAX_BRIDGE_REQUEST_CACHE_ENTRIES = 64;
+const DEGRADED_BRIDGE_CACHE_TTL_MS = 5_000;
 const bridgeRequestCache = new Map<string, BridgeRequestCacheEntry>();
 const fetchScopeIds = new WeakMap<object, number>();
 let fetchScopeSequence = 0;
@@ -81,17 +82,29 @@ function bridgeCacheKey(input: FetchBridgeJsonInput): string {
 
 function evictExpiredBridgeRequests(now: number): void {
   for (const [key, entry] of bridgeRequestCache) {
-    if (entry.expiresAt <= now) bridgeRequestCache.delete(key);
+    if (entry.expiresAt !== null && entry.expiresAt <= now) bridgeRequestCache.delete(key);
   }
 }
 
-function reserveBridgeRequestCacheSlot(now: number): void {
+function reserveBridgeRequestCacheSlot(now: number): boolean {
   evictExpiredBridgeRequests(now);
-  while (bridgeRequestCache.size >= MAX_BRIDGE_REQUEST_CACHE_ENTRIES) {
-    const oldestKey = bridgeRequestCache.keys().next().value as string | undefined;
-    if (oldestKey === undefined) return;
-    bridgeRequestCache.delete(oldestKey);
+  if (bridgeRequestCache.size < MAX_BRIDGE_REQUEST_CACHE_ENTRIES) return true;
+  for (const [key, entry] of bridgeRequestCache) {
+    if (entry.expiresAt !== null) {
+      bridgeRequestCache.delete(key);
+      return true;
+    }
   }
+  return false;
+}
+
+function completedResponseTtl(payload: unknown, healthyTtlMs: number): number {
+  const warning = payload && typeof payload === "object"
+    ? (payload as Record<string, unknown>).warning
+    : null;
+  return typeof warning === "string" && warning.trim()
+    ? Math.min(healthyTtlMs, DEGRADED_BRIDGE_CACHE_TTL_MS)
+    : healthyTtlMs;
 }
 
 export function clearBridgeRequestCache(): void {
@@ -161,23 +174,30 @@ export async function fetchBridgeJson<T>(
   const now = Date.now();
   const key = bridgeCacheKey(input);
   const cached = bridgeRequestCache.get(key);
-  if (cached && cached.expiresAt > now) {
+  if (cached && (cached.expiresAt === null || cached.expiresAt > now)) {
     bridgeRequestCache.delete(key);
     bridgeRequestCache.set(key, cached);
     return cached.promise as Promise<T>;
   }
   if (cached) bridgeRequestCache.delete(key);
 
-  reserveBridgeRequestCacheSlot(now);
+  if (!reserveBridgeRequestCacheSlot(now)) return fetchBridgeJsonUncached<T>(input);
   const promise = fetchBridgeJsonUncached<T>(input);
-  bridgeRequestCache.set(key, {
-    expiresAt: now + cacheTtlMs,
+  const entry: BridgeRequestCacheEntry = {
+    expiresAt: null,
     promise,
-  });
-  void promise.catch(() => {
-    if (bridgeRequestCache.get(key)?.promise === promise) {
-      bridgeRequestCache.delete(key);
-    }
-  });
+  };
+  bridgeRequestCache.set(key, entry);
+  // Partial HTTP 200 responses must not freeze history warm-up for the healthy TTL.
+  void promise.then(
+    (payload) => {
+      if (bridgeRequestCache.get(key) === entry) {
+        entry.expiresAt = Date.now() + completedResponseTtl(payload, cacheTtlMs);
+      }
+    },
+    () => {
+      if (bridgeRequestCache.get(key) === entry) bridgeRequestCache.delete(key);
+    },
+  );
   return promise;
 }

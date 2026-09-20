@@ -202,6 +202,90 @@ function minimumFeeEfficientQuantity(
   );
 }
 
+type ValidationBudgetStrategyKey =
+  | "kairosQualifiedProbe"
+  | "kairosValidationBasket";
+
+const VALIDATION_BUDGET_POLICY: Record<
+  ValidationBudgetStrategyKey,
+  { minimumRatio: number; maximumRatio: number }
+> = {
+  kairosQualifiedProbe: {
+    minimumRatio: 0.45,
+    maximumRatio: 0.75,
+  },
+  kairosValidationBasket: {
+    minimumRatio: 0.35,
+    maximumRatio: 0.6,
+  },
+};
+
+function isValidationBudgetStrategy(
+  strategyKey: string | null | undefined,
+): strategyKey is ValidationBudgetStrategyKey {
+  return strategyKey === "kairosQualifiedProbe" ||
+    strategyKey === "kairosValidationBasket";
+}
+
+function validationBudgetRatio(candidate: {
+  strategyKey?: string | null;
+  score: number;
+  strategyScore: number;
+}): number {
+  if (!isValidationBudgetStrategy(candidate.strategyKey)) return 1;
+  const policy = VALIDATION_BUDGET_POLICY[candidate.strategyKey];
+  const candidateStrength = clamp((candidate.score - 65) / 35, 0, 1);
+  const strategyStrength = clamp((candidate.strategyScore - 70) / 30, 0, 1);
+  const combinedStrength = candidateStrength * 0.7 + strategyStrength * 0.3;
+  return policy.minimumRatio +
+    (policy.maximumRatio - policy.minimumRatio) * combinedStrength;
+}
+
+function candidatePlanQuantity(
+  candidate: {
+    price: number;
+    score: number;
+    strategyScore: number;
+    strategyKey?: string | null;
+  },
+  cash: number,
+  maxSingleOrderNotional: number,
+  lotSize: number,
+  commissionRate: number,
+  minimumCommission: number,
+): number {
+  const budgetRatio = validationBudgetRatio(candidate);
+  const budgetedOrderLimit = maxSingleOrderNotional * budgetRatio;
+  const candidateOrderQuantity = candidateQuantity(
+    candidate,
+    cash,
+    budgetedOrderLimit,
+    lotSize,
+    commissionRate,
+    minimumCommission,
+  );
+  if (!isValidationBudgetStrategy(candidate.strategyKey)) {
+    return candidateOrderQuantity;
+  }
+  const minimumQuantity = minimumFeeEfficientQuantity(
+    candidate.price,
+    lotSize,
+    minimumCommission,
+  );
+  return candidateOrderQuantity >= minimumQuantity
+    ? candidateOrderQuantity
+    : 0;
+}
+
+function validationBudgetRuleCheck(candidate: {
+  strategyKey?: string | null;
+  score: number;
+  strategyScore: number;
+}): string | null {
+  if (!isValidationBudgetStrategy(candidate.strategyKey)) return null;
+  return `validation-budget: ${(validationBudgetRatio(candidate) * 100).toFixed(0)}% of capped order`;
+}
+
 function assessEntryPersistence(input: {
   required: boolean;
   stockRegime: StockRegimeResult | undefined;
@@ -496,6 +580,10 @@ export function buildPaperTradingPlan(input: {
     input.orders ?? [],
     tradingDate,
   );
+  // Keep persisted usage as history, then balance only the candidates in this plan.
+  const planStrategyUsage: Record<string, number> = {
+    ...(input.strategyUsage ?? {}),
+  };
 
   const operations: PaperTradingOperation[] = [];
 
@@ -743,10 +831,11 @@ export function buildPaperTradingPlan(input: {
       strategyCandidates: rankedSignals.map((candidateSignal) => candidateSignal.strategyKey),
       strategyEligible: signal !== null || !usesAdaptiveHistoryRoute,
       defensiveScore: defensiveCandidateScore(base, quote),
+      rankedSignals,
     };
   };
 
-  const candidatePool = uniqueBySymbol([
+  const rankedCandidatePool = uniqueBySymbol([
     ...input.candidates.candidates
       .filter((candidate) => candidate.action === "paper-buy" || candidate.action === "watch")
       .map((candidate) => {
@@ -779,7 +868,7 @@ export function buildPaperTradingPlan(input: {
       }),
   ])
     .sort((a, b) => {
-      const aQuantity = candidateQuantity(
+      const aQuantity = candidatePlanQuantity(
         a,
         plannedCashBudget,
         maxSingleOrderNotional,
@@ -787,7 +876,7 @@ export function buildPaperTradingPlan(input: {
         input.commissionRate,
         input.minimumCommission,
       );
-      const bQuantity = candidateQuantity(
+      const bQuantity = candidatePlanQuantity(
         b,
         plannedCashBudget,
         maxSingleOrderNotional,
@@ -812,9 +901,25 @@ export function buildPaperTradingPlan(input: {
       return a.price - b.price;
     })
     .slice(0, 12);
+  const selectPlanStrategy = (
+    candidate: (typeof rankedCandidatePool)[number],
+  ) => {
+    const signal = selectAdaptiveCandidateStrategyWithUsage(
+      candidate.rankedSignals,
+      planStrategyUsage,
+    );
+    return {
+      ...candidate,
+      strategy: signal?.strategyName ?? candidate.strategy,
+      strategyKey: signal?.strategyKey ?? candidate.strategyKey,
+      strategyScore: signal?.score ?? candidate.strategyScore,
+      strategyEvidence: signal?.evidence ?? candidate.strategyEvidence,
+    };
+  };
+  const candidatePool = rankedCandidatePool;
   const candidatePoolSize = candidatePool.length;
   const affordableCandidateCount = candidatePool.filter((candidate) => {
-    const candidateOrderQuantity = candidateQuantity(
+    const quantity = candidatePlanQuantity(
       candidate,
       plannedCashBudget,
       maxSingleOrderNotional,
@@ -822,20 +927,6 @@ export function buildPaperTradingPlan(input: {
       input.commissionRate,
       input.minimumCommission,
     );
-    const quantity = candidate.strategyKey === "kairosQualifiedProbe" ||
-      candidate.strategyKey === "kairosValidationBasket"
-      ? candidateOrderQuantity >= minimumFeeEfficientQuantity(
-          candidate.price,
-          input.lotSize,
-          input.minimumCommission,
-        )
-        ? minimumFeeEfficientQuantity(
-            candidate.price,
-            input.lotSize,
-            input.minimumCommission,
-          )
-        : 0
-      : candidateOrderQuantity;
     return quantity >= input.lotSize;
   }).length;
   const positionConflictCount = candidatePool.filter((candidate) =>
@@ -906,11 +997,12 @@ export function buildPaperTradingPlan(input: {
   }
 
   let plannedNewPositions = 0;
-  for (const candidate of routeAllowsBuying && affordableCandidateCount > 0
+  for (const rankedCandidate of routeAllowsBuying && affordableCandidateCount > 0
     ? candidatePool
     : []) {
+    const candidate = selectPlanStrategy(rankedCandidate);
     const existing = positionMap.get(candidate.symbol);
-    const candidateOrderQuantity = candidateQuantity(
+    const quantity = candidatePlanQuantity(
       candidate,
       remainingPlannedCash,
       maxSingleOrderNotional,
@@ -918,20 +1010,6 @@ export function buildPaperTradingPlan(input: {
       input.commissionRate,
       input.minimumCommission,
     );
-    const quantity = candidate.strategyKey === "kairosQualifiedProbe" ||
-      candidate.strategyKey === "kairosValidationBasket"
-      ? candidateOrderQuantity >= minimumFeeEfficientQuantity(
-          candidate.price,
-          input.lotSize,
-          input.minimumCommission,
-        )
-        ? minimumFeeEfficientQuantity(
-            candidate.price,
-            input.lotSize,
-            input.minimumCommission,
-          )
-        : 0
-      : candidateOrderQuantity;
     const estimatedNotional = Number((quantity * candidate.price).toFixed(2));
     const estimatedFee = estimatedCommission(
       estimatedNotional,
@@ -1115,10 +1193,15 @@ export function buildPaperTradingPlan(input: {
           : candidate.strategyKey === "kairosValidationBasket"
             ? ["activity-target-validation-basket"]
             : []),
+        ...(validationBudgetRuleCheck(candidate)
+          ? [validationBudgetRuleCheck(candidate)!]
+          : []),
         ...entryRuleChecks,
         "T+1-after-buy",
       ],
     });
+    planStrategyUsage[candidate.strategyKey] =
+      (planStrategyUsage[candidate.strategyKey] ?? 0) + 1;
     remainingPlannedCash = Math.max(
       0,
       remainingPlannedCash - estimatedCashRequired,
@@ -1136,7 +1219,9 @@ export function buildPaperTradingPlan(input: {
       quantity: 0,
       price: 1,
       estimatedNotional: 0,
-      reason: "当前快照下没有满足资金、仓位、T+1 与候选质量约束的纸面操作。",
+        reason: input.snapshot.quotes.length === 0
+          ? "当前没有可交易行情，保持 Paper 观望并等待行情源恢复。"
+          : "当前快照下没有满足资金、仓位、T+1 与候选质量约束的纸面操作。",
       ruleChecks: ["paper-only", "no-forced-trade", "manual-review-required"],
     });
   }

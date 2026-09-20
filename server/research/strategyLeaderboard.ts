@@ -483,3 +483,52 @@ export async function buildStrategyLeaderboard(
     entries: entries.map((entry, index) => ({ rank: index + 1, ...entry })),
   };
 }
+
+/**
+ * Keep research endpoints readable when the market snapshot is temporarily
+ * empty. An empty report is safer than turning a bridge outage into HTTP 500.
+ */
+export function buildUnavailableStrategyLeaderboard(
+  snapshot: MarketSnapshot,
+  marketDataProvider: string,
+  bars = 90,
+  reason = "当前行情快照没有可交易标的",
+  seed = DEFAULT_SEED,
+  requestedSymbols: string[] = [],
+): StrategyLeaderboardReport {
+  const qualityReport = computeDataQuality(
+    snapshot,
+    marketDataProvider,
+    requestedSymbols,
+    null,
+  );
+  return {
+    generatedAt: new Date().toISOString(),
+    seed,
+    source: {
+      provider: marketDataProvider,
+      mode: snapshot.mode,
+      sampleType: "synthetic-from-current-snapshot",
+      quoteCount: snapshot.quotes.length,
+      tradableSymbols: [],
+      bars: Math.max(30, Math.min(240, Math.round(bars))),
+      snapshotSequence: snapshot.sequence,
+      snapshotTime: snapshot.marketTime,
+    },
+    dataQuality: {
+      timestamp: qualityReport.timestamp,
+      score: qualityReport.score,
+      totalSymbols: qualityReport.totalSymbols,
+      summary: `策略研究暂不可用：${reason}`,
+    },
+    objective,
+    costModel,
+    guardrails: [
+      "当前没有可交易行情，未生成策略排名或 Paper 买入计划。",
+      "研究源恢复并通过数据质量检查后，才重新计算策略样本。",
+      "该降级结果不代表策略失败，也不代表没有交易机会。",
+      "真实订单执行保持关闭，任何券商接入必须经过独立审批和风控网关。",
+    ],
+    entries: [],
+  };
+}

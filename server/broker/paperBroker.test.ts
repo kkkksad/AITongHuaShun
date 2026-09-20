@@ -324,6 +324,33 @@ describe("PaperBroker", () => {
     expect(account.cash).toBeGreaterThan(0);
   });
 
+  it("does not fill a pending limit order from a zero-price startup quote", () => {
+    const system = createTradingSystem(createTestConfig());
+    const order = system.broker.submitOrder({
+      symbol: "601318",
+      side: "buy",
+      type: "limit",
+      quantity: 100,
+      limitPrice: 50,
+      clientOrderId: "startup-zero-price",
+    });
+    const snapshot = system.market.getSnapshot();
+    const zeroPriceSnapshot = {
+      ...snapshot,
+      quotes: snapshot.quotes.map((quote) => quote.symbol === "601318"
+        ? { ...quote, price: 0 }
+        : quote),
+    };
+
+    expect(order.status).toBe("pending");
+    system.broker.markToMarket(zeroPriceSnapshot);
+    expect(system.broker.getOrders()[0]).toMatchObject({
+      id: order.id,
+      status: "pending",
+      filledQuantity: 0,
+    });
+  });
+
   it("commission is at least minimumCommission", () => {
     const system = createTradingSystem(createTestConfig({
       COMMISSION_RATE: 0.0001,

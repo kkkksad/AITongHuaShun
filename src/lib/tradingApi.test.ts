@@ -21,6 +21,8 @@ import {
   fetchStrategyRobustness,
   fetchStockTrendForecast,
   fetchTurningPointResearch,
+  fetchTradingBootstrap,
+  fetchWeeklyPaperReview,
   getTradingSocketUrl,
   isUnauthorizedWebSocketClose,
   login,
@@ -200,6 +202,27 @@ describe("session-aware trading API", () => {
         signal: controller.signal,
       }),
     );
+  });
+
+  it("forwards cancellation to every trading bootstrap request", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => jsonResponse({}));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await fetchTradingBootstrap(controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledTimes(7);
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init).toEqual(expect.objectContaining({ signal: controller.signal }));
+    }
+  });
+
+  it("preserves an aborted request instead of presenting it as an API outage", async () => {
+    const controller = new AbortController();
+    const aborted = new DOMException("The operation was aborted.", "AbortError");
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(aborted));
+
+    await expect(fetchPaperTradingPlan(controller.signal)).rejects.toBe(aborted);
   });
 
   it("requests bounded API performance with cookie auth and forwards cancellation", async () => {
@@ -397,6 +420,7 @@ describe("session-aware trading API", () => {
       () => fetchLearningState(signal),
       () => fetchPaperTradingPlan(signal),
       () => fetchDailyMarketReview(signal),
+      () => fetchWeeklyPaperReview(signal, "previous"),
       () => fetchPaperAutoExecutionStatus(signal),
       () => fetchRealResearchDataFeed(signal),
       () => fetchMarketRegimeResearch(10, 8, 180, signal),
@@ -413,5 +437,19 @@ describe("session-aware trading API", () => {
     for (const [, init] of fetchMock.mock.calls) {
       expect(init).toEqual(expect.objectContaining({ signal }));
     }
+  });
+
+  it("requests the selected weekly Paper review period", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({ period: { window: "previous" } }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await fetchWeeklyPaperReview(undefined, "previous");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/research/weekly-paper-review?period=previous",
+      expect.objectContaining({ credentials: "include" }),
+    );
   });
 });

@@ -188,7 +188,9 @@ export class InMemoryTradingStore implements TradingStore {
     const tradeDate = getChinaTradeDate(this.now());
     const raw = [...this.positions.values()].map((position) => {
       const quote = quoteMap.get(position.symbol);
-      const currentPrice = quote?.price ?? position.averagePrice;
+      const currentPrice = quote && Number.isFinite(quote.price) && quote.price > 0
+        ? quote.price
+        : position.averagePrice;
       const marketValue = currentPrice * position.quantity;
 
       return {
@@ -337,6 +339,10 @@ export class InMemoryTradingStore implements TradingStore {
     quote: { symbol: string; name: string; price: number },
   ): boolean {
     if (order.status !== "pending" || order.type !== "limit") {
+      return false;
+    }
+
+    if (!Number.isFinite(quote.price) || quote.price <= 0) {
       return false;
     }
 

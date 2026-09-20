@@ -218,12 +218,6 @@ function App() {
     }
   }
 
-  useEffect(() => {
-    if (authUser) {
-      void trading.refresh().catch(() => undefined);
-    }
-  }, [authUser, trading.refresh]);
-
   if (!authChecked) {
     return <LazyFallback />;
   }

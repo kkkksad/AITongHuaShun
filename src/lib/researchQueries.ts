@@ -5,6 +5,8 @@ import {
   fetchPaperTradingPlan,
   fetchRealResearchDataFeed,
   fetchStrategyLeaderboard,
+  fetchWeeklyPaperReview,
+  type WeeklyPaperReviewWindow,
 } from "./tradingApi";
 
 function boundedInteger(value: number, minimum: number, maximum: number): number {
@@ -36,7 +38,8 @@ export function paperTradingPlanQueryOptions() {
     queryKey: ["paper-trading-plan"] as const,
     queryFn: ({ signal }) => fetchPaperTradingPlan(signal),
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    staleTime: 45_000,
+    placeholderData: (previousData) => previousData,
   });
 }
 
@@ -45,7 +48,19 @@ export function dailyMarketReviewQueryOptions() {
     queryKey: ["daily-market-review"] as const,
     queryFn: ({ signal }) => fetchDailyMarketReview(signal),
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    staleTime: 45_000,
+    placeholderData: (previousData) => previousData,
+  });
+}
+
+export function weeklyPaperReviewQueryOptions(
+  period: WeeklyPaperReviewWindow = "current",
+) {
+  return queryOptions({
+    queryKey: ["weekly-paper-review", period] as const,
+    queryFn: ({ signal }) => fetchWeeklyPaperReview(signal, period),
+    refetchInterval: 60_000,
+    staleTime: 45_000,
   });
 }
 

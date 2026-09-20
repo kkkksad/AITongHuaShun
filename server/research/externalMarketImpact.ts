@@ -410,6 +410,17 @@ function baseReport(input: BuildExternalMarketImpactInput): ExternalMarketImpact
   };
 }
 
+export function buildUnavailableExternalMarketImpact(
+  input: BuildExternalMarketImpactInput,
+  warning?: string,
+): ExternalMarketImpactReport {
+  const days = Math.min(500, Math.max(60, Math.round(input.days)));
+  const report = baseReport({ ...input, days });
+  return warning
+    ? { ...report, warnings: [warning] }
+    : report;
+}
+
 export async function buildExternalMarketImpact(
   input: BuildExternalMarketImpactInput,
 ): Promise<ExternalMarketImpactReport> {

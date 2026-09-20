@@ -5,8 +5,10 @@ import type { DailyQualityStockReport } from "./dailyQualityStocks";
 import {
   buildPreferredHistoricalStocks,
   findLatestConfirmedRestrictiveRouting,
+  buildPaperResearchCacheKey,
   resolveChinaTradingDate,
   resolveCriticalHistoryStockLimit,
+  resolveAuxiliaryResearchTimeoutMs,
   summarizeRecentPaperStrategyUsage,
 } from "./paperTradingPlanService";
 
@@ -74,6 +76,56 @@ describe("buildPreferredHistoricalStocks", () => {
 });
 
 describe("critical paper research bounds", () => {
+  it("uses stable research inputs instead of volatile account state for cache identity", () => {
+    const input = {
+      provider: "akshare",
+      mode: "paper",
+      bridgeUrl: "http://127.0.0.1:8800",
+      leaderboardBars: 120,
+      criticalHistoryStockLimit: 6,
+      preferredHistoricalStocks: [{ symbol: "600519", name: "贵州茅台" }],
+      positionSymbols: [],
+    };
+
+    const recreatedInput = {
+      ...input,
+      preferredHistoricalStocks: input.preferredHistoricalStocks.map((stock) => ({ ...stock })),
+    };
+    expect(buildPaperResearchCacheKey(input)).toBe(buildPaperResearchCacheKey(recreatedInput));
+    expect(buildPaperResearchCacheKey({
+      ...input,
+      preferredHistoricalStocks: [{ symbol: "300750", name: "宁德时代" }],
+    })).not.toBe(buildPaperResearchCacheKey(input));
+    expect(buildPaperResearchCacheKey({
+      ...input,
+      positionSymbols: ["600519"],
+    })).not.toBe(buildPaperResearchCacheKey(input));
+    expect(buildPaperResearchCacheKey({
+      ...input,
+      preferredHistoricalStocks: [
+        { symbol: "600519", name: "贵州茅台" },
+      ],
+    })).toBe(buildPaperResearchCacheKey(input));
+    expect(buildPaperResearchCacheKey({
+      ...input,
+      preferredHistoricalStocks: [
+        { symbol: "300750", name: "宁德时代" },
+        { symbol: "600519", name: "贵州茅台" },
+      ],
+    })).toBe(buildPaperResearchCacheKey({
+      ...input,
+      preferredHistoricalStocks: [
+        { symbol: "600519", name: "贵州茅台" },
+        { symbol: "300750", name: "宁德时代" },
+      ],
+    }));
+  });
+
+  it("keeps auxiliary research bounded below the core market-data timeout", () => {
+    expect(resolveAuxiliaryResearchTimeoutMs(15_000)).toBe(4_000);
+    expect(resolveAuxiliaryResearchTimeoutMs(2_000)).toBe(1_500);
+    expect(resolveAuxiliaryResearchTimeoutMs(30_000)).toBe(4_000);
+  });
   it("expands the bounded history pool only while an activity target is active", () => {
     expect(resolveCriticalHistoryStockLimit(false)).toBe(6);
     expect(resolveCriticalHistoryStockLimit(true)).toBe(12);

@@ -11,17 +11,61 @@ import {
 } from "./adaptiveStrategyRouter";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
 import type { ConfirmedRestrictiveRouting } from "./adaptiveStrategyRouter";
-import { buildMarketRegimeResearch } from "./marketRegimeResearch";
+import {
+  buildMarketRegimeResearch,
+  buildUnavailableMarketRegimeResearch,
+} from "./marketRegimeResearch";
 import type { MarketRegimeResearchReport } from "./marketRegimeResearch";
-import { buildExternalMarketImpact } from "./externalMarketImpact";
+import {
+  buildExternalMarketImpact,
+  buildUnavailableExternalMarketImpact,
+} from "./externalMarketImpact";
 import type { ExternalMarketImpactReport } from "./externalMarketImpact";
 import { buildPaperTradingPlan } from "./paperTradingPlan";
 import type { PaperTradingActivityMode, PaperTradingPlan } from "./paperTradingPlan";
-import { buildRealResearchDataFeed } from "./realResearchData";
+import {
+  buildRealResearchDataFeed,
+  buildUnavailableRealResearchDataFeed,
+} from "./realResearchData";
 import type { RealResearchDataFeed } from "./realResearchData";
-import { buildStrategyLeaderboard } from "./strategyLeaderboard";
+import {
+  buildStrategyLeaderboard,
+  buildUnavailableStrategyLeaderboard,
+} from "./strategyLeaderboard";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 import type { InMemoryResearchStore } from "./researchStore";
+import { ResearchResultCache } from "./researchResultCache";
+import { withResearchDeadline } from "./researchDeadline";
+
+const PAPER_RESEARCH_CACHE_TTL_MS = 30_000;
+const PAPER_DEGRADED_RESEARCH_CACHE_TTL_MS = 5_000;
+const PAPER_AUXILIARY_RESEARCH_TIMEOUT_MS = 4_000;
+const PAPER_CORE_RESEARCH_TIMEOUT_MS = 12_000;
+
+interface PaperResearchContext {
+  leaderboard: StrategyLeaderboardReport;
+  marketRegimeResearch: MarketRegimeResearchReport;
+  realResearchDataFeed: RealResearchDataFeed;
+  externalMarketImpact: ExternalMarketImpactReport;
+}
+
+const paperResearchCaches = new WeakMap<
+  TradingSystem,
+  ResearchResultCache<PaperResearchContext>
+>();
+
+function getPaperResearchCache(
+  system: TradingSystem,
+): ResearchResultCache<PaperResearchContext> {
+  const cached = paperResearchCaches.get(system);
+  if (cached) return cached;
+
+  const created = new ResearchResultCache<PaperResearchContext>({
+    maxEntries: 8,
+  });
+  paperResearchCaches.set(system, created);
+  return created;
+}
 
 export interface CurrentPaperTradingPlanResult {
   plan: PaperTradingPlan;
@@ -131,6 +175,158 @@ export function summarizeRecentPaperStrategyUsage(
   return usage;
 }
 
+export function buildPaperResearchCacheKey(input: {
+  provider: string;
+  mode: string;
+  bridgeUrl: string;
+  leaderboardBars: number;
+  criticalHistoryStockLimit: number;
+  preferredHistoricalStocks: Array<{ symbol: string; name: string }>;
+  positionSymbols: string[];
+}): string {
+  // Market sequence changes on every quote tick; the TTL is the research
+  // freshness boundary, so volatile snapshots must not defeat deduplication.
+  return [
+    input.provider,
+    input.mode,
+    input.bridgeUrl,
+    input.leaderboardBars,
+    input.criticalHistoryStockLimit,
+    [...input.preferredHistoricalStocks]
+      .map((stock) => stock.symbol)
+      .sort()
+      .join(","),
+    [...input.positionSymbols].sort().join(","),
+  ].join("|");
+}
+
+export function resolveAuxiliaryResearchTimeoutMs(baseTimeoutMs: number): number {
+  return Math.min(
+    PAPER_AUXILIARY_RESEARCH_TIMEOUT_MS,
+    Math.max(1_500, Math.round(baseTimeoutMs / 2)),
+  );
+}
+
+async function buildPaperResearchContext(input: {
+  system: TradingSystem;
+  config: ServerConfig;
+  snapshot: ReturnType<TradingSystem["market"]["getSnapshot"]>;
+  positions: Array<Pick<PositionSnapshot, "symbol">>;
+  preferredHistoricalStocks: Array<{ symbol: string; name: string }>;
+  leaderboardBars: number;
+  criticalHistoryStockLimit: number;
+}): Promise<PaperResearchContext> {
+  return getPaperResearchCache(input.system).getOrCreate(
+    buildPaperResearchCacheKey({
+      provider: input.system.marketDataProvider,
+      mode: input.config.MARKET_MODE,
+      bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+      leaderboardBars: input.leaderboardBars,
+      criticalHistoryStockLimit: input.criticalHistoryStockLimit,
+      preferredHistoricalStocks: input.preferredHistoricalStocks,
+      positionSymbols: input.positions.map((position) => position.symbol),
+    }),
+    (value) => value.marketRegimeResearch.sourceStatus === "degraded"
+      ? PAPER_DEGRADED_RESEARCH_CACHE_TTL_MS
+      : PAPER_RESEARCH_CACHE_TTL_MS,
+    async () => {
+      const coreResearch = Promise.all([
+        buildStrategyLeaderboard(
+          input.snapshot,
+          input.system.marketDataProvider,
+          input.leaderboardBars,
+        ).catch((error) => buildUnavailableStrategyLeaderboard(
+          input.snapshot,
+          input.system.marketDataProvider,
+          input.leaderboardBars,
+          error instanceof Error ? error.message : "策略研究暂时不可用",
+        )),
+        withResearchDeadline({
+          task: buildMarketRegimeResearch({
+            bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+            bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
+            marketDataProvider: input.system.marketDataProvider,
+            mode: input.config.MARKET_MODE,
+            snapshot: input.snapshot,
+            preferredStocks: input.preferredHistoricalStocks,
+            sectorLimit: 6,
+            stockLimit: input.criticalHistoryStockLimit,
+            days: 180,
+            timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
+          }),
+          timeoutMs: PAPER_CORE_RESEARCH_TIMEOUT_MS,
+          fallback: (reason) => buildUnavailableMarketRegimeResearch(
+            {
+              bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+              bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
+              marketDataProvider: input.system.marketDataProvider,
+              mode: input.config.MARKET_MODE,
+              snapshot: input.snapshot,
+              preferredStocks: input.preferredHistoricalStocks,
+              sectorLimit: 6,
+              stockLimit: input.criticalHistoryStockLimit,
+              days: 180,
+              timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
+            },
+            "核心板块与个股历史研究超过 " + PAPER_CORE_RESEARCH_TIMEOUT_MS + "ms，已降级: " +
+              (reason instanceof Error ? reason.message : "核心研究无响应"),
+          ),
+        }),
+      ]);
+      const auxiliaryTimeoutMs = resolveAuxiliaryResearchTimeoutMs(
+        input.config.MARKET_DATA_TIMEOUT_MS,
+      );
+      const realResearchInput = {
+        bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+        bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
+        marketDataProvider: input.system.marketDataProvider,
+        mode: input.config.MARKET_MODE,
+        snapshot: input.snapshot,
+        preferredSymbols: input.positions.map((position) => position.symbol),
+        timeoutMs: auxiliaryTimeoutMs,
+      };
+      const externalMarketInput = {
+        bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+        bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
+        marketDataProvider: input.system.marketDataProvider,
+        mode: input.config.MARKET_MODE,
+        days: 500,
+        timeoutMs: auxiliaryTimeoutMs,
+      };
+      // Auxiliary sources start beside the core research and cannot hold the
+      // Paper plan hostage when the bridge is slow or partially unavailable.
+      const auxiliaryResearch = Promise.all([
+        withResearchDeadline({
+          task: buildRealResearchDataFeed(realResearchInput),
+          timeoutMs: auxiliaryTimeoutMs,
+          fallback: (reason) => buildUnavailableRealResearchDataFeed(
+            realResearchInput,
+            "真实新闻与全球市场研究超过 " + auxiliaryTimeoutMs + "ms，已降级: " +
+              (reason instanceof Error ? reason.message : "辅助源无响应"),
+          ),
+        }),
+        withResearchDeadline({
+          task: buildExternalMarketImpact(externalMarketInput),
+          timeoutMs: auxiliaryTimeoutMs,
+          fallback: (reason) => buildUnavailableExternalMarketImpact(
+            externalMarketInput,
+            "外部市场研究超过 " + auxiliaryTimeoutMs + "ms，已降级: " +
+              (reason instanceof Error ? reason.message : "辅助源无响应"),
+          ),
+        }),
+      ]);
+      const [[leaderboard, marketRegimeResearch], [realResearchDataFeed, externalMarketImpact]] =
+        await Promise.all([coreResearch, auxiliaryResearch]);
+      return {
+        leaderboard,
+        marketRegimeResearch,
+        realResearchDataFeed,
+        externalMarketImpact,
+      };
+    },
+  );
+}
+
 export async function buildCurrentPaperTradingPlan(input: {
   system: TradingSystem;
   config: ServerConfig;
@@ -165,44 +361,21 @@ export async function buildCurrentPaperTradingPlan(input: {
     qualityStocks,
     limit: criticalHistoryStockLimit,
   });
-  const [leaderboard, marketRegimeResearch] = await Promise.all([
-    buildStrategyLeaderboard(
-      snapshot,
-      input.system.marketDataProvider,
-      input.leaderboardBars ?? 120,
-    ),
-    buildMarketRegimeResearch({
-      bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
-      bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
-      marketDataProvider: input.system.marketDataProvider,
-      mode: input.config.MARKET_MODE,
-      snapshot,
-      preferredStocks: preferredHistoricalStocks,
-      sectorLimit: 6,
-      stockLimit: criticalHistoryStockLimit,
-      days: 180,
-      timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
-    }),
-  ]);
-  const [realResearchDataFeed, externalMarketImpact] = await Promise.all([
-    buildRealResearchDataFeed({
-      bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
-      bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
-      marketDataProvider: input.system.marketDataProvider,
-      mode: input.config.MARKET_MODE,
-      snapshot,
-      preferredSymbols: positions.map((position) => position.symbol),
-      timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
-    }),
-    buildExternalMarketImpact({
-      bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
-      bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
-      marketDataProvider: input.system.marketDataProvider,
-      mode: input.config.MARKET_MODE,
-      days: 500,
-      timeoutMs: input.config.MARKET_DATA_TIMEOUT_MS,
-    }),
-  ]);
+  const researchContext = await buildPaperResearchContext({
+    system: input.system,
+    config: input.config,
+    snapshot,
+    positions,
+    preferredHistoricalStocks,
+    leaderboardBars: input.leaderboardBars ?? 120,
+    criticalHistoryStockLimit,
+  });
+  const {
+    leaderboard,
+    marketRegimeResearch,
+    realResearchDataFeed,
+    externalMarketImpact,
+  } = researchContext;
   const observedAdaptiveRouting = routeAdaptiveStrategies(marketRegimeResearch, {
     bias: externalMarketImpact.aShareImpact.bias,
     samples: externalMarketImpact.validation.samples,

@@ -59,6 +59,8 @@ docker compose --env-file .env.production -f docker-compose.production.yml down
 
 升级前备份 `runtime/data`；不得把 `.env.production`、`runtime/data`、证书私钥或运行日志加入 Git。WxPusher 仅在取得新的未泄露 SPT 后启用。
 
+Docker 构建上下文必须排除 `.env`、`.env.*` 与 `runtime/`，包括服务器上已有的 `.env.production`。生产配置只通过 Compose 在运行时注入，不应进入镜像层或构建缓存。
+
 ## GitHub 自动部署
 
 `.github/workflows/deploy-production.yml` 只监听生产分支 `codex/real-market-regime`。推送后先运行 Node、Python、生产构建和 Compose 校验，再把已验证提交通过受限 SSH 会话的 stdin 上传到服务器，并调用 `deploy/update-server.sh`。服务器不需要直接读取 GitHub 私有仓库，也不开放通用 scp/sftp。上传归档会先解压到提交专属的临时目录，并校验 Compose、镜像构建和部署入口等必需文件；只有完整归档通过校验后才会备份和替换当前源码。部署脚本串行执行；构建失败不会替换运行容器，启动后健康检查失败会尝试恢复上一组镜像和上一份源码。

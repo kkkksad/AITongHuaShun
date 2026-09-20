@@ -1,8 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { clearBridgeRequestCache } from "./bridgeRequest";
 import type { MarketSnapshot } from "../../shared/trading";
 import {
   analyzeMarketRegimeData,
   buildMarketRegimeResearch,
+  buildUnavailableMarketRegimeResearch,
   classifyStockRegime,
   scoreSectorOutlook,
   selectSectorUniverse,
@@ -43,6 +45,53 @@ const snapshot: MarketSnapshot = {
 };
 
 describe("market regime research", () => {
+  afterEach(() => {
+    clearBridgeRequestCache();
+    vi.useRealTimers();
+  });
+
+  it("recovers stock research on the next refresh after partial history warms up", async () => {
+    vi.useFakeTimers();
+    const bars = increasingBars();
+    let historyReady = false;
+    const fetchImpl = vi.fn<typeof fetch>(async (url) => {
+      const isSnapshot = String(url).includes("/api/market/sectors?");
+      const isStock = String(url).includes("/api/market/stock-history?");
+      const partial = isStock && !historyReady;
+      return new Response(JSON.stringify({
+        provider: "akshare", source: "test", fetchedAt: snapshot.marketTime,
+        warning: partial ? "History is warming" : null,
+        ...(isSnapshot ? {
+          sectors: ["行业A", "行业B"].map((name, index) => ({
+            symbol: `BK000${index}`, name, price: 100, changePercent: 1,
+            amount: 1_000_000, turnover: 2, advancers: 60, decliners: 20,
+            mainNetInflow: null, updatedAt: snapshot.marketTime,
+          })),
+        } : {
+          series: partial ? [] : (isStock ? ["测试股票"] : ["行业A", "行业B"]).map((name, index) => ({
+            symbol: isStock ? "600519" : `BK000${index}`, name,
+            source: "test", adjustment: isStock ? "qfq" : "none", bars,
+          })),
+        }),
+      }));
+    });
+    const input = {
+      bridgeUrl: "http://bridge", marketDataProvider: "akshare" as const,
+      mode: "paper" as const, snapshot, preferredStocks: [{ symbol: "600519", name: "测试股票" }],
+      sectorLimit: 2, stockLimit: 1, days: 180, timeoutMs: 1_000, fetchImpl,
+    };
+    const partial = await buildMarketRegimeResearch(input);
+    expect(partial.sourceStatus).toBe("degraded");
+    expect(partial.warnings).toContain("History is warming");
+    historyReady = true;
+    await vi.advanceTimersByTimeAsync(5_000);
+    const recovered = await buildMarketRegimeResearch(input);
+    expect(recovered.sourceStatus).toBe("live-read-only");
+    expect(recovered.stockRegimes[0].regime).not.toBe("insufficient-data");
+    expect(recovered.warnings).not.toContain("History is warming");
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
   it("scores a persistent sector uptrend as constructive", () => {
     const result = scoreSectorOutlook(
       {
@@ -235,6 +284,23 @@ describe("market regime research", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(report.sourceStatus).toBe("mock-disabled");
     expect(report.guardrails.join(" ")).toContain("不会使用静态板块数据替代");
+  });
+
+  it("marks a timed-out AkShare core report as degraded without a static fallback", () => {
+    const report = buildUnavailableMarketRegimeResearch({
+      bridgeUrl: "http://127.0.0.1:8800",
+      marketDataProvider: "akshare",
+      mode: "paper",
+      snapshot,
+      sectorLimit: 6,
+      stockLimit: 6,
+      days: 180,
+      timeoutMs: 15_000,
+    }, "核心研究超时");
+
+    expect(report.sourceStatus).toBe("degraded");
+    expect(report.warnings).toEqual(["核心研究超时"]);
+    expect(report.guardrails.join(" ")).toContain("历史研究源超时或不可用");
   });
 
   it("samples strong, middle and weak sectors instead of only current leaders", () => {

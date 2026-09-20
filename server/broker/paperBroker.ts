@@ -144,7 +144,7 @@ export class PaperBroker extends EventEmitter {
 
     for (const order of pendingOrders) {
       const quote = quoteMap.get(order.symbol);
-      if (!quote) continue;
+      if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) continue;
 
       if (this.store.checkLimitOrderFill(order, quote)) {
         const filled = this.fillOrder(order, quote.name, quote.price);

@@ -95,7 +95,7 @@ export function useTradingBackend(
 
   const bootstrapQuery = useQuery({
     queryKey: tradingQueryKey,
-    queryFn: fetchTradingBootstrap,
+    queryFn: ({ signal }) => fetchTradingBootstrap(signal),
     enabled,
   });
 
@@ -117,7 +117,7 @@ export function useTradingBackend(
     try {
       await queryClient.fetchQuery({
         queryKey: tradingQueryKey,
-        queryFn: fetchTradingBootstrap,
+        queryFn: ({ signal }) => fetchTradingBootstrap(signal),
         staleTime: 0,
       });
       setTransportError(undefined);

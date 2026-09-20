@@ -755,10 +755,23 @@ export interface PaperAutoExecutionOrder {
   estimatedNotional: number;
 }
 
+export interface PaperAutoExecutionPlanSnapshot {
+  operationCount: number;
+  buyPlanCount: number;
+  sellPlanCount: number;
+  buyNotional: number;
+  sellNotional: number;
+}
+
 export interface PaperAutoExecutionSkip {
   symbol: string;
   action: PaperTradingOperationAction;
   reason: string;
+  strategy?: string;
+  strategyKey?: string | null;
+  quantity?: number;
+  price?: number;
+  estimatedNotional?: number;
 }
 
 export interface PaperAutoExecutionRun {
@@ -769,6 +782,7 @@ export interface PaperAutoExecutionRun {
   tradingDate: string;
   session: PaperAutoExecutionSession;
   planQuality: PaperTradingPlanQualitySummary["planQuality"] | "not-run";
+  planSnapshot?: PaperAutoExecutionPlanSnapshot;
   researchContext?: {
     regime: string;
     observedRegime: string;
@@ -1502,6 +1516,127 @@ export function isUnauthorizedWebSocketClose(
   return event.code === 1008 && event.reason === "UNAUTHORIZED";
 }
 
+export type WeeklyPaperReviewWindow = "current" | "previous";
+
+export type WeeklyPaperReview = {
+  generatedAt: string;
+  period: {
+    window: WeeklyPaperReviewWindow;
+    startDate: string;
+    endDate: string;
+    tradingDays: string[];
+    orderDays: string[];
+  };
+  sample: {
+    evidence: "sufficient" | "limited" | "unavailable";
+    orderCount: number;
+    filledOrderCount: number;
+    rejectedOrderCount: number;
+    cancelledOrderCount: number;
+    pendingOrderCount: number;
+    automaticRunCount: number;
+    activeDays: number;
+    daysWithFills: number;
+    planSnapshotDays?: number;
+    historyCoverage: {
+      retentionDays: number | null;
+      periodEndAgeDays: number;
+      status: "within-retention" | "may-be-pruned" | "unknown";
+      summary: string;
+    };
+  };
+  capital: {
+    initialCapital: number;
+    currentEquity: number;
+    currentCash: number;
+    currentMarketValue: number;
+    currentDeployedRatio: number;
+    currentCashRatio: number;
+    grossBuyNotional: number;
+    grossSellNotional: number;
+    netBuyNotional: number;
+    grossTurnover: number;
+    buyCapitalRatio: number;
+    averageFilledOrderNotional: number;
+    averageOrderCapitalRatio: number;
+    plannedBuyNotional?: number;
+    plannedSellNotional?: number;
+    plannedBuyCapitalRatio?: number;
+    automaticFilledBuyNotional?: number;
+    planRealizationRatio?: number | null;
+    maxDailyPlannedBuyNotional?: number;
+    maxSingleOrderNotional: number;
+    maxOrderCapitalRatio: number;
+    sizingConstraint:
+      | "configured-cap"
+      | "cash-or-reserve"
+      | "phase-budget"
+      | "lot-size"
+      | "strategy-or-signal"
+      | "sample-or-signal"
+      | "not-observed";
+    maxDailyBuyNotional: number;
+    utilization: "low" | "small-ticket" | "balanced" | "high";
+    summary: string;
+  };
+  performance: {
+    evidence: "closed-fills-only" | "no-closed-trades";
+    closedTrades: number;
+    winningTrades: number;
+    losingTrades: number;
+    winRate: number | null;
+    realizedPnl: number;
+    grossProfit: number;
+    grossLoss: number;
+    profitFactor: number | null;
+    averageWin: number | null;
+    averageLoss: number | null;
+    commission: number;
+    summary: string;
+  };
+  strategyBreakdown: Array<{
+    strategyKey: string;
+    strategyName: string;
+    filledOrders: number;
+    buyOrders: number;
+    sellOrders: number;
+    filledNotional: number;
+    commission: number;
+    closedTrades: number;
+    winningTrades: number;
+    winRate: number | null;
+    realizedPnl: number;
+  }>;
+  daily: Array<{
+    date: string;
+    submitted: number;
+    filled: number;
+    rejected: number;
+    buyNotional: number;
+    sellNotional: number;
+    plannedBuyNotional?: number;
+    plannedSellNotional?: number;
+    automaticFilledBuyNotional?: number;
+    planRealizationRatio?: number | null;
+    commission: number;
+    averageFilledOrderNotional: number;
+  }>;
+  blockers: Array<{
+    code: string;
+    label: string;
+    count: number;
+    examples: string[];
+    estimatedNotional?: number;
+  }>;
+  diagnosis: {
+    grade: "needs-improvement" | "watch" | "insufficient-sample" | "disciplined";
+    findings: string[];
+    nextActions: string[];
+    summary: string;
+  };
+  guardrails: string[];
+};
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
@@ -1546,6 +1681,15 @@ function formatNonJsonError(path: string, response: Response, body: string): Err
   );
 }
 
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+  return signal?.aborted === true || (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
+}
+
 export async function apiRequest<T>(
   path: string,
   init?: RequestInit,
@@ -1564,11 +1708,19 @@ export async function apiRequest<T>(
       },
     });
   } catch (error) {
+    if (isAbortError(error, init?.signal ?? undefined)) throw error;
     const detail = error instanceof Error ? error.message : "未知网络错误";
     throw new ApiRequestError(`无法连接交易 API：${url}（${detail}）`, null, true);
   }
 
-  const text = await response.text();
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (error) {
+    if (isAbortError(error, init?.signal ?? undefined)) throw error;
+    const detail = error instanceof Error ? error.message : "未知网络错误";
+    throw new ApiRequestError("读取交易 API 响应失败：" + url + "（" + detail + "）", response.status, true);
+  }
   if (!text.trim()) {
     if (!response.ok) {
       throw new ApiRequestError(`请求失败：HTTP ${response.status}`, response.status, response.status >= 500);
@@ -1651,23 +1803,23 @@ export async function logout(): Promise<void> {
   }
 }
 
-export async function fetchSystemStatus(): Promise<SystemStatus> {
+export async function fetchSystemStatus(signal?: AbortSignal): Promise<SystemStatus> {
   const [health, capabilities] = await Promise.all([
-    apiRequest<HealthSnapshot>("/api/health"),
-    authApiRequest<CapabilitiesSnapshot>("/api/capabilities"),
+    apiRequest<HealthSnapshot>("/api/health", { signal }),
+    authApiRequest<CapabilitiesSnapshot>("/api/capabilities", { signal }),
   ]);
 
   return { health, capabilities };
 }
 
-export async function fetchTradingBootstrap(): Promise<TradingBootstrap> {
-  const { health, capabilities } = await fetchSystemStatus();
+export async function fetchTradingBootstrap(signal?: AbortSignal): Promise<TradingBootstrap> {
+  const { health, capabilities } = await fetchSystemStatus(signal);
   const [market, account, positions, orders, limits] = await Promise.all([
-    authApiRequest<MarketSnapshot>("/api/market/snapshot"),
-    authApiRequest<AccountSnapshot>("/api/account"),
-    authApiRequest<PositionSnapshot[]>("/api/positions"),
-    authApiRequest<OrderRecord[]>("/api/orders?limit=50"),
-    authApiRequest<RiskLimits>("/api/risk/limits"),
+    authApiRequest<MarketSnapshot>("/api/market/snapshot", { signal }),
+    authApiRequest<AccountSnapshot>("/api/account", { signal }),
+    authApiRequest<PositionSnapshot[]>("/api/positions", { signal }),
+    authApiRequest<OrderRecord[]>("/api/orders?limit=50", { signal }),
+    authApiRequest<RiskLimits>("/api/risk/limits", { signal }),
   ]);
 
   return { health, capabilities, market, account, positions, orders, limits };
@@ -1783,6 +1935,16 @@ export function fetchPaperTradingPlan(signal?: AbortSignal): Promise<PaperTradin
 
 export function fetchDailyMarketReview(signal?: AbortSignal): Promise<DailyMarketReview> {
   return authApiRequest<DailyMarketReview>("/api/research/daily-review", { signal });
+}
+
+export function fetchWeeklyPaperReview(
+  signal?: AbortSignal,
+  period: WeeklyPaperReviewWindow = "current",
+): Promise<WeeklyPaperReview> {
+  return authApiRequest<WeeklyPaperReview>(
+    `/api/research/weekly-paper-review?period=${period}`,
+    { signal },
+  );
 }
 
 export function fetchSuperMindSignalPackage(): Promise<SuperMindSignalPackage> {

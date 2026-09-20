@@ -219,7 +219,9 @@ export class JsonFileTradingStore implements TradingStore {
     const quoteMap = new Map(snapshot.quotes.map((quote) => [quote.symbol, quote]));
     const raw = [...this.positions.values()].map((position) => {
       const quote = quoteMap.get(position.symbol);
-      const currentPrice = quote?.price ?? position.averagePrice;
+      const currentPrice = quote && Number.isFinite(quote.price) && quote.price > 0
+        ? quote.price
+        : position.averagePrice;
       const marketValue = currentPrice * position.quantity;
 
       return {
@@ -387,6 +389,10 @@ export class JsonFileTradingStore implements TradingStore {
       order.type !== "limit" ||
       order.limitPrice === undefined
     ) {
+      return false;
+    }
+
+    if (!Number.isFinite(quote.price) || quote.price <= 0) {
       return false;
     }
 

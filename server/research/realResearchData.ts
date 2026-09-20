@@ -338,11 +338,33 @@ function unavailableFeed(input: RealResearchDataInput): RealResearchDataFeed {
   };
 }
 
+export function buildUnavailableRealResearchDataFeed(
+  input: RealResearchDataInput,
+  warning?: string,
+): RealResearchDataFeed {
+  const report = unavailableFeed(input);
+  if (!warning) return report;
+  return {
+    ...report,
+    sourceStatus: input.marketDataProvider === "akshare"
+      ? "degraded"
+      : report.sourceStatus,
+    news: {
+      ...report.news,
+      warning,
+    },
+    globalMarkets: {
+      ...report.globalMarkets,
+      warning: input.includeGlobalMarkets === false ? null : warning,
+    },
+  };
+}
+
 export async function buildRealResearchDataFeed(
   input: RealResearchDataInput,
 ): Promise<RealResearchDataFeed> {
   if (input.marketDataProvider !== "akshare") {
-    return unavailableFeed(input);
+    return buildUnavailableRealResearchDataFeed(input);
   }
 
   const fetchImpl = input.fetchImpl ?? fetch;

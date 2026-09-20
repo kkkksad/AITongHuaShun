@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -10,7 +11,7 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { pipelineStages } from "../data/mockData";
+import type { PipelineStage } from "../types";
 import { ResearchQueryState } from "./ResearchQueryState";
 import {
   adaptivePostureLabel,
@@ -20,12 +21,14 @@ import {
 import {
   fetchLearningState,
   fetchSelfOptimizationStatus,
+  type WeeklyPaperReviewWindow,
 } from "../lib/tradingApi";
 import {
   dailyCandidatesQueryOptions,
   dailyMarketReviewQueryOptions,
   paperTradingPlanQueryOptions,
   strategyLeaderboardQueryOptions,
+  weeklyPaperReviewQueryOptions,
 } from "../lib/researchQueries";
 
 const stageIcons = {
@@ -49,6 +52,25 @@ const adaptiveStrategyLabels: Record<string, string> = {
   bollingerBands: "布林下沿",
   kairosRiskOffRecovery: "风险修复",
   kairosCapitalShield: "资金盾牌",
+  kairosRangeRotation: "区间轮动",
+  kairosQualifiedProbe: "合格样本验证",
+  kairosValidationBasket: "验证篮子",
+};
+
+const weeklySizingConstraintLabels: Record<string, string> = {
+  "configured-cap": "配置单笔上限",
+  "cash-or-reserve": "现金/现金缓冲",
+  "phase-budget": "阶段订单额度",
+  "lot-size": "一手/金额不足",
+  "strategy-or-signal": "策略/信号门槛",
+  "sample-or-signal": "成交样本/信号约束",
+  "not-observed": "暂无成交样本",
+};
+
+const weeklyHistoryCoverageLabels: Record<string, string> = {
+  "within-retention": "在留存窗口内",
+  "may-be-pruned": "可能已被清理",
+  unknown: "留存状态未知",
 };
 
 function adaptiveStrategyLabel(key: string): string {
@@ -56,6 +78,8 @@ function adaptiveStrategyLabel(key: string): string {
 }
 
 export default function LearningPipeline() {
+  const [weeklyPeriod, setWeeklyPeriod] = useState<WeeklyPaperReviewWindow>("previous");
+  const weeklyPeriodLabel = weeklyPeriod === "previous" ? "上周" : "本周";
   const leaderboardQuery = useQuery(strategyLeaderboardQueryOptions(120));
   const candidatesQuery = useQuery(dailyCandidatesQueryOptions(24));
   const learningStateQuery = useQuery({
@@ -64,8 +88,17 @@ export default function LearningPipeline() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
-  const paperPlanQuery = useQuery(paperTradingPlanQueryOptions());
-  const dailyReviewQuery = useQuery(dailyMarketReviewQueryOptions());
+  const researchFoundationReady =
+    leaderboardQuery.isFetched && candidatesQuery.isFetched;
+  const paperPlanQuery = useQuery({
+    ...paperTradingPlanQueryOptions(),
+    enabled: researchFoundationReady,
+  });
+  const dailyReviewQuery = useQuery({
+    ...dailyMarketReviewQueryOptions(),
+    enabled: researchFoundationReady,
+  });
+  const weeklyPaperReviewQuery = useQuery(weeklyPaperReviewQueryOptions(weeklyPeriod));
   const selfOptimizationQuery = useQuery({
     queryKey: ["self-optimization-status"],
     queryFn: ({ signal }) => fetchSelfOptimizationStatus(signal),
@@ -78,17 +111,63 @@ export default function LearningPipeline() {
   const paperPlan = paperPlanQuery.data;
   const paperPlanQuality = paperPlan?.qualitySummary;
   const dailyReview = dailyReviewQuery.data;
+  const weeklyPaperReview = weeklyPaperReviewQuery.data;
+  const weeklyHistoryCoverage = weeklyPaperReview?.sample.historyCoverage;
+  const weeklyPlanSnapshotDays = weeklyPaperReview?.sample.planSnapshotDays ?? 0;
+  const weeklyPlannedBuyNotional = weeklyPaperReview?.capital.plannedBuyNotional ?? 0;
+  const weeklyPlannedSellNotional = weeklyPaperReview?.capital.plannedSellNotional ?? 0;
+  const weeklyPlannedBuyCapitalRatio = weeklyPaperReview?.capital.plannedBuyCapitalRatio ?? 0;
+  const weeklyAutomaticFilledBuyNotional = weeklyPaperReview?.capital.automaticFilledBuyNotional ?? 0;
+  const weeklyPlanRealizationRatio = weeklyPaperReview?.capital.planRealizationRatio ?? null;
+  const weeklyMaxDailyPlannedBuyNotional = weeklyPaperReview?.capital.maxDailyPlannedBuyNotional ?? 0;
+  const weeklyDailyReconciliation = weeklyPaperReview?.daily.filter((day) =>
+    day.submitted > 0 ||
+    (day.plannedBuyNotional ?? 0) > 0 ||
+    (day.plannedSellNotional ?? 0) > 0,
+  ) ?? [];
   const selfOptimization = selfOptimizationQuery.data;
   const paperBuyCount =
     candidatesQuery.data?.candidates.filter((candidate) => candidate.action === "paper-buy").length ?? 0;
-  const researchScore = Math.min(
+  const researchScore = leaderboardQuery.data && candidatesQuery.data ? Math.min(
     100,
     Math.round(
-      (leaderboardQuery.data?.dataQuality.score.overall ?? 65) * 0.45 +
+      leaderboardQuery.data.dataQuality.score.overall * 0.45 +
         (topStrategy?.qualityGate === "pass" ? 30 : topStrategy?.qualityGate === "caution" ? 18 : 8) +
         Math.min(paperBuyCount * 5, 20),
     ),
-  );
+  ) : null;
+  const pipelineStages: PipelineStage[] = [
+    {
+      name: "候选扫描",
+      description: "当前观察池与合格 Paper 买入候选。",
+      status: candidatesQuery.data ? "done" : candidatesQuery.isFetching ? "running" : "pending",
+      detail: candidatesQuery.data
+        ? `${candidatesQuery.data.candidates.length} 个候选 / ${paperBuyCount} 个买入观察`
+        : candidatesQuery.isError ? "扫描暂不可用" : "等待扫描结果",
+    },
+    {
+      name: "合成样本初筛",
+      description: "合成序列评分，不代表真实历史或样本外验证。",
+      status: leaderboardQuery.data ? "done" : leaderboardQuery.isFetching ? "running" : "pending",
+      detail: leaderboardQuery.data
+        ? `门槛通过 ${leaderboardQuery.data.entries.filter((entry) => entry.qualityGate === "pass").length} / ${leaderboardQuery.data.entries.length}`
+        : leaderboardQuery.isError ? "榜单暂不可用" : "等待策略榜单",
+    },
+    {
+      name: "Paper 成交观察",
+      description: "已成交订单与扣费后闭合样本。",
+      status: weeklyPaperReview?.sample.filledOrderCount ? "running" : "pending",
+      detail: weeklyPaperReview
+        ? `${weeklyPeriodLabel}成交 ${weeklyPaperReview.sample.filledOrderCount} 笔 / 闭合 ${weeklyPaperReview.performance.closedTrades} 笔`
+        : weeklyPaperReviewQuery.isError ? "复盘暂不可用" : "等待成交复盘",
+    },
+    {
+      name: "风险人工审批",
+      description: "真实交易关闭，研究结果不构成执行授权。",
+      status: "review",
+      detail: "未接入真实交易",
+    },
+  ];
 
   return (
     <div className="learning-layout">
@@ -100,7 +179,7 @@ export default function LearningPipeline() {
               <h2>候选策略验证</h2>
             </div>
             <span className="sample-badge">
-              {candidatesQuery.data?.candidates.length ?? 0} 个实时候选
+              {candidatesQuery.data?.candidates.length ?? 0} 个候选
             </span>
           </div>
 
@@ -124,6 +203,225 @@ export default function LearningPipeline() {
               );
             })}
           </div>
+        </section>
+
+        <section className="panel learning-memory-panel weekly-paper-review">
+          <div className="panel-header">
+            <div>
+              <span className="section-kicker">{weeklyPeriodLabel} Paper 复盘</span>
+              <h2>资金使用与闭合成交</h2>
+            </div>
+            <div className="weekly-review-controls">
+              <div className="regime-tabs weekly-period-switch" role="group" aria-label="复盘周期">
+                {(["previous", "current"] as const).map((period) => (
+                  <button
+                    key={period}
+                    type="button"
+                    aria-label={`${period === "previous" ? "上周" : "本周"} Paper 复盘`}
+                    aria-pressed={weeklyPeriod === period}
+                    className={weeklyPeriod === period ? "active" : ""}
+                    onClick={() => setWeeklyPeriod(period)}
+                  >
+                    {period === "previous" ? "上周" : "本周"}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label={`刷新${weeklyPeriodLabel} Paper 复盘`}
+                title={`刷新${weeklyPeriodLabel} Paper 复盘`}
+                disabled={weeklyPaperReviewQuery.isFetching}
+                onClick={() => void weeklyPaperReviewQuery.refetch()}
+              >
+                <RefreshCw size={16} className={weeklyPaperReviewQuery.isFetching ? "spin" : undefined} />
+              </button>
+            </div>
+          </div>
+          <div className="weekly-review-period" aria-live="polite">
+            {weeklyPaperReview
+              ? `${weeklyPaperReview.period.startDate} - ${weeklyPaperReview.period.endDate}`
+              : `${weeklyPeriodLabel} · 等待复盘`}
+          </div>
+          <ResearchQueryState
+            dataUpdatedAt={weeklyPaperReviewQuery.dataUpdatedAt}
+            hasData={Boolean(weeklyPaperReview)}
+            isError={weeklyPaperReviewQuery.isError}
+            isLoading={weeklyPaperReviewQuery.isLoading}
+            loadingText={`正在汇总${weeklyPeriodLabel} Paper 记录…`}
+            unavailableText={`${weeklyPeriodLabel} Paper 复盘暂不可用，当前其它研究结果仍可使用。`}
+          />
+          {weeklyPaperReview && (
+            <>
+              <div className="learning-memory-grid">
+                <article>
+                  <span>买入成交额</span>
+                  <strong>¥{weeklyPaperReview.capital.grossBuyNotional.toLocaleString("zh-CN")}</strong>
+                  <small>占初始资金 {(weeklyPaperReview.capital.buyCapitalRatio * 100).toFixed(1)}%</small>
+                </article>
+                <article>
+                  <span>计划买入额</span>
+                  <strong>¥{weeklyPlannedBuyNotional.toLocaleString("zh-CN")}</strong>
+                  <small>
+                    计划快照 {weeklyPlanSnapshotDays} 天 · 占初始资金 {(weeklyPlannedBuyCapitalRatio * 100).toFixed(1)}%
+                  </small>
+                </article>
+                <article>
+                  <span>自动成交买入</span>
+                  <strong>¥{weeklyAutomaticFilledBuyNotional.toLocaleString("zh-CN")}</strong>
+                  <small>
+                    日峰值计划 ¥{weeklyMaxDailyPlannedBuyNotional.toLocaleString("zh-CN")}
+                  </small>
+                </article>
+                <article>
+                  <span>计划落地率</span>
+                  <strong>
+                    {weeklyPlanRealizationRatio === null
+                      ? "暂无"
+                      : `${(weeklyPlanRealizationRatio * 100).toFixed(1)}%`}
+                  </strong>
+                  <small>
+                    计划卖出 ¥{weeklyPlannedSellNotional.toLocaleString("zh-CN")}
+                  </small>
+                </article>
+                <article>
+                  <span>初始资金</span>
+                  <strong>¥{weeklyPaperReview.capital.initialCapital.toLocaleString("zh-CN")}</strong>
+                  <small>当前权益 ¥{weeklyPaperReview.capital.currentEquity.toLocaleString("zh-CN")}</small>
+                </article>
+                <article>
+                  <span>平均单笔</span>
+                  <strong>¥{weeklyPaperReview.capital.averageFilledOrderNotional.toLocaleString("zh-CN")}</strong>
+                  <small>成交 {weeklyPaperReview.sample.filledOrderCount} 笔</small>
+                </article>
+                <article>
+                  <span>有效单笔上限</span>
+                  <strong>¥{weeklyPaperReview.capital.maxSingleOrderNotional.toLocaleString("zh-CN")}</strong>
+                  <small>占初始资金 {(weeklyPaperReview.capital.maxOrderCapitalRatio * 100).toFixed(1)}%</small>
+                </article>
+                <article>
+                  <span>闭合胜率</span>
+                  <strong>
+                    {weeklyPaperReview.performance.winRate === null
+                      ? "样本不足"
+                      : `${(weeklyPaperReview.performance.winRate * 100).toFixed(1)}%`}
+                  </strong>
+                  <small>
+                    闭合 {weeklyPaperReview.performance.closedTrades} 笔 · 仅已成交 FIFO
+                  </small>
+                </article>
+              </div>
+              <div className="learning-plan-summary">
+                <strong>{weeklyPaperReview.diagnosis.summary}</strong>
+                <p>{weeklyPaperReview.capital.summary}</p>
+                <span>
+                  资金约束 {weeklySizingConstraintLabels[weeklyPaperReview.capital.sizingConstraint] ?? weeklyPaperReview.capital.sizingConstraint} ·
+                  上限占比 {(weeklyPaperReview.capital.maxOrderCapitalRatio * 100).toFixed(1)}% ·
+                  当前仓位 {(weeklyPaperReview.capital.currentDeployedRatio * 100).toFixed(1)}% ·
+                  当前现金 {(weeklyPaperReview.capital.currentCashRatio * 100).toFixed(1)}% ·
+                  已闭合盈亏 {weeklyPaperReview.performance.realizedPnl >= 0 ? "+" : ""}
+                  ¥{weeklyPaperReview.performance.realizedPnl.toFixed(2)} ·
+                  手续费 ¥{weeklyPaperReview.performance.commission.toFixed(2)} ·
+                  计划落地率 {weeklyPlanRealizationRatio === null
+                    ? "暂无"
+                    : `${(weeklyPlanRealizationRatio * 100).toFixed(1)}%`}
+                </span>
+                {weeklyHistoryCoverage && (
+                  <span>
+                    历史证据 {weeklyHistoryCoverageLabels[weeklyHistoryCoverage.status] ?? weeklyHistoryCoverage.status} ·
+                    {weeklyHistoryCoverage.summary}
+                  </span>
+                )}
+              </div>
+              <div className="weekly-daily-reconciliation">
+                <strong>每日金额对账</strong>
+                <div className="weekly-daily-list">
+                  {weeklyDailyReconciliation.map((day) => {
+                    const dayPlanRealizationRatio = day.planRealizationRatio ?? null;
+                    return (
+                      <article key={day.date}>
+                        <span>{day.date}</span>
+                        <strong>
+                          计划买入 ¥{(day.plannedBuyNotional ?? 0).toLocaleString("zh-CN")}
+                        </strong>
+                        <small>
+                          自动成交 ¥{(day.automaticFilledBuyNotional ?? 0).toLocaleString("zh-CN")} ·
+                          落地 {dayPlanRealizationRatio === null
+                            ? "暂无"
+                            : `${(dayPlanRealizationRatio * 100).toFixed(1)}%`} ·
+                          提交 {day.submitted} / 成交 {day.filled} / 拒绝 {day.rejected}
+                        </small>
+                      </article>
+                    );
+                  })}
+                  {!weeklyDailyReconciliation.length && (
+                    <p className="empty-copy">该周期没有计划或订单金额对账记录。</p>
+                  )}
+                </div>
+              </div>
+              <div className="weekly-review-columns">
+                <div>
+                  <strong>主要发现</strong>
+                  <ul>
+                    {weeklyPaperReview.diagnosis.findings.map((finding) => (
+                      <li key={finding}>{finding}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <strong>下一轮改进</strong>
+                  <ul>
+                    {weeklyPaperReview.diagnosis.nextActions.map((action) => (
+                      <li key={action}>{action}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <div className="weekly-review-details">
+                <div>
+                  <strong>策略成交分布</strong>
+                  <div className="learning-run-list">
+                    {weeklyPaperReview.strategyBreakdown.slice(0, 5).map((strategy) => (
+                      <article key={strategy.strategyKey}>
+                        <BarChart3 size={15} />
+                        <div>
+                          <strong>{strategy.strategyName}</strong>
+                          <span>
+                            成交 {strategy.filledOrders} 笔 · 金额 ¥{strategy.filledNotional.toLocaleString("zh-CN")} ·
+                            闭合 {strategy.closedTrades} 笔 · 胜率 {strategy.winRate === null
+                              ? "样本不足"
+                              : `${(strategy.winRate * 100).toFixed(1)}%`} ·
+                            盈亏 {strategy.realizedPnl >= 0 ? "+" : ""}
+                            ¥{strategy.realizedPnl.toFixed(2)}
+                          </span>
+                        </div>
+                      </article>
+                    ))}
+                    {!weeklyPaperReview.strategyBreakdown.length && (
+                      <p className="empty-copy">该周期没有可拆分的策略成交记录。</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <strong>主要阻塞原因</strong>
+                  <div className="weekly-blocker-list">
+                    {weeklyPaperReview.blockers.slice(0, 4).map((blocker) => (
+                      <article key={blocker.code}>
+                        <span>{blocker.label}</span>
+                        <strong>{blocker.count} 次</strong>
+                        <small>
+                          记录估算金额 ¥{(blocker.estimatedNotional ?? 0).toLocaleString("zh-CN")} · {blocker.examples[0]}
+                        </small>
+                      </article>
+                    ))}
+                    {!weeklyPaperReview.blockers.length && (
+                      <p className="empty-copy">该周期没有记录到阻塞原因。</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </section>
 
         <section className="panel learning-memory-panel">
@@ -191,6 +489,14 @@ export default function LearningPipeline() {
               {dailyReview?.tradingDate ?? "等待收盘"}
             </span>
           </div>
+          <ResearchQueryState
+            dataUpdatedAt={dailyReviewQuery.dataUpdatedAt}
+            hasData={Boolean(dailyReview)}
+            isError={dailyReviewQuery.isError}
+            isLoading={dailyReviewQuery.isLoading}
+            loadingText="正在生成盘面复盘…"
+            unavailableText="盘面复盘暂不可用，当前其它研究结果仍可使用。"
+          />
           <div className="learning-memory-grid">
             <article>
               <span>盘面状态</span>
@@ -292,17 +598,30 @@ export default function LearningPipeline() {
           <div className="panel-header">
             <div>
               <span className="section-kicker">纸面操作过程</span>
-              <h2>今日 1 万资金计划</h2>
+              <h2>今日 Paper 资金计划</h2>
             </div>
             <span className="sample-badge">
               {paperPlan?.operations.length ?? 0} 条记录
             </span>
           </div>
+          <ResearchQueryState
+            dataUpdatedAt={paperPlanQuery.dataUpdatedAt}
+            hasData={Boolean(paperPlan)}
+            isError={paperPlanQuery.isError}
+            isLoading={paperPlanQuery.isLoading}
+            loadingText="正在生成今日纸面计划…"
+            unavailableText="纸面计划暂不可用，未生成任何模拟订单。"
+          />
           <div className="learning-memory-grid">
             <article>
               <span>交易日</span>
               <strong>{paperPlan?.tradingDate ?? "等待"}</strong>
               <small>{paperPlan?.provider ?? "provider"}</small>
+            </article>
+            <article>
+              <span>初始资金</span>
+              <strong>¥{(paperPlan?.capitalPlan.initialCapital ?? 0).toLocaleString("zh-CN")}</strong>
+              <small>当前权益 ¥{(paperPlan?.account.equity ?? 0).toLocaleString("zh-CN")}</small>
             </article>
             <article>
               <span>可用现金</span>
@@ -390,6 +709,11 @@ export default function LearningPipeline() {
               <span>
                 主要拦截：{paperPlanQuality.strategyCoverage.dominantBlocker ?? "无"}
               </span>
+              <span>
+                当前允许 {paperPlanQuality.strategyCoverage.eligibleKeys.length} 个策略 ·
+                已命中 {paperPlanQuality.strategyCoverage.matchedKeys.length} 个 ·
+                主策略 {adaptiveStrategyLabel(paperPlanQuality.strategyCoverage.dominantStrategyKey ?? "暂无")}
+              </span>
               <small>合格机会覆盖，不强制换手，不代表预期盈利。</small>
             </div>
           )}
@@ -471,6 +795,7 @@ export default function LearningPipeline() {
               learningStateQuery.isFetching ||
               paperPlanQuery.isFetching ||
               dailyReviewQuery.isFetching ||
+              weeklyPaperReviewQuery.isFetching ||
               selfOptimizationQuery.isFetching
             }
             onClick={() => {
@@ -479,6 +804,7 @@ export default function LearningPipeline() {
               void learningStateQuery.refetch();
               void paperPlanQuery.refetch();
               void dailyReviewQuery.refetch();
+              void weeklyPaperReviewQuery.refetch();
               void selfOptimizationQuery.refetch();
             }}
             type="button"
@@ -488,38 +814,44 @@ export default function LearningPipeline() {
         </div>
         <div className="governance-score">
           <div className="score-ring">
-            <strong>{researchScore}</strong>
+            <strong>{researchScore ?? "--"}</strong>
             <span>/ 100</span>
           </div>
           <div>
             <strong>{topStrategy?.strategyName ?? "等待策略排行榜"}</strong>
             <p>
               {topStrategy
-                ? `胜率 ${(topStrategy.metrics.winRate * 100).toFixed(1)}% · ${topStrategy.metrics.totalTrades} 次模拟交易`
+                ? `合成样本胜率 ${(topStrategy.metrics.winRate * 100).toFixed(1)}% · ${topStrategy.metrics.totalTrades} 次模拟交易`
                 : "后端启动后自动拉取策略排行榜。"}
             </p>
           </div>
         </div>
         <ul className="check-list">
           <li className={leaderboardQuery.data ? "done" : ""}>
-            <Check size={15} />
-            策略排行榜自动刷新已接入
+            {leaderboardQuery.data ? <Check size={15} /> : <Clock3 size={15} />}
+            {leaderboardQuery.data ? "策略初筛榜单已更新" : "等待策略初筛榜单"}
           </li>
           <li className={candidatesQuery.data ? "done" : ""}>
-            <Check size={15} />
-            今日候选扫描每 60 秒更新
+            {candidatesQuery.data ? <Check size={15} /> : <Clock3 size={15} />}
+            {candidatesQuery.data ? "今日候选扫描已更新" : "等待今日候选扫描"}
           </li>
           <li className={learningState ? "done" : ""}>
-            <Check size={15} />
-            研究运行样本开始累计
+            {learningState ? <Check size={15} /> : <Clock3 size={15} />}
+            {learningState ? `研究运行样本 ${learningState.dataMemory.researchRuns} 次` : "等待研究样本统计"}
           </li>
           <li className={paperPlan ? "done" : ""}>
-            <Check size={15} />
-            A 股 T+1 纸面计划已生成
+            {paperPlan ? <Check size={15} /> : <Clock3 size={15} />}
+            {paperPlan ? "A 股 T+1 纸面计划已生成" : "等待 A 股 T+1 纸面计划"}
           </li>
           <li className={dailyReview ? "done" : ""}>
-            <Check size={15} />
-            每日盘面与交易复盘已生成
+            {dailyReview ? <Check size={15} /> : <Clock3 size={15} />}
+            {dailyReview ? "每日盘面与交易复盘已生成" : "等待每日盘面与交易复盘"}
+          </li>
+          <li className={weeklyPaperReview ? "done" : ""}>
+            {weeklyPaperReview ? <Check size={15} /> : <Clock3 size={15} />}
+            {weeklyPaperReview
+              ? `${weeklyPeriodLabel}资金使用与闭合成交复盘已生成`
+              : `等待${weeklyPeriodLabel}资金使用与闭合成交复盘`}
           </li>
           <li className="done">
             <Check size={15} />
@@ -530,8 +862,8 @@ export default function LearningPipeline() {
             历史行情缓存受上限控制后再接入
           </li>
           <li className={selfOptimization ? "done" : ""}>
-            <Check size={15} />
-            自优化与存储控制策略已声明
+            {selfOptimization ? <Check size={15} /> : <Clock3 size={15} />}
+            {selfOptimization ? "自优化与存储控制状态已获取" : "等待自优化与存储控制状态"}
           </li>
           <li>
             <LockKeyhole size={15} />

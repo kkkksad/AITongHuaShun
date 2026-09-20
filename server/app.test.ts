@@ -442,6 +442,54 @@ describe("trading API", () => {
     expect(response.json().guardrails.join("")).toContain("不代表真实收益");
   });
 
+  it("keeps the strategy research endpoint available when the quote snapshot is empty", async () => {
+    const emptySystem = createTradingSystem(createTestConfig());
+    vi.spyOn(emptySystem.market, "getSnapshot").mockReturnValue({
+      mode: "mock",
+      sequence: 0,
+      marketTime: "2026-08-30T02:00:00.000Z",
+      quotes: [],
+    });
+    const emptyApp = await buildTradingApp({
+      config: createTestConfig(),
+      system: emptySystem,
+      startMarket: false,
+    });
+
+    try {
+      const response = await emptyApp.inject({
+        method: "GET",
+        url: "/api/research/strategy-leaderboard?bars=45",
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        entries: [],
+        source: {
+          quoteCount: 0,
+          tradableSymbols: [],
+          bars: 45,
+        },
+      });
+      expect(response.json().dataQuality.summary).toContain("策略研究暂不可用");
+
+      const planResponse = await emptyApp.inject({
+        method: "GET",
+        url: "/api/research/paper-trading-plan",
+      });
+      expect(planResponse.statusCode).toBe(200);
+      expect(planResponse.json()).toMatchObject({
+        provider: "mock",
+        qualitySummary: {
+          planQuality: "watch-only",
+          actionCounts: expect.any(Object),
+        },
+      });
+    } finally {
+      await emptyApp.close();
+    }
+  });
+
   it("returns daily A-share strategy candidates for paper validation", async () => {
     const response = await app.inject({
       method: "GET",
@@ -582,6 +630,7 @@ describe("trading API", () => {
     expect(response.json().paths).toHaveProperty("/api/research/daily-quality-stocks");
     expect(response.json().paths).toHaveProperty("/api/research/learning-state");
     expect(response.json().paths).toHaveProperty("/api/research/paper-trading-plan");
+    expect(response.json().paths).toHaveProperty("/api/research/weekly-paper-review");
     expect(response.json().paths).toHaveProperty("/api/integrations/supermind/signal-package");
     expect(response.json().paths).toHaveProperty("/api/trading/auto-paper-execution/status");
     expect(response.json().paths).toHaveProperty("/api/trading/auto-paper-execution/run");
@@ -1082,6 +1131,80 @@ describe("trading API", () => {
     expect(response.json().operations.length).toBeGreaterThan(0);
   });
 
+  it("returns a weekly Paper review with closed-fill evidence boundaries", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/weekly-paper-review",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      period: {
+        startDate: expect.any(String),
+        endDate: expect.any(String),
+      },
+      sample: {
+        evidence: expect.stringMatching(/^(sufficient|limited|unavailable)$/),
+        historyCoverage: {
+          retentionDays: expect.any(Number),
+          status: expect.stringMatching(/^(within-retention|may-be-pruned|unknown)$/),
+        },
+        planSnapshotDays: expect.any(Number),
+      },
+      capital: {
+        initialCapital: expect.any(Number),
+        currentEquity: expect.any(Number),
+        averageFilledOrderNotional: expect.any(Number),
+        plannedBuyNotional: expect.any(Number),
+        plannedBuyCapitalRatio: expect.any(Number),
+        automaticFilledBuyNotional: expect.any(Number),
+        maxDailyPlannedBuyNotional: expect.any(Number),
+      },
+      performance: {
+        evidence: expect.stringMatching(/^(closed-fills-only|no-closed-trades)$/),
+      },
+      diagnosis: {
+        findings: expect.any(Array),
+        nextActions: expect.any(Array),
+      },
+    });
+    expect(
+      response.json().capital.planRealizationRatio === null ||
+        typeof response.json().capital.planRealizationRatio === "number",
+    ).toBe(true);
+    const guardrails = response.json().guardrails as string[];
+    expect(guardrails.join(" ")).toContain("Paper");
+    expect(guardrails.join(" ")).toContain("T+1");
+    const hardCap = guardrails.find((guardrail) =>
+      guardrail.includes("每日自动订单硬上限")
+    );
+    expect(hardCap).toBeDefined();
+    const hardCapValue = Number(/(\d+) 笔/.exec(hardCap ?? "")?.[1]);
+    expect(hardCapValue).toBeGreaterThan(0);
+    expect(hardCapValue).toBeLessThanOrEqual(10);
+  });
+
+  it("selects the previous complete trading week when requested", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/research/weekly-paper-review?period=previous",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      period: {
+        window: "previous",
+        startDate: expect.any(String),
+        endDate: expect.any(String),
+      },
+      capital: {
+        maxSingleOrderNotional: 100_000,
+        maxOrderCapitalRatio: expect.any(Number),
+        sizingConstraint: expect.any(String),
+      },
+    });
+  });
+
   it("returns a daily market and paper trading review", async () => {
     const response = await app.inject({
       method: "GET",
@@ -1200,14 +1323,14 @@ describe("trading API", () => {
 
       expect(run.statusCode).toBe(200);
       expect(run.json().run).toMatchObject({
-        planQuality: "not-run",
+        planQuality: "watch-only",
         submittedOrders: [],
       });
       expect(run.json().run.skippedOperations).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          symbol: "SYSTEM",
+          symbol: "CASH",
           action: "observe",
-          reason: expect.stringContaining("temporarily unavailable"),
+          reason: expect.stringContaining("没有可交易行情"),
         }),
       ]));
       expect(health.statusCode).toBe(200);
@@ -1280,6 +1403,10 @@ describe("trading API", () => {
           data: expect.objectContaining({
             trigger: "manual",
             submittedOrders: 1,
+            planSnapshot: expect.objectContaining({
+              buyPlanCount: expect.any(Number),
+              buyNotional: expect.any(Number),
+            }),
           }),
         }),
         expect.objectContaining({

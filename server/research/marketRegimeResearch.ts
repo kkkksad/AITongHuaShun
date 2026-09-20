@@ -749,6 +749,24 @@ function unavailableReport(input: BuildMarketRegimeResearchInput): MarketRegimeR
   };
 }
 
+export function buildUnavailableMarketRegimeResearch(
+  input: BuildMarketRegimeResearchInput,
+  warning?: string,
+): MarketRegimeResearchReport {
+  const report = unavailableReport(input);
+  if (!warning || input.marketDataProvider !== "akshare") return report;
+  return {
+    ...report,
+    sourceStatus: "degraded",
+    warnings: [warning],
+    guardrails: report.guardrails.map((rule) =>
+      rule === "真实源未启用时不会使用静态板块数据替代。"
+        ? "历史研究源超时或不可用时不会使用静态板块数据替代。"
+        : rule,
+    ),
+  };
+}
+
 export function selectSectorUniverse(
   sectors: SectorSnapshot[],
   limit: number,

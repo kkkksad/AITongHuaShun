@@ -3,6 +3,7 @@ import type { HistoricalBar, HistoricalSeries } from "./marketRegimeResearch";
 import {
   buildExternalMarketImpact,
   buildExternalValidation,
+  buildUnavailableExternalMarketImpact,
   deriveAshareImpact,
   latestReturnBefore,
 } from "./externalMarketImpact";
@@ -119,6 +120,27 @@ describe("deriveAshareImpact", () => {
 });
 
 describe("buildExternalMarketImpact", () => {
+  it("represents an auxiliary timeout as degraded neutral context", () => {
+    const report = buildUnavailableExternalMarketImpact({
+      bridgeUrl: "http://127.0.0.1:8800",
+      marketDataProvider: "akshare",
+      mode: "paper",
+      days: 500,
+      timeoutMs: 4_000,
+    }, "外部市场研究超时");
+
+    expect(report).toMatchObject({
+      sourceStatus: "degraded",
+      markets: [],
+      crypto: [],
+      aShareImpact: {
+        bias: "neutral",
+        allowPositionIncrease: false,
+      },
+    });
+    expect(report.warnings).toEqual(["外部市场研究超时"]);
+  });
+
   it("does not fetch or fabricate external markets in mock mode", async () => {
     const fetchImpl = vi.fn();
     const report = await buildExternalMarketImpact({

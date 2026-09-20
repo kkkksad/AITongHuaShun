@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AccountSnapshot, MarketSnapshot, OrderRecord } from "../../shared/trading";
 import type { DailyCandidateReport } from "./dailyCandidates";
 import type { DailyQualityStockReport } from "./dailyQualityStocks";
+import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
 import type { MarketRegimeResearchReport, StockRegime } from "./marketRegimeResearch";
 import { buildPaperTradingPlan } from "./paperTradingPlan";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
@@ -310,10 +311,16 @@ function buildEntryDisciplinePlan(input: {
   stockRegime?: StockRegime | "missing";
   confidence?: number;
   orders?: OrderRecord[];
+  accountCash?: number;
+  candidateScore?: number;
+  adaptiveRouting?: AdaptiveStrategyRouting;
+  activityTargetActive?: boolean;
+  activityMode?: "observe" | "qualified-probe" | "validation-probe";
 }) {
   const marketTime = "2026-07-21T02:00:00.000Z";
   const price = input.price ?? 10;
   const symbol = "600010";
+  const accountCash = input.accountCash ?? 10_000;
   const snapshot: MarketSnapshot = {
     mode: "paper",
     sequence: 1,
@@ -338,8 +345,8 @@ function buildEntryDisciplinePlan(input: {
   const account: AccountSnapshot = {
     accountId: "PAPER-CN-01",
     mode: "paper",
-    cash: 10_000,
-    equity: 10_000,
+    cash: accountCash,
+    equity: accountCash,
     marketValue: 0,
     unrealizedPnl: 0,
     realizedPnl: 0,
@@ -360,6 +367,12 @@ function buildEntryDisciplinePlan(input: {
               name: "包钢股份",
               regime: input.stockRegime,
               confidence: input.confidence ?? 0.72,
+              barCount: 180,
+              features: {
+                return20d: 0.01,
+                distanceFromMa20: -0.02,
+                ma20Slope5d: -0.002,
+              },
               validation: {
                 samples: 28,
                 hitRate5d: 0.61,
@@ -381,13 +394,14 @@ function buildEntryDisciplinePlan(input: {
         symbol,
         name: "包钢股份",
         price,
-        score: 96,
+        score: input.candidateScore ?? 96,
         action: "focus",
         reasons: ["流动性充足", "日内承接较强"],
       }],
     } as unknown as DailyQualityStockReport,
+    adaptiveRouting: input.adaptiveRouting,
     marketRegimeResearch,
-    initialCapital: 10_000,
+    initialCapital: accountCash,
     lotSize: 100,
     maxPositionWeight: 0.5,
     maxSingleOrderNotional: input.maxSingleOrderNotional ?? 2_000,
@@ -395,7 +409,59 @@ function buildEntryDisciplinePlan(input: {
     minimumCommission: 5,
     cashReserveRatio: 0,
     strategyProfile: "growth",
+    activityTargetActive: input.activityTargetActive,
+    activityMode: input.activityMode,
   });
+}
+
+function validationRouting(
+  strategyKey: "kairosQualifiedProbe" | "kairosValidationBasket",
+): AdaptiveStrategyRouting {
+  return {
+    version: "1.4.0",
+    generatedAt: "2026-07-21T02:00:00.000Z",
+    regime: "range-high-volatility",
+    confidence: 0.72,
+    positionPosture: "accumulate",
+    allowNewPositions: true,
+    cashReserveRatio: 0,
+    newPositionScale: 1,
+    eligibleStrategyKeys: [strategyKey],
+    disabledStrategyKeys: [],
+    strategyPlaybook: {
+      primaryStrategyKeys: [strategyKey],
+      useWhen: "Paper 验证",
+      avoidWhen: "风险状态或数据不完整",
+      recheckTriggers: ["目标已完成"],
+    },
+    capitalPacing: {
+      openingMaxInvestedRatio: 0.55,
+      morningMaxInvestedRatio: 0.7,
+      afternoonMaxInvestedRatio: 0.82,
+      closingMaxInvestedRatio: 0.9,
+    },
+    stability: {
+      status: "direct",
+      observedRegime: "range-high-volatility",
+      previousConfirmedRegime: null,
+      previousConfirmedAt: null,
+      rationale: "test",
+    },
+    evidence: [],
+    riskFlags: [],
+    metrics: {
+      constructiveSectorRatio: 0.5,
+      cautiousSectorRatio: 0.2,
+      averageReturn20d: 0.01,
+      averageReturn60d: 0.03,
+      averageMa20Slope5d: 0,
+      averageVolatility20d: 0.25,
+      averageBreadthRatio: 0.5,
+      averageCurrentChangePercent: 0.5,
+      healthyStockRatio: 0.5,
+      deterioratingStockRatio: 0.2,
+    },
+  };
 }
 
 describe("buildPaperTradingPlan entry discipline", () => {
@@ -449,6 +515,88 @@ describe("buildPaperTradingPlan entry discipline", () => {
           expect.stringContaining("round-trip-fee-ratio: blocked"),
         ]),
       }),
+    ]));
+  });
+
+  it("scales qualified probe size with signal strength instead of using one minimum lot", () => {
+    const quantities = [65, 80, 96].map((candidateScore) => {
+      const plan = buildEntryDisciplinePlan({
+        stockRegime: "healthy-trend",
+        accountCash: 100_000,
+        maxSingleOrderNotional: 20_000,
+        candidateScore,
+        adaptiveRouting: validationRouting("kairosQualifiedProbe"),
+        activityTargetActive: true,
+        activityMode: "qualified-probe",
+      });
+      const operation = plan.operations.find(
+        (item) => item.action === "paper-buy-plan",
+      );
+      expect(operation).toBeDefined();
+      expect(operation?.strategyKey).toBe("kairosQualifiedProbe");
+      expect(operation?.ruleChecks).toEqual(expect.arrayContaining([
+        expect.stringContaining("validation-budget:"),
+      ]));
+      expect(operation?.estimatedNotional ?? 0).toBeLessThanOrEqual(20_000);
+      return operation?.quantity ?? 0;
+    });
+
+    expect(quantities[0]).toBeGreaterThan(100);
+    expect(quantities[1]).toBeGreaterThan(quantities[0]);
+    expect(quantities[2]).toBeGreaterThan(quantities[1]);
+  });
+
+  it("uses the available configured cap without exceeding cash or position limits", () => {
+    const smallCap = buildEntryDisciplinePlan({
+      stockRegime: "healthy-trend",
+      accountCash: 100_000,
+      maxSingleOrderNotional: 2_500,
+      candidateScore: 96,
+      adaptiveRouting: validationRouting("kairosQualifiedProbe"),
+      activityTargetActive: true,
+      activityMode: "qualified-probe",
+    });
+    const largerCap = buildEntryDisciplinePlan({
+      stockRegime: "healthy-trend",
+      accountCash: 100_000,
+      maxSingleOrderNotional: 10_000,
+      candidateScore: 96,
+      adaptiveRouting: validationRouting("kairosQualifiedProbe"),
+      activityTargetActive: true,
+      activityMode: "qualified-probe",
+    });
+    const smallOperation = smallCap.operations.find((item) => item.action === "paper-buy-plan");
+    const largerOperation = largerCap.operations.find((item) => item.action === "paper-buy-plan");
+
+    expect(largerOperation?.quantity ?? 0).toBeGreaterThan(smallOperation?.quantity ?? 0);
+    expect(largerOperation?.estimatedNotional ?? 0).toBeLessThanOrEqual(10_000);
+    expect(largerOperation?.ruleChecks).toEqual(expect.arrayContaining([
+      "cash-check: pass",
+      expect.stringContaining("cash-reservation: pass ("),
+    ]));
+  });
+
+  it("gives the validation basket a bounded but non-minimum fee-efficient budget", () => {
+    const plan = buildEntryDisciplinePlan({
+      stockRegime: "unclear",
+      accountCash: 100_000,
+      maxSingleOrderNotional: 20_000,
+      candidateScore: 80,
+      adaptiveRouting: validationRouting("kairosValidationBasket"),
+      activityTargetActive: true,
+      activityMode: "validation-probe",
+    });
+    const operation = plan.operations.find(
+      (item) => item.action === "paper-buy-plan",
+    );
+
+    expect(operation).toMatchObject({
+      strategyKey: "kairosValidationBasket",
+    });
+    expect(operation?.quantity ?? 0).toBeGreaterThan(100);
+    expect(operation?.estimatedNotional ?? 0).toBeLessThanOrEqual(12_000);
+    expect(operation?.ruleChecks).toEqual(expect.arrayContaining([
+      expect.stringContaining("validation-budget:"),
     ]));
   });
 
