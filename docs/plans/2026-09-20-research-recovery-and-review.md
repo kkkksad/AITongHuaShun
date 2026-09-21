@@ -52,18 +52,20 @@ Commands: `node_modules/.bin/vitest.cmd run --dir server --environment node`, `n
 
 Completed locally. Server: 62 files / 890 tests. Web: 32 files / 120 tests. TypeScript and production build passed (2,322 modules); diff whitespace check passed. Browser checks used an isolated fixture with a simulated 100,000 account, not production data. Desktop and 390px mobile layouts had no horizontal overflow; individual metric cells had no overflow and the console had no errors. The mobile defect was reproduced visually before correction.
 
-Local preview at `http://127.0.0.1:4173` uses a loopback API on 8787, mock quotes and an in-memory Paper account. Auto execution, WxPusher and external feature capture are disabled for these processes only. Existing login configuration and persistent files are unchanged. The AkShare bridge is not running. No commit or production deployment was performed; current production transactions and win rates remain unverified.
+Local preview at `http://127.0.0.1:4173` uses a loopback API on 8787, mock quotes and an in-memory Paper account. Auto execution, WxPusher and external feature capture are disabled for these processes only. Existing login configuration and persistent files are unchanged. The AkShare bridge is not running. Production transaction history and win rates remain outside this local verification scope.
 
 ## Deployment Follow-Up
 
-User requested deployment after the local verification. Target: existing production branch `codex/real-market-regime`, server `124.221.165.45`, `/opt/kairos` and domain `kairosq.cn`.
+User requested deployment after the local verification. Target: the unified production branch `main`, server `124.221.165.45`, `/opt/kairos` and domain `kairosq.cn`.
 
 - [x] Read existing deployment workflow and confirm authenticated SSH, healthy containers and available disk (22 GB).
 - [x] Add `.env.*` Docker build-context exclusion and a regression test. The pre-fix test failed as expected; no credential contents were inspected or changed.
 - [x] Back up production Paper data under the protected runtime directory: `runtime/backups/paper-before-20260920-154311.tar.gz`; archive listing verified. A server-local configuration digest will verify that `.env.production` remains unchanged.
-- [ ] Commit the verified application changes and deploy via the existing production workflow. Leave unrelated pnpm runtime metadata untracked.
-- [ ] Verify container health, HTTPS, protected API authorization and new frontend assets; record the exact deployed revision.
+- [x] Commit the verified application changes and deploy via the existing production workflow. Leave unrelated pnpm runtime metadata untracked.
+- [x] Verify the successful workflow jobs, public health endpoints and exact deployed revision. The production workflow run `35520743365` completed successfully for `06a1d3992e7fb1a3e2817df0ba933a047c108954`; both the verification and server deployment jobs passed. On 2026-09-21, `https://kairosq.cn/healthz` and `/api/health` returned 200; the API reported `paper + akshare`, authentication enabled and real trading disabled.
 
 Pre-existing TLS issue confirmed: `kairosq.cn` resolves to the target, but the installed certificate is self-signed and only lists IP `124.221.165.45` (valid August 2026 to August 2027). Standard client trust validation fails before deployment. A trusted domain certificate is a separate follow-up; this release does not silently replace it or bypass browser warnings.
 
 First workflow attempt `35520517204` stopped at web tests without deploying. Its annotation identified an old weekly API test that depended on the local `VITE_API_BASE_URL`; the production same-origin path correctly lacks that prefix. The test now explicitly exercises both same-origin and configured-base requests with isolated environment stubs. Application URL behavior is unchanged.
+
+The corrected follow-up commit `06a1d39` was pushed to the former `codex/real-market-regime` deployment branch on 2026-09-20 and deployed successfully. The repository is being normalized to one `main` branch; the deployment workflow now listens to `main` so future pushes retain the same production path.
