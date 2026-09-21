@@ -127,7 +127,7 @@ describe("critical paper research bounds", () => {
     expect(resolveAuxiliaryResearchTimeoutMs(30_000)).toBe(4_000);
   });
   it("expands the bounded history pool only while an activity target is active", () => {
-    expect(resolveCriticalHistoryStockLimit(false)).toBe(6);
+    expect(resolveCriticalHistoryStockLimit(false)).toBe(8);
     expect(resolveCriticalHistoryStockLimit(true)).toBe(12);
   });
 

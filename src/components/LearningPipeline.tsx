@@ -110,6 +110,7 @@ export default function LearningPipeline() {
   const learningState = learningStateQuery.data;
   const paperPlan = paperPlanQuery.data;
   const paperPlanQuality = paperPlan?.qualitySummary;
+  const activityFunnel = paperPlanQuality?.activityFunnel;
   const dailyReview = dailyReviewQuery.data;
   const weeklyPaperReview = weeklyPaperReviewQuery.data;
   const weeklyHistoryCoverage = weeklyPaperReview?.sample.historyCoverage;
@@ -688,8 +689,8 @@ export default function LearningPipeline() {
               </small>
             </div>
           )}
-          {paperPlanQuality && (
-            <div className="learning-plan-summary">
+           {paperPlanQuality && (
+             <div className="learning-plan-summary">
               <strong>纸面计划诊断</strong>
               <p>{paperPlanQuality.summary}</p>
               <span>
@@ -714,10 +715,43 @@ export default function LearningPipeline() {
                 已命中 {paperPlanQuality.strategyCoverage.matchedKeys.length} 个 ·
                 主策略 {adaptiveStrategyLabel(paperPlanQuality.strategyCoverage.dominantStrategyKey ?? "暂无")}
               </span>
-              <small>合格机会覆盖，不强制换手，不代表预期盈利。</small>
-            </div>
-          )}
-          <div className="learning-run-list">
+               <small>合格机会覆盖，不强制换手，不代表预期盈利。</small>
+             </div>
+           )}
+           {activityFunnel && (
+             <div className="learning-plan-summary learning-activity-funnel">
+               <strong>交易漏斗：候选 → 可买 → 历史 → 策略 → 计划 → 成交</strong>
+               <div className="learning-memory-grid">
+                 <article>
+                   <span>候选 / 可买</span>
+                   <strong>{activityFunnel.observedCandidates} / {activityFunnel.affordableCandidates}</strong>
+                   <small>有足够资金完成一手计算</small>
+                 </article>
+                 <article>
+                   <span>历史 / 策略</span>
+                   <strong>{activityFunnel.historyCoveredCandidates} / {activityFunnel.strategyQualifiedCandidates}</strong>
+                   <small>真实历史覆盖与路由命中</small>
+                 </article>
+                 <article>
+                   <span>计划 / 提交</span>
+                   <strong>{activityFunnel.plannedOrders} / {activityFunnel.submittedOrders}</strong>
+                   <small>计划动作与执行器提交</small>
+                 </article>
+                 <article>
+                   <span>成交</span>
+                   <strong>{activityFunnel.filledOrders}</strong>
+                   <small>成交结果只代表本地 Paper</small>
+                 </article>
+               </div>
+               {Object.entries(activityFunnel.blockerCounts)
+                 .filter(([, value]) => value > 0)
+                 .slice(0, 4)
+                 .map(([code, value]) => (
+                   <span key={code}>阻塞 {code}：{value} 个候选</span>
+                 ))}
+             </div>
+           )}
+           <div className="learning-run-list">
             {(paperPlan?.operations ?? []).slice(0, 8).map((operation) => (
               <article key={`${operation.timestamp}-${operation.symbol}-${operation.action}`}>
                 <BarChart3 size={15} />

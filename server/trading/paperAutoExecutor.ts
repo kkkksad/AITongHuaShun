@@ -1,4 +1,5 @@
 import type { OrderRecord, OrderRequest } from "../../shared/trading";
+import type { PaperActivityFunnel } from "../../shared/trading";
 import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
 import {
@@ -54,10 +55,12 @@ export interface PaperAutoExecutionPlanSnapshot {
   sellPlanCount: number;
   buyNotional: number;
   sellNotional: number;
+  activityFunnel?: PaperActivityFunnel;
 }
 
 function buildPlanSnapshot(
   plan: PaperTradingPlan,
+  submittedOrders: PaperAutoExecutionOrder[] = [],
 ): PaperAutoExecutionPlanSnapshot {
   const buyPlans = plan.operations.filter(
     (operation) => operation.action === "paper-buy-plan",
@@ -65,6 +68,32 @@ function buildPlanSnapshot(
   const sellPlans = plan.operations.filter(
     (operation) => operation.action === "paper-sell-plan",
   );
+  const planFunnel = plan.qualitySummary.activityFunnel ?? {
+    observedCandidates: plan.qualitySummary.candidatePoolSize,
+    affordableCandidates: plan.qualitySummary.affordableCandidateCount,
+    historyCoveredCandidates: 0,
+    strategyQualifiedCandidates: plan.qualitySummary.strategyCoverage.matchedCandidateCount,
+    plannedOrders: buyPlans.length + sellPlans.length,
+    plannedBuyOrders: buyPlans.length,
+    plannedSellOrders: sellPlans.length,
+    submittedOrders: 0,
+    filledOrders: 0,
+    blockedCandidates: plan.qualitySummary.actionCounts.blocked,
+    blockerCounts: {
+      "market-data": 0,
+      history: 0,
+      strategy: 0,
+      affordability: 0,
+      fees: 0,
+      cash: 0,
+      position: 0,
+      phase: 0,
+      risk: 0,
+      duplicate: 0,
+      execution: 0,
+      other: 0,
+    },
+  } satisfies PaperActivityFunnel;
   return {
     operationCount: plan.operations.length,
     buyPlanCount: buyPlans.length,
@@ -75,8 +104,13 @@ function buildPlanSnapshot(
     ),
     sellNotional: Number(
       sellPlans.reduce((sum, operation) => sum + operation.estimatedNotional, 0)
-        .toFixed(2),
+      .toFixed(2),
     ),
+    activityFunnel: {
+      ...planFunnel,
+      submittedOrders: submittedOrders.length,
+      filledOrders: submittedOrders.filter((order) => order.status === "filled").length,
+    },
   };
 }
 
@@ -795,7 +829,7 @@ export class PaperAutoExecutor {
           candidatePoolSize: plan.qualitySummary.candidatePoolSize,
           affordableCandidateCount: plan.qualitySummary.affordableCandidateCount,
         },
-        buildPlanSnapshot(plan),
+          buildPlanSnapshot(plan, submittedOrders),
       );
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);

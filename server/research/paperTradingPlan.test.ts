@@ -126,6 +126,16 @@ describe("buildPaperTradingPlan cash reservation", () => {
         ruleChecks: expect.arrayContaining(["cash-reservation: blocked"]),
       }),
     ]));
+    expect(plan.qualitySummary.activityFunnel).toMatchObject({
+      observedCandidates: 2,
+      affordableCandidates: 2,
+      plannedOrders: 1,
+      plannedBuyOrders: 1,
+      submittedOrders: 0,
+      filledOrders: 0,
+      blockedCandidates: 1,
+      blockerCounts: expect.objectContaining({ affordability: 1 }),
+    });
   });
 
   it("uses the market snapshot time for plan and operation timestamps", () => {

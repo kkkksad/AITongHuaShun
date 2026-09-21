@@ -51,4 +51,15 @@ describe("LearningPipeline", () => {
     expect(source).toContain("weeklyPaperReview.blockers.slice(0, 4)");
     expect(source).toContain("记录估算金额");
   });
+
+  it("shows the paper activity funnel and bounded blocker categories", () => {
+    const source = readFileSync("src/components/LearningPipeline.tsx", "utf8");
+
+    expect(source).toContain("activityFunnel");
+    expect(source).toContain("候选 → 可买 → 历史 → 策略 → 计划 → 成交");
+    expect(source).toContain("historyCoveredCandidates");
+    expect(source).toContain("strategyQualifiedCandidates");
+    expect(source).toContain("blockerCounts");
+    expect(source).toContain("成交结果只代表本地 Paper");
+  });
 });

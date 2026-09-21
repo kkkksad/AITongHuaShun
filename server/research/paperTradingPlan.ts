@@ -3,6 +3,7 @@ import type {
   MarketQuote,
   MarketSnapshot,
   OrderRecord,
+  PaperActivityFunnel,
   PaperStrategyProfile,
   PositionSnapshot,
   TradingMode,
@@ -11,6 +12,7 @@ import {
   getPaperStrategyProfilePolicy,
   type PaperStrategyProfilePolicy,
 } from "../trading/paperStrategyProfile";
+import { buildPaperActivityFunnel } from "../trading/paperActivityFunnel";
 import type { DailyCandidateReport } from "./dailyCandidates";
 import type { DailyQualityStockReport } from "./dailyQualityStocks";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
@@ -71,6 +73,7 @@ export interface PaperTradingPlanQualitySummary {
     dominantBlocker: string | null;
     summary: string;
   };
+  activityFunnel?: PaperActivityFunnel;
   planQuality: "actionable" | "watch-only" | "blocked";
   summary: string;
 }
@@ -455,6 +458,8 @@ function buildQualitySummary(input: {
   operations: PaperTradingOperation[];
   candidatePoolSize: number;
   affordableCandidateCount: number;
+  historyCoveredCandidateCount: number;
+  strategyQualifiedCandidateCount: number;
   positionConflictCount: number;
   cash: number;
   commissionRate: number;
@@ -497,7 +502,14 @@ function buildQualitySummary(input: {
       ? `paper plan has ${actionCounts["paper-buy-plan"]} buy plans, ${actionCounts["paper-sell-plan"]} sell plans, and ${(cashDeploymentPercent * 100).toFixed(1)}% cash deployment.`
       : planQuality === "blocked"
         ? `paper plan is blocked by ${actionCounts.blocked} rule checks; keep cash until constraints clear.`
-        : "paper plan stays watch-only; no forced trade under current snapshot.";
+    : "paper plan stays watch-only; no forced trade under current snapshot.";
+  const activityFunnel = buildPaperActivityFunnel({
+    candidatePoolSize: input.candidatePoolSize,
+    affordableCandidateCount: input.affordableCandidateCount,
+    historyCoveredCandidateCount: input.historyCoveredCandidateCount,
+    strategyQualifiedCandidateCount: input.strategyQualifiedCandidateCount,
+    operations: input.operations,
+  });
 
   return {
     candidatePoolSize: input.candidatePoolSize,
@@ -515,6 +527,7 @@ function buildQualitySummary(input: {
       ...input.strategyCoverage,
       dominantBlocker,
     },
+    activityFunnel,
     planQuality,
     summary,
   };
@@ -955,6 +968,9 @@ export function buildPaperTradingPlan(input: {
       ? `当前候选覆盖 ${matchedKeys.length} 个路由策略，最高覆盖为 ${dominantStrategyKey}；未匹配候选 ${unmatchedCandidateCount} 个。`
       : "当前没有候选通过可用策略规则，保持观察，不强行增加交易。",
   } satisfies PaperTradingPlanQualitySummary["strategyCoverage"];
+  const historyCoveredCandidateCount = candidatePool.filter((candidate) =>
+    stockRegimeMap.has(candidate.symbol),
+  ).length;
 
   let remainingPlannedCash = plannedCashBudget;
   const adaptiveAllowsBuying = input.adaptiveRouting?.allowNewPositions ?? true;
@@ -1276,6 +1292,8 @@ export function buildPaperTradingPlan(input: {
       operations,
       candidatePoolSize,
       affordableCandidateCount,
+      historyCoveredCandidateCount,
+      strategyQualifiedCandidateCount: matchedCandidateCount,
       positionConflictCount,
       cash: input.account.cash,
       commissionRate: input.commissionRate,

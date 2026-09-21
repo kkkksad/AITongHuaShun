@@ -1126,6 +1126,13 @@ describe("trading API", () => {
         matchedKeys: expect.any(Array),
         unmatchedCandidateCount: expect.any(Number),
       }),
+      activityFunnel: expect.objectContaining({
+        observedCandidates: expect.any(Number),
+        affordableCandidates: expect.any(Number),
+        plannedOrders: expect.any(Number),
+        submittedOrders: 0,
+        filledOrders: 0,
+      }),
       planQuality: expect.stringMatching(/^(actionable|watch-only|blocked)$/),
     });
     expect(response.json().operations.length).toBeGreaterThan(0);
@@ -1406,6 +1413,11 @@ describe("trading API", () => {
             planSnapshot: expect.objectContaining({
               buyPlanCount: expect.any(Number),
               buyNotional: expect.any(Number),
+              activityFunnel: expect.objectContaining({
+                plannedOrders: expect.any(Number),
+                submittedOrders: 1,
+                filledOrders: 1,
+              }),
             }),
           }),
         }),

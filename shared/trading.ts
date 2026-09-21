@@ -4,6 +4,34 @@ export type PaperStrategyProfile =
   | "defensive"
   | "balanced"
   | "growth";
+
+export type PaperActivityBlockerCode =
+  | "market-data"
+  | "history"
+  | "strategy"
+  | "affordability"
+  | "fees"
+  | "cash"
+  | "position"
+  | "phase"
+  | "risk"
+  | "duplicate"
+  | "execution"
+  | "other";
+
+export interface PaperActivityFunnel {
+  observedCandidates: number;
+  affordableCandidates: number;
+  historyCoveredCandidates: number;
+  strategyQualifiedCandidates: number;
+  plannedOrders: number;
+  plannedBuyOrders: number;
+  plannedSellOrders: number;
+  submittedOrders: number;
+  filledOrders: number;
+  blockedCandidates: number;
+  blockerCounts: Record<PaperActivityBlockerCode, number>;
+}
 export type OrderSide = "buy" | "sell";
 export type OrderType = "market" | "limit";
 export type OrderStatus = "accepted" | "filled" | "rejected" | "cancelled" | "pending";

@@ -139,7 +139,7 @@ export function resolveChinaTradingDate(value: Date): string {
 export function resolveCriticalHistoryStockLimit(
   activityTargetActive: boolean,
 ): number {
-  return activityTargetActive ? 12 : 6;
+  return activityTargetActive ? 12 : 8;
 }
 
 function strategyKeyFromDecision(audit: AuditEvent): string | null {

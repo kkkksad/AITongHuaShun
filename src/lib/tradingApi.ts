@@ -583,6 +583,19 @@ export interface PaperTradingPlanQualitySummary {
     dominantBlocker: string | null;
     summary: string;
   };
+  activityFunnel?: {
+    observedCandidates: number;
+    affordableCandidates: number;
+    historyCoveredCandidates: number;
+    strategyQualifiedCandidates: number;
+    plannedOrders: number;
+    plannedBuyOrders: number;
+    plannedSellOrders: number;
+    submittedOrders: number;
+    filledOrders: number;
+    blockedCandidates: number;
+    blockerCounts: Record<string, number>;
+  };
   planQuality: "actionable" | "watch-only" | "blocked";
   summary: string;
 }
@@ -761,6 +774,7 @@ export interface PaperAutoExecutionPlanSnapshot {
   sellPlanCount: number;
   buyNotional: number;
   sellNotional: number;
+  activityFunnel?: PaperTradingPlanQualitySummary["activityFunnel"];
 }
 
 export interface PaperAutoExecutionSkip {
