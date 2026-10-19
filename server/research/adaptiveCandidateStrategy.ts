@@ -1,4 +1,4 @@
-import type { MarketQuote } from "../../shared/trading";
+import type { MarketQuote, PaperExecutionStrategy } from "../../shared/trading";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
 import type { StockRegimeResult } from "./marketRegimeResearch";
 
@@ -29,6 +29,8 @@ export interface AdaptiveCandidateStrategyInput {
   stockRegime: StockRegimeResult | undefined;
   routing: AdaptiveStrategyRouting;
   candidateScore: number;
+  /** auto 使用市场路由；手动值仅允许该策略通过候选过滤。 */
+  executionStrategy?: PaperExecutionStrategy;
   activityTargetActive?: boolean;
   validationProbeActive?: boolean;
 }
@@ -109,6 +111,9 @@ export function rankAdaptiveCandidateStrategies(
   }
 
   const eligible = new Set(routing.eligibleStrategyKeys);
+  const manualStrategy = input.executionStrategy && input.executionStrategy !== "auto"
+    ? input.executionStrategy
+    : null;
   const primaryIndexes = new Map(
     routing.strategyPlaybook.primaryStrategyKeys.map((key, index) => [key, index]),
   );
@@ -127,7 +132,10 @@ export function rankAdaptiveCandidateStrategies(
     score: number,
     evidence: string[],
   ) => {
-    if (!eligible.has(strategyKey)) return;
+    const strategyAllowed = manualStrategy
+      ? strategyKey === manualStrategy
+      : eligible.has(strategyKey);
+    if (!strategyAllowed) return;
     signals.push({
       strategyKey,
       strategyName,

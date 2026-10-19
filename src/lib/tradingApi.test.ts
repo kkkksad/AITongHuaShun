@@ -29,6 +29,7 @@ import {
   notifyAuthExpired,
   runPaperAutoExecutionOnce,
   resetPaperAccount,
+  updatePaperExecutionStrategy,
   updatePaperStrategyProfile,
 } from "./tradingApi";
 
@@ -90,7 +91,7 @@ describe("session-aware trading API", () => {
     expect(window.localStorage.length).toBe(0);
   });
 
-  it("sends protected paper account reset and profile updates without browser storage", async () => {
+  it("sends protected paper account reset, profile and execution strategy updates without browser storage", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({
@@ -111,9 +112,11 @@ describe("session-aware trading API", () => {
     await resetPaperAccount({
       startingCash: 10_000,
       strategyProfile: "defensive",
+      executionStrategy: "kairosTrendHealth",
       confirmation: "重置模拟账户",
     });
     await updatePaperStrategyProfile("growth");
+    await updatePaperExecutionStrategy("kairosQuietPullback");
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
@@ -124,6 +127,7 @@ describe("session-aware trading API", () => {
         body: JSON.stringify({
           startingCash: 10_000,
           strategyProfile: "defensive",
+          executionStrategy: "kairosTrendHealth",
           confirmation: "重置模拟账户",
         }),
       }),
@@ -132,6 +136,14 @@ describe("session-aware trading API", () => {
       3,
       expect.stringMatching(/\/api\/account\/strategy-profile$/),
       expect.objectContaining({ method: "PUT" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      expect.stringMatching(/\/api\/account\/execution-strategy$/),
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ executionStrategy: "kairosQuietPullback" }),
+      }),
     );
     expect(window.localStorage.length).toBe(0);
   });

@@ -115,6 +115,22 @@ describe("ExternalMarketFeatureCapture", () => {
     }));
   });
 
+  it("does nothing on legal holidays", async () => {
+    const upsert = vi.fn();
+    const buildReport = vi.fn();
+    const capture = new ExternalMarketFeatureCapture({
+      store: { upsert },
+      buildReport,
+      fetchHs300CloseReturn: vi.fn(),
+      clock: () => new Date("2026-10-05T01:20:00Z"),
+    });
+
+    await capture.runOnce();
+
+    expect(buildReport).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
   it("does nothing on weekends", async () => {
     const upsert = vi.fn();
     const buildReport = vi.fn();

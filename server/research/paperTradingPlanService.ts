@@ -342,6 +342,7 @@ export async function buildCurrentPaperTradingPlan(input: {
   const account = input.system.broker.getAccount(snapshot);
   const positions = input.system.broker.getPositions(snapshot);
   const strategyProfile = input.system.store.getStrategyProfile();
+  const executionStrategy = input.system.store.getExecutionStrategy();
   const candidates = buildDailyCandidates(
     snapshot,
     input.system.marketDataProvider,
@@ -419,6 +420,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     minimumCommission: input.config.MIN_COMMISSION,
     cashReserveRatio: input.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
     strategyProfile,
+    executionStrategy,
     activityTargetActive: input.activityTargetActive,
     activityMode: input.activityMode,
     strategyUsage: summarizeRecentPaperStrategyUsage(

@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
+import { PAPER_EXECUTION_STRATEGY_CHOICES } from "../../shared/trading";
 import type { PipelineStage } from "../types";
 import { ResearchQueryState } from "./ResearchQueryState";
 import {
@@ -38,23 +39,9 @@ const stageIcons = {
   review: Eye,
 };
 
-const adaptiveStrategyLabels: Record<string, string> = {
-  kairosLowVolTrend: "低波趋势",
-  kairosTrendHealth: "趋势健康",
-  momentum: "动量确认",
-  movingAverageCross: "均线交叉",
-  macd: "MACD确认",
-  turtle: "海龟突破",
-  kairosQuietPullback: "安静回踩",
-  kairosWashoutRecovery: "洗盘恢复",
-  aSharePullback: "强势回踩",
-  rsi: "RSI回归",
-  bollingerBands: "布林下沿",
+const internalStrategyLabels: Record<string, string> = {
   kairosRiskOffRecovery: "风险修复",
   kairosCapitalShield: "资金盾牌",
-  kairosRangeRotation: "区间轮动",
-  kairosQualifiedProbe: "合格样本验证",
-  kairosValidationBasket: "验证篮子",
 };
 
 const weeklySizingConstraintLabels: Record<string, string> = {
@@ -74,7 +61,10 @@ const weeklyHistoryCoverageLabels: Record<string, string> = {
 };
 
 function adaptiveStrategyLabel(key: string): string {
-  return adaptiveStrategyLabels[key] ?? key;
+  const option = PAPER_EXECUTION_STRATEGY_CHOICES.find(
+    (candidate) => candidate.key === key,
+  );
+  return option?.label ?? internalStrategyLabels[key] ?? key;
 }
 
 export default function LearningPipeline() {
@@ -634,6 +624,30 @@ export default function LearningPipeline() {
               <small>一手 {paperPlan?.capitalPlan.lotSize ?? 100} 股</small>
             </article>
           </div>
+          {paperPlan?.capitalPlan.sizingDiagnostics && (
+            <div className="learning-plan-summary">
+              <strong>下单规模诊断</strong>
+              <p>{paperPlan.capitalPlan.sizingDiagnostics.summary}</p>
+              <span>
+                风控上限 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.riskOrderCapBeforeScale).toLocaleString("zh-CN")}
+                {" · "}档位缩放后 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.riskOrderCapAfterScale).toLocaleString("zh-CN")}
+                {" · "}单票仓位上限 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.positionWeightCapAfterScale).toLocaleString("zh-CN")}
+              </span>
+              <span>
+                现金储备 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.cashReserveAmount).toLocaleString("zh-CN")}
+                {" · "}可部署 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.plannedCashBudget).toLocaleString("zh-CN")}
+                {" · "}单笔生效上限 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.effectiveOrderCap).toLocaleString("zh-CN")}
+                {" · "}最低费用效率金额 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.minimumFeeEfficientNotional).toLocaleString("zh-CN")}
+              </span>
+              {paperPlan.capitalPlan.sizingDiagnostics.plannedBuyOrderCount > 0 && (
+                <span>
+                  计划买入 {paperPlan.capitalPlan.sizingDiagnostics.plannedBuyOrderCount} 笔
+                  {" · "}平均 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.averagePlannedBuyNotional).toLocaleString("zh-CN")}
+                  {" · "}最大 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.largestPlannedBuyNotional).toLocaleString("zh-CN")}
+                </span>
+              )}
+            </div>
+          )}
           {paperPlan?.strategyProfile && (
             <div className="learning-plan-summary">
               <strong>{paperPlan.strategyProfile.label}档位</strong>
@@ -698,7 +712,14 @@ export default function LearningPipeline() {
                 {paperPlanQuality.actionCounts.blocked}，持有 {paperPlanQuality.actionCounts.hold}
               </span>
               <span>
-                策略命中 {paperPlanQuality.strategyCoverage.matchedCandidateCount} 个候选 · 覆盖{" "}
+                执行策略 {paperPlan.executionStrategy.label} ·{" "}
+                {paperPlan.executionStrategy.mode === "manual" ? "手动指定" : "市场自动路由"} ·{" "}
+                {paperPlan.executionStrategy.selectedStrategyMatched
+                  ? "当前有匹配候选"
+                  : "当前无匹配候选"}
+              </span>
+              <span>
+                策略命中 {paperPlan.executionStrategy.matchedCandidateCount} 个候选 · 覆盖{" "}
                 {paperPlanQuality.strategyCoverage.matchedKeys.length > 0
                   ? paperPlanQuality.strategyCoverage.matchedKeys
                       .map(adaptiveStrategyLabel)

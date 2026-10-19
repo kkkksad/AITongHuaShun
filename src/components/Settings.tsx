@@ -8,7 +8,11 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import type { PaperStrategyProfile } from "../../shared/trading";
+import {
+  PAPER_EXECUTION_STRATEGY_CHOICES,
+  type PaperExecutionStrategy,
+  type PaperStrategyProfile,
+} from "../../shared/trading";
 import type { TradingBackend } from "../hooks/useTradingBackend";
 
 interface SettingsProps {
@@ -84,6 +88,10 @@ export function Settings({ trading }: SettingsProps) {
   const [selectedProfile, setSelectedProfile] = useState<PaperStrategyProfile>(
     trading.account?.strategyProfile ?? "balanced",
   );
+  const [selectedExecutionStrategy, setSelectedExecutionStrategy] =
+    useState<PaperExecutionStrategy>(
+      trading.account?.executionStrategy ?? "auto",
+    );
   const [startingCash, setStartingCash] = useState(
     String(trading.account?.startingEquity ?? 10_000),
   );
@@ -99,10 +107,17 @@ export function Settings({ trading }: SettingsProps) {
     if (trading.account?.strategyProfile) {
       setSelectedProfile(trading.account.strategyProfile);
     }
+    if (trading.account?.executionStrategy) {
+      setSelectedExecutionStrategy(trading.account.executionStrategy);
+    }
     if (trading.account?.startingEquity !== undefined) {
       setStartingCash(String(trading.account.startingEquity));
     }
-  }, [trading.account?.startingEquity, trading.account?.strategyProfile]);
+  }, [
+    trading.account?.executionStrategy,
+    trading.account?.startingEquity,
+    trading.account?.strategyProfile,
+  ]);
 
   const numericStartingCash = Number(startingCash);
   const resetEnabled = useMemo(
@@ -132,11 +147,24 @@ export function Settings({ trading }: SettingsProps) {
     }
   };
 
+  const handleExecutionStrategyChange = async (
+    strategy: PaperExecutionStrategy,
+  ) => {
+    const previous = trading.account?.executionStrategy ?? "auto";
+    setSelectedExecutionStrategy(strategy);
+    try {
+      await trading.setExecutionStrategy(strategy);
+    } catch {
+      setSelectedExecutionStrategy(previous);
+    }
+  };
+
   const handleReset = async () => {
     if (!resetEnabled) return;
     await trading.resetAccount({
       startingCash: numericStartingCash,
       strategyProfile: selectedProfile,
+      executionStrategy: selectedExecutionStrategy,
       confirmation: "重置模拟账户",
     });
     setConfirmation("");
@@ -192,6 +220,53 @@ export function Settings({ trading }: SettingsProps) {
         <div className="settings-risk-note">
           <ShieldCheck size={16} />
           <span>所有档位继续服从 A 股 T+1、100 股整手、可用现金、仓位上限、熔断和 paper-only 边界。</span>
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <Gauge size={18} />
+          <div>
+            <h2>执行策略</h2>
+            <p>手动选择下一轮 Paper 买入计划使用的策略；自动模式继续跟随市场路由。</p>
+          </div>
+        </div>
+
+        <div
+          className="strategy-profile-grid"
+          role="radiogroup"
+          aria-label="Paper 执行策略"
+        >
+          {PAPER_EXECUTION_STRATEGY_CHOICES.map((option) => {
+            const selected = selectedExecutionStrategy === option.key;
+            return (
+              <button
+                aria-checked={selected}
+                className={`strategy-profile-option ${selected ? "is-selected" : ""}`}
+                disabled={trading.pendingAction || trading.mode !== "paper"}
+                key={option.key}
+                onClick={() => void handleExecutionStrategyChange(option.key)}
+                role="radio"
+                type="button"
+              >
+                <span className="strategy-profile-title">
+                  <strong>{option.label}</strong>
+                  {selected && <CheckCircle2 aria-hidden="true" size={16} />}
+                </span>
+                <span>{option.description}</span>
+                <small>
+                  {option.key === "auto" ? "市场路由" : "只在当前策略出现合格候选时考虑买入"}
+                </small>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="settings-risk-note">
+          <ShieldCheck size={16} />
+          <span>
+            执行策略只过滤新的 Paper 买入候选，不保证成交或收益；卖出、止损、风险减仓以及 T+1、整手、流动性、仓位和现金硬约束均不受影响。
+          </span>
         </div>
       </section>
 

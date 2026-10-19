@@ -437,4 +437,41 @@ describe("adaptive candidate strategy routing", () => {
       candidateScore: 90,
     })).toEqual([]);
   });
+
+  it("lets a manual strategy bypass only the market eligible-key filter", () => {
+    const result = rankAdaptiveCandidateStrategies({
+      quote,
+      stockRegime: stock("healthy-trend"),
+      routing: routing({ eligibleStrategyKeys: ["momentum"] }),
+      executionStrategy: "movingAverageCross",
+      candidateScore: 90,
+    });
+
+    expect(result).toEqual([
+      expect.objectContaining({ strategyKey: "movingAverageCross" }),
+    ]);
+  });
+
+  it("keeps the hard no-new-positions guard for a manual strategy", () => {
+    expect(rankAdaptiveCandidateStrategies({
+      quote,
+      stockRegime: stock("healthy-trend"),
+      routing: routing({
+        allowNewPositions: false,
+        eligibleStrategyKeys: ["kairosCapitalShield"],
+      }),
+      executionStrategy: "movingAverageCross",
+      candidateScore: 95,
+    })).toEqual([]);
+  });
+
+  it("does not fabricate a manual strategy signal when the stock has no matching setup", () => {
+    expect(rankAdaptiveCandidateStrategies({
+      quote,
+      stockRegime: stock("healthy-trend"),
+      routing: routing(),
+      executionStrategy: "kairosQuietPullback",
+      candidateScore: 95,
+    })).toEqual([]);
+  });
 });

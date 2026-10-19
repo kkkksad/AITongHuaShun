@@ -4,6 +4,7 @@ import type {
   OrderRecord,
   PositionSnapshot,
 } from "../../shared/trading";
+import { isAshareTradingDate } from "../trading/ashareTradingCalendar";
 
 export type WeeklyPaperReviewEvidence =
   | "sufficient"
@@ -235,11 +236,10 @@ function resolveWeekWindow(
   return { startDate: currentWeekStart, endDate };
 }
 
-function listWeekdays(startDate: string, endDate: string): string[] {
+function listTradingDays(startDate: string, endDate: string): string[] {
   const dates: string[] = [];
   for (let date = startDate; date <= endDate; date = addDays(date, 1)) {
-    const day = dateFromParts(date).getUTCDay();
-    if (day !== 0 && day !== 6) dates.push(date);
+    if (isAshareTradingDate(date)) dates.push(date);
   }
   return dates;
 }
@@ -540,7 +540,7 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
   const resolvedWindow = resolveWeekWindow(chinaDate(now), window);
   const { startDate, endDate } = resolvedWindow;
   const periodLabel = window === "previous" ? "上周" : "本周";
-  const tradingDays = listWeekdays(startDate, endDate);
+  const tradingDays = listTradingDays(startDate, endDate);
   const historyCoverage = resolveHistoryCoverage(
     now,
     endDate,

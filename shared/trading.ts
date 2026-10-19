@@ -4,6 +4,123 @@ export type PaperStrategyProfile =
   | "defensive"
   | "balanced"
   | "growth";
+
+export const PAPER_EXECUTION_STRATEGY_KEYS = [
+  "kairosLowVolTrend",
+  "kairosTrendHealth",
+  "momentum",
+  "kairosQuietPullback",
+  "kairosWashoutRecovery",
+  "aSharePullback",
+  "movingAverageCross",
+  "macd",
+  "turtle",
+  "rsi",
+  "bollingerBands",
+  "kairosRangeRotation",
+  "kairosQualifiedProbe",
+  "kairosValidationBasket",
+] as const;
+
+export type PaperManualExecutionStrategy = (typeof PAPER_EXECUTION_STRATEGY_KEYS)[number];
+export const PAPER_EXECUTION_STRATEGY_VALUES = ["auto", ...PAPER_EXECUTION_STRATEGY_KEYS] as const;
+export type PaperExecutionStrategy = (typeof PAPER_EXECUTION_STRATEGY_VALUES)[number];
+
+export interface PaperExecutionStrategyOption {
+  key: PaperExecutionStrategy;
+  label: string;
+  description: string;
+}
+
+export const PAPER_AUTO_EXECUTION_STRATEGY_OPTION: PaperExecutionStrategyOption = {
+  key: "auto",
+  label: "自动选择（跟随市场）",
+  description: "根据当前市场状态和路由规则自动选择合格策略。",
+};
+
+export const PAPER_EXECUTION_STRATEGY_OPTIONS: readonly PaperExecutionStrategyOption[] = [
+  {
+    key: "kairosLowVolTrend",
+    label: "KAIROS低波趋势",
+    description: "健康趋势、低振幅和均线斜率向上时研究强势延续。",
+  },
+  {
+    key: "kairosTrendHealth",
+    label: "KAIROS趋势健康",
+    description: "使用真实历史趋势健康度和回撤受控程度筛选候选。",
+  },
+  {
+    key: "momentum",
+    label: "趋势动量确认",
+    description: "在受控追高范围内确认价格和成交活跃度动量。",
+  },
+  {
+    key: "kairosQuietPullback",
+    label: "KAIROS安静回踩",
+    description: "上升趋势中的缩量回踩形态，等待企稳后再评估。",
+  },
+  {
+    key: "kairosWashoutRecovery",
+    label: "KAIROS洗盘恢复",
+    description: "历史验证过的洗盘后恢复形态，要求足够样本和置信度。",
+  },
+  {
+    key: "aSharePullback",
+    label: "A股强势回踩",
+    description: "强势结构中回踩受控、尚未破坏中期趋势的候选。",
+  },
+  {
+    key: "movingAverageCross",
+    label: "均线交叉确认",
+    description: "趋势周期中的均线交叉与价格结构确认。",
+  },
+  {
+    key: "macd",
+    label: "MACD趋势确认",
+    description: "使用趋势动量和 MACD 结构辅助确认。",
+  },
+  {
+    key: "turtle",
+    label: "海龟突破",
+    description: "趋势突破结构，仍需通过追高、流动性和费用过滤。",
+  },
+  {
+    key: "rsi",
+    label: "RSI超卖回归",
+    description: "震荡市场中受控低位的 RSI 回归观察。",
+  },
+  {
+    key: "bollingerBands",
+    label: "布林带下沿回归",
+    description: "震荡区间下沿附近的均值回归研究候选。",
+  },
+  {
+    key: "kairosRangeRotation",
+    label: "KAIROS区间轮动",
+    description: "震荡市场中有历史样本支持的受控区间轮动。",
+  },
+  {
+    key: "kairosQualifiedProbe",
+    label: "KAIROS合格样本验证",
+    description: "活动目标未达标时，用合格历史样本进行有界 Paper 验证。",
+  },
+  {
+    key: "kairosValidationBasket",
+    label: "KAIROS验证篮子",
+    description: "主策略无信号时，用受控验证篮子收集 Paper 样本。",
+  },
+];
+
+export const PAPER_EXECUTION_STRATEGY_CHOICES: readonly PaperExecutionStrategyOption[] = [
+  PAPER_AUTO_EXECUTION_STRATEGY_OPTION,
+  ...PAPER_EXECUTION_STRATEGY_OPTIONS,
+];
+
+export function getPaperExecutionStrategyOption(
+  key: PaperExecutionStrategy,
+): PaperExecutionStrategyOption | undefined {
+  return PAPER_EXECUTION_STRATEGY_CHOICES.find((option) => option.key === key);
+}
 export type OrderSide = "buy" | "sell";
 export type OrderType = "market" | "limit";
 export type OrderStatus = "accepted" | "filled" | "rejected" | "cancelled" | "pending";
@@ -114,6 +231,7 @@ export interface AccountSnapshot {
   paused: boolean;
   startingEquity?: number;
   strategyProfile?: PaperStrategyProfile;
+  executionStrategy?: PaperExecutionStrategy;
   updatedAt: string;
 }
 

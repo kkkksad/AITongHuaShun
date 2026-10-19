@@ -490,6 +490,28 @@ describe("buildDailyMarketReview", () => {
     expect(report.strategyReview.summary).not.toContain("今日");
   });
 
+  it("reviews the previous real trading day on a legal holiday", () => {
+    const report = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account,
+      positions,
+      orders: [],
+      auditEvents: [],
+      now: new Date("2026-10-05T10:00:00+08:00"),
+    });
+
+    expect(report).toMatchObject({
+      tradingDate: "2026-09-30",
+      dateBasis: "holiday-previous-trading-day",
+      market: {
+        evidenceStatus: "stale",
+        tone: "insufficient-data",
+      },
+    });
+    expect(report.entryReview.status).toBe("runtime-gap");
+  });
+
   it("does not substitute cumulative pnl when previous-close inputs are missing", () => {
     const report = buildDailyMarketReview({
       snapshot: { ...snapshot, quotes: [] },

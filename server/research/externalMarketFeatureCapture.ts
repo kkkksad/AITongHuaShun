@@ -1,6 +1,11 @@
 import type { ExternalMarketImpactReport } from "./externalMarketImpact";
 import type { ExternalMarketFeatureUpdate } from "./externalMarketFeatureStore";
 import { fetchBridgeJson } from "./bridgeRequest";
+import {
+  getChinaDateKey,
+  getChinaMinutes,
+  isAshareTradingDate,
+} from "../trading/ashareTradingCalendar";
 
 interface ExternalMarketFeatureCaptureOptions {
   store: {
@@ -25,17 +30,6 @@ interface BridgeIndexResponse {
     symbol: string;
     changePercent: number;
   }>;
-}
-
-const CHINA_OFFSET_MS = 8 * 60 * 60 * 1000;
-
-function chinaParts(value: Date) {
-  const shifted = new Date(value.getTime() + CHINA_OFFSET_MS);
-  return {
-    tradeDate: shifted.toISOString().slice(0, 10),
-    day: shifted.getUTCDay(),
-    minutes: shifted.getUTCHours() * 60 + shifted.getUTCMinutes(),
-  };
 }
 
 function percentToDecimal(value: number | null | undefined): number | null {
@@ -95,8 +89,9 @@ export class ExternalMarketFeatureCapture {
 
   async runOnce(): Promise<void> {
     const now = this.clock();
-    const { tradeDate, day, minutes } = chinaParts(now);
-    if (day === 0 || day === 6) return;
+    const tradeDate = getChinaDateKey(now);
+    if (!isAshareTradingDate(tradeDate)) return;
+    const minutes = getChinaMinutes(now);
 
     if (minutes >= 9 * 60 + 20 && minutes <= 9 * 60 + 29) {
       const stageKey = `${tradeDate}:pre-market`;

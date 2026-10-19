@@ -62,6 +62,17 @@ describe("trading API", () => {
     expect(response.json()).toMatchObject({ error: "PAPER_MODE_REQUIRED" });
   });
 
+  it("rejects execution strategy updates outside paper mode", async () => {
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/account/execution-strategy",
+      payload: { executionStrategy: "kairosTrendHealth" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: "PAPER_MODE_REQUIRED" });
+  });
+
   it("resets a paper account and persists the selected strategy profile", async () => {
     await app.close();
     app = await buildTradingApp({
@@ -100,6 +111,7 @@ describe("trading API", () => {
         equity: 20_000,
         startingEquity: 20_000,
         strategyProfile: "defensive",
+        executionStrategy: "auto",
       },
       positions: [],
       orders: [],
@@ -112,6 +124,72 @@ describe("trading API", () => {
     });
     expect(profile.statusCode).toBe(200);
     expect(profile.json().account.strategyProfile).toBe("growth");
+  });
+
+  it("updates and persists a manually selected paper execution strategy", async () => {
+    await app.close();
+    app = await buildTradingApp({
+      config: createTestConfig({
+        MARKET_MODE: "paper",
+        TRADING_SEED_PORTFOLIO: false,
+      }),
+      startMarket: false,
+    });
+
+    const invalid = await app.inject({
+      method: "PUT",
+      url: "/api/account/execution-strategy",
+      payload: { executionStrategy: "not-a-public-strategy" },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    const updated = await app.inject({
+      method: "PUT",
+      url: "/api/account/execution-strategy",
+      payload: { executionStrategy: "kairosTrendHealth" },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().account.executionStrategy).toBe("kairosTrendHealth");
+
+    const account = await app.inject({
+      method: "GET",
+      url: "/api/account",
+    });
+    expect(account.statusCode).toBe(200);
+    expect(account.json().executionStrategy).toBe("kairosTrendHealth");
+  });
+
+  it("resets a paper account with an explicitly selected execution strategy", async () => {
+    await app.close();
+    app = await buildTradingApp({
+      config: createTestConfig({
+        MARKET_MODE: "paper",
+        TRADING_SEED_PORTFOLIO: false,
+      }),
+      startMarket: false,
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/account/reset",
+      payload: {
+        startingCash: 30_000,
+        strategyProfile: "balanced",
+        executionStrategy: "kairosQuietPullback",
+        confirmation: "重置模拟账户",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      account: {
+        startingEquity: 30_000,
+        strategyProfile: "balanced",
+        executionStrategy: "kairosQuietPullback",
+      },
+      positions: [],
+      orders: [],
+    });
   });
 
   it("returns bounded system log pagination metadata", async () => {
@@ -1216,7 +1294,7 @@ describe("trading API", () => {
       mode: "mock",
       provider: "mock",
       dateBasis: expect.stringMatching(
-        /^(current-weekday|pre-market-previous-weekday|weekend-previous-weekday)$/,
+        /^(current-weekday|pre-market-previous-weekday|weekend-previous-weekday|holiday-previous-trading-day|calendar-unavailable)$/,
       ),
       market: {
         tone: expect.stringMatching(/^(risk-on|balanced|risk-off|insufficient-data)$/),

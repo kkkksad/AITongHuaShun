@@ -4,6 +4,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperExecutionStrategy,
   PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
@@ -75,6 +76,7 @@ export class InMemoryTradingStore implements TradingStore {
   private readonly accountId = "PAPER-CN-01";
   private startingEquity: number;
   private strategyProfile: PaperStrategyProfile = "balanced";
+  private executionStrategy: PaperExecutionStrategy = "auto";
   private cash: number;
   private blockedCash = 0;
   private paused = false;
@@ -147,15 +149,29 @@ export class InMemoryTradingStore implements TradingStore {
     });
   }
 
+  getExecutionStrategy(): PaperExecutionStrategy {
+    return this.executionStrategy;
+  }
+
+  setExecutionStrategy(strategy: PaperExecutionStrategy): void {
+    this.executionStrategy = strategy;
+    this.appendAudit("system", "account.execution-strategy.updated", "Paper 执行策略已更新", {
+      executionStrategy: strategy,
+    });
+  }
+
   resetAccount(input: {
     startingCash: number;
     strategyProfile: PaperStrategyProfile;
+    executionStrategy?: PaperExecutionStrategy;
   }): void {
     if (!Number.isFinite(input.startingCash) || input.startingCash <= 0) {
       throw new Error("Paper account starting cash must be positive.");
     }
+    const executionStrategy = input.executionStrategy ?? "auto";
     this.startingEquity = input.startingCash;
     this.strategyProfile = input.strategyProfile;
+    this.executionStrategy = executionStrategy;
     this.cash = input.startingCash;
     this.blockedCash = 0;
     this.paused = false;
@@ -167,6 +183,7 @@ export class InMemoryTradingStore implements TradingStore {
     this.appendAudit("system", "account.reset", "已开始新的纯现金 Paper 模拟", {
       startingCash: input.startingCash,
       strategyProfile: input.strategyProfile,
+      executionStrategy,
       previousStateDeleted: true,
     });
   }
@@ -253,6 +270,7 @@ export class InMemoryTradingStore implements TradingStore {
       paused: this.paused,
       startingEquity: this.startingEquity,
       strategyProfile: this.strategyProfile,
+      executionStrategy: this.executionStrategy,
       updatedAt: this.now().toISOString(),
     };
   }

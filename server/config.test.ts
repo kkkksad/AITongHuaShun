@@ -88,7 +88,7 @@ const envSchema = z.object({
     .int()
     .min(1)
     .max(20)
-    .default(1),
+    .default(2),
   PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: z.coerce
     .number()
     .int()
@@ -191,7 +191,7 @@ describe("ServerConfig", () => {
       expect(config.PAPER_AUTO_EXECUTION_ENABLED).toBe(false);
       expect(config.PAPER_AUTO_EXECUTION_INTERVAL_MS).toBe(60_000);
       expect(config.PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY).toBe(true);
-      expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(1);
+      expect(config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN).toBe(2);
       expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(4);
       expect(config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS).toBe(2);
       expect(config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE).toBe("observe");

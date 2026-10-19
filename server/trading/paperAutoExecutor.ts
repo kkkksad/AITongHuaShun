@@ -9,6 +9,11 @@ import {
 import { buildCurrentPaperTradingPlan } from "../research/paperTradingPlanService";
 import { assessMarketSnapshot } from "../research/dailyMarketReview";
 import type { AdaptiveStrategyRouting } from "../research/adaptiveStrategyRouter";
+import {
+  getAshareMarketSession,
+  getChinaDateKey,
+  type AshareMarketSession,
+} from "./ashareTradingCalendar";
 import type {
   PaperTradingOperation,
   PaperTradingPlan,
@@ -26,12 +31,7 @@ export type PaperAutoExecutionActivityMode =
   | "observe"
   | "qualified-probe"
   | "validation-probe";
-export type PaperAutoExecutionSession =
-  | "open"
-  | "pre-market"
-  | "lunch-break"
-  | "after-hours"
-  | "weekend";
+export type PaperAutoExecutionSession = AshareMarketSession;
 
 export interface PaperAutoExecutionOrder {
   symbol: string;
@@ -260,29 +260,11 @@ interface PreparedPaperOperation {
 
 const HISTORY_LIMIT = 30;
 const AUDIT_HEARTBEAT_MS = 15 * 60_000;
-const CHINA_TZ_OFFSET_MINUTES = 8 * 60;
-
-function getChinaParts(value: Date) {
-  const shifted = new Date(value.getTime() + CHINA_TZ_OFFSET_MINUTES * 60_000);
-  return {
-    date: shifted.toISOString().slice(0, 10),
-    day: shifted.getUTCDay(),
-    minutes: shifted.getUTCHours() * 60 + shifted.getUTCMinutes(),
-  };
-}
-
 export function getAshareSession(value = new Date()): PaperAutoExecutionSession {
-  const { day, minutes } = getChinaParts(value);
-  if (day === 0 || day === 6) return "weekend";
-  if (minutes < 9 * 60 + 30) return "pre-market";
-  if (minutes <= 11 * 60 + 30) return "open";
-  if (minutes < 13 * 60) return "lunch-break";
-  if (minutes <= 15 * 60) return "open";
-  return "after-hours";
+  return getAshareMarketSession(value);
 }
-
 export function getChinaTradeDate(value = new Date()): string {
-  return getChinaParts(value).date;
+  return getChinaDateKey(value);
 }
 
 export function resolvePaperActivityTarget(input: {
@@ -304,7 +286,12 @@ export function resolvePaperActivityTarget(input: {
       reason: "今日 Paper 成交活跃度目标已达到。",
     };
   }
-  if (input.session === "after-hours" || input.session === "weekend") {
+  if (
+    input.session === "after-hours" ||
+    input.session === "weekend" ||
+    input.session === "holiday" ||
+    input.session === "calendar-unavailable"
+  ) {
     return {
       status: "closed",
       targetOrders,

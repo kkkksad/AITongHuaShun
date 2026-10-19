@@ -4,6 +4,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperExecutionStrategy,
   PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
@@ -40,10 +41,17 @@ export interface TradingStore {
   /** 修改后续 paper 计划使用的策略风险档位。 */
   setStrategyProfile(profile: PaperStrategyProfile): void;
 
+  /** 获取后续 paper 买入计划使用的执行策略；auto 表示跟随市场路由。 */
+  getExecutionStrategy(): PaperExecutionStrategy;
+
+  /** 修改后续 paper 买入计划使用的执行策略。 */
+  setExecutionStrategy(strategy: PaperExecutionStrategy): void;
+
   /** 清空旧 paper 账户状态并以纯现金开始新一轮模拟。 */
   resetAccount(input: {
     startingCash: number;
     strategyProfile: PaperStrategyProfile;
+    executionStrategy?: PaperExecutionStrategy;
   }): void;
 
   // ── 持仓 ──

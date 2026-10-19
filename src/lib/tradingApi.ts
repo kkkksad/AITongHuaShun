@@ -5,6 +5,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperExecutionStrategy,
   PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
@@ -560,6 +561,7 @@ export interface PaperTradingOperation {
   estimatedNotional: number;
   reason: string;
   ruleChecks: string[];
+  strategyKey?: string;
 }
 
 export interface PaperTradingPlanQualitySummary {
@@ -678,8 +680,35 @@ export interface PaperTradingPlan {
     lotSize: number;
     cashReserveRatio: number;
     cashReserveAmount: number;
+    sizingDiagnostics?: {
+      riskOrderCapBeforeScale: number;
+      riskOrderCapAfterScale: number;
+      positionWeightCapAfterScale: number;
+      cashReserveAmount: number;
+      plannedCashBudget: number;
+      effectiveOrderCap: number;
+      minimumFeeEfficientNotional: number;
+      plannedBuyOrderCount: number;
+      plannedBuyNotional: number;
+      averagePlannedBuyNotional: number;
+      largestPlannedBuyNotional: number;
+      limitingConstraint:
+        | "risk-order-cap"
+        | "strategy-profile-scale"
+        | "position-weight-cap"
+        | "planned-cash-budget"
+        | "none";
+      summary: string;
+    };
   };
   strategyProfile: PaperTradingPlanStrategyProfile;
+  executionStrategy: {
+    key: PaperExecutionStrategy;
+    label: string;
+    mode: "auto" | "manual";
+    selectedStrategyMatched: boolean;
+    matchedCandidateCount: number;
+  };
   rules: string[];
   topStrategy: {
     strategyKey: string;
@@ -739,7 +768,9 @@ export type PaperAutoExecutionSession =
   | "pre-market"
   | "lunch-break"
   | "after-hours"
-  | "weekend";
+  | "weekend"
+  | "holiday"
+  | "calendar-unavailable";
 
 export interface PaperAutoExecutionOrder {
   symbol: string;
@@ -850,7 +881,9 @@ export interface DailyMarketReview {
   dateBasis:
     | "current-weekday"
     | "pre-market-previous-weekday"
-    | "weekend-previous-weekday";
+    | "weekend-previous-weekday"
+    | "holiday-previous-trading-day"
+    | "calendar-unavailable";
   mode: TradingMode;
   provider: string;
   market: {
@@ -2091,6 +2124,7 @@ export function setPaperTradingPaused(paused: boolean): Promise<AccountResponse>
 export function resetPaperAccount(input: {
   startingCash: number;
   strategyProfile: PaperStrategyProfile;
+  executionStrategy?: PaperExecutionStrategy;
   confirmation: "重置模拟账户";
 }): Promise<ResetPaperAccountResponse> {
   return authApiRequest<ResetPaperAccountResponse>("/api/account/reset", {
@@ -2105,6 +2139,15 @@ export function updatePaperStrategyProfile(
   return authApiRequest<AccountResponse>("/api/account/strategy-profile", {
     method: "PUT",
     body: JSON.stringify({ strategyProfile }),
+  });
+}
+
+export function updatePaperExecutionStrategy(
+  executionStrategy: PaperExecutionStrategy,
+): Promise<AccountResponse> {
+  return authApiRequest<AccountResponse>("/api/account/execution-strategy", {
+    method: "PUT",
+    body: JSON.stringify({ executionStrategy }),
   });
 }
 

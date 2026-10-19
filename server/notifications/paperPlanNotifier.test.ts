@@ -49,6 +49,13 @@ function createPlan(
       effectiveCashReserveRatio: 0.5,
       effectiveNewPositionScale: 0.85,
     },
+    executionStrategy: {
+      key: "auto",
+      label: "自动选择（跟随市场）",
+      mode: "auto",
+      selectedStrategyMatched: false,
+      matchedCandidateCount: 0,
+    },
     rules: ["paper only"],
     topStrategy: {
       strategyKey: "kairosLowVolTrend",
@@ -516,6 +523,36 @@ describe("PaperPlanNotifier", () => {
     expect(message.content).not.toContain("板块：暂不可用");
     expect(message.content.match(/新闻源暂不可用/g)).toHaveLength(1);
     expect(message.content).toContain("数据处于降级状态，本轮不依据缺失项增加风险暴露");
+  });
+
+  it("does not send a briefing on a legal holiday even during former trading hours", async () => {
+    const plan = createPlan();
+    const { notifier, sender } = createNotifier({
+      now: new Date("2026-10-05T10:00:00+08:00"),
+    });
+
+    await expect(notifier.notify(plan, context(plan))).resolves.toEqual({
+      status: "not-actionable",
+    });
+    expect(sender.send).not.toHaveBeenCalled();
+  });
+
+  it("does not send an urgent update after the A-share session closes", async () => {
+    const plan = createPlan();
+    const { notifier, sender, setNow } = createNotifier();
+    await notifier.notify(plan, context(plan));
+    setNow(new Date("2026-07-17T15:01:00+08:00"));
+
+    await expect(notifier.notify(plan, context(plan, {
+      marketContext: {
+        sourceStatus: "degraded",
+        tone: "balanced",
+        summary: "收盘后收到数据源降级信号。",
+        sectors: [],
+        warnings: ["真实新闻源暂不可用"],
+      },
+    }))).resolves.toEqual({ status: "not-actionable" });
+    expect(sender.send).toHaveBeenCalledTimes(1);
   });
 
   it("does not treat a reference price change as a material update", async () => {

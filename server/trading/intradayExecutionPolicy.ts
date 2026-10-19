@@ -2,6 +2,10 @@ import type {
   AdaptiveCapitalPacing,
   AdaptiveStrategyRouting,
 } from "../research/adaptiveStrategyRouter";
+import {
+  getChinaMinutes,
+  isAshareTradingTime,
+} from "./ashareTradingCalendar";
 
 export type AShareTradingPhase =
   | "opening"
@@ -16,8 +20,6 @@ export interface IntradayExecutionPolicy {
   maxInvestedRatio: number;
   source: "adaptive-routing" | "conservative-default";
 }
-
-const CHINA_TZ_OFFSET_MINUTES = 8 * 60;
 
 const DEFAULT_PACING: AdaptiveCapitalPacing = {
   openingMaxInvestedRatio: 0.45,
@@ -53,17 +55,9 @@ export function getPhaseCumulativeOrderLimit(
   );
 }
 
-function chinaParts(value: Date) {
-  const shifted = new Date(value.getTime() + CHINA_TZ_OFFSET_MINUTES * 60_000);
-  return {
-    day: shifted.getUTCDay(),
-    minutes: shifted.getUTCHours() * 60 + shifted.getUTCMinutes(),
-  };
-}
-
 export function getAshareTradingPhase(value = new Date()): AShareTradingPhase {
-  const { day, minutes } = chinaParts(value);
-  if (day === 0 || day === 6) return "closed";
+  if (!isAshareTradingTime(value)) return "closed";
+  const minutes = getChinaMinutes(value);
   if (minutes >= 9 * 60 + 30 && minutes < 10 * 60 + 15) return "opening";
   if (minutes >= 10 * 60 + 15 && minutes <= 11 * 60 + 30) {
     return "morning-confirmation";

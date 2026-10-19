@@ -64,6 +64,16 @@ describe("intraday execution policy", () => {
     expect(getAshareTradingPhase(new Date(value))).toBe(expected);
   });
 
+  it.each([
+    ["2026-10-01T09:35:00+08:00", "holiday"],
+    ["2026-10-05T10:30:00+08:00", "holiday"],
+    ["2026-10-04T13:30:00+08:00", "weekend"],
+    ["2027-01-04T14:50:00+08:00", "out-of-coverage"],
+  ] as const)("keeps %s closed", (value, reason) => {
+    const phase = getAshareTradingPhase(new Date(value));
+    expect(phase).toBe("closed");
+    expect(reason).toBeTruthy();
+  });
   it("uses the routing cap for each phase", () => {
     expect(getIntradayExecutionPolicy(
       new Date("2026-07-17T09:45:00+08:00"),

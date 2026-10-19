@@ -79,7 +79,7 @@ const envSchema = z.object({
     .int()
     .min(1)
     .max(20)
-    .default(1),
+    .default(2),
   PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: z.coerce
     .number()
     .int()

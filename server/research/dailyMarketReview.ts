@@ -7,6 +7,12 @@ import type {
   TradingMode,
 } from "../../shared/trading";
 import { getPaperStrategyProfilePolicy } from "../trading/paperStrategyProfile";
+import {
+  getAshareTradingDateStatus,
+  getChinaDateKey,
+  getChinaMinutes,
+  getPreviousAshareTradingDate,
+} from "../trading/ashareTradingCalendar";
 
 export type DailyMarketTone =
   | "risk-on"
@@ -17,7 +23,9 @@ export type DailyMarketTone =
 export type DailyReviewDateBasis =
   | "current-weekday"
   | "pre-market-previous-weekday"
-  | "weekend-previous-weekday";
+  | "weekend-previous-weekday"
+  | "holiday-previous-trading-day"
+  | "calendar-unavailable";
 
 export interface MarketSnapshotAssessment {
   tone: DailyMarketTone;
@@ -158,37 +166,40 @@ interface DecisionAuditData {
   ruleChecks?: unknown;
 }
 
-const CHINA_OFFSET_MS = 8 * 60 * 60 * 1000;
-
-function chinaParts(value: Date): { date: string; minutes: number } {
-  const shifted = new Date(value.getTime() + CHINA_OFFSET_MS);
-  return {
-    date: shifted.toISOString().slice(0, 10),
-    minutes: shifted.getUTCHours() * 60 + shifted.getUTCMinutes(),
-  };
-}
-
 function resolveReviewTradingDate(now: Date): {
   tradingDate: string;
   dateBasis: DailyReviewDateBasis;
 } {
-  const shifted = new Date(now.getTime() + CHINA_OFFSET_MS);
-  const day = shifted.getUTCDay();
-  const minutes = shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
-  if (day === 0 || day === 6 || minutes < 9 * 60 + 30) {
-    do {
-      shifted.setUTCDate(shifted.getUTCDate() - 1);
-    } while (shifted.getUTCDay() === 0 || shifted.getUTCDay() === 6);
+  const currentDate = getChinaDateKey(now);
+  const status = getAshareTradingDateStatus(currentDate);
+  if (!status.covered) {
     return {
-      tradingDate: shifted.toISOString().slice(0, 10),
-      dateBasis: day === 0 || day === 6
-        ? "weekend-previous-weekday"
-        : "pre-market-previous-weekday",
+      tradingDate: currentDate,
+      dateBasis: "calendar-unavailable",
+    };
+  }
+
+  if (status.isTradingDay && getChinaMinutes(now) >= 9 * 60 + 30) {
+    return {
+      tradingDate: currentDate,
+      dateBasis: "current-weekday",
+    };
+  }
+
+  const previousTradingDate = getPreviousAshareTradingDate(now);
+  if (!previousTradingDate) {
+    return {
+      tradingDate: currentDate,
+      dateBasis: "calendar-unavailable",
     };
   }
   return {
-    tradingDate: shifted.toISOString().slice(0, 10),
-    dateBasis: "current-weekday",
+    tradingDate: previousTradingDate,
+    dateBasis: status.reason === "weekend"
+      ? "weekend-previous-weekday"
+      : status.reason === "holiday"
+        ? "holiday-previous-trading-day"
+        : "pre-market-previous-weekday",
   };
 }
 
@@ -274,7 +285,7 @@ function decisionAuditMap(events: AuditEvent[]): Map<string, DecisionAuditData> 
 
 function eventTradingDate(event: AuditEvent): string | null {
   const explicit = event.data?.tradingDate;
-  return typeof explicit === "string" ? explicit : chinaParts(new Date(event.timestamp)).date;
+  return typeof explicit === "string" ? explicit : getChinaDateKey(new Date(event.timestamp));
 }
 
 function latestAudit(
@@ -543,7 +554,7 @@ export function buildDailyMarketReview(
   const { tradingDate, dateBasis } = resolveReviewTradingDate(now);
   const snapshotTimestamp = Date.parse(input.snapshot.marketTime);
   const snapshotTradingDate = Number.isFinite(snapshotTimestamp)
-    ? chinaParts(new Date(snapshotTimestamp)).date
+    ? getChinaDateKey(new Date(snapshotTimestamp))
     : null;
   const marketEvidenceStatus = snapshotTradingDate === null
     ? "unknown"
@@ -577,7 +588,7 @@ export function buildDailyMarketReview(
   const positionMap = new Map(input.positions.map((position) => [position.symbol, position]));
   const decisions = decisionAuditMap(input.auditEvents);
   const dailyOrders = input.orders
-    .filter((order) => chinaParts(new Date(order.createdAt)).date === tradingDate)
+    .filter((order) => getChinaDateKey(new Date(order.createdAt)) === tradingDate)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const calculatedReviewDayPerformance = calculateReviewDayPerformance({
     account: input.account,
@@ -643,13 +654,13 @@ export function buildDailyMarketReview(
     : 0;
   const openingBuyAttempts = dailyOrders.filter((order) => {
     if (order.side !== "buy") return false;
-    const { minutes } = chinaParts(new Date(order.createdAt));
+    const minutes = getChinaMinutes(new Date(order.createdAt));
     return minutes >= 9 * 60 + 30 && minutes <= 9 * 60 + 35;
   }).length;
   const maxDailyAutoOrders = Math.max(1, input.maxDailyAutoOrders ?? 4);
   const openingAutoOrders = dailyOrders.filter((order) => {
     if (!order.clientOrderId?.startsWith("kairos-auto-paper:")) return false;
-    const { minutes } = chinaParts(new Date(order.createdAt));
+    const minutes = getChinaMinutes(new Date(order.createdAt));
     return minutes >= 9 * 60 + 30 && minutes < 10 * 60 + 15;
   }).length;
   const missingDecisionReasons = tradeItems.filter(
@@ -861,10 +872,14 @@ export function buildDailyMarketReview(
       "缺失的历史策略理由不会被推测或补写。",
       "真实交易与同花顺账户连接保持关闭。",
       dateBasis === "weekend-previous-weekday"
-        ? "当前为周末，报告自动回看最近周五；法定节假日仍需交易所日历确认。"
+        ? "当前为周末，报告自动回看最近交易日。"
         : dateBasis === "pre-market-previous-weekday"
-          ? "当前尚未开盘，报告自动回看最近工作日；法定节假日仍需交易所日历确认。"
-          : "复盘日期按北京时间当前工作日确定；法定节假日仍需交易所日历确认。",
+          ? "当前尚未开盘，报告自动回看最近交易日。"
+          : dateBasis === "holiday-previous-trading-day"
+            ? "当前为核对后的法定休市日，报告自动回看最近交易日。"
+            : dateBasis === "calendar-unavailable"
+              ? "当前日期超出已核对交易日历覆盖范围，未把普通工作日误当作交易日。"
+              : "复盘日期按北京时间当前交易日确定。",
       reviewDayPerformance.performanceBasis === "mark-to-market"
         ? "复盘日收益由开盘现金、开盘持仓昨收、当日成交和手续费重建，与累计 paper 收益分开。"
         : marketEvidenceStatus !== "matched"

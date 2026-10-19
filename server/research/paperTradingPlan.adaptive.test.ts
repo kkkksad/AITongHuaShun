@@ -3,6 +3,7 @@ import type {
   AccountSnapshot,
   MarketSnapshot,
   OrderRecord,
+  PaperExecutionStrategy,
   PositionSnapshot,
 } from "../../shared/trading";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
@@ -285,6 +286,7 @@ function build(input: {
   strategyUsage?: Record<string, number>;
   candidateCount?: number;
   candidateScores?: number[];
+  executionStrategy?: PaperExecutionStrategy;
 }) {
   return buildPaperTradingPlan({
     snapshot,
@@ -308,6 +310,7 @@ function build(input: {
     commissionRate: 0.0003,
     minimumCommission: 5,
     cashReserveRatio: 0.1,
+    executionStrategy: input.executionStrategy,
     activityTargetActive: input.activityTargetActive,
     activityMode: input.activityMode,
     strategyUsage: input.strategyUsage,
@@ -511,6 +514,76 @@ describe("adaptive paper trading plan", () => {
         ruleChecks: expect.arrayContaining([
           "strategy-route: pass (kairosTrendHealth)",
         ]),
+      }),
+    ]));
+  });
+
+  it("uses a manually selected strategy outside the market eligible-key list", () => {
+    const plan = build({
+      cash: 8_000,
+      includeCandidate: true,
+      executionStrategy: "movingAverageCross",
+      research: marketRegime("healthy-trend", 0.72, "601988"),
+    });
+
+    expect(plan.executionStrategy).toEqual({
+      key: "movingAverageCross",
+      label: "均线交叉确认",
+      mode: "manual",
+      selectedStrategyMatched: true,
+      matchedCandidateCount: 1,
+    });
+    expect(plan.qualitySummary.strategyCoverage.eligibleKeys).toEqual([
+      "movingAverageCross",
+    ]);
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "601988",
+        action: "paper-buy-plan",
+        strategy: "均线交叉确认",
+      }),
+    ]));
+  });
+
+  it("keeps a manual strategy in observation mode when no setup matches", () => {
+    const plan = build({
+      cash: 8_000,
+      includeCandidate: true,
+      executionStrategy: "rsi",
+      research: marketRegime("healthy-trend", 0.72, "601988"),
+    });
+
+    expect(plan.executionStrategy).toMatchObject({
+      key: "rsi",
+      mode: "manual",
+      selectedStrategyMatched: false,
+      matchedCandidateCount: 0,
+    });
+    expect(plan.operations.some((operation) =>
+      operation.action === "paper-buy-plan"
+    )).toBe(false);
+  });
+
+  it("does not let a manual buy strategy block risk reduction", () => {
+    const plan = build({
+      positions: [position()],
+      executionStrategy: "movingAverageCross",
+      adaptiveRouting: routing({
+        regime: "risk-off",
+        positionPosture: "reduce",
+        allowNewPositions: false,
+        cashReserveRatio: 0.55,
+        newPositionScale: 0,
+        eligibleStrategyKeys: ["kairosCapitalShield"],
+      }),
+      research: marketRegime("trend-deterioration", 0.75),
+    });
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "600519",
+        action: "paper-sell-plan",
+        strategy: "市场状态减仓",
       }),
     ]));
   });

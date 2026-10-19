@@ -10,12 +10,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { performance } from "node:perf_hooks";
 import { z, ZodError } from "zod";
-import type {
-  AccountSnapshot,
-  MarketSnapshot,
-  OrderRecord,
-  OrderRequest,
-  PaperStrategyProfile,
+import {
+  PAPER_EXECUTION_STRATEGY_VALUES,
+  type AccountSnapshot,
+  type MarketSnapshot,
+  type OrderRecord,
+  type OrderRequest,
+  type PaperExecutionStrategy,
+  type PaperStrategyProfile,
 } from "../shared/trading";
 import {
   SessionStore,
@@ -106,14 +108,21 @@ const paperStrategyProfileSchema = z.enum([
   "growth",
 ]);
 
+const paperExecutionStrategySchema = z.enum(PAPER_EXECUTION_STRATEGY_VALUES);
+
 const resetPaperAccountSchema = z.object({
   startingCash: z.coerce.number().finite().min(1_000).max(100_000_000),
   strategyProfile: paperStrategyProfileSchema,
+  executionStrategy: paperExecutionStrategySchema.optional().default("auto"),
   confirmation: z.literal("重置模拟账户"),
 });
 
 const updatePaperStrategyProfileSchema = z.object({
   strategyProfile: paperStrategyProfileSchema,
+});
+
+const updatePaperExecutionStrategySchema = z.object({
+  executionStrategy: paperExecutionStrategySchema,
 });
 
 const listQuerySchema = z.object({
@@ -1334,6 +1343,7 @@ export async function buildTradingApp(
     const result = system.broker.resetAccount({
       startingCash: body.startingCash,
       strategyProfile: body.strategyProfile as PaperStrategyProfile,
+      executionStrategy: body.executionStrategy as PaperExecutionStrategy,
     });
     paperAutoExecutor.start();
     broadcastPositions(system.market.getSnapshot());
@@ -1358,6 +1368,28 @@ export async function buildTradingApp(
     return reply.send({
       account: system.broker.setStrategyProfile(
         body.strategyProfile as PaperStrategyProfile,
+      ),
+    });
+  });
+
+  app.put("/api/account/execution-strategy", {
+    schema: {
+      tags: ["账户"],
+      summary: "切换本地 paper 执行策略",
+      description:
+        "只修改后续本地 paper 计划使用的买入候选策略，不清空当前持仓或订单，不绕过任何硬风控。",
+    },
+  }, async (request, reply) => {
+    if (options.config.MARKET_MODE !== "paper" || options.config.REAL_TRADING_ENABLED) {
+      return reply.status(409).send({
+        error: "PAPER_MODE_REQUIRED",
+        message: "执行策略只允许在本地 paper 模式修改",
+      });
+    }
+    const body = updatePaperExecutionStrategySchema.parse(request.body);
+    return reply.send({
+      account: system.broker.setExecutionStrategy(
+        body.executionStrategy as PaperExecutionStrategy,
       ),
     });
   });

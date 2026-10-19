@@ -186,16 +186,19 @@ describe("JsonFileTradingStore", () => {
     store.resetAccount({
       startingCash: 20_000,
       strategyProfile: "defensive",
+      executionStrategy: "kairosTrendHealth",
     });
 
     expect(store.listOrders()).toEqual([]);
     expect(store.getPositions(snapshot)).toEqual([]);
     expect(store.getStrategyProfile()).toBe("defensive");
+    expect(store.getExecutionStrategy()).toBe("kairosTrendHealth");
     expect(store.getAccount("paper", snapshot, demoLimits)).toMatchObject({
       cash: 20_000,
       equity: 20_000,
       startingEquity: 20_000,
       strategyProfile: "defensive",
+      executionStrategy: "kairosTrendHealth",
     });
     expect(store.listAudit()).toHaveLength(1);
     expect(store.listAudit()[0]).toMatchObject({ action: "account.reset" });
@@ -204,20 +207,34 @@ describe("JsonFileTradingStore", () => {
     expect(reloaded.listOrders()).toEqual([]);
     expect(reloaded.getPositions(snapshot)).toEqual([]);
     expect(reloaded.getStrategyProfile()).toBe("defensive");
+    expect(reloaded.getExecutionStrategy()).toBe("kairosTrendHealth");
     expect(reloaded.getAccount("paper", snapshot, demoLimits)).toMatchObject({
       equity: 20_000,
       strategyProfile: "defensive",
+      executionStrategy: "kairosTrendHealth",
     });
   });
 
-  it("旧版 JSON 没有策略档位时默认使用均衡档", () => {
+  it("旧版 JSON 没有策略档位和执行策略时使用安全默认值", () => {
     const filePath = path.join(dataDir, "paper-trading-state.json");
     const persisted = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     delete persisted.strategyProfile;
+    delete persisted.executionStrategy;
     fs.writeFileSync(filePath, JSON.stringify(persisted), "utf-8");
 
     const reloaded = new JsonFileTradingStore(dataDir, 1_000_000);
     expect(reloaded.getStrategyProfile()).toBe("balanced");
+    expect(reloaded.getExecutionStrategy()).toBe("auto");
+  });
+
+  it("persists execution strategy changes across reloads", () => {
+    store.setExecutionStrategy("kairosQuietPullback");
+    expect(store.getExecutionStrategy()).toBe("kairosQuietPullback");
+
+    const reloaded = new JsonFileTradingStore(dataDir, 1_000_000);
+    expect(reloaded.getExecutionStrategy()).toBe("kairosQuietPullback");
+    expect(reloaded.getAccount("paper", snapshot, demoLimits).executionStrategy)
+      .toBe("kairosQuietPullback");
   });
 
   it("只保留留存期内的已结束订单和审计，同时保留过期挂单", () => {

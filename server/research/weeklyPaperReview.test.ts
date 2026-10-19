@@ -493,4 +493,20 @@ describe("buildWeeklyPaperReview", () => {
       }),
     ]));
   });
+
+  it("excludes legal holidays from weekly trading-day counts", () => {
+    const review = buildWeeklyPaperReview({
+      now: new Date("2026-10-10T10:00:00+08:00"),
+      initialCapital: 100_000,
+      account,
+      orders: [],
+      auditEvents: [],
+    });
+
+    expect(review.period).toMatchObject({
+      startDate: "2026-10-05",
+      endDate: "2026-10-10",
+      tradingDays: ["2026-10-08", "2026-10-09"],
+    });
+  });
 });

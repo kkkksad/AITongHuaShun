@@ -9,6 +9,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   OrderRequest,
+  PaperExecutionStrategy,
   PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
@@ -24,6 +25,7 @@ import {
   setPaperTradingPaused,
   resetPaperAccount,
   submitPaperOrder,
+  updatePaperExecutionStrategy,
   updatePaperStrategyProfile,
   type MarketDataProviderName,
   type TradingBootstrap,
@@ -51,9 +53,11 @@ export interface TradingBackend {
   resetAccount(input: {
     startingCash: number;
     strategyProfile: PaperStrategyProfile;
+    executionStrategy?: PaperExecutionStrategy;
     confirmation: "重置模拟账户";
   }): Promise<void>;
   setStrategyProfile(profile: PaperStrategyProfile): Promise<void>;
+  setExecutionStrategy(strategy: PaperExecutionStrategy): Promise<void>;
 }
 
 interface UseTradingBackendOptions {
@@ -383,6 +387,21 @@ export function useTradingBackend(
     },
   });
 
+  const executionStrategyMutation = useMutation({
+    mutationFn: updatePaperExecutionStrategy,
+    onMutate: () => {
+      setNotice(undefined);
+      setTransportError(undefined);
+    },
+    onSuccess: (result) => {
+      updateBootstrap((current) => ({ ...current, account: result.account }));
+      setNotice("Paper 执行策略已更新，下一轮 Paper 买入计划开始生效");
+    },
+    onError: (strategyError) => {
+      setTransportError(errorMessage(strategyError, "更新执行策略失败"));
+    },
+  });
+
   const strategyProfileMutation = useMutation({
     mutationFn: updatePaperStrategyProfile,
     onMutate: () => {
@@ -426,7 +445,9 @@ export function useTradingBackend(
     cancelMutation.isPending ||
     pauseMutation.isPending;
   const accountControlPending =
-    resetAccountMutation.isPending || strategyProfileMutation.isPending;
+    resetAccountMutation.isPending ||
+    strategyProfileMutation.isPending ||
+    executionStrategyMutation.isPending;
   const connectionState: ConnectionState = bootstrap
     ? "connected"
     : bootstrapQuery.isError || realtimeState === "offline"
@@ -458,6 +479,9 @@ export function useTradingBackend(
     },
     setStrategyProfile: async (profile) => {
       await strategyProfileMutation.mutateAsync(profile);
+    },
+    setExecutionStrategy: async (strategy) => {
+      await executionStrategyMutation.mutateAsync(strategy);
     },
   };
 }

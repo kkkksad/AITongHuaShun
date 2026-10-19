@@ -40,6 +40,13 @@ function makePlan(
       effectiveCashReserveRatio: 0.5,
       effectiveNewPositionScale: 0.85,
     },
+    executionStrategy: {
+      key: "auto",
+      label: "自动选择（跟随市场）",
+      mode: "auto",
+      selectedStrategyMatched: true,
+      matchedCandidateCount: 1,
+    },
     rules: [],
     topStrategy: null,
     adaptiveRouting: {
@@ -296,6 +303,27 @@ describe("buildDailyTaskCenterModel", () => {
     expect(model.tasks[2]).toMatchObject({ state: "current" });
     expect(model.tasks[3]).toMatchObject({ state: "attention" });
     expect(model.nextAction).toContain("最近交易日");
+  });
+
+  it("labels a legal holiday and keeps waiting for the next trading day", () => {
+    const model = buildDailyTaskCenterModel({ execution: makeExecution("holiday") });
+
+    expect(model.phase).toMatchObject({ key: "holiday", label: "法定休市" });
+    expect(model.nextAction).toContain("法定休市日");
+    expect(model.nextAction).toContain("不推送");
+  });
+
+  it("fails closed when the trading calendar is unavailable", () => {
+    const model = buildDailyTaskCenterModel({
+      execution: makeExecution("calendar-unavailable"),
+    });
+
+    expect(model.phase).toMatchObject({
+      key: "calendar-unavailable",
+      label: "交易日历不可用",
+    });
+    expect(model.nextAction).toContain("已关闭");
+    expect(model.nextAction).toContain("更新并验证交易日历");
   });
 
   it("shows the qualified afternoon activity phase without promising a fill", () => {

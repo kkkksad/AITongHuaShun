@@ -19,6 +19,10 @@ import type {
   AShareTradingPhase,
   IntradayExecutionPolicy,
 } from "../trading/intradayExecutionPolicy";
+import {
+  getChinaMinutes,
+  isAshareTradingTime,
+} from "../trading/ashareTradingCalendar";
 import type { WxPusherMessage } from "./wxPusherClient";
 
 export interface PaperPlanMessageSender {
@@ -260,18 +264,13 @@ const URGENT_EVENT_LABELS: Record<PaperPlanUrgentEvent, string> = {
   "leader-pullback": "强势板块快速回撤",
 };
 
-function chinaMinutes(value: Date): number {
-  const shifted = new Date(value.getTime() + 8 * 60 * 60_000);
-  return shifted.getUTCHours() * 60 + shifted.getUTCMinutes();
-}
-
 export function getPaperPlanBriefingSlot(
   value: Date,
   phase: AShareTradingPhase,
 ): PaperPlanBriefingSlot | null {
   if (phase === "closed") return null;
   const slot = BRIEFING_SLOT_BY_PHASE.get(phase);
-  if (!slot || chinaMinutes(value) < slot.minuteOfDay) return null;
+  if (!slot || getChinaMinutes(value) < slot.minuteOfDay) return null;
   return slot;
 }
 
@@ -740,11 +739,10 @@ export class PaperPlanNotifier {
     if (!this.options.enabled || !this.options.sender) {
       return { status: "disabled" };
     }
-    if (context.policy.phase === "closed") {
+    const now = this.now();
+    if (context.policy.phase === "closed" || !isAshareTradingTime(now)) {
       return { status: "not-actionable" };
     }
-
-    const now = this.now();
     const configuredSlot = slotForPhase(context.policy.phase);
     if (!configuredSlot) {
       return { status: "not-actionable" };

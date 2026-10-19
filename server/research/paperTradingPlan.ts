@@ -1,8 +1,10 @@
+import { getPaperExecutionStrategyOption } from "../../shared/trading";
 import type {
   AccountSnapshot,
   MarketQuote,
   MarketSnapshot,
   OrderRecord,
+  PaperExecutionStrategy,
   PaperStrategyProfile,
   PositionSnapshot,
   TradingMode,
@@ -90,6 +92,29 @@ export interface PaperTradingPlanStrategyProfile
   effectiveNewPositionScale: number;
 }
 
+export type PaperTradingPlanSizingConstraint =
+  | "risk-order-cap"
+  | "strategy-profile-scale"
+  | "position-weight-cap"
+  | "planned-cash-budget"
+  | "none";
+
+export interface PaperTradingPlanSizingDiagnostics {
+  riskOrderCapBeforeScale: number;
+  riskOrderCapAfterScale: number;
+  positionWeightCapAfterScale: number;
+  cashReserveAmount: number;
+  plannedCashBudget: number;
+  effectiveOrderCap: number;
+  minimumFeeEfficientNotional: number;
+  plannedBuyOrderCount: number;
+  plannedBuyNotional: number;
+  averagePlannedBuyNotional: number;
+  largestPlannedBuyNotional: number;
+  limitingConstraint: PaperTradingPlanSizingConstraint;
+  summary: string;
+}
+
 export interface PaperTradingPlan {
   generatedAt: string;
   tradingDate: string;
@@ -108,8 +133,16 @@ export interface PaperTradingPlan {
     lotSize: number;
     cashReserveRatio: number;
     cashReserveAmount: number;
+    sizingDiagnostics?: PaperTradingPlanSizingDiagnostics;
   };
   strategyProfile: PaperTradingPlanStrategyProfile;
+  executionStrategy: {
+    key: PaperExecutionStrategy;
+    label: string;
+    mode: "auto" | "manual";
+    selectedStrategyMatched: boolean;
+    matchedCandidateCount: number;
+  };
   rules: string[];
   topStrategy: {
     strategyKey: string;
@@ -539,6 +572,7 @@ export function buildPaperTradingPlan(input: {
   minimumCommission: number;
   cashReserveRatio: number;
   strategyProfile?: PaperStrategyProfile;
+  executionStrategy?: PaperExecutionStrategy;
   activityTargetActive?: boolean;
   activityMode?: PaperTradingActivityMode;
   strategyUsage?: Record<string, number>;
@@ -551,9 +585,16 @@ export function buildPaperTradingPlan(input: {
   const stockRegimeMap = new Map(
     (input.marketRegimeResearch?.stockRegimes ?? []).map((stock) => [stock.symbol, stock]),
   );
+  const executionStrategy = input.executionStrategy ?? "auto";
+  const manualExecutionStrategy = executionStrategy === "auto"
+    ? null
+    : executionStrategy;
+  const executionStrategyOption = getPaperExecutionStrategyOption(executionStrategy);
   const topStrategy = input.adaptiveRouting
     ? input.leaderboard.entries.find((entry) =>
-        input.adaptiveRouting?.eligibleStrategyKeys.includes(entry.strategyKey),
+        manualExecutionStrategy
+          ? entry.strategyKey === manualExecutionStrategy
+          : input.adaptiveRouting?.eligibleStrategyKeys.includes(entry.strategyKey),
       ) ?? null
     : input.leaderboard.entries[0] ?? null;
   const profilePolicy = getPaperStrategyProfilePolicy(input.strategyProfile);
@@ -571,11 +612,23 @@ export function buildPaperTradingPlan(input: {
     input.adaptiveRouting?.newPositionScale ?? 1,
     profilePolicy.newPositionScale,
   );
+  const strategyScaledOrderCap = input.maxSingleOrderNotional * newPositionScale;
+  const strategyScaledPositionCap =
+    input.account.equity * input.maxPositionWeight * newPositionScale;
   const maxSingleOrderNotional = Math.min(
-    input.maxSingleOrderNotional * newPositionScale,
-    Math.max(0, input.account.equity * input.maxPositionWeight * newPositionScale),
+    strategyScaledOrderCap,
+    strategyScaledPositionCap,
     plannedCashBudget,
   );
+  const sizingConstraint: PaperTradingPlanSizingConstraint =
+    plannedCashBudget <= strategyScaledOrderCap + 0.005 &&
+    plannedCashBudget <= strategyScaledPositionCap + 0.005
+      ? "planned-cash-budget"
+      : strategyScaledPositionCap <= strategyScaledOrderCap + 0.005
+        ? "position-weight-cap"
+        : newPositionScale < 1 - 0.000001
+          ? "strategy-profile-scale"
+          : "risk-order-cap";
   const alreadyReducedToday = filledAutoSellSymbols(
     input.orders ?? [],
     tradingDate,
@@ -813,6 +866,7 @@ export function buildPaperTradingPlan(input: {
           stockRegime: stockRegimeMap.get(base.symbol),
           routing: input.adaptiveRouting,
           candidateScore: base.score,
+          executionStrategy,
           activityTargetActive: input.activityTargetActive,
           validationProbeActive: input.activityMode === "validation-probe",
         })
@@ -825,11 +879,11 @@ export function buildPaperTradingPlan(input: {
       ...base,
       strategy: signal?.strategyName ?? base.strategy,
       strategyKey: signal?.strategyKey ??
-        (usesAdaptiveHistoryRoute ? null : "snapshot-candidate"),
+        (usesAdaptiveHistoryRoute || manualExecutionStrategy ? null : "snapshot-candidate"),
       strategyScore: signal?.score ?? base.score,
       strategyEvidence: signal?.evidence ?? [],
       strategyCandidates: rankedSignals.map((candidateSignal) => candidateSignal.strategyKey),
-      strategyEligible: signal !== null || !usesAdaptiveHistoryRoute,
+      strategyEligible: signal !== null || (!usesAdaptiveHistoryRoute && !manualExecutionStrategy),
       defensiveScore: defensiveCandidateScore(base, quote),
       rankedSignals,
     };
@@ -944,16 +998,28 @@ export function buildPaperTradingPlan(input: {
   const dominantStrategyKey = [...strategyKeyCounts.entries()]
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] ?? null;
   const unmatchedCandidateCount = candidatePool.length - matchedCandidateCount;
+  const selectedStrategyMatched = manualExecutionStrategy
+    ? candidatePool.some((candidate) =>
+        candidate.strategyCandidates.includes(manualExecutionStrategy),
+      )
+    : matchedCandidateCount > 0;
+  const eligibleKeysForCoverage = manualExecutionStrategy
+    ? [manualExecutionStrategy]
+    : [...(input.adaptiveRouting?.eligibleStrategyKeys ?? [])];
   const strategyCoverage = {
-    eligibleKeys: [...(input.adaptiveRouting?.eligibleStrategyKeys ?? [])],
+    eligibleKeys: eligibleKeysForCoverage,
     matchedKeys,
     matchedCandidateCount,
     unmatchedCandidateCount,
     dominantStrategyKey,
     dominantBlocker: null,
-    summary: matchedKeys.length > 0
-      ? `当前候选覆盖 ${matchedKeys.length} 个路由策略，最高覆盖为 ${dominantStrategyKey}；未匹配候选 ${unmatchedCandidateCount} 个。`
-      : "当前没有候选通过可用策略规则，保持观察，不强行增加交易。",
+    summary: manualExecutionStrategy
+      ? selectedStrategyMatched
+        ? `本轮有 ${matchedCandidateCount} 个候选匹配手动策略 ${executionStrategyOption?.label ?? manualExecutionStrategy}；仍须通过资金与风控复核。`
+        : `本轮没有候选匹配手动策略 ${executionStrategyOption?.label ?? manualExecutionStrategy}，保持观察，不强制交易。`
+      : matchedKeys.length > 0
+        ? `当前候选覆盖 ${matchedKeys.length} 个路由策略，最高覆盖为 ${dominantStrategyKey}；未匹配候选 ${unmatchedCandidateCount} 个。`
+        : "当前没有候选通过可用策略规则，保持观察，不强行增加交易。",
   } satisfies PaperTradingPlanQualitySummary["strategyCoverage"];
 
   let remainingPlannedCash = plannedCashBudget;
@@ -1244,6 +1310,59 @@ export function buildPaperTradingPlan(input: {
       lotSize: input.lotSize,
       cashReserveRatio: effectiveCashReserveRatio,
       cashReserveAmount: Number(cashReserveAmount.toFixed(2)),
+      sizingDiagnostics: (() => {
+        const buyOperations = operations.filter(
+          (operation) => operation.action === "paper-buy-plan",
+        );
+        const plannedBuyNotional = buyOperations.reduce(
+          (sum, operation) => sum + operation.estimatedNotional,
+          0,
+        );
+        const largestPlannedBuyNotional = buyOperations.reduce(
+          (maximum, operation) => Math.max(maximum, operation.estimatedNotional),
+          0,
+        );
+        const plannedBuyOrderCount = buyOperations.length;
+        const averagePlannedBuyNotional = plannedBuyOrderCount > 0
+          ? plannedBuyNotional / plannedBuyOrderCount
+          : 0;
+        const constraintLabels: Record<PaperTradingPlanSizingConstraint, string> = {
+          "risk-order-cap": "服务端单笔风控上限",
+          "strategy-profile-scale": "策略档位缩放",
+          "position-weight-cap": "单票仓位权重",
+          "planned-cash-budget": "现金缓冲后的可部署资金",
+          none: "无资金约束",
+        };
+        const limitingConstraint = maxSingleOrderNotional <= 0.005
+          ? "none"
+          : sizingConstraint;
+        return {
+          riskOrderCapBeforeScale: Number(input.maxSingleOrderNotional.toFixed(2)),
+          riskOrderCapAfterScale: Number(strategyScaledOrderCap.toFixed(2)),
+          positionWeightCapAfterScale: Number(strategyScaledPositionCap.toFixed(2)),
+          cashReserveAmount: Number(cashReserveAmount.toFixed(2)),
+          plannedCashBudget: Number(plannedCashBudget.toFixed(2)),
+          effectiveOrderCap: Number(maxSingleOrderNotional.toFixed(2)),
+          minimumFeeEfficientNotional: Number(
+            (input.minimumCommission * 2 / MAX_ENTRY_ROUND_TRIP_FEE_RATIO).toFixed(2),
+          ),
+          plannedBuyOrderCount,
+          plannedBuyNotional: Number(plannedBuyNotional.toFixed(2)),
+          averagePlannedBuyNotional: Number(averagePlannedBuyNotional.toFixed(2)),
+          largestPlannedBuyNotional: Number(largestPlannedBuyNotional.toFixed(2)),
+          limitingConstraint,
+          summary: plannedBuyOrderCount > 0
+            ? `当前单笔计划上限约 ${Math.round(maxSingleOrderNotional).toLocaleString("zh-CN")} 元，主要受${constraintLabels[limitingConstraint]}限制；计划买入 ${plannedBuyOrderCount} 笔，平均 ${Math.round(averagePlannedBuyNotional).toLocaleString("zh-CN")} 元。`
+            : `当前单笔计划上限约 ${Math.round(maxSingleOrderNotional).toLocaleString("zh-CN")} 元，主要受${constraintLabels[limitingConstraint]}限制；本轮没有通过全部门槛的 Paper 买单。`,
+        } satisfies PaperTradingPlanSizingDiagnostics;
+      })(),
+    },
+    executionStrategy: {
+      key: executionStrategy,
+      label: executionStrategyOption?.label ?? executionStrategy,
+      mode: manualExecutionStrategy ? "manual" : "auto",
+      selectedStrategyMatched,
+      matchedCandidateCount,
     },
     strategyProfile: {
       key: profilePolicy.key,

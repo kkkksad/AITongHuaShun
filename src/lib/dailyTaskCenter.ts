@@ -90,6 +90,14 @@ const phasePresentation: Record<PaperAutoExecutionSession, { label: string; deta
     label: "非交易日",
     detail: "复核最近交易日，等待下一交易日前重新生成计划。",
   },
+  holiday: {
+    label: "法定休市",
+    detail: "法定休市日不推送也不提交订单，等待下一交易日。",
+  },
+  "calendar-unavailable": {
+    label: "交易日历不可用",
+    detail: "日期超出已核对覆盖范围，自动执行与推送已失败关闭。",
+  },
 };
 
 function taskStates(
@@ -98,7 +106,7 @@ function taskStates(
   if (session === "pre-market") return ["current", "pending", "pending"];
   if (session === "open" || session === "lunch-break") return ["done", "current", "pending"];
   if (session === "after-hours") return ["done", "done", "current"];
-  if (session === "weekend") return ["pending", "done", "current"];
+  if (session === "weekend" || session === "holiday") return ["pending", "done", "current"];
   return ["pending", "pending", "pending"];
 }
 
@@ -235,6 +243,13 @@ function resolveNextAction(input: DailyTaskCenterInput): string {
   const { plan, review, execution } = input;
   const session = execution?.currentSession;
 
+  if (session === "calendar-unavailable") {
+    return "当前日期超出已核对交易日历覆盖范围，Paper 自动执行与推送已关闭；先更新并验证交易日历。";
+  }
+  if (session === "holiday") {
+    return review?.strategyReview.nextActions[0]
+      ?? "今日为法定休市日，不推送也不提交 Paper 订单；复核最近交易日，等待下一交易日。";
+  }
   if (session === "weekend") {
     return review?.strategyReview.nextActions[0]
       ?? "复核最近交易日的订单与策略记录，下一交易日前重新生成 Paper 计划。";
