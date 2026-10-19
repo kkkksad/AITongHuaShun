@@ -47,7 +47,7 @@
 - AkShare bridge：114 项 pytest 通过；仅有依赖弃用与本机 pytest 缓存目录权限警告。
 - `tsc -b` 与 Vite 生产构建通过，生产构建转换 2,323 个模块。
 - `git diff --check` 通过，仅报告既有 LF/CRLF 转换警告。
-- 本轮未部署生产，未改写持久化 Paper 状态，未改变 `MARKET_MODE=paper` 与 `REAL_TRADING_ENABLED=false`。
+- 相关改动随提交 `29d2f0abe4c9c47dd0a7e4b82884e0bd2124d178` 部署；2026-10-20 线上容器已核验单笔名义上限 100000、单轮 2 笔、每日 10 笔和 `validation-probe`，未重置持久化 Paper 状态，`MARKET_MODE=paper` 与 `REAL_TRADING_ENABLED=false` 保持不变。
 
 ## 遗留问题
 

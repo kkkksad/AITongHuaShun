@@ -32,8 +32,8 @@
 - [x] 统一单轮 2 笔、每日 10 笔及生产单笔金额模板。
 - [x] 接入 A 股法定交易日历，非交易时段不执行、不推送。
 - [x] 运行全量 TypeScript、后端、前端、Python、生产构建和差异检查。
-- [ ] 提交并推送任务相关文件。
-- [ ] 通过 GitHub Actions 部署并核验生产状态。
+- [x] 提交并推送任务相关文件。
+- [x] 通过 GitHub Actions 部署并核验生产状态。
 
 ## 最近交易复盘
 
@@ -55,13 +55,18 @@
 - AkShare bridge：114 项 pytest 通过；仅有依赖弃用与本机 pytest 缓存目录权限警告。
 - Vite 生产构建通过，转换 2,323 个模块。
 - `git diff --check` 通过，仅报告既有 LF/CRLF 转换警告。
-- 本轮未部署生产，未改写持久化 Paper 状态，未改变 `MARKET_MODE=paper` 与 `REAL_TRADING_ENABLED=false`。
+- GitHub Actions run `39295879839` 的测试/构建与腾讯云部署作业均成功；线上核验结果见“部署结果”。
 
 ## 部署结果
 
-待部署完成后更新。
+- 提交 `29d2f0abe4c9c47dd0a7e4b82884e0bd2124d178` 已推送到 `codex/hourly-project-optimization`，GitHub Actions run `39295879839` 的测试/构建和腾讯云服务器部署作业均为 `success`。
+- 部署后只读核验发现线上旧 `.env.production` 仍保留 `MAX_ORDER_NOTIONAL=2500` 和 `PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN=1`；随后仅把这两项更新为 `100000` 与 `2`，保持环境文件权限 `600`，并重建 Fastify backend。
+- 在线容器实际环境已核验为 `MAX_ORDER_NOTIONAL=100000`、单轮上限 2、每日硬上限 10、`validation-probe`；backend 状态为 `running healthy`。
+- 公网 `https://124.221.165.45/healthz` 与 `/api/health` 返回 200，匿名 `/api/account` 返回 401；域名入口仍使用需要客户端忽略证书校验的自签名证书。
+- 本轮未重置 Paper 账户、未改写持久化 Paper 状态，`MARKET_MODE=paper`、`REAL_TRADING_ENABLED=false` 和真实交易关闭状态保持不变。
+- 线上 Paper 账户受认证保护，本轮没有登录读取，因此线上最近逐笔成交仍需登录后单独核对；本文件中的本地空订单记录不能代表线上没有交易。
 
 ## 遗留问题
 
 - A 股交易日历当前覆盖 2024-01-01 至 2026-12-31，2027 年起必须更新并重新验证。
-- 线上持久化 Paper 状态与当前 `.env.production` 是否同步，需要部署后通过受保护接口和容器环境核验。
+- 线上历史订单保留期和持久化账户记录仍是后续完整复盘的关键依赖，需在认证会话内读取审计与订单页面确认。
