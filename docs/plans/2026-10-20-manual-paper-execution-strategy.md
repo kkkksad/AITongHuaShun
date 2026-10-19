@@ -59,7 +59,7 @@
 
 ## 部署结果
 
-- 提交 `29d2f0abe4c9c47dd0a7e4b82884e0bd2124d178` 已推送到 `codex/hourly-project-optimization`，GitHub Actions run `39295879839` 的测试/构建和腾讯云服务器部署作业均为 `success`。
+- 功能提交 `29d2f0abe4c9c47dd0a7e4b82884e0bd2124d178` 已推送到 `codex/hourly-project-optimization`，GitHub Actions run `39295879839` 的测试/构建和腾讯云服务器部署作业均为 `success`。部署与配置文档收口提交 `e942a023021d3a72e7a300d02549d36a87ada121` 又通过 run `39298166414` 完成生产部署，三个容器均 healthy。
 - 部署后只读核验发现线上旧 `.env.production` 仍保留 `MAX_ORDER_NOTIONAL=2500` 和 `PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN=1`；随后仅把这两项更新为 `100000` 与 `2`，保持环境文件权限 `600`，并重建 Fastify backend。
 - 在线容器实际环境已核验为 `MAX_ORDER_NOTIONAL=100000`、单轮上限 2、每日硬上限 10、`validation-probe`；backend 状态为 `running healthy`。
 - 公网 `https://124.221.165.45/healthz` 与 `/api/health` 返回 200，匿名 `/api/account` 返回 401；域名入口仍使用需要客户端忽略证书校验的自签名证书。
