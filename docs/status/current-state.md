@@ -896,6 +896,8 @@ MAX_DRAWDOWN_REDUCTION_FACTOR=0.25 # 最大回撤时仓位缩减至原始权重�
 - 新增统一模块目录、全局搜索、`Ctrl/Cmd+K`、URL query 深链接和总览模块导航；覆盖账户订单、设置执行策略等原先不易发现的二级入口，并新增 3 项交互回归测试。
 - 生产只读复盘确认 2026-10-13 至 2026-10-20 共 944 次自动运行、1 笔可核实成交、成交额 5,588 元。低频原因是 448 次 `blocked` 等研究/风控门槛未同时满足，而不是单笔金额只有几百元；残缺订单不足以重建收益或胜率。详见 [生产 Paper 最近交易复盘](../research/2026-10-21-production-paper-review.md)。
 
+- **2026-10-21 生产部署验证（`b9a75f986a49a96ffc376c32d420f2cc4a0cef5b`）** —— 04:06（Asia/Shanghai）完成手动部署，AkShare、backend、web 三个容器均 `healthy`；`/healthz` 返回 200，`/api/health` 明确返回 `paper + akshare + realTradingEnabled=false`，匿名 `/api/trading/account` 返回 401。配置保持单笔名义上限 100,000 元、单标的权重上限 0.25、自动 Paper 执行开启、每轮最多 2 笔、每日最多 10 笔、每日目标 6 笔、现金缓冲 10% 和 WxPusher 开启。部署前备份位于 `/opt/kairos/runtime/backups/paper-data-20261020T200645Z.tar.gz`，SHA-256 为 `9586b463db9a3ef1f161c8f1733930d500da6c0e5255e0a81b92498d1f001619`；部署后 Paper 状态未重置，仍为现金 89,524 元、4 只持仓、1 笔订单和 972 条审计事件。生产镜像内桥接测试 114 项通过，GitHub 分支已同步到该提交。
+
 ## 当前边界
 
 - 默认行情、资金流、账户与订单数据仍是本地模拟数据；可选 AkShare 个股、主要指数、财经新闻和全球指数是只读外部数据。

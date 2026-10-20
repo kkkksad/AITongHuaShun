@@ -43,6 +43,7 @@ YYYY-MM-DD-short-task-name.md
 - [轻量云服务器生产部署](2026-07-27-lighthouse-production-deployment.md)
 - [自适应策略与研究性能加固](2026-08-08-adaptive-strategy-and-research-performance.md)
 - [研究缓存覆盖收口](2026-08-08-research-cache-coverage.md)
+- [策略、通知与模块导航优化](2026-10-21-strategy-notification-navigation-overhaul.md)
 
 ## 进行中计划
 

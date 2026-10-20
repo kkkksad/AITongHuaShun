@@ -1,6 +1,6 @@
 # 策略、通知与模块导航优化计划
 
-**状态：** 待部署
+**状态：** 已部署（手动部署与 GitHub 推送完成）
 **日期：** 2026-10-21
 **分支：** `codex/hourly-project-optimization`
 
@@ -36,7 +36,7 @@
 - [x] 建立模块目录、二级深链接、全模块搜索与快捷键。
 - [x] 核对生产最近成交和阻塞原因并记录复盘。
 - [x] 更新文档、运行前后端测试、生产构建、可用部分的桥接检查与差异检查。
-- [ ] 提交、推送、手动部署并核验生产健康与安全边界。
+- [x] 提交、推送、手动部署并核验生产健康与安全边界。
 
 ## 验证结果
 
@@ -44,8 +44,12 @@
 - `node .\node_modules\vite\bin\vite.js build --config config/vite.app.config.js --configLoader runner`：通过，Vite 转换 2,324 个模块并生成生产构建。
 - 服务端 `vitest run --dir server --environment node`：65 个测试文件、934 项测试全部通过。
 - 前端 `vitest run --dir src --environment jsdom`：34 个测试文件、132 项测试全部通过；仍有一条既有 WebSocket 端口占用噪音，退出码为 0。
-- `git diff --check`：待提交前再次执行。
-- Python 桥接测试：未运行。当前 Windows 环境中的 `python`/`python3` 仅指向不可用的 WindowsApps 占位符，执行返回 9009；没有可用的 `py` 或项目虚拟环境。不能用 Node 测试替代 Python 桥接测试。
+- `git diff --check`：通过。
+- Python 桥接测试：在已构建的 `kairos-akshare-bridge:production` 容器中以测试专用空 `AKSHARE_BRIDGE_TOKEN` 运行，114 项通过；仅有 1 条 FastAPI/httpx 依赖弃用警告。临时测试文件已从容器和服务器清理。
+- 生产部署：SHA `b9a75f986a49a96ffc376c32d420f2cc4a0cef5b` 已于 2026-10-21 04:06（Asia/Shanghai）手动部署；AkShare、backend、web 三个容器均 `healthy`。
+- 公网核验：`/healthz` 返回 200；`/api/health` 返回 `paper + akshare + realTradingEnabled=false`；匿名 `/api/trading/account` 返回 401。
+- 数据保留：部署前备份位于 `/opt/kairos/runtime/backups/paper-data-20261020T200645Z.tar.gz`，SHA-256 为 `9586b463db9a3ef1f161c8f1733930d500da6c0e5255e0a81b92498d1f001619`。部署后 Paper 状态未重置，仍为现金 89,524 元、4 只持仓、1 笔订单、972 条审计事件，`auditSequence=6232`。
+- GitHub：`codex/hourly-project-optimization` 已推送到 `b9a75f9`，远端同步完成。
 
 ## 关键决策
 
@@ -56,6 +60,6 @@
 
 ## 遗留问题
 
-- 生产部署、容器健康和公网接口核验尚未完成。
-- Python 桥接测试需要在具备 Python 3.11 和 `akshare-bridge/requirements.txt` 依赖的环境中补跑；GitHub 生产工作流包含这一步，但当前分支的手动部署不自动执行 GitHub 验证。
+- 生产部署、容器健康和公网接口核验已完成；当前生产 `executionStrategy` 仍为旧版 `rsi`，用户需要在设置页重新选择固定策略。
+- Python 桥接测试已在生产镜像中补跑并通过；后续仍应在 GitHub Actions 中保留独立测试步骤，避免手动部署绕过 CI。
 - 当前生产订单历史不足以重建逐笔收益、策略胜率或完整回撤，需在后续持续保留有界审计并另行导出研究汇总。
