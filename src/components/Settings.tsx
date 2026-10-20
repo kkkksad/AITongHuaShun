@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Banknote,
@@ -10,13 +11,17 @@ import {
 } from "lucide-react";
 import {
   PAPER_EXECUTION_STRATEGY_CHOICES,
+  type PaperExecutionStrategyCategory,
   type PaperExecutionStrategy,
   type PaperStrategyProfile,
 } from "../../shared/trading";
 import type { TradingBackend } from "../hooks/useTradingBackend";
+import { paperTradingPlanQueryOptions } from "../lib/researchQueries";
+import type { SettingsModuleSection } from "../lib/moduleCatalog";
 
 interface SettingsProps {
   trading: TradingBackend;
+  activeSection?: SettingsModuleSection | null;
 }
 
 interface StrategyProfileOption {
@@ -58,6 +63,60 @@ export const strategyProfileOptions: StrategyProfileOption[] = [
   },
 ];
 
+export const executionStrategyCategoryOptions: ReadonlyArray<{
+  key: PaperExecutionStrategyCategory;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "trend",
+    label: "趋势跟随",
+    description: "均线、动量与趋势健康度确认。",
+  },
+  {
+    key: "breakout",
+    label: "突破确认",
+    description: "价格、量能和日内强势区共同确认。",
+  },
+  {
+    key: "pullback",
+    label: "回踩恢复",
+    description: "等待强势结构中的受控回踩或洗盘恢复。",
+  },
+  {
+    key: "range",
+    label: "区间回归",
+    description: "震荡结构中的受控均值回归研究。",
+  },
+  {
+    key: "validation",
+    label: "样本验证",
+    description: "主策略无信号时收集有界 Paper 样本。",
+  },
+  {
+    key: "auto",
+    label: "自动路由",
+    description: "由市场状态自动切换，保留但不推荐作为固定策略。",
+  },
+];
+
+export function groupExecutionStrategies() {
+  return executionStrategyCategoryOptions.map((category) => ({
+    ...category,
+    options: PAPER_EXECUTION_STRATEGY_CHOICES.filter(
+      (option) => option.category === category.key,
+    ),
+  }));
+}
+
+const sizingConstraintLabels = {
+  "risk-order-cap": "单笔风控上限",
+  "strategy-profile-scale": "策略档位缩放",
+  "position-weight-cap": "单标的仓位上限",
+  "planned-cash-budget": "本轮计划资金预算",
+  none: "暂无金额限制",
+} as const;
+
 export function canResetPaperAccount(input: {
   startingCash: number;
   confirmation: string;
@@ -84,7 +143,8 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-export function Settings({ trading }: SettingsProps) {
+export function Settings({ trading, activeSection }: SettingsProps) {
+  const paperPlanQuery = useQuery(paperTradingPlanQueryOptions());
   const [selectedProfile, setSelectedProfile] = useState<PaperStrategyProfile>(
     trading.account?.strategyProfile ?? "balanced",
   );
@@ -97,6 +157,17 @@ export function Settings({ trading }: SettingsProps) {
   );
   const [confirmation, setConfirmation] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
+
+  useEffect(() => {
+    if (!activeSection) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`settings-${activeSection}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeSection]);
 
   useEffect(() => {
     localStorage.removeItem("kairos_api_keys");
@@ -171,6 +242,9 @@ export function Settings({ trading }: SettingsProps) {
     setAcknowledged(false);
   };
 
+  const sizingDiagnostics = paperPlanQuery.data?.capitalPlan.sizingDiagnostics;
+  const planExecutionStrategy = paperPlanQuery.data?.executionStrategy;
+
   return (
     <div className="page-stack settings-page">
       <section className="settings-hero">
@@ -184,7 +258,7 @@ export function Settings({ trading }: SettingsProps) {
         </span>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section" data-module-section="profile" id="settings-profile">
         <div className="settings-section-header">
           <Gauge size={18} />
           <div>
@@ -223,43 +297,109 @@ export function Settings({ trading }: SettingsProps) {
         </div>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section" data-module-section="execution" id="settings-execution">
         <div className="settings-section-header">
           <Gauge size={18} />
           <div>
-            <h2>执行策略</h2>
-            <p>手动选择下一轮 Paper 买入计划使用的策略；自动模式继续跟随市场路由。</p>
+            <h2>策略与金额配置</h2>
+            <p>直接选择一个固定策略执行 Paper 买入计划；市场自动路由保留在最后，不作为推荐默认。</p>
           </div>
         </div>
 
-        <div
-          className="strategy-profile-grid"
-          role="radiogroup"
-          aria-label="Paper 执行策略"
-        >
-          {PAPER_EXECUTION_STRATEGY_CHOICES.map((option) => {
-            const selected = selectedExecutionStrategy === option.key;
-            return (
-              <button
-                aria-checked={selected}
-                className={`strategy-profile-option ${selected ? "is-selected" : ""}`}
-                disabled={trading.pendingAction || trading.mode !== "paper"}
-                key={option.key}
-                onClick={() => void handleExecutionStrategyChange(option.key)}
-                role="radio"
-                type="button"
-              >
-                <span className="strategy-profile-title">
-                  <strong>{option.label}</strong>
-                  {selected && <CheckCircle2 aria-hidden="true" size={16} />}
+        <div className="strategy-choice-groups" role="radiogroup" aria-label="Paper 执行策略">
+          {groupExecutionStrategies().map((group) => (
+            <div className={`strategy-choice-group is-${group.key}`} key={group.key}>
+              <div className="strategy-choice-group-header">
+                <strong>{group.label}</strong>
+                <span>{group.description}</span>
+              </div>
+              <div className="strategy-profile-grid">
+                {group.options.map((option) => {
+                  const selected = selectedExecutionStrategy === option.key;
+                  return (
+                    <button
+                      aria-checked={selected}
+                      className={`strategy-profile-option ${selected ? "is-selected" : ""}`}
+                      disabled={trading.pendingAction || trading.mode !== "paper"}
+                      key={option.key}
+                      onClick={() => void handleExecutionStrategyChange(option.key)}
+                      role="radio"
+                      type="button"
+                    >
+                      <span className="strategy-profile-title">
+                        <strong>{option.label}</strong>
+                        {selected && <CheckCircle2 aria-hidden="true" size={16} />}
+                      </span>
+                      <span>{option.description}</span>
+                      <small>
+                        {option.key === "auto"
+                          ? "非推荐：策略随市场状态变化"
+                          : "固定策略：仅在出现合格候选时考虑买入"}
+                      </small>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="settings-sizing-panel" aria-live="polite">
+          <div className="settings-sizing-heading">
+            <div>
+              <strong>本轮金额诊断</strong>
+              <span>计划每 60 秒刷新；切换策略或资金档位后重新计算。</span>
+            </div>
+            <span className="settings-mode-badge">
+              {planExecutionStrategy?.mode === "manual"
+                ? `固定策略 · ${planExecutionStrategy.label}`
+                : planExecutionStrategy?.mode === "auto"
+                  ? "市场自动路由"
+                  : "等待计划"}
+            </span>
+          </div>
+          {paperPlanQuery.isLoading && !sizingDiagnostics ? (
+            <p className="settings-plan-placeholder">正在读取本轮 Paper 计划金额…</p>
+          ) : paperPlanQuery.isError && !sizingDiagnostics ? (
+            <p className="settings-plan-error">金额诊断暂不可用：{paperPlanQuery.error instanceof Error ? paperPlanQuery.error.message : "计划接口未返回"}</p>
+          ) : sizingDiagnostics ? (
+            <>
+              <div className="settings-sizing-stats">
+                <div>
+                  <span>实际单笔上限</span>
+                  <strong>{formatCurrency(sizingDiagnostics.effectiveOrderCap)}</strong>
+                </div>
+                <div>
+                  <span>最低费用效率金额</span>
+                  <strong>{formatCurrency(sizingDiagnostics.minimumFeeEfficientNotional)}</strong>
+                </div>
+                <div>
+                  <span>计划买入笔数</span>
+                  <strong>{sizingDiagnostics.plannedBuyOrderCount} 笔</strong>
+                </div>
+                <div>
+                  <span>平均 / 最大计划金额</span>
+                  <strong>
+                    {formatCurrency(sizingDiagnostics.averagePlannedBuyNotional)}
+                    {" / "}
+                    {formatCurrency(sizingDiagnostics.largestPlannedBuyNotional)}
+                  </strong>
+                </div>
+              </div>
+              <div className="settings-sizing-footer">
+                <span>
+                  主要限制：<strong>{sizingConstraintLabels[sizingDiagnostics.limitingConstraint]}</strong>
                 </span>
-                <span>{option.description}</span>
-                <small>
-                  {option.key === "auto" ? "市场路由" : "只在当前策略出现合格候选时考虑买入"}
-                </small>
-              </button>
-            );
-          })}
+                <span>
+                  计划资金 {formatCurrency(sizingDiagnostics.plannedCashBudget)}，
+                  保留现金 {formatCurrency(sizingDiagnostics.cashReserveAmount)}
+                </span>
+              </div>
+              <p>{sizingDiagnostics.summary}</p>
+            </>
+          ) : (
+            <p className="settings-plan-placeholder">当前没有可展示的金额计划。</p>
+          )}
         </div>
 
         <div className="settings-risk-note">
@@ -270,7 +410,7 @@ export function Settings({ trading }: SettingsProps) {
         </div>
       </section>
 
-      <section className="settings-section">
+      <section className="settings-section" data-module-section="account" id="settings-account">
         <div className="settings-section-header">
           <Banknote size={18} />
           <div>

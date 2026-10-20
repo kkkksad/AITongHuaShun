@@ -452,14 +452,70 @@ describe("adaptive candidate strategy routing", () => {
     ]);
   });
 
-  it("keeps the hard no-new-positions guard for a manual strategy", () => {
+  it("lets a manual strategy use its own setup when the market route forbids new positions", () => {
     expect(rankAdaptiveCandidateStrategies({
       quote,
       stockRegime: stock("healthy-trend"),
       routing: routing({
+        regime: "risk-off",
         allowNewPositions: false,
+        newPositionScale: 0,
         eligibleStrategyKeys: ["kairosCapitalShield"],
       }),
+      executionStrategy: "movingAverageCross",
+      candidateScore: 95,
+    })).toEqual([
+      expect.objectContaining({ strategyKey: "movingAverageCross" }),
+    ]);
+  });
+
+  it("lets a manual RSI strategy use its own range setup outside a range route", () => {
+    const rangeQuote = {
+      ...quote,
+      price: 99.2,
+      changePercent: -0.8,
+      open: 100,
+      high: 101,
+      low: 98.8,
+      amplitude: 2.2,
+    };
+    const rangeStock = stock("unclear", {
+      confidence: 0.6,
+      features: {
+        ...stock("unclear").features,
+        return20d: -0.008,
+        distanceFromMa20: -0.025,
+        ma20Slope5d: -0.002,
+      },
+    });
+
+    expect(rankAdaptiveCandidateStrategies({
+      quote: rangeQuote,
+      stockRegime: rangeStock,
+      routing: routing({
+        allowNewPositions: false,
+        newPositionScale: 0,
+        eligibleStrategyKeys: ["momentum"],
+      }),
+      executionStrategy: "rsi",
+      candidateScore: 76,
+    })).toEqual([
+      expect.objectContaining({ strategyKey: "rsi" }),
+    ]);
+  });
+
+  it("still blocks a manual strategy when the quote is not tradable or history has deteriorated", () => {
+    expect(rankAdaptiveCandidateStrategies({
+      quote: { ...quote, tradable: false },
+      stockRegime: stock("healthy-trend"),
+      routing: routing({ allowNewPositions: false, newPositionScale: 0 }),
+      executionStrategy: "movingAverageCross",
+      candidateScore: 95,
+    })).toEqual([]);
+    expect(rankAdaptiveCandidateStrategies({
+      quote,
+      stockRegime: stock("trend-deterioration"),
+      routing: routing({ allowNewPositions: false, newPositionScale: 0 }),
       executionStrategy: "movingAverageCross",
       candidateScore: 95,
     })).toEqual([]);

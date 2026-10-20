@@ -11,6 +11,7 @@
 - [0005：认证原型默认禁用与显式配置](0005-auth-prototype-fail-closed.md)
 - [0006：强制服务端会话认证](0006-required-session-authentication.md)
 - [0007：单用户部署允许八字符固定密码](0007-operator-defined-password-floor.md)
+- [0008：手动 Paper 策略与市场路由解耦](0008-manual-paper-strategy-routing.md)
 
 ## 新建格式
 

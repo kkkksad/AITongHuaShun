@@ -232,6 +232,40 @@ const rankedFactories: [string, StrategyFactory][] = [
       { name: "targetWeight", type: "float", min: 0.2, max: 0.8, step: 0.3 },
     ]),
   ],
+  [
+    "kairosVolatilityContractionBreakout",
+    leaderboardFactory(builtInFactories.kairosVolatilityContractionBreakout, [
+      { name: "contractionPeriod", type: "int", min: 10, max: 30, step: 10 },
+      { name: "baselinePeriod", type: "int", min: 30, max: 60, step: 15 },
+      { name: "maxContractionRatio", type: "float", min: 0.55, max: 0.75, step: 0.1 },
+      { name: "breakoutPeriod", type: "int", min: 10, max: 30, step: 10 },
+      { name: "minVolumeRatio", type: "float", min: 1.2, max: 1.8, step: 0.3 },
+      { name: "trendPeriod", type: "int", min: 40, max: 60, step: 10 },
+      { name: "targetWeight", type: "float", min: 0.12, max: 0.24, step: 0.06 },
+    ]),
+  ],
+  [
+    "kairosVolumePriceBreakout",
+    leaderboardFactory(builtInFactories.kairosVolumePriceBreakout, [
+      { name: "breakoutPeriod", type: "int", min: 10, max: 30, step: 10 },
+      { name: "fastPeriod", type: "int", min: 10, max: 30, step: 10 },
+      { name: "slowPeriod", type: "int", min: 40, max: 70, step: 15 },
+      { name: "minVolumeRatio", type: "float", min: 1.2, max: 1.8, step: 0.3 },
+      { name: "minIntradayPosition", type: "float", min: 0.5, max: 0.7, step: 0.1 },
+      { name: "targetWeight", type: "float", min: 0.12, max: 0.24, step: 0.06 },
+    ]),
+  ],
+  [
+    "kairosQualityLowVolTrend",
+    leaderboardFactory(builtInFactories.kairosQualityLowVolTrend, [
+      { name: "fastPeriod", type: "int", min: 15, max: 30, step: 5 },
+      { name: "slowPeriod", type: "int", min: 45, max: 70, step: 10 },
+      { name: "qualityPeriod", type: "int", min: 15, max: 30, step: 5 },
+      { name: "maxDailyVolatility", type: "float", min: 0.018, max: 0.026, step: 0.004 },
+      { name: "minTrendEfficiency", type: "float", min: 0.3, max: 0.48, step: 0.06 },
+      { name: "targetWeight", type: "float", min: 0.12, max: 0.24, step: 0.06 },
+    ]),
+  ],
 ];
 
 /**

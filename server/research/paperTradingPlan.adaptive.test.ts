@@ -4,6 +4,7 @@ import type {
   MarketSnapshot,
   OrderRecord,
   PaperExecutionStrategy,
+  PaperStrategyProfile,
   PositionSnapshot,
 } from "../../shared/trading";
 import type { AdaptiveStrategyRouting } from "./adaptiveStrategyRouter";
@@ -287,6 +288,7 @@ function build(input: {
   candidateCount?: number;
   candidateScores?: number[];
   executionStrategy?: PaperExecutionStrategy;
+  strategyProfile?: PaperStrategyProfile;
 }) {
   return buildPaperTradingPlan({
     snapshot,
@@ -310,6 +312,7 @@ function build(input: {
     commissionRate: 0.0003,
     minimumCommission: 5,
     cashReserveRatio: 0.1,
+    strategyProfile: input.strategyProfile,
     executionStrategy: input.executionStrategy,
     activityTargetActive: input.activityTargetActive,
     activityMode: input.activityMode,
@@ -541,6 +544,66 @@ describe("adaptive paper trading plan", () => {
         symbol: "601988",
         action: "paper-buy-plan",
         strategy: "均线交叉确认",
+      }),
+    ]));
+  });
+
+  it("lets a manual strategy trade under risk-off when its own setup and all order guards pass", () => {
+    const plan = build({
+      cash: 8_000,
+      includeCandidate: true,
+      executionStrategy: "movingAverageCross",
+      adaptiveRouting: routing({
+        regime: "risk-off",
+        positionPosture: "reduce",
+        allowNewPositions: false,
+        cashReserveRatio: 0.55,
+        newPositionScale: 0,
+        eligibleStrategyKeys: ["kairosCapitalShield"],
+      }),
+      research: marketRegime("healthy-trend", 0.72, "601988"),
+    });
+
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        symbol: "601988",
+        action: "paper-buy-plan",
+        strategy: "均线交叉确认",
+        strategyKey: "movingAverageCross",
+      }),
+    ]));
+    expect(plan.strategyProfile).toMatchObject({
+      allowNewPositions: true,
+      effectiveNewPositionScale: 0.85,
+    });
+  });
+
+  it("still blocks a manual strategy when the selected profile forbids new positions", () => {
+    const plan = build({
+      cash: 8_000,
+      includeCandidate: true,
+      executionStrategy: "movingAverageCross",
+      strategyProfile: "capital-preservation",
+      adaptiveRouting: routing({
+        allowNewPositions: false,
+        newPositionScale: 0,
+        eligibleStrategyKeys: ["kairosCapitalShield"],
+      }),
+      research: marketRegime("healthy-trend", 0.72, "601988"),
+    });
+
+    expect(plan.strategyProfile).toMatchObject({
+      key: "capital-preservation",
+      allowNewPositions: false,
+      effectiveNewPositionScale: 0,
+    });
+    expect(plan.operations.some((operation) =>
+      operation.action === "paper-buy-plan"
+    )).toBe(false);
+    expect(plan.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "observe",
+        reason: expect.stringContaining("禁止新增仓位"),
       }),
     ]));
   });

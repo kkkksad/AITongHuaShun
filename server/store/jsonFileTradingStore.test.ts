@@ -82,6 +82,8 @@ describe("JsonFileTradingStore", () => {
     const order = store.createOrder(
       { symbol: "601318", side: "buy", type: "market", quantity: 100 },
       52.1,
+      "中国平安",
+      { strategy: "A股强势回踩", strategyKey: "aSharePullback" },
     );
     store.fillOrder(order, "中国平安", 52.1, 15.63);
 
@@ -89,7 +91,12 @@ describe("JsonFileTradingStore", () => {
     const reloaded = new JsonFileTradingStore(dataDir, 1_000_000);
     const orders = reloaded.listOrders();
     expect(orders.length).toBeGreaterThanOrEqual(1);
-    expect(orders[0].status).toBe("filled");
+    expect(orders[0]).toMatchObject({
+      status: "filled",
+      strategy: "A股强势回踩",
+      strategyKey: "aSharePullback",
+    });
+    expect(orders[0].filledAt).toBeTruthy();
 
     const positions = reloaded.getPositions(snapshot);
     const pingan = positions.find((p) => p.symbol === "601318");

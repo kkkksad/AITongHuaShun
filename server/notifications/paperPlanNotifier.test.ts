@@ -307,17 +307,17 @@ describe("PaperPlanNotifier", () => {
   });
 
   it.each([
-    ["2026-07-17T09:34:00+08:00", "opening", null],
-    ["2026-07-17T09:35:00+08:00", "opening", 1],
-    ["2026-07-17T10:29:00+08:00", "morning-confirmation", null],
-    ["2026-07-17T10:30:00+08:00", "morning-confirmation", 2],
-    ["2026-07-17T13:30:00+08:00", "afternoon-confirmation", 3],
-    ["2026-07-17T14:50:00+08:00", "closing-risk-review", 4],
-  ] as const)("opens the planned briefing slot at %s", (value, phase, sequence) => {
-    expect(getPaperPlanBriefingSlot(new Date(value), phase)?.sequence ?? null).toBe(sequence);
+    ["2026-07-17T09:34:00+08:00", null],
+    ["2026-07-17T09:35:00+08:00", 1],
+    ["2026-07-17T10:29:00+08:00", 1],
+    ["2026-07-17T10:30:00+08:00", null],
+    ["2026-07-18T09:35:00+08:00", null],
+    ["2026-10-01T09:35:00+08:00", null],
+  ] as const)("opens the single briefing slot at %s", (value, sequence) => {
+    expect(getPaperPlanBriefingSlot(new Date(value))?.sequence ?? null).toBe(sequence);
   });
 
-  it("summarizes only the current trading date paper orders", () => {
+  it("summarizes only the current trading date and prefers the order strategy", () => {
     const order = (
       overrides: Partial<OrderRecord>,
     ): OrderRecord => ({
@@ -338,7 +338,7 @@ describe("PaperPlanNotifier", () => {
       ...overrides,
     });
     const result = summarizePaperOrders([
-      order({ id: "buy" }),
+      order({ id: "buy", strategy: "订单内固定策略" }),
       order({ id: "sell", side: "sell", notional: 500, commission: 5 }),
       order({
         id: "rejected",
@@ -361,7 +361,7 @@ describe("PaperPlanNotifier", () => {
       timestamp: "2026-07-17T01:40:00.000Z",
       data: {
         orderId: "buy",
-        strategy: "KAIROS 低波趋势",
+        strategy: "审计策略不应覆盖订单策略",
         reason: "趋势确认后执行。",
       },
     }]);
@@ -379,15 +379,15 @@ describe("PaperPlanNotifier", () => {
           orderId: "buy",
           name: "Sample Bank",
           side: "buy",
-          strategy: "KAIROS 低波趋势",
+          strategy: "订单内固定策略",
           reason: "趋势确认后执行。",
           reasonSource: "decision-audit",
         }),
         expect.objectContaining({
           orderId: "sell",
           side: "sell",
-          strategy: "未记录策略",
-          reason: "历史订单未保存策略理由",
+          strategy: "历史订单未记录策略",
+          reason: "历史订单未保存决策理由",
           reasonSource: "historical-fallback",
         }),
       ],
@@ -396,6 +396,7 @@ describe("PaperPlanNotifier", () => {
           orderId: "rejected",
           status: "rejected",
           reason: "可用资金不足",
+          reasonSource: "order-record",
         }),
         expect.objectContaining({
           orderId: "pending",
@@ -405,194 +406,10 @@ describe("PaperPlanNotifier", () => {
     });
   });
 
-  it("sends a layered HTML briefing with precise actions and isolated data quality", async () => {
-    const plan = createPlan();
-    const { notifier, sender, store } = createNotifier();
-
-    await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
-      status: "sent",
-      messageKind: "scheduled-briefing",
-    });
-
-    const message = sender.send.mock.calls[0][0];
-    expect(message.summary).toContain("1/10 固定简报 1/4");
-    expect(message.content).toContain("今日第 1/10 条 · 固定简报 1/4");
-    expect(message.content).toContain("<h3>一眼结论</h3>");
-    expect(message.content).toContain("累计 Paper 盈亏");
-    expect(message.content).not.toContain("当日 Paper 盈亏");
-    expect(message.content).toContain("<h3>今日已成交</h3>");
-    expect(message.content).toContain("买入 000001 Sample Bank 100股");
-    expect(message.content).toContain("成交价 10.48 元");
-    expect(message.content).toContain("趋势与流动性通过本地 Paper 检查");
-    expect(message.content).toContain("<h3>本时段待执行计划</h3>");
-    expect(message.content).toContain("买入 000001 Sample Bank 100股");
-    expect(message.content).toContain("参考价 10.50 元");
-    expect(message.content).toContain("预计金额 1050.00 元");
-    expect(message.content).toContain("deterministic research signal");
-    expect(message.content).toContain("<h3>当前与计划后持仓</h3>");
-    expect(message.content).toContain("当前：600519 Current Holding 100股");
-    expect(message.content).toContain("计划后：");
-    expect(message.content).toContain("000001 Sample Bank 100股");
-    expect(message.content).toContain("现金 5000.00 元");
-    expect(message.content).toContain("当前仓位 50.0%");
-    expect(message.content).toContain("KAIROS 低波趋势");
-    expect(message.content).toContain("档位：均衡");
-    expect(message.content).toContain("银行+1.2%");
-    expect(message.content).toContain("外围：外围市场信号中性");
-    expect(message.content).toContain("东方财富：政策支持长期资金入市");
-    expect(message.content).toContain("<h3>今日模拟执行</h3>");
-    expect(message.content).toContain("成交 2 笔");
-    expect(message.content).toContain("买入 1050.00 元");
-    expect(message.content).toContain("<h3>风险与数据</h3>");
-    expect(message.content).toContain("策略风险：注意板块宽度");
-    expect(message.content).toContain("数据质量：新闻源暂时降级");
-    expect(message.content).toContain("下一条：10:30 上午确认");
-    expect(message.content.length).toBeLessThan(4_200);
-    expect(store.listAudit(20)).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        action: "wxpusher.paper-plan.sent",
-        data: expect.objectContaining({
-          phase: "opening",
-          attemptNumber: 1,
-          messageKind: "scheduled-briefing",
-          slotSequence: 1,
-          scheduledAt: "09:35",
-        }),
-      }),
-    ]));
-  });
-
-  it("sends the first phase briefing even when there is no imminent paper action", async () => {
-    const plan = createPlan("observe");
-    const { notifier, sender } = createNotifier();
-
-    await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
-      status: "sent",
-      messageKind: "scheduled-briefing",
-    });
-    expect(sender.send.mock.calls[0][0].content).toContain("本阶段无可执行 paper 动作");
-  });
-
-  it("labels broad risk-off conditions as unsuitable for operation without requiring an order", async () => {
-    const plan = createPlan("observe");
-    plan.adaptiveRouting = {
-      ...plan.adaptiveRouting!,
-      regime: "risk-off",
-      positionPosture: "reduce",
-      allowNewPositions: false,
-      cashReserveRatio: 0.55,
-      newPositionScale: 0,
-    };
-    const { notifier, sender } = createNotifier();
-    const riskOffContext = context(plan, {
-      marketContext: {
-        sourceStatus: "live-read-only",
-        sectors: [],
-        warnings: [],
-        tone: "risk-off",
-        summary: "当前观察池盘面偏弱：上涨 20 只、下跌 80 只。",
-      } as unknown as PaperPlanNotificationContext["marketContext"],
-    });
-
-    await expect(notifier.notify(plan, riskOffContext)).resolves.toMatchObject({
-      status: "sent",
-      messageKind: "urgent-update",
-    });
-    expect(sender.send.mock.calls[0][0].summary).toContain("市场不宜操作");
-    expect(sender.send.mock.calls[0][0].content).toContain("市场不宜操作");
-    expect(sender.send.mock.calls[0][0].content).toContain("暂停新增 paper 仓位");
-  });
-
-  it("escapes provider text and removes unusable sectors from core evidence", () => {
-    const plan = createPlan();
-    const message = formatPaperPlanMessage(plan, context(plan, {
-      marketContext: {
-        sourceStatus: "degraded",
-        tone: "balanced",
-        summary: "<script>alert('x')</script> 暂不可用",
-        sectors: [
-          { name: "暂不可用", direction: "neutral", score: 0, changePercent: 0 },
-          { name: "银行<script>", direction: "constructive", score: 78, changePercent: 1.2 },
-        ],
-        warnings: ["新闻源暂不可用", "新闻源暂不可用", "  "],
-      },
-    }));
-
-    expect(message.content).not.toContain("<script>");
-    expect(message.content).toContain("银行&lt;script&gt;+1.2%");
-    expect(message.content).not.toContain("板块：暂不可用");
-    expect(message.content.match(/新闻源暂不可用/g)).toHaveLength(1);
-    expect(message.content).toContain("数据处于降级状态，本轮不依据缺失项增加风险暴露");
-  });
-
-  it("does not send a briefing on a legal holiday even during former trading hours", async () => {
+  it("waits before 09:35 instead of sending an early briefing", async () => {
     const plan = createPlan();
     const { notifier, sender } = createNotifier({
-      now: new Date("2026-10-05T10:00:00+08:00"),
-    });
-
-    await expect(notifier.notify(plan, context(plan))).resolves.toEqual({
-      status: "not-actionable",
-    });
-    expect(sender.send).not.toHaveBeenCalled();
-  });
-
-  it("does not send an urgent update after the A-share session closes", async () => {
-    const plan = createPlan();
-    const { notifier, sender, setNow } = createNotifier();
-    await notifier.notify(plan, context(plan));
-    setNow(new Date("2026-07-17T15:01:00+08:00"));
-
-    await expect(notifier.notify(plan, context(plan, {
-      marketContext: {
-        sourceStatus: "degraded",
-        tone: "balanced",
-        summary: "收盘后收到数据源降级信号。",
-        sectors: [],
-        warnings: ["真实新闻源暂不可用"],
-      },
-    }))).resolves.toEqual({ status: "not-actionable" });
-    expect(sender.send).toHaveBeenCalledTimes(1);
-  });
-
-  it("does not treat a reference price change as a material update", async () => {
-    const plan = createPlan();
-    const { notifier, sender } = createNotifier();
-    await notifier.notify(plan, context(plan));
-    const repriced = {
-      ...plan,
-      operations: plan.operations.map((operation) => ({ ...operation, price: 10.8 })),
-    };
-
-    await expect(notifier.notify(repriced, context(repriced))).resolves.toMatchObject({
-      status: "phase-used",
-    });
-    expect(sender.send).toHaveBeenCalledTimes(1);
-  });
-
-  it("sends one briefing for the next phase without waiting for cooldown", async () => {
-    const plan = createPlan();
-    const { notifier, sender, setNow } = createNotifier();
-    await notifier.notify(plan, context(plan));
-    setNow(new Date("2026-07-17T10:30:00+08:00"));
-
-    await expect(notifier.notify(plan, context(plan, {
-      policy: policy({
-        phase: "morning-confirmation",
-        phaseLabel: "上午确认",
-        maxInvestedRatio: 0.7,
-      }),
-    }))).resolves.toMatchObject({
-      status: "sent",
-      messageKind: "scheduled-briefing",
-    });
-    expect(sender.send).toHaveBeenCalledTimes(2);
-  });
-
-  it("waits for the planned time instead of sending at phase start", async () => {
-    const plan = createPlan();
-    const { notifier, sender } = createNotifier({
-      now: new Date("2026-07-17T09:31:00+08:00"),
+      now: new Date("2026-07-17T09:34:00+08:00"),
     });
 
     await expect(notifier.notify(plan, context(plan))).resolves.toEqual({
@@ -602,159 +419,236 @@ describe("PaperPlanNotifier", () => {
     expect(sender.send).not.toHaveBeenCalled();
   });
 
-  it("uses the reserve budget once when conditions materially degrade", async () => {
+  it("sends exactly one briefing at 09:35 and refuses the same day again", async () => {
     const plan = createPlan();
     const { notifier, sender, store, setNow } = createNotifier();
-    await notifier.notify(plan, context(plan));
-    setNow(new Date("2026-07-17T09:40:00+08:00"));
 
-    await expect(notifier.notify(plan, context(plan, {
-      marketContext: {
-        sourceStatus: "degraded",
-        tone: "balanced",
-        summary: "当前观察池盘面分化。",
-        sectors: [],
-        warnings: ["真实新闻源暂不可用"],
-      },
-    }))).resolves.toMatchObject({
+    await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
       status: "sent",
-      messageKind: "urgent-update",
+      messageKind: "scheduled-briefing",
     });
-    expect(sender.send).toHaveBeenCalledTimes(2);
-    expect(sender.send.mock.calls[1][0].content).toContain("重要事件快报");
-    expect(sender.send.mock.calls[1][0].content).toContain("真实数据源降级");
-    expect(store.listAudit(20)[0]?.data?.urgentEvents).toEqual(["data-degraded"]);
-
-    await expect(notifier.notify(plan, context(plan, {
-      marketContext: {
-        sourceStatus: "degraded",
-        tone: "balanced",
-        summary: "当前观察池盘面分化。",
-        sectors: [],
-        warnings: ["真实新闻源暂不可用"],
-      },
-    }))).resolves.toMatchObject({ status: "phase-used" });
-    expect(sender.send).toHaveBeenCalledTimes(2);
-  });
-
-  it("sends one precise technology pullback update after a live intraday baseline", async () => {
-    const plan = createPlan("observe");
-    const { notifier, sender, store, setNow } = createNotifier();
-    const baseMarket = context(plan).marketContext;
-
-    await notifier.notify(plan, context(plan, {
-      marketContext: {
-        ...baseMarket,
-        sectors: [
-          { name: "半导体", direction: "constructive", score: 82, changePercent: 6.2 },
-          { name: "银行", direction: "neutral", score: 55, changePercent: 0.8 },
-        ],
-      },
-    }));
-    setNow(new Date("2026-07-17T09:42:00+08:00"));
-
-    await expect(notifier.notify(plan, context(plan, {
-      marketContext: {
-        ...baseMarket,
-        sectors: [
-          { name: "半导体", direction: "constructive", score: 76, changePercent: 4.1 },
-          { name: "银行", direction: "neutral", score: 56, changePercent: 0.9 },
-        ],
-      },
-    }))).resolves.toMatchObject({
-      status: "sent",
-      messageKind: "urgent-update",
+    setNow(new Date("2026-07-17T09:41:00+08:00"));
+    await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
+      status: "phase-used",
     });
 
-    const message = sender.send.mock.calls[1][0];
-    expect(message.summary).toContain("科技板块快速回撤");
-    expect(message.content).toContain("半导体");
-    expect(message.content).toContain("观察高点 +6.20%");
-    expect(message.content).toContain("当前 +4.10%");
-    expect(message.content).toContain("回撤 2.10 个百分点");
-    expect(store.listAudit(20)[0]).toEqual(expect.objectContaining({
-      action: "wxpusher.paper-plan.sent",
-      data: expect.objectContaining({
-        urgentEvents: ["technology-pullback"],
-        sectorSignals: [expect.objectContaining({
-          sectorName: "半导体",
-          pullbackPercentPoints: 2.1,
-        })],
-      }),
-    }));
-
-    setNow(new Date("2026-07-17T09:48:00+08:00"));
-    await expect(notifier.notify(plan, context(plan, {
-      marketContext: {
-        ...baseMarket,
-        sectors: [
-          { name: "半导体", direction: "neutral", score: 64, changePercent: 2.8 },
-        ],
-      },
-    }))).resolves.toMatchObject({ status: "phase-used" });
-    expect(sender.send).toHaveBeenCalledTimes(2);
-  });
-
-  it("hard stops at ten attempts even when a larger limit is injected", async () => {
-    const plan = createPlan();
-    const { notifier, sender, store } = createNotifier({ dailyMessageLimit: 20 });
-    for (let index = 0; index < 10; index += 1) {
-      store.appendAudit(
-        "system",
-        "wxpusher.paper-plan.sent",
-        "existing provider attempt",
-        {
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(store.listAudit(20)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "wxpusher.paper-plan.sent",
+        data: expect.objectContaining({
           tradingDate: plan.tradingDate,
-          phase: `reserve-${index}`,
-          attemptedAt: `2026-07-17T0${index}:00:00.000Z`,
-        },
-      );
-    }
-
-    await expect(notifier.notify(plan, context(plan))).resolves.toEqual({
-      status: "daily-limit",
-    });
-    expect(sender.send).not.toHaveBeenCalled();
+          scheduledAt: "09:35",
+          onePerTradingDay: true,
+          mode: "paper-research-only",
+          liveTradingEnabled: false,
+        }),
+      }),
+    ]));
   });
 
-  it("counts a failed provider request as the phase attempt without retrying", async () => {
+  it("allows a recovery send at 10:29 but closes the window at 10:30", async () => {
     const plan = createPlan();
-    const failingSend = vi.fn().mockRejectedValue(new Error("secret SPT_testToken123"));
-    const { notifier, store } = createNotifier({
-      send: failingSend,
-      dailyMessageLimit: 4,
+    const late = createNotifier({
+      now: new Date("2026-07-17T10:29:00+08:00"),
     });
+    await expect(late.notifier.notify(plan, context(plan))).resolves.toMatchObject({
+      status: "sent",
+    });
+
+    const closed = createNotifier({
+      now: new Date("2026-07-17T10:30:00+08:00"),
+    });
+    await expect(closed.notifier.notify(plan, context(plan))).resolves.toEqual({
+      status: "window-closed",
+    });
+    expect(closed.sender.send).not.toHaveBeenCalled();
+  });
+
+  it("does not send on a weekend or a legal holiday", async () => {
+    const weekendPlan = createPlan();
+    const weekend = createNotifier({
+      now: new Date("2026-07-18T09:35:00+08:00"),
+    });
+    await expect(weekend.notifier.notify(weekendPlan, context(weekendPlan))).resolves.toEqual({
+      status: "not-actionable",
+    });
+
+    const holidayPlan = { ...createPlan(), tradingDate: "2026-10-01" };
+    const holiday = createNotifier({
+      now: new Date("2026-10-01T09:35:00+08:00"),
+    });
+    await expect(holiday.notifier.notify(holidayPlan, context(holidayPlan))).resolves.toEqual({
+      status: "not-actionable",
+    });
+    expect(weekend.sender.send).not.toHaveBeenCalled();
+    expect(holiday.sender.send).not.toHaveBeenCalled();
+  });
+
+  it("suppresses risky or degraded days to audit only", async () => {
+    const plan = createPlan();
+    const { notifier, sender, store } = createNotifier();
+    const risky = context(plan, {
+      marketContext: {
+        ...context(plan).marketContext,
+        sourceStatus: "degraded",
+        tone: "risk-off",
+        summary: "行情源超时，风险偏好转弱。",
+      },
+    });
+
+    await expect(notifier.notify(plan, risky)).resolves.toEqual({
+      status: "risk-suppressed",
+      events: ["market-data-not-live", "market-risk-off"],
+    });
+    await expect(notifier.notify(plan, risky)).resolves.toMatchObject({
+      status: "risk-suppressed",
+    });
+
+    expect(sender.send).not.toHaveBeenCalled();
+    expect(store.listAudit(50).filter((event) =>
+      event.action === "wxpusher.paper-plan.urgent-suppressed"
+    )).toHaveLength(1);
+  });
+
+  it("records a failed provider request without retrying or leaking credentials", async () => {
+    const plan = createPlan();
+    const send = vi.fn().mockRejectedValue(new Error("secret SPT_testToken123"));
+    const { notifier, sender, store, setNow } = createNotifier({ send });
 
     await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
       status: "failed",
+      messageKind: "scheduled-briefing",
     });
-    await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({ status: "phase-used" });
-    const auditText = JSON.stringify(store.listAudit(20));
+    setNow(new Date("2026-07-17T09:36:00+08:00"));
+    await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
+      status: "phase-used",
+    });
+
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    const auditText = JSON.stringify(store.listAudit(50));
     expect(auditText).toContain("wxpusher.paper-plan.failed");
+    expect(auditText).toContain("provider-request-failed");
     expect(auditText).not.toContain("SPT_testToken123");
   });
 
-  it("reserves the daily budget for later scheduled phases", async () => {
+  it("builds a concise six-part briefing with actions, sizing and execution evidence", async () => {
     const plan = createPlan();
-    const { notifier, sender, setNow } = createNotifier({ dailyMessageLimit: 2 });
-    await notifier.notify(plan, context(plan));
-    setNow(new Date("2026-07-17T10:30:00+08:00"));
-    await notifier.notify(plan, context(plan, {
-      policy: policy({
-        phase: "morning-confirmation",
-        phaseLabel: "上午确认",
-        maxInvestedRatio: 0.7,
-      }),
-    }));
-    setNow(new Date("2026-07-17T13:30:00+08:00"));
+    plan.executionStrategy = {
+      key: "kairosVolumePriceBreakout",
+      label: "KAIROS 量价突破确认",
+      mode: "manual",
+      selectedStrategyMatched: true,
+      matchedCandidateCount: 1,
+    };
+    plan.capitalPlan.sizingDiagnostics = {
+      riskOrderCapBeforeScale: 2_000,
+      riskOrderCapAfterScale: 1_600,
+      positionWeightCapAfterScale: 2_500,
+      cashReserveAmount: 1_000,
+      plannedCashBudget: 4_000,
+      effectiveOrderCap: 1_600,
+      minimumFeeEfficientNotional: 500,
+      plannedBuyOrderCount: 1,
+      plannedBuyNotional: 1_050,
+      averagePlannedBuyNotional: 1_050,
+      largestPlannedBuyNotional: 1_050,
+      limitingConstraint: "strategy-profile-scale",
+      summary: "策略档位把 2000 元单笔上限缩放为 1600 元。",
+    };
+    const { notifier, sender } = createNotifier();
 
-    await expect(notifier.notify(plan, context(plan, {
-      policy: policy({
-        phase: "afternoon-confirmation",
-        phaseLabel: "下午确认",
-        maxInvestedRatio: 0.82,
-      }),
-    }))).resolves.toEqual({ status: "daily-limit" });
-    expect(sender.send).toHaveBeenCalledTimes(2);
+    await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
+      status: "sent",
+    });
+
+    const message = sender.send.mock.calls[0][0];
+    expect(message.summary).toBe(
+      "KAIROS 今日可操作｜1 项 Paper 动作｜2026-07-17",
+    );
+    expect(message.content).toContain("09:35 唯一简报");
+    expect(message.content).toContain("今日结论：可操作");
+    expect(message.content).toContain("<h3>今日动作</h3>");
+    expect(message.content).toContain("买入 000001 Sample Bank");
+    expect(message.content).toContain("KAIROS 低波趋势");
+    expect(message.content).toContain("<h3>原因</h3>");
+    expect(message.content).toContain("最强证据");
+    expect(message.content).toContain("首个阻塞");
+    expect(message.content).toContain("<h3>资金与限制</h3>");
+    expect(message.content).toContain("实际单笔上限 1600.00 元");
+    expect(message.content).toContain("主要限制：策略档位缩放");
+    expect(message.content).toContain("计划 1 笔买入");
+    expect(message.content).toContain("策略：KAIROS 量价突破确认");
+    expect(message.content).toContain("<h3>最近成交</h3>");
+    expect(message.content).toContain("成交 2 笔");
+    expect(message.content).toContain("手续费 10.00 元");
+    expect(message.content).toContain("<h3>今日边界</h3>");
+    expect(message.content).toContain("仅 Paper 研究");
+    expect(message.content).toContain("每个真实交易日只发送这一条");
+    expect(message.content).not.toContain("第 1/10 条");
+  });
+
+  it("sends an observation briefing without inventing trades", async () => {
+    const plan = createPlan("observe");
+    const { notifier, sender } = createNotifier();
+
+    const current = context(plan);
+    await expect(notifier.notify(plan, {
+      ...current,
+      executionSummary: {
+        filledOrders: 0,
+        rejectedOrders: 0,
+        pendingOrders: 0,
+        cancelledOrders: 0,
+        buyNotional: 0,
+        sellNotional: 0,
+        commission: 0,
+        executedOrders: [],
+        unfilledOrders: [],
+      },
+    })).resolves.toMatchObject({
+      status: "sent",
+    });
+    const message = sender.send.mock.calls[0][0];
+    expect(message.summary).toContain("今日观察");
+    expect(message.content).toContain("今日结论：观察");
+    expect(message.content).toContain("今日没有满足条件的买卖动作");
+    expect(message.content).toContain("今日暂无成交");
+  });
+
+  it("escapes operation and unfilled-order text exactly once", async () => {
+    const plan = createPlan();
+    plan.operations[0] = {
+      ...plan.operations[0],
+      name: "<script>alert(1)</script>",
+      reason: "突破 <b>确认</b>",
+    };
+    const current = context(plan);
+    const { notifier, sender } = createNotifier();
+
+    await expect(notifier.notify(plan, {
+      ...current,
+      executionSummary: {
+        ...current.executionSummary,
+        unfilledOrders: [{
+          orderId: "rejected-html",
+          symbol: "000002",
+          name: "<img src=x onerror=alert(1)>",
+          side: "buy",
+          quantity: 100,
+          status: "rejected",
+          strategy: "固定策略",
+          reason: "资金 <不足>",
+          reasonSource: "order-record",
+        }],
+      },
+    })).resolves.toMatchObject({ status: "sent" });
+
+    const content = sender.send.mock.calls[0][0].content;
+    expect(content).not.toContain("<script>");
+    expect(content).not.toContain("<img src=x");
+    expect(content).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(content).toContain("资金 &lt;不足&gt;");
+    expect(content).not.toContain("&amp;lt;");
   });
 });

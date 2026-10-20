@@ -74,8 +74,8 @@ describe("evaluateFixedStrategyProfiles", () => {
   it("covers fourteen distinct strategy logics with fixed parameters", () => {
     const keys = STRATEGY_ROBUSTNESS_PROFILES.map((profile) => profile.strategyKey);
 
-    expect(keys).toHaveLength(14);
-    expect(new Set(keys).size).toBe(14);
+    expect(keys).toHaveLength(17);
+    expect(new Set(keys).size).toBe(17);
     expect(keys).toEqual(expect.arrayContaining([
       "macd",
       "aSharePullback",

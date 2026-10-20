@@ -3,6 +3,7 @@ import type {
   AccountSnapshot,
   MarketSnapshot,
   OrderRecord,
+  OrderProvenance,
   OrderRequest,
   PaperExecutionStrategy,
   PaperStrategyProfile,
@@ -32,7 +33,7 @@ export class PaperBroker extends EventEmitter {
     super();
   }
 
-  submitOrder(request: OrderRequest): OrderRecord {
+  submitOrder(request: OrderRequest, provenance?: OrderProvenance): OrderRecord {
     const duplicate = this.store.findByClientOrderId(request.clientOrderId);
     if (duplicate) {
       return duplicate;
@@ -61,14 +62,19 @@ export class PaperBroker extends EventEmitter {
 
     if (!decision.allowed || !quote) {
       // Create a minimal rejected order record
-      const order = this.store.createOrder(request, quote?.price ?? 0, quote?.name);
+      const order = this.store.createOrder(
+        request,
+        quote?.price ?? 0,
+        quote?.name,
+        provenance,
+      );
       const rejected = this.store.rejectOrder(order, decision.message, decision.code);
       this.emit("order.updated", rejected);
       return rejected;
     }
 
     // Now create the order (cash will be blocked for limit orders)
-    const order = this.store.createOrder(request, quote.price, quote.name);
+    const order = this.store.createOrder(request, quote.price, quote.name, provenance);
 
     // Marketable limit orders fill immediately; otherwise they remain pending.
     if (request.type === "limit") {

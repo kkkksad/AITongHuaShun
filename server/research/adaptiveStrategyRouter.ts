@@ -87,6 +87,9 @@ const ALL_STRATEGY_KEYS = [
   "kairosRiskOffRecovery",
   "kairosWashoutRecovery",
   "kairosTrendHealth",
+  "kairosQualityLowVolTrend",
+  "kairosVolatilityContractionBreakout",
+  "kairosVolumePriceBreakout",
   "aSharePullback",
   "movingAverageCross",
   "momentum",
@@ -103,6 +106,9 @@ const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
   "trend-up-low-volatility": [
     "kairosLowVolTrend",
     "kairosTrendHealth",
+    "kairosQualityLowVolTrend",
+    "kairosVolatilityContractionBreakout",
+    "kairosVolumePriceBreakout",
     "movingAverageCross",
     "momentum",
     "macd",
@@ -114,6 +120,7 @@ const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
     "kairosQuietPullback",
     "kairosWashoutRecovery",
     "aSharePullback",
+    "kairosVolumePriceBreakout",
     "kairosQualifiedProbe",
     "kairosValidationBasket",
     "kairosCapitalShield",
@@ -144,7 +151,12 @@ const STRATEGIES: Record<AdaptiveMarketRegime, string[]> = {
 
 const STRATEGY_PLAYBOOKS: Record<AdaptiveMarketRegime, AdaptiveStrategyPlaybook> = {
   "trend-up-low-volatility": {
-    primaryStrategyKeys: ["kairosLowVolTrend", "kairosTrendHealth"],
+    primaryStrategyKeys: [
+      "kairosQualityLowVolTrend",
+      "kairosVolatilityContractionBreakout",
+      "kairosLowVolTrend",
+      "kairosTrendHealth",
+    ],
     useWhen: "板块中期趋势、上涨宽度和低波动同步确认时，顺势分批建立 paper 仓位。",
     avoidWhen: "均线斜率转负、上涨宽度跌破确认线或趋势恶化个股快速增加时停止新增。",
     recheckTriggers: ["上涨宽度低于 50%", "20 日波动升至 38%", "趋势恶化占比达到 50%"],

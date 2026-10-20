@@ -723,7 +723,10 @@ export class PaperAutoExecutor {
 
       for (const { operation, request } of preparedOperations) {
         const side = request.side;
-        const order = this.options.system.broker.submitOrder(request);
+        const order = this.options.system.broker.submitOrder(request, {
+          strategy: operation.strategy,
+          strategyKey: paperOperationStrategyKey(operation) ?? undefined,
+        });
         this.options.onOrder?.(order, request);
         submittedOrders.push({
           symbol: order.symbol,

@@ -3,6 +3,7 @@ import type {
   AuditEvent,
   MarketSnapshot,
   OrderRecord,
+  OrderProvenance,
   OrderRequest,
   PaperExecutionStrategy,
   PaperStrategyProfile,
@@ -79,7 +80,12 @@ export interface TradingStore {
   getPendingOrders(): OrderRecord[];
 
   /** 创建订单记录（不执行风控、不撮合）。 */
-  createOrder(request: OrderRequest, requestedPrice: number, name?: string): OrderRecord;
+  createOrder(
+    request: OrderRequest,
+    requestedPrice: number,
+    name?: string,
+    provenance?: OrderProvenance,
+  ): OrderRecord;
 
   /** 标记订单为已拒绝。 */
   rejectOrder(order: OrderRecord, reason: string, code: string): OrderRecord;

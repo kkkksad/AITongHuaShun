@@ -14,6 +14,7 @@
 | 服务器部署 | [operations/deployment.md](operations/deployment.md) | 如何用 HTTPS 和强制会话保护部署单实例？ |
 | 安全边界 | [safety/trading-boundaries.md](safety/trading-boundaries.md) | 数据和交易能力有哪些不可违反的约束？ |
 | 路线图 | [roadmap.md](roadmap.md) | 外部能力按什么顺序接入？ |
+| 生产与交易复盘 | [research/](research/) | 最近 Paper 运行、成交与阻塞原因有哪些可核实事实？ |
 | 决策记录 | [decisions/README.md](decisions/README.md) | 为什么采用当前长期方案？ |
 | 执行计划 | [plans/README.md](plans/README.md) | 大型任务如何记录进度和验证结果？ |
 
@@ -25,6 +26,7 @@
 - 风险、权限和合规边界写入 `safety/`。
 - 当前事实和临时缺口写入 `status/`。
 - 不易逆转的选择写入 `decisions/`。
+- 生产复盘与一次性研究结论写入 `research/`。
 - 有起止时间的实施工作写入 `plans/`。
 
 不要在多个文档中复制同一套规则。选择一个权威位置，其余文档链接过去。

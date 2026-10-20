@@ -8,7 +8,10 @@ export type PaperStrategyProfile =
 export const PAPER_EXECUTION_STRATEGY_KEYS = [
   "kairosLowVolTrend",
   "kairosTrendHealth",
+  "kairosQualityLowVolTrend",
   "momentum",
+  "kairosVolatilityContractionBreakout",
+  "kairosVolumePriceBreakout",
   "kairosQuietPullback",
   "kairosWashoutRecovery",
   "aSharePullback",
@@ -26,16 +29,26 @@ export type PaperManualExecutionStrategy = (typeof PAPER_EXECUTION_STRATEGY_KEYS
 export const PAPER_EXECUTION_STRATEGY_VALUES = ["auto", ...PAPER_EXECUTION_STRATEGY_KEYS] as const;
 export type PaperExecutionStrategy = (typeof PAPER_EXECUTION_STRATEGY_VALUES)[number];
 
+export type PaperExecutionStrategyCategory =
+  | "auto"
+  | "trend"
+  | "breakout"
+  | "pullback"
+  | "range"
+  | "validation";
+
 export interface PaperExecutionStrategyOption {
   key: PaperExecutionStrategy;
   label: string;
   description: string;
+  category: PaperExecutionStrategyCategory;
 }
 
 export const PAPER_AUTO_EXECUTION_STRATEGY_OPTION: PaperExecutionStrategyOption = {
   key: "auto",
-  label: "自动选择（跟随市场）",
-  description: "根据当前市场状态和路由规则自动选择合格策略。",
+  label: "市场自动路由（非推荐）",
+  description: "仅在明确需要跟随市场状态时使用；结果可随行情变化，不适合固定策略验证。",
+  category: "auto",
 };
 
 export const PAPER_EXECUTION_STRATEGY_OPTIONS: readonly PaperExecutionStrategyOption[] = [
@@ -43,77 +56,110 @@ export const PAPER_EXECUTION_STRATEGY_OPTIONS: readonly PaperExecutionStrategyOp
     key: "kairosLowVolTrend",
     label: "KAIROS低波趋势",
     description: "健康趋势、低振幅和均线斜率向上时研究强势延续。",
+    category: "trend",
   },
   {
     key: "kairosTrendHealth",
     label: "KAIROS趋势健康",
     description: "使用真实历史趋势健康度和回撤受控程度筛选候选。",
+    category: "trend",
+  },
+  {
+    key: "kairosQualityLowVolTrend",
+    label: "KAIROS质量低波趋势",
+    description: "用趋势效率、近期回撤、波动和均线结构确认低波趋势；质量仅指价格行为。",
+    category: "trend",
   },
   {
     key: "momentum",
     label: "趋势动量确认",
     description: "在受控追高范围内确认价格和成交活跃度动量。",
+    category: "breakout",
+  },
+  {
+    key: "kairosVolatilityContractionBreakout",
+    label: "KAIROS波动收缩突破",
+    description: "先确认历史振幅收缩，再要求放量突破和历史趋势健康。",
+    category: "breakout",
+  },
+  {
+    key: "kairosVolumePriceBreakout",
+    label: "KAIROS量价突破确认",
+    description: "价格突破、量能放大、日内强势区与中期趋势同时确认。",
+    category: "breakout",
   },
   {
     key: "kairosQuietPullback",
     label: "KAIROS安静回踩",
     description: "上升趋势中的缩量回踩形态，等待企稳后再评估。",
+    category: "pullback",
   },
   {
     key: "kairosWashoutRecovery",
     label: "KAIROS洗盘恢复",
     description: "历史验证过的洗盘后恢复形态，要求足够样本和置信度。",
+    category: "pullback",
   },
   {
     key: "aSharePullback",
     label: "A股强势回踩",
     description: "强势结构中回踩受控、尚未破坏中期趋势的候选。",
+    category: "pullback",
   },
   {
     key: "movingAverageCross",
     label: "均线交叉确认",
     description: "趋势周期中的均线交叉与价格结构确认。",
+    category: "trend",
   },
   {
     key: "macd",
     label: "MACD趋势确认",
     description: "使用趋势动量和 MACD 结构辅助确认。",
+    category: "trend",
   },
   {
     key: "turtle",
     label: "海龟突破",
     description: "趋势突破结构，仍需通过追高、流动性和费用过滤。",
+    category: "breakout",
   },
   {
     key: "rsi",
     label: "RSI超卖回归",
     description: "震荡市场中受控低位的 RSI 回归观察。",
+    category: "range",
   },
   {
     key: "bollingerBands",
     label: "布林带下沿回归",
     description: "震荡区间下沿附近的均值回归研究候选。",
+    category: "range",
   },
   {
     key: "kairosRangeRotation",
     label: "KAIROS区间轮动",
     description: "震荡市场中有历史样本支持的受控区间轮动。",
+    category: "range",
   },
   {
     key: "kairosQualifiedProbe",
     label: "KAIROS合格样本验证",
     description: "活动目标未达标时，用合格历史样本进行有界 Paper 验证。",
+    category: "validation",
   },
   {
     key: "kairosValidationBasket",
     label: "KAIROS验证篮子",
     description: "主策略无信号时，用受控验证篮子收集 Paper 样本。",
+    category: "validation",
   },
 ];
 
+/** 手动策略优先；自动市场路由始终放在最后，避免被误认为默认推荐。 */
 export const PAPER_EXECUTION_STRATEGY_CHOICES: readonly PaperExecutionStrategyOption[] = [
-  PAPER_AUTO_EXECUTION_STRATEGY_OPTION,
   ...PAPER_EXECUTION_STRATEGY_OPTIONS,
+  PAPER_AUTO_EXECUTION_STRATEGY_OPTION,
 ];
 
 export function getPaperExecutionStrategyOption(
@@ -254,9 +300,21 @@ export interface OrderRecord extends OrderRequest {
   filledQuantity: number;
   notional: number;
   commission: number;
+  /** 成交完成时间；旧版持久化订单可能不存在。 */
+  filledAt?: string;
+  /** 服务端内部记录的策略名称；浏览器订单不得自行写入。 */
+  strategy?: string;
+  /** 服务端内部记录的策略键；浏览器订单不得自行写入。 */
+  strategyKey?: string;
   rejectionReason?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/** 仅供服务端下单链路写入的订单来源审计字段。 */
+export interface OrderProvenance {
+  strategy?: string;
+  strategyKey?: string;
 }
 
 export interface RiskLimits {

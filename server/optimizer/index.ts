@@ -2,7 +2,7 @@
  * 回测参数优化器 —— 统一入口。
  *
  * 提供：
- * - 15 种内置策略的参数空间定义和工厂函数
+ * - 18 种内置策略的参数空间定义和工厂函数
  * - 网格搜索和遗传算法两种优化方法
  * - 便捷的 runOptimization() 高层 API
  */
@@ -425,6 +425,104 @@ export const kairosTrendHealthFactory: StrategyFactory = {
   },
 };
 
+/** KAIROS 波动收缩放量突破策略参数空间。 */
+export const kairosVolatilityContractionBreakoutFactory: StrategyFactory = {
+  name: "KAIROS波动收缩突破",
+  parameters: [
+    { name: "contractionPeriod", type: "int", min: 10, max: 30, step: 10 },
+    { name: "baselinePeriod", type: "int", min: 30, max: 60, step: 15 },
+    { name: "maxContractionRatio", type: "float", min: 0.55, max: 0.75, step: 0.1 },
+    { name: "breakoutPeriod", type: "int", min: 10, max: 30, step: 10 },
+    { name: "minVolumeRatio", type: "float", min: 1.2, max: 1.8, step: 0.3 },
+    { name: "trendPeriod", type: "int", min: 40, max: 60, step: 10 },
+    { name: "maxEntryChangePercent", type: "float", min: 3.5, max: 5.5, step: 1 },
+    { name: "takeProfitPercent", type: "float", min: 0.05, max: 0.1, step: 0.025 },
+    { name: "stopLossPercent", type: "float", min: 0.025, max: 0.045, step: 0.01 },
+    { name: "targetWeight", type: "float", min: 0.12, max: 0.24, step: 0.06 },
+  ],
+  create: async (params) => {
+    const { KairosVolatilityContractionBreakoutStrategy } = await import(
+      "../backtest/strategies/KairosBreakoutQualityStrategies"
+    );
+    return new KairosVolatilityContractionBreakoutStrategy(
+      params.contractionPeriod,
+      params.baselinePeriod,
+      params.maxContractionRatio,
+      params.breakoutPeriod,
+      params.minVolumeRatio,
+      params.trendPeriod,
+      params.maxEntryChangePercent,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.targetWeight,
+    );
+  },
+};
+
+/** KAIROS 量价突破确认策略参数空间。 */
+export const kairosVolumePriceBreakoutFactory: StrategyFactory = {
+  name: "KAIROS量价突破确认",
+  parameters: [
+    { name: "breakoutPeriod", type: "int", min: 10, max: 30, step: 10 },
+    { name: "fastPeriod", type: "int", min: 10, max: 30, step: 10 },
+    { name: "slowPeriod", type: "int", min: 40, max: 70, step: 15 },
+    { name: "minVolumeRatio", type: "float", min: 1.2, max: 1.8, step: 0.3 },
+    { name: "minIntradayPosition", type: "float", min: 0.5, max: 0.7, step: 0.1 },
+    { name: "maxEntryChangePercent", type: "float", min: 3.5, max: 5.5, step: 1 },
+    { name: "takeProfitPercent", type: "float", min: 0.05, max: 0.1, step: 0.025 },
+    { name: "stopLossPercent", type: "float", min: 0.02, max: 0.04, step: 0.01 },
+    { name: "targetWeight", type: "float", min: 0.12, max: 0.24, step: 0.06 },
+  ],
+  create: async (params) => {
+    const { KairosVolumePriceBreakoutStrategy } = await import(
+      "../backtest/strategies/KairosBreakoutQualityStrategies"
+    );
+    return new KairosVolumePriceBreakoutStrategy(
+      params.breakoutPeriod,
+      params.fastPeriod,
+      params.slowPeriod,
+      params.minVolumeRatio,
+      params.minIntradayPosition,
+      params.maxEntryChangePercent,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.targetWeight,
+    );
+  },
+};
+
+/** KAIROS 质量低波趋势策略参数空间；质量仅指价格行为。 */
+export const kairosQualityLowVolTrendFactory: StrategyFactory = {
+  name: "KAIROS质量低波趋势",
+  parameters: [
+    { name: "fastPeriod", type: "int", min: 15, max: 30, step: 5 },
+    { name: "slowPeriod", type: "int", min: 45, max: 70, step: 10 },
+    { name: "qualityPeriod", type: "int", min: 15, max: 30, step: 5 },
+    { name: "maxDailyVolatility", type: "float", min: 0.018, max: 0.026, step: 0.004 },
+    { name: "minTrendEfficiency", type: "float", min: 0.3, max: 0.48, step: 0.06 },
+    { name: "maxRecentDrawdown", type: "float", min: 0.045, max: 0.07, step: 0.0125 },
+    { name: "takeProfitPercent", type: "float", min: 0.05, max: 0.09, step: 0.02 },
+    { name: "stopLossPercent", type: "float", min: 0.02, max: 0.04, step: 0.01 },
+    { name: "targetWeight", type: "float", min: 0.12, max: 0.24, step: 0.06 },
+  ],
+  create: async (params) => {
+    const { KairosQualityLowVolTrendStrategy } = await import(
+      "../backtest/strategies/KairosBreakoutQualityStrategies"
+    );
+    return new KairosQualityLowVolTrendStrategy(
+      params.fastPeriod,
+      params.slowPeriod,
+      params.qualityPeriod,
+      params.maxDailyVolatility,
+      params.minTrendEfficiency,
+      params.maxRecentDrawdown,
+      params.takeProfitPercent,
+      params.stopLossPercent,
+      params.targetWeight,
+    );
+  },
+};
+
 /**
  * 所有内置策略工厂映射。
  */
@@ -444,6 +542,9 @@ export const builtInFactories: Record<string, StrategyFactory> = {
   kairosRiskOffRecovery: kairosRiskOffRecoveryFactory,
   kairosWashoutRecovery: kairosWashoutRecoveryFactory,
   kairosTrendHealth: kairosTrendHealthFactory,
+  kairosVolatilityContractionBreakout: kairosVolatilityContractionBreakoutFactory,
+  kairosVolumePriceBreakout: kairosVolumePriceBreakoutFactory,
+  kairosQualityLowVolTrend: kairosQualityLowVolTrendFactory,
 };
 
 // ═══════════════════════════════════════════════

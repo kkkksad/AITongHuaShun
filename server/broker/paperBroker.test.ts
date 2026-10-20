@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createTradingSystem } from "../system";
 import { createTestConfig } from "../test/testConfig";
 
@@ -12,6 +12,9 @@ describe("PaperBroker", () => {
       type: "market",
       quantity: 100,
       clientOrderId: "test-fill-1",
+    }, {
+      strategy: "KAIROS趋势健康",
+      strategyKey: "kairosTrendHealth",
     });
     const after = system.broker.getAccount();
 
@@ -19,6 +22,9 @@ describe("PaperBroker", () => {
     expect(order.name).toBe("宁德时代");
     expect(order.filledQuantity).toBe(100);
     expect(order.commission).toBeGreaterThan(0);
+    expect(order.strategy).toBe("KAIROS趋势健康");
+    expect(order.strategyKey).toBe("kairosTrendHealth");
+    expect(order.filledAt).toBeTruthy();
     expect(after.cash).toBeLessThan(before.cash);
     expect(system.store.getPositionQuantity("300750")).toBe(500);
   });
@@ -33,11 +39,19 @@ describe("PaperBroker", () => {
       clientOrderId: "idempotent-order",
     };
 
-    const first = system.broker.submitOrder(request);
-    const second = system.broker.submitOrder(request);
+    const first = system.broker.submitOrder(request, {
+      strategy: "趋势动量确认",
+      strategyKey: "momentum",
+    });
+    const second = system.broker.submitOrder(request, {
+      strategy: "伪造来源",
+      strategyKey: "other",
+    });
 
     expect(second.id).toBe(first.id);
     expect(second.name).toBe("宁德时代");
+    expect(second.strategy).toBe("趋势动量确认");
+    expect(second.strategyKey).toBe("momentum");
     expect(system.broker.getOrders()).toHaveLength(1);
   });
 

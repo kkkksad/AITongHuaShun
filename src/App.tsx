@@ -40,6 +40,18 @@ import {
   type AuthUser,
 } from "./lib/tradingApi";
 import { useTradingBackend } from "./hooks/useTradingBackend";
+import {
+  getActiveModuleId,
+  getModuleHref,
+  moduleCatalog,
+  parseAccountTab,
+  parseLearningSection,
+  parseMarketTab,
+  parseSettingsSection,
+  parseStrategyStage,
+  type AccountModuleTab,
+  type MarketModuleTab,
+} from "./lib/moduleCatalog";
 import { lazyWithChunkRecovery } from "./lib/chunkRecovery";
 import type { StrategyId, StrategyParameters } from "./types";
 
@@ -70,8 +82,6 @@ const StrategyCompare = lazyNamed(() => import("./components/StrategyCompare"), 
 const StrategyLab = lazyNamed(() => import("./components/StrategyLab"), "StrategyLab");
 const StrategyLeaderboard = lazyNamed(() => import("./components/StrategyLeaderboard"), "StrategyLeaderboard");
 const StrategyRobustnessPanel = lazyNamed(() => import("./components/StrategyRobustnessPanel"), "StrategyRobustnessPanel");
-
-type AccountTab = "portfolio" | "trading" | "orders" | "risk" | "strategies" | "monitor" | "logs";
 
 const defaultParameters: StrategyParameters = {
   lookback: 20,
@@ -128,6 +138,17 @@ const pathViews = Object.fromEntries(
   Object.entries(viewPaths).map(([view, path]) => [path, view]),
 ) as Record<string, ViewId>;
 
+const overviewModuleIds = [
+  "market-a-share",
+  "market-turning",
+  "market-stock",
+  "strategy-validate",
+  "account-orders",
+  "learning-paper-plan",
+  "settings-execution",
+  "account-monitor",
+];
+
 function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -136,7 +157,6 @@ function App() {
   });
   const location = useLocation();
   const navigate = useNavigate();
-  const [accountTab, setAccountTab] = useState<AccountTab>("portfolio");
   const [selectedStrategy, setSelectedStrategy] = useState<StrategyId>("momentum");
   const [parameters, setParameters] = useState<StrategyParameters>(defaultParameters);
   const [committedParameters, setCommittedParameters] =
@@ -144,7 +164,7 @@ function App() {
   const [committedStrategy, setCommittedStrategy] = useState<StrategyId>("momentum");
   const [isRunning, setIsRunning] = useState(false);
   const [hasCompletedBacktest, setHasCompletedBacktest] = useState(false);
-  const [strategyStage, setStrategyStage] = useState<StrategyWorkflowStage>("configure");
+  const strategyStage: StrategyWorkflowStage = parseStrategyStage(location.search);
 
   const result = useMemo(
     () => runBacktest(committedStrategy, committedParameters),
@@ -165,6 +185,14 @@ function App() {
 
   const normalizedPath = location.pathname.replace(/\/+$/, "") || "/";
   const activeView = pathViews[normalizedPath] ?? "overview";
+  const accountTab = parseAccountTab(location.search);
+  const marketTab = parseMarketTab(location.search);
+  const learningSection = parseLearningSection(location.search);
+  const settingsSection = parseSettingsSection(location.search);
+  const activeModuleId = getActiveModuleId(activeView, location.search);
+  const overviewModules = overviewModuleIds
+    .map((id) => moduleCatalog.find((item) => item.id === id))
+    .filter((item): item is (typeof moduleCatalog)[number] => Boolean(item));
   const strategyWorkflowState = getStrategyWorkflowState({
     hasRun: hasCompletedBacktest,
     selectedStrategy,
@@ -181,7 +209,7 @@ function App() {
       setCommittedStrategy(selectedStrategy);
       setCommittedParameters({ ...parameters });
       setHasCompletedBacktest(true);
-      setStrategyStage("backtest");
+      navigate("/strategy?stage=backtest");
       setIsRunning(false);
     }, 420);
   };
@@ -252,16 +280,16 @@ function App() {
             </p>
           )}
           <div className="overview-actions" aria-label="核心工作流">
-            <button onClick={() => navigate("/market")} type="button">
+            <button onClick={() => navigate("/market?tab=a-share")} type="button">
               <ChartNoAxesCombined size={16} /><span>市场研判</span><ArrowRight size={14} />
             </button>
-            <button onClick={() => { setAccountTab("trading"); navigate("/account"); }} type="button">
+            <button onClick={() => navigate("/account?tab=trading")} type="button">
               <ShoppingCart size={16} /><span>模拟下单</span><ArrowRight size={14} />
             </button>
-            <button onClick={() => { setAccountTab("orders"); navigate("/account"); }} type="button">
+            <button onClick={() => navigate("/account?tab=orders")} type="button">
               <ClipboardList size={16} /><span>订单复核</span><ArrowRight size={14} />
             </button>
-            <button onClick={() => navigate("/strategy")} type="button">
+            <button onClick={() => navigate("/strategy?stage=validate")} type="button">
               <FlaskConical size={16} /><span>策略验证</span><ArrowRight size={14} />
             </button>
           </div>
@@ -319,14 +347,34 @@ function App() {
         </article>
       </section>
 
+      <section className="panel module-hub" aria-labelledby="module-hub-title">
+        <div className="panel-header">
+          <div>
+            <span className="section-kicker">快速到达</span>
+            <h2 id="module-hub-title">模块导航</h2>
+          </div>
+          <span className="module-hub-hint">也可按 Ctrl/Cmd+K 搜索全部模块</span>
+        </div>
+        <div className="module-hub-grid">
+          {overviewModules.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => navigate(getModuleHref(item))}
+              type="button"
+            >
+              <span>{item.group}</span>
+              <strong>{item.label}</strong>
+              <p>{item.description}</p>
+              <ArrowRight size={15} />
+            </button>
+          ))}
+        </div>
+      </section>
       <Suspense fallback={<LazyFallback />}>
         <DailyTaskCenter
-          onOpenLearning={() => navigate("/learning")}
-          onOpenMarket={() => navigate("/market")}
-          onOpenOrders={() => {
-            setAccountTab("orders");
-            navigate("/account");
-          }}
+          onOpenLearning={() => navigate("/learning?section=paper-plan")}
+          onOpenMarket={() => navigate("/market?tab=a-share")}
+          onOpenOrders={() => navigate("/account?tab=orders")}
         />
       </Suspense>
 
@@ -421,7 +469,7 @@ function App() {
       committedStrategyName={committedStrategyName}
       hasPendingChanges={strategyWorkflowState.hasPendingChanges}
       hasRun={strategyWorkflowState.backtestReady}
-      onStageChange={setStrategyStage}
+      onStageChange={(stage) => navigate(`/strategy?stage=${stage}`)}
       selectedStrategyName={selectedStrategyName}
     >
       {strategyStage === "configure" && (
@@ -486,11 +534,11 @@ function App() {
 
   const market = (
     <Suspense fallback={<LazyFallback />}>
-      <MarketPage trading={trading} />
+      <MarketPage activeTab={marketTab} onTabChange={(tab: MarketModuleTab) => navigate(`/market?tab=${tab}`)} trading={trading} />
     </Suspense>
   );
 
-  const accountTabContent: Record<AccountTab, ReactNode> = {
+  const accountTabContent: Record<AccountModuleTab, ReactNode> = {
     portfolio: (
       <Suspense fallback={<LazyFallback />}>
         <Portfolio
@@ -575,7 +623,7 @@ function App() {
                   <button
                     className={accountTab === tab.id ? "account-tab active" : "account-tab"}
                     key={tab.id}
-                    onClick={() => setAccountTab(tab.id)}
+                    onClick={() => navigate(`/account?tab=${tab.id}`)}
                     type="button"
                   >
                     <Icon size={15} />
@@ -604,6 +652,8 @@ function App() {
         marketDataProvider={trading.marketDataProvider}
         mode={trading.mode}
         onLogout={handleLogout}
+        activeModuleId={activeModuleId}
+        onModuleSelect={(item) => navigate(getModuleHref(item))}
         onViewChange={(view) => navigate(viewPaths[view])}
         realtimeState={trading.realtimeState}
       >
@@ -616,7 +666,7 @@ function App() {
             <Route
               element={
                 <Suspense fallback={<LazyFallback />}>
-                  <LearningPipeline />
+                  <LearningPipeline activeSection={learningSection} />
                 </Suspense>
               }
               path="/learning"
@@ -624,7 +674,7 @@ function App() {
             <Route
               element={
                 <Suspense fallback={<LazyFallback />}>
-                  <Settings trading={trading} />
+                  <Settings activeSection={settingsSection} trading={trading} />
                 </Suspense>
               }
               path="/settings"

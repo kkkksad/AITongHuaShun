@@ -1513,7 +1513,7 @@ describe("trading API", () => {
         PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: true,
       }),
       startMarket: false,
-      clock: () => new Date("2026-07-17T09:35:00+08:00"),
+      clock: () => todayAtChinaTime("09:35:00"),
     });
     await useGrowthPaperProfile(paperApp);
 
@@ -1571,7 +1571,7 @@ describe("trading API", () => {
     }
   });
 
-  it("sends a deduplicated WxPusher reminder for an actionable local paper plan", async () => {
+  it("deduplicates the WxPusher suppression audit when market data is not live", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       code: 1000,
       msg: "processed",
@@ -1596,7 +1596,7 @@ describe("trading API", () => {
         WXPUSHER_SPT: "SPT_testToken123",
       }),
       startMarket: false,
-      clock: () => new Date("2026-07-17T10:30:00+08:00"),
+      clock: () => todayAtChinaTime("09:35:00"),
     });
     await useGrowthPaperProfile(paperApp);
 
@@ -1618,14 +1618,24 @@ describe("trading API", () => {
         url: "/api/audit?limit=50",
       });
 
-      expect(firstRun.json().run.submittedOrders).toHaveLength(1);
+      expect(firstRun.json().run.submittedOrders).toHaveLength(0);
       expect(secondRun.statusCode).toBe(200);
       expect(secondRun.json().run.submittedOrders).toHaveLength(0);
-      expect(orders.json()).toHaveLength(1);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(orders.json()).toHaveLength(0);
+      expect(fetchMock).not.toHaveBeenCalled();
       expect(audit.json()).toEqual(expect.arrayContaining([
-        expect.objectContaining({ action: "wxpusher.paper-plan.sent" }),
+        expect.objectContaining({
+          action: "wxpusher.paper-plan.urgent-suppressed",
+          data: expect.objectContaining({
+            events: expect.arrayContaining(["market-data-not-live"]),
+            mode: "paper-research-only",
+            liveTradingEnabled: false,
+          }),
+        }),
       ]));
+      expect(audit.json().filter((event: { action?: string }) =>
+        event.action === "wxpusher.paper-plan.urgent-suppressed"
+      )).toHaveLength(1);
       expect(audit.body).not.toContain("SPT_testToken123");
     } finally {
       await paperApp.close();
@@ -1633,7 +1643,7 @@ describe("trading API", () => {
     }
   });
 
-  it("keeps local paper execution running when WxPusher rejects a reminder", async () => {
+  it("does not let a suppressed 09:35 notification block later paper execution", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       code: 1001,
       msg: "rejected",
@@ -1643,6 +1653,7 @@ describe("trading API", () => {
       headers: { "Content-Type": "application/json" },
     }));
     vi.stubGlobal("fetch", fetchMock);
+    let now = todayAtChinaTime("09:35:00");
     const paperApp = await buildTradingApp({
       config: createTestConfig({
         MARKET_MODE: "paper",
@@ -1651,36 +1662,50 @@ describe("trading API", () => {
         MAX_ORDER_NOTIONAL: 6_000,
         MAX_POSITION_WEIGHT: 1,
         PAPER_AUTO_EXECUTION_ENABLED: true,
-        PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: false,
+        PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: true,
         PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: 1,
         PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: 2,
         WXPUSHER_ENABLED: true,
         WXPUSHER_SPT: "SPT_testToken123",
       }),
       startMarket: false,
-      clock: () => new Date("2026-07-17T10:30:00+08:00"),
+      clock: () => now,
     });
     await useGrowthPaperProfile(paperApp);
 
     try {
-      const run = await paperApp.inject({
+      const openingRun = await paperApp.inject({
         method: "POST",
         url: "/api/trading/auto-paper-execution/run",
       });
-      const audit = await paperApp.inject({
+      const suppressedAudit = await paperApp.inject({
         method: "GET",
         url: "/api/audit?limit=50",
       });
 
-      expect(run.json().run.submittedOrders).toHaveLength(1);
-      expect(run.json().run.submittedOrders[0].status).toBe("filled");
-      expect(audit.json()).toEqual(expect.arrayContaining([
+      expect(openingRun.json().run.phase).toBe("opening");
+      expect(openingRun.json().run.submittedOrders).toHaveLength(0);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(suppressedAudit.json()).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          action: "wxpusher.paper-plan.failed",
-          data: expect.objectContaining({ reason: "provider-request-failed" }),
+          action: "wxpusher.paper-plan.urgent-suppressed",
+          data: expect.objectContaining({
+            events: expect.arrayContaining(["market-data-not-live"]),
+          }),
         }),
       ]));
-      expect(audit.body).not.toContain("SPT_testToken123");
+      expect(suppressedAudit.body).not.toContain("SPT_testToken123");
+
+      now = todayAtChinaTime("10:30:00");
+      const confirmationRun = await paperApp.inject({
+        method: "POST",
+        url: "/api/trading/auto-paper-execution/run",
+      });
+
+      expect(confirmationRun.json().run.phase).toBe("morning-confirmation");
+      expect(confirmationRun.json().run.submittedOrders).toHaveLength(1);
+      expect(confirmationRun.json().run.submittedOrders[0].status).toBe("filled");
+      expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       await paperApp.close();
       vi.unstubAllGlobals();

@@ -74,7 +74,7 @@ export function StrategyWorkflow({
       : activeStage === "validate"
         ? {
             label: "独立真实验证",
-            title: "12 只 A 股 · 14 个固定策略 · 三个窗口",
+            title: "12 只 A 股 · 17 个固定策略 · 三个窗口",
             description: "读取真实前复权日线验证预先固定参数，不复用浏览器当前参数，也不与合成排行榜混算。",
             warning: false,
           }

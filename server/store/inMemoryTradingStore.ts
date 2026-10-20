@@ -3,6 +3,7 @@ import type {
   AuditEvent,
   MarketSnapshot,
   OrderRecord,
+  OrderProvenance,
   OrderRequest,
   PaperExecutionStrategy,
   PaperStrategyProfile,
@@ -287,7 +288,12 @@ export class InMemoryTradingStore implements TradingStore {
     return this.orders.find((order) => order.id === id);
   }
 
-  createOrder(request: OrderRequest, requestedPrice: number, name?: string): OrderRecord {
+  createOrder(
+    request: OrderRequest,
+    requestedPrice: number,
+    name?: string,
+    provenance?: OrderProvenance,
+  ): OrderRecord {
     this.orderSequence += 1;
     const now = this.now().toISOString();
     const isLimitOrder = request.type === "limit";
@@ -295,6 +301,8 @@ export class InMemoryTradingStore implements TradingStore {
     const order: OrderRecord = {
       ...request,
       ...(name ? { name } : {}),
+      ...(provenance?.strategy ? { strategy: provenance.strategy } : {}),
+      ...(provenance?.strategyKey ? { strategyKey: provenance.strategyKey } : {}),
       id: `PO-${this.now().getTime()}-${String(this.orderSequence).padStart(4, "0")}`,
       status: isLimitOrder ? "pending" : "accepted",
       requestedPrice,
@@ -425,6 +433,7 @@ export class InMemoryTradingStore implements TradingStore {
     }
 
     order.status = "filled";
+    order.filledAt = this.now().toISOString();
     order.filledPrice = fillPrice;
     order.filledQuantity = order.quantity;
     order.notional = notional;

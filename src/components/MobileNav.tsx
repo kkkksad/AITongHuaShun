@@ -5,6 +5,7 @@ import {
   ChartNoAxesCombined,
   FlaskConical,
   LayoutDashboard,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import type { ViewId } from "./AppShell";
 
@@ -25,6 +26,7 @@ const navItems: NavItem[] = [
   { id: "market", icon: ChartNoAxesCombined, labelKey: "行情" },
   { id: "account", icon: BriefcaseBusiness, labelKey: "账户" },
   { id: "learning", icon: BookOpenCheck, labelKey: "研究" },
+  { id: "settings", icon: SettingsIcon, labelKey: "设置" },
 ];
 
 export function MobileNav({ activeView, onViewChange }: MobileNavProps) {

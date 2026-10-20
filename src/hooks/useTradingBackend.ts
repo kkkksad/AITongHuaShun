@@ -395,6 +395,7 @@ export function useTradingBackend(
     },
     onSuccess: (result) => {
       updateBootstrap((current) => ({ ...current, account: result.account }));
+      void queryClient.invalidateQueries({ queryKey: ["paper-trading-plan"] });
       setNotice("Paper 执行策略已更新，下一轮 Paper 买入计划开始生效");
     },
     onError: (strategyError) => {
@@ -410,6 +411,7 @@ export function useTradingBackend(
     },
     onSuccess: (result) => {
       updateBootstrap((current) => ({ ...current, account: result.account }));
+      void queryClient.invalidateQueries({ queryKey: ["paper-trading-plan"] });
       setNotice("Paper 策略档位已更新，下一轮计划开始生效");
     },
     onError: (profileError) => {

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { PAPER_EXECUTION_STRATEGY_CHOICES } from "../../shared/trading";
-import { canResetPaperAccount, strategyProfileOptions } from "./Settings";
+import {
+  canResetPaperAccount,
+  groupExecutionStrategies,
+  strategyProfileOptions,
+} from "./Settings";
 
 describe("Settings account controls", () => {
   it("exposes four bounded strategy profiles", () => {
@@ -12,13 +16,34 @@ describe("Settings account controls", () => {
     ]);
   });
 
-  it("exposes auto plus fourteen public paper execution strategies only", () => {
-    expect(PAPER_EXECUTION_STRATEGY_CHOICES).toHaveLength(15);
-    expect(PAPER_EXECUTION_STRATEGY_CHOICES[0].key).toBe("auto");
+  it("exposes seventeen manual paper strategies before the auto fallback", () => {
+    expect(PAPER_EXECUTION_STRATEGY_CHOICES).toHaveLength(18);
+    expect(PAPER_EXECUTION_STRATEGY_CHOICES[0].key).not.toBe("auto");
+    expect(PAPER_EXECUTION_STRATEGY_CHOICES.at(-1)?.key).toBe("auto");
     expect(PAPER_EXECUTION_STRATEGY_CHOICES.map((option) => option.key))
       .not.toContain("kairosCapitalShield");
     expect(PAPER_EXECUTION_STRATEGY_CHOICES.map((option) => option.key))
       .not.toContain("kairosRiskOffRecovery");
+    expect(PAPER_EXECUTION_STRATEGY_CHOICES.map((option) => option.key))
+      .toEqual(expect.arrayContaining([
+        "kairosQualityLowVolTrend",
+        "kairosVolatilityContractionBreakout",
+        "kairosVolumePriceBreakout",
+      ]));
+  });
+
+  it("groups fixed strategies before the non-recommended auto fallback", () => {
+    const groups = groupExecutionStrategies();
+    expect(groups.map((group) => group.key)).toEqual([
+      "trend",
+      "breakout",
+      "pullback",
+      "range",
+      "validation",
+      "auto",
+    ]);
+    expect(groups.at(-1)?.options.map((option) => option.key)).toEqual(["auto"]);
+    expect(groups.flatMap((group) => group.options)).toHaveLength(18);
   });
 
   it("requires paper mode, the confirmation phrase and acknowledgement", () => {

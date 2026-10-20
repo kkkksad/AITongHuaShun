@@ -374,8 +374,8 @@ describe("builtInFactories", () => {
     }, 30000); // 30s timeout for optimization tests
   }
 
-  it("builtInFactories contains all 15 strategies", () => {
-    expect(Object.keys(builtInFactories)).toHaveLength(15);
+  it("builtInFactories contains all 18 strategies", () => {
+    expect(Object.keys(builtInFactories)).toHaveLength(18);
     expect(builtInFactories.aSharePullback.name).toBe("A股强势回踩确认");
     expect(builtInFactories.kairosLowVolTrend.name).toBe("KAIROS低波趋势");
     expect(builtInFactories.kairosQuietPullback.name).toBe("KAIROS缩量回撤反弹");

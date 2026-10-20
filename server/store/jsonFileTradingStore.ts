@@ -5,6 +5,7 @@ import type {
   AuditEvent,
   MarketSnapshot,
   OrderRecord,
+  OrderProvenance,
   OrderRequest,
   PaperExecutionStrategy,
   PaperStrategyProfile,
@@ -329,7 +330,12 @@ export class JsonFileTradingStore implements TradingStore {
     return this.orders.find((order) => order.id === id);
   }
 
-  createOrder(request: OrderRequest, requestedPrice: number, name?: string): OrderRecord {
+  createOrder(
+    request: OrderRequest,
+    requestedPrice: number,
+    name?: string,
+    provenance?: OrderProvenance,
+  ): OrderRecord {
     this.orderSequence += 1;
     const timestamp = this.now();
     const now = timestamp.toISOString();
@@ -337,6 +343,8 @@ export class JsonFileTradingStore implements TradingStore {
     const order: OrderRecord = {
       ...request,
       ...(name ? { name } : {}),
+      ...(provenance?.strategy ? { strategy: provenance.strategy } : {}),
+      ...(provenance?.strategyKey ? { strategyKey: provenance.strategyKey } : {}),
       id: `PO-${timestamp.getTime()}-${String(this.orderSequence).padStart(4, "0")}`,
       status: isLimitOrder ? "pending" : "accepted",
       requestedPrice,
@@ -472,6 +480,7 @@ export class JsonFileTradingStore implements TradingStore {
     }
 
     stored.status = "filled";
+    stored.filledAt = this.now().toISOString();
     stored.filledPrice = fillPrice;
     stored.filledQuantity = stored.quantity;
     stored.notional = notional;

@@ -608,10 +608,12 @@ export function buildPaperTradingPlan(input: {
     Math.max(0, input.account.equity * effectiveCashReserveRatio),
   );
   const plannedCashBudget = Math.max(0, input.account.cash - cashReserveAmount);
-  const newPositionScale = Math.min(
-    input.adaptiveRouting?.newPositionScale ?? 1,
-    profilePolicy.newPositionScale,
-  );
+  const newPositionScale = manualExecutionStrategy
+    ? profilePolicy.newPositionScale
+    : Math.min(
+        input.adaptiveRouting?.newPositionScale ?? 1,
+        profilePolicy.newPositionScale,
+      );
   const strategyScaledOrderCap = input.maxSingleOrderNotional * newPositionScale;
   const strategyScaledPositionCap =
     input.account.equity * input.maxPositionWeight * newPositionScale;
@@ -644,7 +646,8 @@ export function buildPaperTradingPlan(input: {
     const quote = quoteMap.get(position.symbol);
     const price = quote?.price ?? position.currentPrice;
     const locked = position.t1LockedQuantity ?? 0;
-    const available = position.availableQuantity ?? position.quantity;
+    const available = position.availableQuantity ??
+      Math.max(0, position.quantity - (position.t1LockedQuantity ?? 0));
     const historicalRegime = stockRegimeMap.get(position.symbol);
     const hardStop =
       position.unrealizedPnl / Math.max(1, position.marketValue) <= -0.03;
@@ -791,7 +794,9 @@ export function buildPaperTradingPlan(input: {
         Boolean(historicalRegime) &&
         historicalRegime?.regime !== "healthy-trend" &&
         historicalRegime?.regime !== "washout-candidate" &&
-        (position.availableQuantity ?? position.quantity) >= input.lotSize &&
+        (position.availableQuantity ??
+          Math.max(0, position.quantity - (position.t1LockedQuantity ?? 0))) >=
+          input.lotSize &&
         !plannedSellSymbols.has(position.symbol) &&
         !alreadyReducedToday.has(position.symbol),
       )
@@ -809,7 +814,8 @@ export function buildPaperTradingPlan(input: {
 
     for (const { position, historicalRegime } of exposureCandidates) {
       if (projectedMarketValue <= targetMarketValue + 0.01) break;
-      const available = position.availableQuantity ?? position.quantity;
+      const available = position.availableQuantity ??
+        Math.max(0, position.quantity - (position.t1LockedQuantity ?? 0));
       const quantity = roundLot(
         Math.min(
           available,
@@ -1023,7 +1029,10 @@ export function buildPaperTradingPlan(input: {
   } satisfies PaperTradingPlanQualitySummary["strategyCoverage"];
 
   let remainingPlannedCash = plannedCashBudget;
-  const adaptiveAllowsBuying = input.adaptiveRouting?.allowNewPositions ?? true;
+  // 手动策略不再由市场路由否定策略资格；档位、现金和下单硬风控仍然生效。
+  const adaptiveAllowsBuying = manualExecutionStrategy
+    ? true
+    : input.adaptiveRouting?.allowNewPositions ?? true;
   const routeAllowsBuying = adaptiveAllowsBuying && profilePolicy.allowNewPositions;
   if (!routeAllowsBuying) {
     const blockedByProfile = !profilePolicy.allowNewPositions;

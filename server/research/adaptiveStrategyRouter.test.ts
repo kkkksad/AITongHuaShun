@@ -200,6 +200,8 @@ describe("routeAdaptiveStrategies", () => {
     expect(result.confidence).toBeGreaterThanOrEqual(0.6);
     expect(result.version).toBe("1.4.0");
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
+      "kairosQualityLowVolTrend",
+      "kairosVolatilityContractionBreakout",
       "kairosLowVolTrend",
       "kairosTrendHealth",
     ]);

@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BarChart3,
   BookOpenCheck,
@@ -23,13 +23,16 @@ import { useI18n, type Locale } from "../i18n";
 import type { TradingMode } from "../../shared/trading";
 import type { MarketDataProviderName } from "../lib/tradingApi";
 import { filterQuickNavigationItems, getQuickNavigationKeyAction } from "../lib/quickNavigation";
+import { moduleCatalog, type ModuleCatalogItem, type ViewId } from "../lib/moduleCatalog";
 import { MobileNav } from "./MobileNav";
 
-export type ViewId = "overview" | "strategy" | "market" | "account" | "learning" | "settings";
+export type { ViewId } from "../lib/moduleCatalog";
 
 interface AppShellProps {
   activeView: ViewId;
   onViewChange: (view: ViewId) => void;
+  activeModuleId?: string;
+  onModuleSelect: (item: ModuleCatalogItem) => void;
   connectionState: ConnectionState;
   realtimeState?: ConnectionState;
   mode: TradingMode;
@@ -42,6 +45,8 @@ interface AppShellProps {
 
 export function AppShell({
   activeView,
+  activeModuleId,
+  onModuleSelect,
   onViewChange,
   connectionState,
   realtimeState,
@@ -57,6 +62,7 @@ export function AppShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickQuery, setQuickQuery] = useState("");
   const [quickOpen, setQuickOpen] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const handleNavClick = (view: ViewId) => {
     onViewChange(view);
@@ -105,34 +111,41 @@ export function AppShell({
     connecting: t("connection.connecting"),
     offline: t("connection.offline"),
   };
-  const quickKeywords: Record<ViewId, string[]> = locale === "zh" ? {
-    overview: ["首页", "工作台"],
-    market: ["行情", "研判", "股票"],
-    strategy: ["回测", "验证", "实验"],
-    account: ["模拟下单", "下单", "订单", "持仓", "风控"],
-    learning: ["学习", "研究进度", "复盘"],
-    settings: ["配置", "系统"],
-  } : {
-    overview: ["home", "workspace"],
-    market: ["quotes", "stocks"],
-    strategy: ["backtest", "validation"],
-    account: ["paper order", "orders", "positions", "risk"],
-    learning: ["pipeline", "review"],
-    settings: ["configuration", "system"],
+  const iconByView: Record<ViewId, typeof LayoutDashboard> = {
+    overview: LayoutDashboard,
+    market: ChartNoAxesCombined,
+    strategy: FlaskConical,
+    account: BriefcaseBusiness,
+    learning: BookOpenCheck,
+    settings: Settings,
   };
-  const quickItems = navigationGroups.flatMap((group) => group.items.map((item) => ({
+  const quickItems = moduleCatalog.map((item) => ({
     ...item,
-    group: group.label,
-    title: titles[item.id].title,
-    keywords: quickKeywords[item.id],
-  })));
+    icon: iconByView[item.view],
+    title: item.description,
+  }));
   const quickMatches = filterQuickNavigationItems(quickItems, quickQuery);
+  const visibleQuickMatches = quickMatches.slice(0, 12);
 
-  const handleQuickSelect = (view: ViewId) => {
-    handleNavClick(view);
+  const handleQuickSelect = (moduleId: string) => {
+    const item = moduleCatalog.find((candidate) => candidate.id === moduleId);
+    if (item) onModuleSelect(item);
     setQuickQuery("");
     setQuickOpen(false);
+    setMobileMenuOpen(false);
   };
+
+  useEffect(() => {
+    const handleShortcut = (event: globalThis.KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setQuickOpen(true);
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
   const realtimeLabels: Record<ConnectionState, string> = {
     connected: t("connection.realtime.connected"),
     connecting: t("connection.realtime.connecting"),
@@ -268,13 +281,14 @@ export function AppShell({
                   autoComplete="off"
                   id="global-search"
                   name="global-search"
+                  ref={searchInputRef}
                   onChange={(event) => {
                     setQuickQuery(event.target.value);
                     setQuickOpen(true);
                   }}
                   onFocus={() => setQuickOpen(true)}
                   onKeyDown={(event) => {
-                    const action = getQuickNavigationKeyAction(event.key, quickMatches);
+                    const action = getQuickNavigationKeyAction(event.key, visibleQuickMatches);
                     if (action.type === "close") {
                       event.preventDefault();
                       setQuickOpen(false);
@@ -283,7 +297,7 @@ export function AppShell({
                       handleQuickSelect(action.id);
                     }
                   }}
-                  placeholder={locale === "zh" ? "快速跳转页面" : "Go to page"}
+                  placeholder={locale === "zh" ? "搜索页面与模块（Ctrl/Cmd+K）" : "Search pages and modules (Ctrl/Cmd+K)"}
                   role="combobox"
                   value={quickQuery}
                 />
@@ -291,13 +305,13 @@ export function AppShell({
               {quickOpen && (
                 <div className="quick-nav-results" id="quick-nav-results" role="listbox">
                   {quickMatches.length === 0 ? (
-                    <span className="quick-nav-empty">没有匹配页面</span>
-                  ) : quickMatches.map((item) => {
+                    <span className="quick-nav-empty">没有匹配模块</span>
+                  ) : visibleQuickMatches.map((item) => {
                     const Icon = item.icon;
                     return (
                       <button
-                        aria-selected={activeView === item.id}
-                        className={activeView === item.id ? "active" : ""}
+                        aria-selected={activeModuleId === item.id}
+                        className={activeModuleId === item.id ? "active" : ""}
                         key={item.id}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => handleQuickSelect(item.id)}

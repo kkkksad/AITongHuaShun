@@ -1,7 +1,6 @@
 import {
   Suspense,
   useRef,
-  useState,
   type ComponentType,
   type KeyboardEvent,
 } from "react";
@@ -24,6 +23,7 @@ import type { TradingBackend } from "../hooks/useTradingBackend";
 import { MarketOverview } from "./MarketOverview";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { lazyWithChunkRecovery } from "../lib/chunkRecovery";
+import type { MarketModuleTab } from "../lib/moduleCatalog";
 
 const loadAsharePanel = () => import("./MarketAshareOverviewPanel");
 const loadTurningPanel = () => import("./TurningPointPanel");
@@ -67,24 +67,14 @@ const EsotericMarketPanel = lazyWithChunkRecovery(async () => ({
   default: (await loadEsotericPanel()).EsotericMarketPanel,
 }));
 
-type MarketWorkspaceTab =
-  | "a-share"
-  | "turning"
-  | "stock"
-  | "regime"
-  | "hong-kong"
-  | "futures"
-  | "external"
-  | "crypto"
-  | "events"
-  | "esoteric";
-
 interface MarketResearchWorkspaceProps {
   trading: TradingBackend;
+  activeTab: MarketModuleTab;
+  onTabChange: (tab: MarketModuleTab) => void;
 }
 
 const tabs: Array<{
-  id: MarketWorkspaceTab;
+  id: MarketModuleTab;
   label: string;
   icon: ComponentType<LucideProps>;
   preload: () => Promise<unknown>;
@@ -130,8 +120,7 @@ function MarketTabError() {
   );
 }
 
-export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProps) {
-  const [activeTab, setActiveTab] = useState<MarketWorkspaceTab>("a-share");
+export function MarketResearchWorkspace({ trading, activeTab, onTabChange }: MarketResearchWorkspaceProps) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -143,7 +132,7 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
     if (nextIndex === null) return;
 
     event.preventDefault();
-    setActiveTab(tabs[nextIndex].id);
+    onTabChange(tabs[nextIndex].id);
     tabRefs.current[nextIndex]?.focus();
   }
 
@@ -168,7 +157,7 @@ export function MarketResearchWorkspace({ trading }: MarketResearchWorkspaceProp
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
                 onClick={() => {
                   void tab.preload();
-                  setActiveTab(tab.id);
+                  onTabChange(tab.id);
                 }}
                 onFocus={() => void tab.preload()}
                 ref={(element) => {

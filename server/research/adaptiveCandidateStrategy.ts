@@ -6,7 +6,10 @@ export interface AdaptiveCandidateStrategySignal {
   strategyKey:
     | "kairosLowVolTrend"
     | "kairosTrendHealth"
+    | "kairosQualityLowVolTrend"
     | "momentum"
+    | "kairosVolatilityContractionBreakout"
+    | "kairosVolumePriceBreakout"
     | "kairosQuietPullback"
     | "kairosWashoutRecovery"
     | "aSharePullback"
@@ -99,8 +102,11 @@ export function rankAdaptiveCandidateStrategies(
   input: AdaptiveCandidateStrategyInput,
 ): AdaptiveCandidateStrategySignal[] {
   const { quote, routing, stockRegime: stock } = input;
+  const manualStrategy = input.executionStrategy && input.executionStrategy !== "auto"
+    ? input.executionStrategy
+    : null;
   if (
-    !routing.allowNewPositions ||
+    (!manualStrategy && !routing.allowNewPositions) ||
     !quote.tradable ||
     quote.price <= 0 ||
     !stock ||
@@ -111,15 +117,20 @@ export function rankAdaptiveCandidateStrategies(
   }
 
   const eligible = new Set(routing.eligibleStrategyKeys);
-  const manualStrategy = input.executionStrategy && input.executionStrategy !== "auto"
-    ? input.executionStrategy
-    : null;
   const primaryIndexes = new Map(
     routing.strategyPlaybook.primaryStrategyKeys.map((key, index) => [key, index]),
   );
   const signals: AdaptiveCandidateStrategySignal[] = [];
   const currentAmplitude = amplitude(quote);
   const currentPosition = intradayPosition(quote);
+  // 手动策略使用自身 setup；自动模式才由市场 regime 决定哪些策略族可用。
+  const rangeSetupAvailable = manualStrategy !== null || isRangeRegime(routing);
+  const rangeReversionStockSetup = stock.regime === "unclear" ||
+    (!manualStrategy && stock.regime === "healthy-trend");
+  const probeRegimeAllowed = manualStrategy !== null ||
+    (routing.regime !== "risk-off" &&
+      routing.regime !== "risk-off-recovery" &&
+      routing.regime !== "unclear");
   const primaryBoost = (key: string): number => {
     const index = primaryIndexes.get(key);
     if (index === 0) return 6;
@@ -160,6 +171,92 @@ export function rankAdaptiveCandidateStrategies(
       [
         "真实历史形态为健康趋势，20 日均线斜率向上。",
         `当前振幅 ${currentAmplitude.toFixed(2)}%，符合低波趋势纪律。`,
+      ],
+    );
+  }
+
+  if (
+    stock.regime === "healthy-trend" &&
+    stock.barCount >= 120 &&
+    stock.confidence >= 0.6 &&
+    stock.features.return20d >= 0.015 &&
+    stock.features.return60d >= 0.03 &&
+    stock.features.ma20Slope5d > 0 &&
+    stock.features.ma60Slope5d >= -0.002 &&
+    stock.features.distanceFromMa20 >= -0.02 &&
+    stock.features.distanceFromMa20 <= 0.08 &&
+    stock.features.pullbackFrom20DayHigh <= 0.08 &&
+    stock.features.volumeRatio >= 0.75 &&
+    stock.features.volumeRatio <= 1.8 &&
+    quote.changePercent >= -0.5 &&
+    quote.changePercent <= 3.5 &&
+    currentAmplitude <= 4.8
+  ) {
+    add(
+      "kairosQualityLowVolTrend",
+      "KAIROS质量低波趋势",
+      77 +
+        stock.confidence * 8 +
+        clamp((4.8 - currentAmplitude) * 1.2, 0, 5) +
+        clamp(stock.features.ma60Slope5d * 80, 0, 4),
+      [
+        "真实历史趋势效率、回撤和双均线结构保持健康。",
+        `当前振幅 ${currentAmplitude.toFixed(2)}%，量能比 ${stock.features.volumeRatio.toFixed(2)}，未进入追高区。`,
+        "质量仅指价格行为，不包含财务基本面判断。",
+      ],
+    );
+  }
+
+  if (
+    stock.regime === "healthy-trend" &&
+    stock.barCount >= 120 &&
+    stock.confidence >= 0.56 &&
+    stock.features.return20d > 0 &&
+    stock.features.ma20Slope5d > 0 &&
+    stock.features.pullbackFrom20DayHigh <= 0.08 &&
+    quote.changePercent >= 0 &&
+    quote.changePercent <= 3.8 &&
+    currentAmplitude <= 4.5 &&
+    hasControlledLiquidity(quote)
+  ) {
+    add(
+      "kairosVolatilityContractionBreakout",
+      "KAIROS波动收缩突破",
+      75 +
+        stock.confidence * 8 +
+        clamp((0.08 - stock.features.pullbackFrom20DayHigh) * 30, 0, 4) +
+        clamp(quote.volume / 10_000_000, 0, 4),
+      [
+        "历史回撤和日内振幅同时受控，具备波动收缩后的突破观察条件。",
+        "当前涨幅低于追高阈值，成交活跃度需继续通过流动性复核。",
+      ],
+    );
+  }
+
+  if (
+    stock.regime === "healthy-trend" &&
+    stock.barCount >= 120 &&
+    stock.confidence >= 0.58 &&
+    stock.features.return20d >= 0.015 &&
+    stock.features.return60d >= 0.03 &&
+    stock.features.ma20Slope5d > 0 &&
+    currentPosition !== null &&
+    currentPosition >= 0.58 &&
+    quote.changePercent >= 0 &&
+    quote.changePercent <= 4.5 &&
+    currentAmplitude <= 5.5 &&
+    hasControlledLiquidity(quote)
+  ) {
+    add(
+      "kairosVolumePriceBreakout",
+      "KAIROS量价突破确认",
+      76 +
+        stock.confidence * 7 +
+        currentPosition * 4 +
+        clamp(quote.volume / 10_000_000, 0, 4),
+      [
+        "历史趋势向上，当前价格位于日内强势区间。",
+        "成交量、流动性和涨幅已通过候选初筛，仍由费用与 PaperBroker 风控复核。",
       ],
     );
   }
@@ -346,8 +443,8 @@ export function rankAdaptiveCandidateStrategies(
   }
 
   if (
-    isRangeRegime(routing) &&
-    (stock.regime === "healthy-trend" || stock.regime === "unclear") &&
+    rangeSetupAvailable &&
+    rangeReversionStockSetup &&
     currentPosition !== null &&
     currentPosition <= 0.4 &&
     stock.features.return20d >= -0.06 &&
@@ -370,7 +467,7 @@ export function rankAdaptiveCandidateStrategies(
   }
 
   if (
-    isRangeRegime(routing) &&
+    rangeSetupAvailable &&
     stock.barCount >= 120 &&
     stock.confidence >= 0.55 &&
     (stock.regime === "healthy-trend" || stock.regime === "unclear") &&
@@ -403,11 +500,9 @@ export function rankAdaptiveCandidateStrategies(
   }
 
   if (
-    input.activityTargetActive === true &&
+    (manualStrategy !== null || input.activityTargetActive === true) &&
     input.validationProbeActive !== true &&
-    routing.regime !== "risk-off" &&
-    routing.regime !== "risk-off-recovery" &&
-    routing.regime !== "unclear" &&
+    probeRegimeAllowed &&
     hasQualifiedProbeHistory(stock) &&
     input.candidateScore >= 65 &&
     quote.changePercent >= -2.2 &&
@@ -427,12 +522,10 @@ export function rankAdaptiveCandidateStrategies(
   }
 
   if (
-    input.validationProbeActive === true &&
-    input.activityTargetActive === true &&
+    (manualStrategy === "kairosValidationBasket" ||
+      (input.validationProbeActive === true && input.activityTargetActive === true)) &&
     signals.length === 0 &&
-    routing.regime !== "risk-off" &&
-    routing.regime !== "risk-off-recovery" &&
-    routing.regime !== "unclear" &&
+    probeRegimeAllowed &&
     stock.barCount >= 120 &&
     stock.confidence >= 0.55 &&
     hasQualifiedProbeHistory(stock) &&
@@ -454,8 +547,8 @@ export function rankAdaptiveCandidateStrategies(
   }
 
   if (
-    isRangeRegime(routing) &&
-    (stock.regime === "healthy-trend" || stock.regime === "unclear") &&
+    rangeSetupAvailable &&
+    rangeReversionStockSetup &&
     currentPosition !== null &&
     currentPosition <= 0.35 &&
     stock.features.distanceFromMa20 >= -0.1 &&
