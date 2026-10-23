@@ -1571,7 +1571,7 @@ describe("trading API", () => {
     }
   });
 
-  it("deduplicates the WxPusher suppression audit when market data is not live", async () => {
+  it("sends one honest degraded briefing per checkpoint when market data is not live", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       code: 1000,
       msg: "processed",
@@ -1622,19 +1622,21 @@ describe("trading API", () => {
       expect(secondRun.statusCode).toBe(200);
       expect(secondRun.json().run.submittedOrders).toHaveLength(0);
       expect(orders.json()).toHaveLength(0);
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(audit.json()).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          action: "wxpusher.paper-plan.urgent-suppressed",
+          action: "wxpusher.paper-plan.sent",
           data: expect.objectContaining({
-            events: expect.arrayContaining(["market-data-not-live"]),
+            sourceStatus: "mock-disabled",
+            marketTone: "insufficient-data",
+            riskEvents: expect.arrayContaining(["market-data-not-live"]),
             mode: "paper-research-only",
             liveTradingEnabled: false,
           }),
         }),
       ]));
       expect(audit.json().filter((event: { action?: string }) =>
-        event.action === "wxpusher.paper-plan.urgent-suppressed"
+        event.action === "wxpusher.paper-plan.sent"
       )).toHaveLength(1);
       expect(audit.body).not.toContain("SPT_testToken123");
     } finally {
@@ -1643,7 +1645,7 @@ describe("trading API", () => {
     }
   });
 
-  it("does not let a suppressed 09:35 notification block later paper execution", async () => {
+  it("does not let a failed 09:35 notification block later execution or its order receipt", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       code: 1001,
       msg: "rejected",
@@ -1685,12 +1687,13 @@ describe("trading API", () => {
 
       expect(openingRun.json().run.phase).toBe("opening");
       expect(openingRun.json().run.submittedOrders).toHaveLength(0);
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(suppressedAudit.json()).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          action: "wxpusher.paper-plan.urgent-suppressed",
+          action: "wxpusher.paper-plan.failed",
           data: expect.objectContaining({
-            events: expect.arrayContaining(["market-data-not-live"]),
+            sourceStatus: "mock-disabled",
+            marketTone: "insufficient-data",
           }),
         }),
       ]));
@@ -1705,7 +1708,7 @@ describe("trading API", () => {
       expect(confirmationRun.json().run.phase).toBe("morning-confirmation");
       expect(confirmationRun.json().run.submittedOrders).toHaveLength(1);
       expect(confirmationRun.json().run.submittedOrders[0].status).toBe("filled");
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
     } finally {
       await paperApp.close();
       vi.unstubAllGlobals();

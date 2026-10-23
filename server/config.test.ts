@@ -773,6 +773,13 @@ describe("WxPusher configuration", () => {
     })).toThrow();
   });
 
+  it("rejects a budget that cannot cover all six scheduled briefings", () => {
+    expect(() => parseServerConfig({
+      ...baseEnvironment,
+      WXPUSHER_DAILY_MESSAGE_LIMIT: "5",
+    })).toThrow();
+  });
+
   it("rejects a message budget above the ClawBot daily allowance", () => {
     expect(() => parseServerConfig({
       ...baseEnvironment,

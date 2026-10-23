@@ -309,11 +309,17 @@ describe("PaperPlanNotifier", () => {
   it.each([
     ["2026-07-17T09:34:00+08:00", null],
     ["2026-07-17T09:35:00+08:00", 1],
-    ["2026-07-17T10:29:00+08:00", 1],
-    ["2026-07-17T10:30:00+08:00", null],
+    ["2026-07-17T10:14:59+08:00", 1],
+    ["2026-07-17T10:15:00+08:00", 2],
+    ["2026-07-17T11:00:00+08:00", 3],
+    ["2026-07-17T12:00:00+08:00", null],
+    ["2026-07-17T13:30:00+08:00", 4],
+    ["2026-07-17T14:15:00+08:00", 5],
+    ["2026-07-17T14:50:00+08:00", 6],
+    ["2026-07-17T15:00:00+08:00", null],
     ["2026-07-18T09:35:00+08:00", null],
     ["2026-10-01T09:35:00+08:00", null],
-  ] as const)("opens the single briefing slot at %s", (value, sequence) => {
+  ] as const)("selects the latest due briefing slot at %s", (value, sequence) => {
     expect(getPaperPlanBriefingSlot(new Date(value))?.sequence ?? null).toBe(sequence);
   });
 
@@ -419,53 +425,59 @@ describe("PaperPlanNotifier", () => {
     expect(sender.send).not.toHaveBeenCalled();
   });
 
-  it("sends exactly one briefing at 09:35 and refuses the same day again", async () => {
+  it("sends once at each fixed checkpoint and deduplicates the same checkpoint", async () => {
     const plan = createPlan();
     const { notifier, sender, store, setNow } = createNotifier();
 
-    await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
-      status: "sent",
-      messageKind: "scheduled-briefing",
-    });
+    for (const scheduledAt of ["09:35", "10:15", "11:00", "13:30", "14:15", "14:50"]) {
+      setNow(new Date(`2026-07-17T${scheduledAt}:00+08:00`));
+      await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
+        status: "sent",
+        messageKind: "scheduled-briefing",
+      });
+    }
+
     setNow(new Date("2026-07-17T09:41:00+08:00"));
     await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
       status: "phase-used",
     });
 
-    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(sender.send).toHaveBeenCalledTimes(6);
     expect(store.listAudit(20)).toEqual(expect.arrayContaining([
       expect.objectContaining({
         action: "wxpusher.paper-plan.sent",
         data: expect.objectContaining({
           tradingDate: plan.tradingDate,
           scheduledAt: "09:35",
-          onePerTradingDay: true,
+          sequence: 1,
+          totalBriefings: 6,
           mode: "paper-research-only",
           liveTradingEnabled: false,
         }),
       }),
     ]));
+    expect(store.listAudit(20).filter((event) =>
+      event.action === "wxpusher.paper-plan.sent"
+    )).toHaveLength(6);
   });
 
-  it("allows a recovery send at 10:29 but closes the window at 10:30", async () => {
+  it("does not reuse the 10:15 briefing later in the same slot window", async () => {
     const plan = createPlan();
-    const late = createNotifier({
-      now: new Date("2026-07-17T10:29:00+08:00"),
+    const notifier = createNotifier({
+      now: new Date("2026-07-17T10:15:00+08:00"),
     });
-    await expect(late.notifier.notify(plan, context(plan))).resolves.toMatchObject({
+    await expect(notifier.notifier.notify(plan, context(plan))).resolves.toMatchObject({
       status: "sent",
     });
 
-    const closed = createNotifier({
-      now: new Date("2026-07-17T10:30:00+08:00"),
+    notifier.setNow(new Date("2026-07-17T10:29:00+08:00"));
+    await expect(notifier.notifier.notify(plan, context(plan))).resolves.toMatchObject({
+      status: "phase-used",
     });
-    await expect(closed.notifier.notify(plan, context(plan))).resolves.toEqual({
-      status: "window-closed",
-    });
-    expect(closed.sender.send).not.toHaveBeenCalled();
+    expect(notifier.sender.send).toHaveBeenCalledTimes(1);
   });
 
-  it("does not send on a weekend or a legal holiday", async () => {
+  it("does not send on a weekend, a legal holiday, at lunch or after the close", async () => {
     const weekendPlan = createPlan();
     const weekend = createNotifier({
       now: new Date("2026-07-18T09:35:00+08:00"),
@@ -481,11 +493,30 @@ describe("PaperPlanNotifier", () => {
     await expect(holiday.notifier.notify(holidayPlan, context(holidayPlan))).resolves.toEqual({
       status: "not-actionable",
     });
+
+    const lunchPlan = createPlan();
+    const lunch = createNotifier({
+      now: new Date("2026-07-17T12:00:00+08:00"),
+    });
+    await expect(lunch.notifier.notify(lunchPlan, context(lunchPlan))).resolves.toEqual({
+      status: "outside-session",
+    });
+
+    const afterClosePlan = createPlan();
+    const afterClose = createNotifier({
+      now: new Date("2026-07-17T15:00:00+08:00"),
+    });
+    await expect(afterClose.notifier.notify(
+      afterClosePlan,
+      context(afterClosePlan),
+    )).resolves.toEqual({ status: "outside-session" });
     expect(weekend.sender.send).not.toHaveBeenCalled();
     expect(holiday.sender.send).not.toHaveBeenCalled();
+    expect(lunch.sender.send).not.toHaveBeenCalled();
+    expect(afterClose.sender.send).not.toHaveBeenCalled();
   });
 
-  it("suppresses risky or degraded days to audit only", async () => {
+  it("still sends an honest briefing on risky or degraded days", async () => {
     const plan = createPlan();
     const { notifier, sender, store } = createNotifier();
     const risky = context(plan, {
@@ -497,18 +528,30 @@ describe("PaperPlanNotifier", () => {
       },
     });
 
-    await expect(notifier.notify(plan, risky)).resolves.toEqual({
-      status: "risk-suppressed",
-      events: ["market-data-not-live", "market-risk-off"],
+    await expect(notifier.notify(plan, risky)).resolves.toMatchObject({
+      status: "sent",
+      messageKind: "scheduled-briefing",
     });
     await expect(notifier.notify(plan, risky)).resolves.toMatchObject({
-      status: "risk-suppressed",
+      status: "phase-used",
     });
 
-    expect(sender.send).not.toHaveBeenCalled();
-    expect(store.listAudit(50).filter((event) =>
-      event.action === "wxpusher.paper-plan.urgent-suppressed"
-    )).toHaveLength(1);
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(sender.send.mock.calls[0][0].content).toContain("数据降级");
+    expect(sender.send.mock.calls[0][0].content).toContain("观察池盘面处于风险偏高状态");
+    expect(store.listAudit(50)).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        action: "wxpusher.paper-plan.sent",
+        data: expect.objectContaining({
+          sourceStatus: "degraded",
+          marketTone: "risk-off",
+          riskEvents: expect.arrayContaining([
+            "market-data-not-live",
+            "market-risk-off",
+          ]),
+        }),
+      }),
+    ]));
   });
 
   it("records a failed provider request without retrying or leaking credentials", async () => {
@@ -564,28 +607,31 @@ describe("PaperPlanNotifier", () => {
 
     const message = sender.send.mock.calls[0][0];
     expect(message.summary).toBe(
-      "KAIROS 今日可操作｜1 项 Paper 动作｜2026-07-17",
+      "KAIROS 简报 1/6｜可操作｜持仓 1 只｜2026-07-17",
     );
-    expect(message.content).toContain("09:35 唯一简报");
+    expect(message.content).toContain("第 1/6 次定时简报");
     expect(message.content).toContain("今日结论：可操作");
-    expect(message.content).toContain("<h3>今日动作</h3>");
+    expect(message.content).toContain("<h3>当前持仓与盈亏</h3>");
+    expect(message.content).toContain("Current Holding");
+    expect(message.content).toContain("<h3>账户与累计收益</h3>");
+    expect(message.content).toContain("权益 10000.00 元");
+    expect(message.content).toContain("自 Paper 重置累计盈亏");
+    expect(message.content).toContain("<h3>打算交易什么</h3>");
     expect(message.content).toContain("买入 000001 Sample Bank");
     expect(message.content).toContain("KAIROS 低波趋势");
-    expect(message.content).toContain("<h3>原因</h3>");
     expect(message.content).toContain("最强证据");
-    expect(message.content).toContain("首个阻塞");
-    expect(message.content).toContain("<h3>资金与限制</h3>");
+    expect(message.content).toContain("主要阻塞");
     expect(message.content).toContain("实际单笔上限 1600.00 元");
-    expect(message.content).toContain("主要限制：策略档位缩放");
-    expect(message.content).toContain("计划 1 笔买入");
-    expect(message.content).toContain("策略：KAIROS 量价突破确认");
-    expect(message.content).toContain("<h3>最近成交</h3>");
+    expect(message.content).toContain("策略档位缩放");
+    expect(message.content).toContain("计划后约 100 股");
+    expect(message.content).toContain("策略与档位：");
+    expect(message.content).toContain("<h3>今日成交与拒单</h3>");
     expect(message.content).toContain("成交 2 笔");
     expect(message.content).toContain("手续费 10.00 元");
-    expect(message.content).toContain("<h3>今日边界</h3>");
-    expect(message.content).toContain("仅 Paper 研究");
-    expect(message.content).toContain("每个真实交易日只发送这一条");
-    expect(message.content).not.toContain("第 1/10 条");
+    expect(message.content).toContain("<h3>市场与风险</h3>");
+    expect(message.content).toContain("<h3>边界</h3>");
+    expect(message.content).toContain("仅 Paper 模拟研究");
+    expect(message.content).toContain("每个真实交易日发送 6 条定时简报");
   });
 
   it("sends an observation briefing without inventing trades", async () => {
@@ -610,10 +656,227 @@ describe("PaperPlanNotifier", () => {
       status: "sent",
     });
     const message = sender.send.mock.calls[0][0];
-    expect(message.summary).toContain("今日观察");
+    expect(message.summary).toContain("简报 1/6");
+    expect(message.summary).toContain("观察");
     expect(message.content).toContain("今日结论：观察");
-    expect(message.content).toContain("今日没有满足条件的买卖动作");
-    expect(message.content).toContain("今日暂无成交");
+    expect(message.content).toContain("本轮没有满足条件的买卖动作");
+    expect(message.content).toContain("今日暂无 Paper 成交");
+  });
+
+  it("deduplicates order receipts and uses recorded decision reasons", async () => {
+    const plan = createPlan();
+    const { notifier, sender, store } = createNotifier();
+    const order: OrderRecord = {
+      id: "order-receipt-1",
+      symbol: "000001",
+      name: "Sample Bank",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      status: "filled",
+      requestedPrice: 10.5,
+      filledPrice: 10.5,
+      filledQuantity: 100,
+      notional: 1_050,
+      commission: 5,
+      createdAt: "2026-07-17T01:35:30.000Z",
+      updatedAt: "2026-07-17T01:35:31.000Z",
+      strategy: "KAIROS 量价突破确认",
+    };
+    store.appendAudit(
+      "system",
+      "paper-auto-execution.decision",
+      "decision",
+      {
+        orderId: order.id,
+        strategy: "KAIROS 量价突破确认",
+        reason: "突破与成交量同时确认后执行。",
+      },
+    );
+    const current = context(plan);
+    const executionSummary = summarizePaperOrders(
+      [order],
+      plan.tradingDate,
+      store.listAudit(50),
+    );
+
+    await expect(notifier.notifyOrderEvents(plan, {
+      ...current,
+      executionSummary,
+    }, [order])).resolves.toMatchObject({
+      status: "sent",
+      messageKind: "order-event",
+    });
+    await expect(notifier.notifyOrderEvents(plan, {
+      ...current,
+      executionSummary,
+    }, [order])).resolves.toMatchObject({
+      status: "duplicate",
+      eventKey: `orders:${order.id}`,
+    });
+
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(sender.send.mock.calls[0][0].content).toContain("策略：KAIROS 量价突破确认");
+    expect(sender.send.mock.calls[0][0].content).toContain("突破与成交量同时确认后执行");
+  });
+
+  it("reserves all future fixed briefings before spending event capacity", async () => {
+    const plan = createPlan();
+    const { notifier, sender, setNow } = createNotifier();
+    const current = context(plan);
+    const order = (id: string): OrderRecord => ({
+      id,
+      symbol: "000001",
+      name: "Sample Bank",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      status: "filled",
+      requestedPrice: 10.5,
+      filledPrice: 10.5,
+      filledQuantity: 100,
+      notional: 1_050,
+      commission: 5,
+      createdAt: "2026-07-17T01:35:30.000Z",
+      updatedAt: "2026-07-17T01:35:31.000Z",
+    });
+
+    setNow(new Date("2026-07-17T09:35:00+08:00"));
+    for (const id of ["event-1", "event-2", "event-3", "event-4"]) {
+      await expect(notifier.notifyOrderEvents(plan, current, [order(id)]))
+        .resolves.toMatchObject({ status: "sent", messageKind: "order-event" });
+    }
+
+    for (const scheduledAt of ["09:35", "10:15", "11:00", "13:30", "14:15", "14:50"]) {
+      setNow(new Date(`2026-07-17T${scheduledAt}:00+08:00`));
+      await expect(notifier.notify(plan, current)).resolves.toMatchObject({
+        status: "sent",
+        messageKind: "scheduled-briefing",
+      });
+    }
+
+    expect(sender.send).toHaveBeenCalledTimes(10);
+  });
+
+  it("counts failed provider attempts against the daily cap", async () => {
+    const plan = createPlan();
+    const send = vi.fn().mockRejectedValue(new Error("provider unavailable"));
+    const { notifier, sender, setNow } = createNotifier({
+      send,
+      dailyMessageLimit: 6,
+    });
+
+    for (const scheduledAt of ["09:35", "10:15", "11:00", "13:30", "14:15", "14:50"]) {
+      setNow(new Date(`2026-07-17T${scheduledAt}:00+08:00`));
+      await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
+        status: "failed",
+        messageKind: "scheduled-briefing",
+      });
+    }
+
+    const order: OrderRecord = {
+      id: "daily-cap-order",
+      symbol: "000001",
+      name: "Sample Bank",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      status: "filled",
+      requestedPrice: 10.5,
+      filledPrice: 10.5,
+      filledQuantity: 100,
+      notional: 1_050,
+      commission: 5,
+      createdAt: "2026-07-17T06:50:30.000Z",
+      updatedAt: "2026-07-17T06:50:31.000Z",
+    };
+    await expect(notifier.notifyOrderEvents(plan, context(plan), [order]))
+      .resolves.toEqual({ status: "daily-limit" });
+    expect(sender.send).toHaveBeenCalledTimes(6);
+  });
+
+  it("limits event attempts to four even when the provider fails", async () => {
+    const plan = createPlan();
+    const send = vi.fn().mockRejectedValue(new Error("provider unavailable"));
+    const { notifier, sender } = createNotifier({ send });
+    const current = context(plan);
+    const order = (id: string): OrderRecord => ({
+      id,
+      symbol: "000001",
+      name: "Sample Bank",
+      side: "buy",
+      type: "market",
+      quantity: 100,
+      status: "filled",
+      requestedPrice: 10.5,
+      filledPrice: 10.5,
+      filledQuantity: 100,
+      notional: 1_050,
+      commission: 5,
+      createdAt: "2026-07-17T01:35:30.000Z",
+      updatedAt: "2026-07-17T01:35:31.000Z",
+    });
+
+    for (const id of ["failed-1", "failed-2", "failed-3", "failed-4"]) {
+      await expect(notifier.notifyOrderEvents(plan, current, [order(id)]))
+        .resolves.toMatchObject({ status: "failed", messageKind: "order-event" });
+    }
+    await expect(notifier.notifyOrderEvents(plan, current, [order("failed-5")]))
+      .resolves.toEqual({ status: "event-limit" });
+    expect(sender.send).toHaveBeenCalledTimes(4);
+  });
+
+  it("detects market moves with a threshold and twenty-minute cooldown", async () => {
+    const plan = createPlan();
+    const { notifier, sender, setNow } = createNotifier();
+    const breadth = (averageChangePercent: number, advancers = 1) => ({
+      total: 3,
+      advancers,
+      decliners: 1,
+      flat: 1,
+      averageChangePercent,
+      advanceDeclineRatio: advancers,
+      holdingQuotes: [{ symbol: "600519", name: "Current Holding", changePercent: averageChangePercent }],
+    });
+
+    await expect(notifier.observeMarket(plan, context(plan, {
+      marketContext: { ...context(plan).marketContext, breadth: breadth(0.1) },
+    }))).resolves.toEqual({ status: "no-event" });
+
+    setNow(new Date("2026-07-17T09:40:00+08:00"));
+    await expect(notifier.observeMarket(plan, context(plan, {
+      marketContext: { ...context(plan).marketContext, breadth: breadth(1.0) },
+    }))).resolves.toEqual({ status: "no-event" });
+
+    setNow(new Date("2026-07-17T09:45:00+08:00"));
+    await expect(notifier.observeMarket(plan, context(plan, {
+      marketContext: { ...context(plan).marketContext, breadth: breadth(2.3, 2) },
+    }))).resolves.toMatchObject({
+      status: "sent",
+      messageKind: "market-anomaly",
+    });
+
+    setNow(new Date("2026-07-17T09:50:00+08:00"));
+    await expect(notifier.observeMarket(plan, context(plan, {
+      marketContext: { ...context(plan).marketContext, breadth: breadth(4.0, 3) },
+    }))).resolves.toEqual({ status: "event-limit" });
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(sender.send.mock.calls[0][0].summary).toContain("市场异动");
+  });
+
+  it("does not backfill missed checkpoints after a restart", async () => {
+    const plan = createPlan();
+    const { notifier, sender } = createNotifier({
+      now: new Date("2026-07-17T14:50:00+08:00"),
+    });
+
+    await expect(notifier.notify(plan, context(plan))).resolves.toMatchObject({
+      status: "sent",
+      messageKind: "scheduled-briefing",
+    });
+    expect(sender.send).toHaveBeenCalledTimes(1);
+    expect(sender.send.mock.calls[0][0].summary).toContain("简报 6/6");
+    expect(sender.send.mock.calls[0][0].content).toContain("14:50");
   });
 
   it("escapes operation and unfilled-order text exactly once", async () => {

@@ -114,7 +114,7 @@ const envSchema = z.object({
   WXPUSHER_DAILY_MESSAGE_LIMIT: z.coerce
     .number()
     .int()
-    .min(1)
+    .min(6)
     .max(10)
     .default(10),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),

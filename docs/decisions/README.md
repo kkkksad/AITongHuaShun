@@ -12,6 +12,7 @@
 - [0006：强制服务端会话认证](0006-required-session-authentication.md)
 - [0007：单用户部署允许八字符固定密码](0007-operator-defined-password-floor.md)
 - [0008：手动 Paper 策略与市场路由解耦](0008-manual-paper-strategy-routing.md)
+- [0009：多检查点 Paper 通知与事件额度](0009-multi-checkpoint-paper-notifications.md)
 
 ## 新建格式
 

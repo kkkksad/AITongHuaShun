@@ -1,10 +1,20 @@
-import type { OrderRecord, OrderRequest } from "../../shared/trading";
+import {
+  getPaperExecutionStrategyOption,
+  type AccountSnapshot,
+  type MarketSnapshot,
+  type OrderRecord,
+  type OrderRequest,
+  type PaperExecutionStrategy,
+  type PaperStrategyProfile,
+  type PositionSnapshot,
+} from "../../shared/trading";
 import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
 import {
   buildExternalMarketNotificationImpact,
   summarizePaperOrders,
   type PaperPlanNotifier,
+  type PaperPlanNotificationContext,
 } from "../notifications/paperPlanNotifier";
 import { buildCurrentPaperTradingPlan } from "../research/paperTradingPlanService";
 import { assessMarketSnapshot } from "../research/dailyMarketReview";
@@ -25,6 +35,7 @@ import {
   type AShareTradingPhase,
   type IntradayExecutionPolicy,
 } from "./intradayExecutionPolicy";
+import { getPaperStrategyProfilePolicy } from "./paperStrategyProfile";
 
 export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
 export type PaperAutoExecutionActivityMode =
@@ -101,6 +112,15 @@ export interface PaperAutoExecutionResearchContext {
   allowNewPositions: boolean;
   candidatePoolSize: number;
   affordableCandidateCount: number;
+  executionStrategy: PaperExecutionStrategy;
+  executionStrategyLabel: string;
+  executionStrategyMode: "auto" | "manual";
+  selectedStrategyMatched: boolean;
+  matchedCandidateCount: number;
+  strategyCoverage: PaperTradingPlan["qualitySummary"]["strategyCoverage"];
+  dominantBlocker: string | null;
+  dominantBlockerReason: string | null;
+  blockedReasons: PaperTradingPlan["qualitySummary"]["blockedReasons"];
 }
 
 export interface PaperAutoExecutionRun {
@@ -169,7 +189,7 @@ export interface PaperAutoExecutorOptions {
   targetDailyOrders: number;
   clock?: () => Date;
   onOrder?: (order: OrderRecord, request: OrderRequest) => void;
-  planNotifier?: Pick<PaperPlanNotifier, "notify">;
+  planNotifier?: Pick<PaperPlanNotifier, "notify" | "notifyOrderEvents">;
 }
 
 export interface SequentialTaskTimerApi {
@@ -476,6 +496,194 @@ export function resolveNotificationSourceStatus(input: {
   return input.marketRegime;
 }
 
+export function buildPaperExecutionResearchContext(input: {
+  plan: PaperTradingPlan;
+  adaptiveRouting: AdaptiveStrategyRouting;
+  sourceStatus: NotificationResearchSourceStatus;
+}): PaperAutoExecutionResearchContext {
+  const { plan, adaptiveRouting } = input;
+  const dominantBlocker = plan.qualitySummary.strategyCoverage.dominantBlocker;
+  const dominantBlockerOperation = plan.operations.find((operation) =>
+    operation.action === "blocked" &&
+    (
+      dominantBlocker === null ||
+      operation.ruleChecks.includes(dominantBlocker)
+    )
+  );
+  return {
+    regime: adaptiveRouting.regime,
+    observedRegime: adaptiveRouting.stability.observedRegime,
+    routingStability: adaptiveRouting.stability.status,
+    previousConfirmedRegime:
+      adaptiveRouting.stability.previousConfirmedRegime,
+    previousConfirmedAt: adaptiveRouting.stability.previousConfirmedAt,
+    sourceStatus: input.sourceStatus,
+    allowNewPositions: adaptiveRouting.allowNewPositions,
+    candidatePoolSize: plan.qualitySummary.candidatePoolSize,
+    affordableCandidateCount: plan.qualitySummary.affordableCandidateCount,
+    executionStrategy: plan.executionStrategy.key,
+    executionStrategyLabel: plan.executionStrategy.label,
+    executionStrategyMode: plan.executionStrategy.mode,
+    selectedStrategyMatched: plan.executionStrategy.selectedStrategyMatched,
+    matchedCandidateCount: plan.executionStrategy.matchedCandidateCount,
+    strategyCoverage: plan.qualitySummary.strategyCoverage,
+    dominantBlocker,
+    dominantBlockerReason: dominantBlockerOperation?.reason ?? null,
+    blockedReasons: plan.qualitySummary.blockedReasons,
+  };
+}
+
+function buildUnavailablePaperPlan(input: {
+  now: Date;
+  provider: string;
+  account: AccountSnapshot;
+  initialCapital: number;
+  lotSize: number;
+  maxPositionWeight: number;
+  maxSingleOrderNotional: number;
+  minimumCommission: number;
+  cashReserveRatio: number;
+  strategyProfile: PaperStrategyProfile;
+  executionStrategy: PaperExecutionStrategy;
+}): PaperTradingPlan {
+  const profile = getPaperStrategyProfilePolicy(input.strategyProfile);
+  const executionOption = getPaperExecutionStrategyOption(input.executionStrategy);
+  const cashReserveRatio = Math.max(
+    input.cashReserveRatio,
+    profile.cashReserveFloor,
+  );
+  const cashReserveAmount = Math.min(
+    input.account.cash,
+    Math.max(0, input.account.equity * cashReserveRatio),
+  );
+  const plannedCashBudget = Math.max(0, input.account.cash - cashReserveAmount);
+  const strategyScaledOrderCap =
+    input.maxSingleOrderNotional * profile.newPositionScale;
+  const strategyScaledPositionCap =
+    input.account.equity * input.maxPositionWeight * profile.newPositionScale;
+  const effectiveOrderCap = Math.min(
+    strategyScaledOrderCap,
+    strategyScaledPositionCap,
+    plannedCashBudget,
+  );
+  const isManual = input.executionStrategy !== "auto";
+  return {
+    generatedAt: input.now.toISOString(),
+    tradingDate: getChinaTradeDate(input.now),
+    mode: "paper",
+    provider: input.provider,
+    account: {
+      accountId: input.account.accountId,
+      cash: input.account.cash,
+      equity: input.account.equity,
+      marketValue: input.account.marketValue,
+    },
+    capitalPlan: {
+      initialCapital: input.initialCapital,
+      maxPositionWeight: input.maxPositionWeight,
+      maxSingleOrderNotional: Number(effectiveOrderCap.toFixed(2)),
+      lotSize: input.lotSize,
+      cashReserveRatio,
+      cashReserveAmount: Number(cashReserveAmount.toFixed(2)),
+      sizingDiagnostics: {
+        riskOrderCapBeforeScale: input.maxSingleOrderNotional,
+        riskOrderCapAfterScale: Number(strategyScaledOrderCap.toFixed(2)),
+        positionWeightCapAfterScale: Number(strategyScaledPositionCap.toFixed(2)),
+        cashReserveAmount: Number(cashReserveAmount.toFixed(2)),
+        plannedCashBudget: Number(plannedCashBudget.toFixed(2)),
+        effectiveOrderCap: Number(effectiveOrderCap.toFixed(2)),
+        minimumFeeEfficientNotional: Number(
+          (input.minimumCommission * 2 / 0.01).toFixed(2),
+        ),
+        plannedBuyOrderCount: 0,
+        plannedBuyNotional: 0,
+        averagePlannedBuyNotional: 0,
+        largestPlannedBuyNotional: 0,
+        limitingConstraint: "planned-cash-budget",
+        summary: "当前没有可交易行情，无法形成金额计划；金额上限仅作账户风控展示。",
+      },
+    },
+    strategyProfile: {
+      key: profile.key,
+      label: profile.label,
+      summary: profile.summary,
+      cashReserveFloor: profile.cashReserveFloor,
+      minDefensiveScore: profile.minDefensiveScore,
+      maxNewPositionsPerPlan: profile.maxNewPositionsPerPlan,
+      allowNewPositions: profile.allowNewPositions,
+      effectiveCashReserveRatio: cashReserveRatio,
+      effectiveNewPositionScale: profile.newPositionScale,
+    },
+    executionStrategy: {
+      key: input.executionStrategy,
+      label: executionOption?.label ?? input.executionStrategy,
+      mode: isManual ? "manual" : "auto",
+      selectedStrategyMatched: false,
+      matchedCandidateCount: 0,
+    },
+    rules: [
+      "A 股一手 100 股。",
+      "当前行情不可用，本轮不产生任何 Paper 买卖动作。",
+      "所有动作仅为本地 Paper 模拟，不连接真实券商。",
+    ],
+    topStrategy: null,
+    adaptiveRouting: null,
+    qualitySummary: {
+      candidatePoolSize: 0,
+      affordableCandidateCount: 0,
+      positionConflictCount: 0,
+      actionCounts: {
+        observe: 0,
+        "paper-buy-plan": 0,
+        "paper-sell-plan": 0,
+        blocked: 0,
+        hold: 0,
+      },
+      blockedReasons: {},
+      plannedBuyNotional: 0,
+      plannedBuyFees: 0,
+      plannedCashRequired: 0,
+      plannedSellNotional: 0,
+      cashDeploymentPercent: 0,
+      remainingCashAfterPlan: input.account.cash,
+      strategyCoverage: {
+        eligibleKeys: isManual ? [input.executionStrategy] : [],
+        matchedKeys: [],
+        matchedCandidateCount: 0,
+        unmatchedCandidateCount: 0,
+        dominantStrategyKey: null,
+        dominantBlocker: "market-data-unavailable",
+        summary: "当前没有可用行情，无法评估策略覆盖。",
+      },
+      planQuality: "watch-only",
+      summary: "当前没有可用行情，保持 Paper 观望，不补造价格或成交。",
+    },
+    operations: [],
+    guardrails: [
+      "行情不可用时零下单",
+      "不重置 Paper 账户",
+      "不推断缺失行情或历史成交",
+    ],
+  };
+}
+
+function buildHoldingQuotes(
+  positions: PositionSnapshot[],
+  snapshot: MarketSnapshot,
+): NonNullable<
+  PaperPlanNotificationContext["marketContext"]["breadth"]
+>["holdingQuotes"] {
+  return positions.flatMap((position) => {
+    const quote = snapshot.quotes.find((item) => item.symbol === position.symbol);
+    if (!quote || !Number.isFinite(quote.changePercent)) return [];
+    return [{
+      symbol: position.symbol,
+      name: position.name || quote.name,
+      changePercent: quote.changePercent,
+    }];
+  });
+}
+
 export class PaperAutoExecutor {
   private startedAt: string | null = null;
   private lastRunAt: string | null = null;
@@ -501,7 +709,10 @@ export class PaperAutoExecutor {
   }
 
   start(): void {
-    if (!this.options.enabled || this.scheduler.isStarted()) return;
+    if (
+      (!this.options.enabled && !this.options.planNotifier) ||
+      this.scheduler.isStarted()
+    ) return;
     this.startedAt = this.now().toISOString();
     this.scheduler.start(async () => {
       await this.runOnce("startup");
@@ -602,11 +813,11 @@ export class PaperAutoExecutor {
 
     this.running = true;
     try {
-      if (!this.options.enabled && trigger !== "manual") {
+      if (!this.options.enabled && !this.options.planNotifier) {
         skippedOperations.push({
           symbol: "SYSTEM",
           action: "observe",
-          reason: "auto paper execution is disabled",
+          reason: "paper auto execution and notifications are both disabled",
         });
         return this.finalizeRun(trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
       }
@@ -635,6 +846,49 @@ export class PaperAutoExecutor {
           action: "observe",
           reason: "当前没有可交易行情，保持 Paper 观望并等待行情源恢复。",
         });
+        const account = this.options.system.broker.getAccount();
+        const plan = buildUnavailablePaperPlan({
+          now: started,
+          provider: this.options.config.MARKET_DATA_PROVIDER,
+          account,
+          initialCapital:
+            account.startingEquity ?? this.options.config.TRADING_STARTING_CASH,
+          lotSize: 100,
+          maxPositionWeight: this.options.config.MAX_POSITION_WEIGHT,
+          maxSingleOrderNotional: this.options.config.MAX_ORDER_NOTIONAL,
+          minimumCommission: this.options.config.MIN_COMMISSION,
+          cashReserveRatio:
+            this.options.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
+          strategyProfile: this.options.system.store.getStrategyProfile(),
+          executionStrategy: this.options.system.store.getExecutionStrategy(),
+        });
+        const positions = this.options.system.broker.getPositions();
+        const snapshot = this.options.system.market.getSnapshot();
+        const executionSummary = summarizePaperOrders(
+          this.options.system.broker.getOrders(10_000),
+          plan.tradingDate,
+          this.options.system.store.listAudit(10_000),
+        );
+        await this.options.planNotifier?.notify(plan, {
+          account,
+          positions,
+          executableOperations: [],
+          executionSummary,
+          policy: initialPolicy,
+          executionEnabled: this.options.enabled,
+          marketContext: {
+            sourceStatus: "degraded",
+            tone: "insufficient-data",
+            summary: "当前没有可交易行情；保持 Paper 观望，不补造价格或成交。",
+            breadth: {
+              ...assessMarketSnapshot(snapshot).breadth,
+              holdingQuotes: buildHoldingQuotes(positions, snapshot),
+            },
+            sectors: [],
+            warnings: ["当前没有可交易行情，定时简报仍保留诚实降级状态。"],
+            newsHighlights: [],
+          },
+        });
         return this.finalizeRun(
           trigger,
           started,
@@ -644,6 +898,27 @@ export class PaperAutoExecutor {
           "watch-only",
           submittedOrders,
           skippedOperations,
+          {
+            regime: "unavailable",
+            observedRegime: "unavailable",
+            routingStability: "degraded-defensive-hold",
+            previousConfirmedRegime: null,
+            previousConfirmedAt: null,
+            sourceStatus: "degraded",
+            allowNewPositions: false,
+            candidatePoolSize: 0,
+            affordableCandidateCount: 0,
+            executionStrategy: plan.executionStrategy.key,
+            executionStrategyLabel: plan.executionStrategy.label,
+            executionStrategyMode: plan.executionStrategy.mode,
+            selectedStrategyMatched: false,
+            matchedCandidateCount: 0,
+            strategyCoverage: plan.qualitySummary.strategyCoverage,
+            dominantBlocker: "market-data-unavailable",
+            dominantBlockerReason: "当前没有可交易行情",
+            blockedReasons: {},
+          },
+          buildPlanSnapshot(plan),
         );
       }
 
@@ -668,17 +943,22 @@ export class PaperAutoExecutor {
         activityMode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
       });
       const policy = getIntradayExecutionPolicy(started, plan.adaptiveRouting);
-      const marketAssessment = assessMarketSnapshot(
-        this.options.system.market.getSnapshot(),
-      );
+      const snapshot = this.options.system.market.getSnapshot();
+      const marketAssessment = assessMarketSnapshot(snapshot);
       const preparedOperations = this.preflightOperations(
         plan,
         policy,
         skippedOperations,
       );
-      await this.options.planNotifier?.notify(plan, {
-        account: this.options.system.broker.getAccount(),
-        positions: this.options.system.broker.getPositions(),
+      const sourceStatus = resolveNotificationSourceStatus({
+        marketRegime: marketRegimeResearch.sourceStatus,
+        auxiliaryResearch: realResearchDataFeed.sourceStatus,
+      });
+      const account = this.options.system.broker.getAccount();
+      const positions = this.options.system.broker.getPositions();
+      const notificationContext: PaperPlanNotificationContext = {
+        account,
+        positions,
         executableOperations: preparedOperations.map(({ operation }) => operation),
         executionSummary: summarizePaperOrders(
           this.options.system.broker.getOrders(10_000),
@@ -686,13 +966,15 @@ export class PaperAutoExecutor {
           this.options.system.store.listAudit(10_000),
         ),
         policy,
+        executionEnabled: this.options.enabled,
         marketContext: {
-          sourceStatus: resolveNotificationSourceStatus({
-            marketRegime: marketRegimeResearch.sourceStatus,
-            auxiliaryResearch: realResearchDataFeed.sourceStatus,
-          }),
+          sourceStatus,
           tone: marketAssessment.tone,
           summary: marketAssessment.summary,
+          breadth: {
+            ...marketAssessment.breadth,
+            holdingQuotes: buildHoldingQuotes(positions, snapshot),
+          },
           sectors: marketRegimeResearch.sectorOutlooks.slice(0, 24).map((sector) => ({
             name: sector.name,
             direction: sector.direction,
@@ -719,9 +1001,12 @@ export class PaperAutoExecutor {
             rationale: externalMarketImpact.aShareImpact.rationale,
           }),
         },
-      });
+      };
+      await this.options.planNotifier?.notify(plan, notificationContext);
 
-      for (const { operation, request } of preparedOperations) {
+      for (const { operation, request } of (
+        this.options.enabled ? preparedOperations : []
+      )) {
         const side = request.side;
         const order = this.options.system.broker.submitOrder(request, {
           strategy: operation.strategy,
@@ -764,6 +1049,45 @@ export class PaperAutoExecutor {
         );
       }
 
+      if (this.options.enabled && submittedOrders.length > 0) {
+        const currentOrderIds = new Set(submittedOrders.map((order) => order.orderId));
+        const persistedOrders = this.options.system.broker.getOrders(10_000)
+          .filter((order) => (
+            currentOrderIds.has(order.id) &&
+            (order.status === "filled" || order.status === "rejected")
+          ));
+        if (persistedOrders.length > 0) {
+          const refreshedAccount = this.options.system.broker.getAccount();
+          const refreshedPositions = this.options.system.broker.getPositions();
+          await this.options.planNotifier?.notifyOrderEvents(
+            plan,
+            {
+              ...notificationContext,
+              account: refreshedAccount,
+              positions: refreshedPositions,
+              executionSummary: summarizePaperOrders(
+                this.options.system.broker.getOrders(10_000),
+                plan.tradingDate,
+                this.options.system.store.listAudit(10_000),
+              ),
+              marketContext: {
+                ...notificationContext.marketContext,
+                breadth: notificationContext.marketContext.breadth
+                  ? {
+                      ...notificationContext.marketContext.breadth,
+                      holdingQuotes: buildHoldingQuotes(
+                        refreshedPositions,
+                        this.options.system.market.getSnapshot(),
+                      ),
+                    }
+                  : undefined,
+              },
+            },
+            persistedOrders,
+          );
+        }
+      }
+
       return this.finalizeRun(
         trigger,
         started,
@@ -773,18 +1097,11 @@ export class PaperAutoExecutor {
         plan.qualitySummary.planQuality,
         submittedOrders,
         skippedOperations,
-        {
-          regime: adaptiveRouting.regime,
-          observedRegime: adaptiveRouting.stability.observedRegime,
-          routingStability: adaptiveRouting.stability.status,
-          previousConfirmedRegime:
-            adaptiveRouting.stability.previousConfirmedRegime,
-          previousConfirmedAt: adaptiveRouting.stability.previousConfirmedAt,
-          sourceStatus: marketRegimeResearch.sourceStatus,
-          allowNewPositions: adaptiveRouting.allowNewPositions,
-          candidatePoolSize: plan.qualitySummary.candidatePoolSize,
-          affordableCandidateCount: plan.qualitySummary.affordableCandidateCount,
-        },
+        buildPaperExecutionResearchContext({
+          plan,
+          adaptiveRouting,
+          sourceStatus,
+        }),
         buildPlanSnapshot(plan),
       );
     } catch (error) {
@@ -1003,6 +1320,20 @@ export class PaperAutoExecutor {
         allowNewPositions: run.researchContext?.allowNewPositions,
         candidatePoolSize: run.researchContext?.candidatePoolSize,
         affordableCandidateCount: run.researchContext?.affordableCandidateCount,
+        executionStrategy: run.researchContext?.executionStrategy ?? null,
+        executionStrategyLabel:
+          run.researchContext?.executionStrategyLabel ?? null,
+        executionStrategyMode:
+          run.researchContext?.executionStrategyMode ?? null,
+        selectedStrategyMatched:
+          run.researchContext?.selectedStrategyMatched ?? null,
+        matchedCandidateCount:
+          run.researchContext?.matchedCandidateCount ?? null,
+        strategyCoverage: run.researchContext?.strategyCoverage ?? null,
+        dominantBlocker: run.researchContext?.dominantBlocker ?? null,
+        dominantBlockerReason:
+          run.researchContext?.dominantBlockerReason ?? null,
+        blockedReasons: run.researchContext?.blockedReasons ?? null,
         submittedOrders: run.submittedOrders.length,
         skippedOperations: run.skippedOperations.length,
         submittedOrderStatuses: run.submittedOrders.map((order) => ({

@@ -322,6 +322,23 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
         allowNewPositions: false,
         candidatePoolSize: 12,
         affordableCandidateCount: 0,
+        executionStrategy: "rsi",
+        executionStrategyLabel: "RSI 反转",
+        executionStrategyMode: "manual",
+        selectedStrategyMatched: false,
+        matchedCandidateCount: 0,
+        strategyCoverage: {
+          eligibleKeys: ["rsi"],
+          matchedKeys: [],
+          matchedCandidateCount: 0,
+          unmatchedCandidateCount: 12,
+          dominantStrategyKey: null,
+          dominantBlocker: "manual-strategy-no-match",
+          summary: "test fixture",
+        },
+        dominantBlocker: "manual-strategy-no-match",
+        dominantBlockerReason: "test fixture",
+        blockedReasons: { "manual-strategy-no-match": 12 },
       },
     });
     const recovery = run({

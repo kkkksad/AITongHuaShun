@@ -518,7 +518,9 @@ export async function buildTradingApp(
     maxDailyOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
     targetDailyOrders: options.config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS,
     clock: options.clock,
-    planNotifier: paperPlanNotifier,
+    planNotifier: options.config.WXPUSHER_ENABLED
+      ? paperPlanNotifier
+      : undefined,
     onOrder: (order, request) => {
       recordOrder(request.side, order.status);
       broadcastPositions(system.market.getSnapshot());
