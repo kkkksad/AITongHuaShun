@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDownUp,
   Ban,
@@ -124,7 +124,12 @@ export function OrderHistory({
   }, [orders]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageOrders = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const currentPage = Math.min(page, totalPages - 1);
+  const pageOrders = filtered.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+
+  useEffect(() => {
+    if (page !== currentPage) setPage(currentPage);
+  }, [currentPage, page]);
 
   const handleExport = () => {
     const header = "ID,代码,名称,方向,类型,状态,数量,价格,成交价,成交数量,金额,手续费,创建时间,更新时间\n";
@@ -368,12 +373,12 @@ export function OrderHistory({
       {totalPages > 1 && (
         <div className="pagination-bar">
           <span className="pagination-info">
-            共 {filtered.length} 条，第 {page + 1} / {totalPages} 页
+            共 {filtered.length} 条，第 {currentPage + 1} / {totalPages} 页
           </span>
           <div className="pagination-buttons">
             <button
               className="secondary-button"
-              disabled={page === 0}
+              disabled={currentPage === 0}
               onClick={() => setPage(0)}
               type="button"
             >
@@ -381,23 +386,23 @@ export function OrderHistory({
             </button>
             <button
               className="secondary-button"
-              disabled={page === 0}
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+              onClick={() => setPage(Math.max(0, currentPage - 1))}
               type="button"
             >
               上一页
             </button>
             <button
               className="secondary-button"
-              disabled={page >= totalPages - 1}
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage >= totalPages - 1}
+              onClick={() => setPage(Math.min(totalPages - 1, currentPage + 1))}
               type="button"
             >
               下一页
             </button>
             <button
               className="secondary-button"
-              disabled={page >= totalPages - 1}
+              disabled={currentPage >= totalPages - 1}
               onClick={() => setPage(totalPages - 1)}
               type="button"
             >
