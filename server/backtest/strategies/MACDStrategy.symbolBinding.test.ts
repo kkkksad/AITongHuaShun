@@ -126,7 +126,7 @@ describe("MACD bound-symbol histogram, warmup and reset", () => {
     });
     const report = engine.run();
     expect(signals[4]).toEqual([{ symbol: symbolA, side: "buy", type: "market", targetWeight: 0.42 }]);
-    expect(signals[6]).toEqual([{ symbol: symbolA, side: "sell", type: "market", targetWeight: 1 }]);
+    expect(signals[6]).toEqual([{ symbol: symbolA, side: "sell", type: "market", quantity: 400 }]);
     expect(report.trades).toMatchObject([
       { symbol: symbolA, side: "buy", quantity: 400, price: 10, commission: 5, barIndex: 4 },
       { symbol: symbolA, side: "sell", quantity: 400, price: 6, commission: 5, barIndex: 6 },
@@ -165,7 +165,7 @@ describe("MACD bound-symbol histogram, warmup and reset", () => {
     const report = engine.run();
     expect(signals.slice(0, 4)).toEqual([[], [], [], []]);
     expect(signals[4]).toEqual([{ symbol: symbolA, side: "buy", type: "market", targetWeight: 0.5 }]);
-    expect(signals[5]).toEqual([{ symbol: symbolA, side: "sell", type: "market", targetWeight: 1 }]);
+    expect(signals[5]).toEqual([{ symbol: symbolA, side: "sell", type: "market", quantity: 400 }]);
     expect(report.trades).toMatchObject([
       { symbol: symbolA, side: "buy", quantity: 400, price: 11, barIndex: 4 },
       { symbol: symbolA, side: "sell", quantity: 400, price: 10, barIndex: 5 },
@@ -186,7 +186,7 @@ describe("MACD bound-symbol histogram, warmup and reset", () => {
     expect(contexts[5].positions).toMatchObject([{ symbol: symbolA, quantity: 500, availableQuantity: 500 }]);
     expect(signals[5]).toEqual([]);
     expect(signals[6]).toEqual([]);
-    expect(signals[7]).toEqual([{ symbol: symbolA, side: "sell", type: "market", targetWeight: 1 }]);
+    expect(signals[7]).toEqual([{ symbol: symbolA, side: "sell", type: "market", quantity: 500 }]);
     expect(report.trades).toMatchObject([
       { symbol: symbolA, side: "buy", quantity: 500, price: 10, barIndex: 4 },
       { symbol: symbolA, side: "sell", quantity: 500, price: 7, barIndex: 7 },

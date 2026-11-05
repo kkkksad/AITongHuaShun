@@ -592,8 +592,10 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 
 - [x] 独立真实Engine：MACD1/2/2/.5，同日10/9/8/7/10/7/10，bar4买500、bar5死叉卖被T+1拒却flag=false、bar6金叉再买400；末900/现金990，actual诊断仅500/现金4995。
 - [x] 独立真实部分可卖例：10/9/8/7/10/11/7，day3 bar5真实另买100，bar6实际600但可卖500，原targetWeight1卖600拒，actual诊断仅卖500@7费5、保留100锁定/现金7385。费用拒买后下一真金叉原已恢复，不误报。
-- [ ] 等45发布后先红后绿，actual同股quantity gate+min可卖整手，保留EMA/slow+signal暖机/prevHistogram每次更新及prev<=0/>0或>=0/<0事件；无新交叉不补单。
-- [ ] 验证T+1不叠买、下一新死叉/部分可卖、费用拒买后下一真金叉原报告兼容、其他持仓/reset与正常含成本完整报告；独立复核、精确全检查、单独发布。
+- [x] 45发布后实施，新21项先14红7绿后全绿，actual同股quantity gate+min可卖整手；EMA/slow+signal暖机/prevHistogram更新与prev<=0/>0或>=0/<0事件保持，无新交叉不补单。
+- [x] 作者159相关/类型/diff，旧symbol仅3处sell形状400/400/500，经济断言保持；独立201项/类型/diff及3组正常含成本完整报告一致。新21区分真实Engine与controlled context，覆盖T+1不叠买、部分可卖/剩余锁定、hist事件/拒买恢复/他股/reset；root完整实现/旧shape复核无阻断。
+- [x] 精确暂存树109服务端文件1622项、44前端文件249项、TypeScript/Vite全过，未混入50/52/53。
+- [ ] 单独提交部署与独立核验。
 
 ## 模块50：研究页签连续键盘焦点
 
@@ -613,7 +615,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 37执行脚本覆盖API fresh/401/POST后GET、旧私密cache、offline不伪造、same-origin/跨源/POST/未知GET、静态/导航回退、错误不覆盖及安装激活次序；作者111相关/类型/diff通过，root完整源码复核无初步阻断。
 - [x] 独立111项/类型/diff通过。Chrome155全新profile/双localhost原脚本真实验证13边界：延迟网络then中的waitUntil接受、200先返回/cache.put释放后写入，API/query/iframe navigate/跨源/未知全透传、旧cache清理/v3-only/静态与HTML/断网回退通过；W3C respondWith lifetime promise语义一致。profile/浏览器/服务器已清理。
 - [x] 精确暂存树108服务端文件1601项、44前端文件249项、TypeScript/Vite全过，未混入49/50/52/53。
-- [ ] 单独提交部署与独立核验，公开脚本验证新字节/缓存版本。
+- [x] 模块51提交bce39e0b6f4113f9caa1b6efe286ffc1c8c5ffba已部署，UTC23:11独立校验489个归档文件、三healthy/健康200/匿名401/原账户。公网匿名/sw.js与候选SHA256均114828911f1650593162c4d23bf9ccb29ec6c4b19f0b55b5dce6f95e3b704480且v3；TLS仍自签，此字节测量未验证可信链。GitHub连接失败待补推。
 
 ## 模块52：计划候选整手佣金舍入
 
@@ -622,3 +624,11 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 独立真实buildPaperTradingPlan+Broker六控制：slippage0隔离费用，价166.72/现金16677、默认佣金的100股Broker恰fill但计划0；合法min5.004/价20/cash2005同类误0；min5.0052/cash2005.0052计划100却不足，cash2005.01控制足够。无替换operations/资格/路由/费用效率阻止。现Executor/Broker仍安全拦截真正不足，缺陷在计划整手/说明。
 - [ ] 先红后绿，仅candidateQuantity复用现estimatedCommission的分位舍入，初始上界不得因未舍入最低费提前丢弃可买手；资金比较复用hasSufficientCash，仅容二进制噪声，真实分位/小数缺口仍拒。若需检查紧邻一手修除法噪声，必须再严格检查原本金硬cap。
 - [ ] 保持price>=1的原clamp、整手/候选排序/档位/资格/费用效率/单股单笔cap/reserve与返回结构；不引入滑点建模或改执行费用/真实配置。覆盖完整计划+真Broker双向小数min/默认佣金、现金不足/两单累计/噪声和硬cap控制，独立复核、精确全检查、单独发布。
+
+## 模块53：缺块恢复跨刷新上限
+
+**Files:** `src/main.tsx`、`src/lib/chunkRecovery.ts`、必要旧storage控制更新与真实main事件/React.lazy跨document集成回归，架构/产品/状态/本计划。
+
+- [x] 真实main注册/React.lazy源码受控跨document模拟：同session同完整href，延迟import在load后失败，每文档load清marker，3次文档各reload1次；不触发清理/无SW控制为[1,0]。仅去清理后，getter失败fallbackMap每文档重建、set抛错/静默失败仍[1,1]且同文档可多刷。探针runtime/chunk-recovery-lifecycle.probe.mjs；未称线上已发生事故。
+- [ ] 先红后绿，移除main的load无条件清标记；正常可持久session相同最近href连续reload最多一次，其他href原可恢复行为保持。自动reload前必须确认真实sessionStorage set/readback成功；fallback Map只可保留同document兼容，不当作跨reload持久证据，不可写/不可读/静默丢写时不自动刷新。
+- [ ] 保留错误识别/显式clear helper/其他URL/手动重试及ErrorBoundary；不引入全session URL集合或新持久认证存储。覆盖lazy与vite:preloadError先后/重复、load前后/跨document、getter/读/写失败及静默失败、普通错误不刷新、SW生产注册/开发清理保持。独立复核、精确全检查、单独部署。

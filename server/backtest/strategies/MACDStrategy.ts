@@ -21,7 +21,6 @@ import { macd } from "./indicators";
 export class MACDStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
-  private inPosition = false;
   private prevHistogram: number | null = null;
   private boundSymbol?: string;
 
@@ -39,7 +38,6 @@ export class MACDStrategy implements BacktestStrategy {
 
   reset(): void {
     this.prices.length = 0;
-    this.inPosition = false;
     this.prevHistogram = null;
     this.boundSymbol = undefined;
   }
@@ -69,10 +67,11 @@ export class MACDStrategy implements BacktestStrategy {
     this.prevHistogram = histogram;
 
     if (prevH === null) return [];
+    const position = context.positions.find((item) => item.symbol === quote.symbol);
+    const inPosition = (position?.quantity ?? 0) > 0;
 
     // 金叉：histogram 由负转正
-    if (!this.inPosition && prevH <= 0 && histogram > 0) {
-      this.inPosition = true;
+    if (!inPosition && prevH <= 0 && histogram > 0) {
       return [
         {
           symbol: quote.symbol,
@@ -84,14 +83,16 @@ export class MACDStrategy implements BacktestStrategy {
     }
 
     // 死叉：histogram 由正转负
-    if (this.inPosition && prevH >= 0 && histogram < 0) {
-      this.inPosition = false;
+    if (position && inPosition && prevH >= 0 && histogram < 0) {
+      const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+      const quantity = Math.floor(sellable / 100) * 100;
+      if (quantity <= 0) return [];
       return [
         {
           symbol: quote.symbol,
           side: "sell",
           type: "market",
-          targetWeight: 1.0,
+          quantity,
         },
       ];
     }

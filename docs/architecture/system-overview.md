@@ -108,7 +108,7 @@ shared/
 - 回测`BollingerBandsStrategy`首次tradable绑定至reset，仅追加该股历史，换序保持/缺失或不可交易等待；同样读取目标实际持仓/可卖整手，不因买卖意图翻转仓位状态；保留原period暖机、标准差参数、下轨<=买入和中轨/上轨>=退出比较，T+1或拒单后按实际仓等待/重试。
 - 回测`MomentumStrategy`首次tradable绑定至reset，报价换序保持同股，缺失/不可交易等待；入场/退出比较使用排除当前bar的完整过去N/M条观测，至少N+1/M+1条才有完整通道；保留原>=/<=与买入权重。后续持仓决策读取同标的实际quantity/可卖整手，拒买不形成虚拟仓、T+1/拒卖后重读实际账；窗口与持仓两项独立验证，不宣称收益提升。
 - 回测`MovingAverageCrossStrategy`首次tradable绑定到reset，报价换序保持、缺失/不可交易等待；slow+1暖机、严格交叉比较与买入权重保持；以同股实际模拟持仓判断空仓，退出取可卖整手，无新交叉不补单，T+1等待不会错当已空仓。
-- 回测`MACDStrategy`首次tradable绑定至reset，缺失/不可交易时不推进价格或prevHistogram；EMA、slow+signal暖机与histogram正负穿越事件、权重及原intent保持，实际持仓另列后续计划。
+- 回测`MACDStrategy`首次tradable绑定至reset，缺失/不可交易时不推进价格或prevHistogram；EMA、slow+signal暖机与histogram正负穿越事件、买入权重保持；同股实际quantity判断空仓，退出取实际可卖整手，不把T+1/拒卖当已空仓，负hist持续且无新死叉不补卖。
 - 回测`GridTradingStrategy`在onStart用同一tradable报价绑定symbol与base，后续仅同股、缺失/不可交易等待，reset清绑定与原网格状态；原初始空/全不可交易时整轮不启用，log/round/clamp/层级同步与每格数量保持。
 - `shared/` 只保存跨进程契约，不包含浏览器或 Node.js 运行时副作用。
 - 行情读取和订单执行保持为不同模块与未来不同权限域。
