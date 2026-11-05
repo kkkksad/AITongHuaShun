@@ -17,6 +17,7 @@
 - [0011：回测胜率以已闭合FIFO配对为分母](0011-closed-fifo-backtest-win-rate.md)
 - [0012：行情快照时间表示数据版本形成时间](0012-market-snapshot-version-time.md)
 - [0013：域名证书独立签发与续期](0013-managed-domain-certificates.md)
+- [0014：Paper 可用现金包含订单必要成本](0014-paper-execution-cash-costs.md)
 
 ## 新建格式
 

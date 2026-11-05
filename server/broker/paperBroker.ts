@@ -14,6 +14,7 @@ import type {
 import type { MarketDataProvider } from "../contracts/MarketDataProvider";
 import type { TradingStore } from "../contracts/TradingStore";
 import type { RiskEngine } from "../risk/riskEngine";
+import { executionCosts, hasSufficientCash, limitBuyBudget } from "./executionCosts";
 
 interface PaperBrokerOptions {
   mode: TradingMode;
@@ -58,6 +59,11 @@ export class PaperBroker extends EventEmitter {
       position,
       reservedSellQuantity,
       mode: this.options.mode,
+      requiredCash: request.side === "buy" && quote
+        ? request.type === "limit" && request.limitPrice !== undefined && quote.price > request.limitPrice
+          ? limitBuyBudget(request, this.options)
+          : executionCosts(request, quote.price, this.options).cashDebit
+        : undefined,
     });
 
     if (!decision.allowed || !quote) {
@@ -178,7 +184,17 @@ export class PaperBroker extends EventEmitter {
   }
 
   getAccount(snapshot = this.market.getSnapshot()): AccountSnapshot {
-    return this.store.getAccount(this.options.mode, snapshot, this.options.limits);
+    const account = this.store.getAccount(this.options.mode, snapshot, this.options.limits);
+    const pendingOrders = this.store.getPendingOrders();
+    if (pendingOrders.length === 0) return account;
+    let extraBudget = 0;
+    for (const order of pendingOrders) {
+      if (order.side === "buy" && order.type === "limit" && order.limitPrice !== undefined) {
+        extraBudget += Math.max(0, limitBuyBudget(order, this.options) - order.limitPrice * order.quantity);
+      }
+    }
+    if (extraBudget === 0 && account.cash >= 0) return account;
+    return { ...account, cash: Math.max(0, account.cash - extraBudget) };
   }
 
   getPositions(snapshot = this.market.getSnapshot()): PositionSnapshot[] {
@@ -204,31 +220,23 @@ export class PaperBroker extends EventEmitter {
     name: string,
     marketPrice: number,
   ): OrderRecord {
-    const slippage = this.options.slippageBps / 10_000;
-    let fillPrice =
-      order.side === "buy"
-        ? marketPrice * (1 + slippage)
-        : marketPrice * (1 - slippage);
-
-    if (order.type === "limit" && order.limitPrice !== undefined) {
-      fillPrice =
-        order.side === "buy"
-          ? Math.min(fillPrice, order.limitPrice)
-          : Math.max(fillPrice, order.limitPrice);
+    const costs = executionCosts(order, marketPrice, this.options);
+    let otherBuyBudgets = 0;
+    for (const pending of this.store.getPendingOrders()) {
+      if (pending.id !== order.id && pending.side === "buy" && pending.type === "limit" && pending.limitPrice !== undefined) {
+        otherBuyBudgets += limitBuyBudget(pending, this.options);
+      }
     }
-
-    const roundedFillPrice = Number(fillPrice.toFixed(2));
-    const notional = roundedFillPrice * order.quantity;
-    const commission = Math.max(
-      this.options.minimumCommission,
-      notional * this.options.commissionRate,
-    );
+    const spendable = Math.max(0, this.store.getCash() - otherBuyBudgets);
+    if (!hasSufficientCash(spendable, costs.cashDebit)) {
+      return this.store.rejectOrder(order, "可用资金不足", "INSUFFICIENT_CASH");
+    }
 
     return this.store.fillOrder(
       order,
       name,
-      roundedFillPrice,
-      Number(commission.toFixed(2)),
+      costs.fillPrice,
+      costs.commission,
     );
   }
 }

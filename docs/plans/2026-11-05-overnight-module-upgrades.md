@@ -308,17 +308,20 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 在TradingEvent新增`orders.snapshot`，认证成功的握手同步发送`broker.getOrders(50)`，hook仅替换orders字段，保留当前连接身份保护；不新增REST并发覆盖，不改账户或下单规则。定向server10项、web34项及双TypeScript/diff检查通过，root完整源码与10项测试复核无阻断。
 - [x] 独立React诊断另证实首次cache未建立时快照会被丢弃，迟到bootstrap仍可能显示旧订单；模块24只修已有bootstrap后的重连补齐，不假称解决全部初始化/刷新竞态，后续独立模块处理。
 - [x] 独立精确快照44项通过；额外认证真实握手验证匿名/错误origin零消息、合法cookie+origin才收到5类快照。精确暂存树84服务端文件/1129项、41前端文件/192项、TypeScript与Vite生产构建全部通过，未混入模块23。
-- [ ] 单独提交部署并独立核验。
+- [x] 单独提交部署并独立核验，结果见下。
+- [x] 模块24提交75263f2d82b3de771be4e9959c32aeb080934922已推送并部署；UTC20:46独立校验455个归档文件、三容器healthy、健康200/匿名401，原Paper账户及策略保留。
 
 ## 模块23：买单完整成本与成交资金兜底
 
 **Files:** 新`server/broker/executionCosts.ts`与回归，`server/broker/paperBroker.ts`、`server/risk/riskEngine.ts`、两Store、`server/backtest/backtestEngine.ts`及必要真实Broker/引擎/持久化回归，架构/边界/决策/状态/本计划。依赖模块22先提交，避免重叠仓储混入。
 
 - [x] 真实Broker复现两Store现金1000挂10×100后成交佣金5透支至-5；市价10×100、50bps滑点和5佣金透支约-10；现金2005两个限价单合计费用后-5。限价10.005会在现有两位小数撮合后变10.01，预算须复用实际舍入而非只加佣金。
-- [ ] 先写失败回归：刚够本金的市场/限价买单、刚够完整成本、多个挂单/价格改善/取消释放、比例佣金、非两位cap、旧JSON挂单重载与费率改变、成交前资金变化，确保不动持仓就审计拒单且其他挂单预算保留；低价SELL净佣金超过所得的情况复现后同样兜底。
-- [ ] 提取纯成本helper，沿用现有滑点→限价钳制→两位成交价→两位佣金顺序；限价完整预算使用原cap本金与最终舍入价成本的较大值，派生费用补差。Store保持原本金冻结，无订单字段/JSON版本迁移；Broker对外账户cash扣同一待买补差，提交风险接受可选requiredCash，默认调用保持本金兼容。
-- [ ] 每次实际撮合前以总现金减去其他待买单完整预算复核含佣金的实际现金流，不足返回可审计拒单并释放自身本金；两Store在修改持仓/现金前再做原子余额兜底，不允许透支或挪用其他本金冻结。既有风控优先级、单笔/单股硬限、T+1、幂等和手续费费率不变。
-- [ ] 回测初始/onBar/curve/onEnd四处账户来源统一Broker，避免自定义限价策略/报告看到未扣佣金补差的原Store现金；权益和价格收益模型保持。纯内存与JSON、真实回测和旧挂单回归，独立源码/经济结果复核后精确暂存全套检查，独立提交部署；不追溯重写旧成交或生产账户。
+- [x] 初48项真实Broker/Risk/回测回归34红14绿，最终新增63项全绿；覆盖刚够本金/完整成本、多挂单/价格改善/释放、比例佣金、cap舍入、旧JSON/改费率、成交前资金变化、终态重复调用及低价SELL净费用。定向13文件257项、TypeScript/diff通过。
+- [x] 纯成本helper沿用滑点→限价钳制→两位成交价→两位佣金；挂单预算取原cap本金与舍入成本较大值。Store保持本金冻结与JSON v1；Broker扣待买补差，对历史超承诺可用现金显示0但不改变总现金，Risk可选requiredCash默认兼容。
+- [x] 每次实际撮合扣其他待买完整预算复核现金，不足审计拒绝；两Store持仓/现金变更前再兜底且终态不重放，保护原本金。机器误差容差上限1e-7，超大1e15差1、真实缺0.01/0.0001与正常exact-fit均验证。原风控优先级、硬限/T+1/幂等和费率保持。
+- [x] 回测四处账户统一Broker；从模块22提取旧引擎/Broker/Risk/Store做6bar两标的6笔正常买卖，新旧完整BacktestReport逐字段相同（含所有订单/成交/曲线/指标/配置/最终持仓，最终100015/佣金30）。无pending快速返回，不重写旧成交或生产账户。
+- [x] 最终独立源码复核与13文件231项通过；精确暂存树88服务端文件/1192项、41前端文件/192项、TypeScript与Vite生产构建全部通过，未混入模块26/27。
+- [ ] 独立提交部署并核验。
 
 ## 模块27：账户累计净已实现盈亏
 
@@ -328,3 +331,23 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [ ] 先双Store失败回归：开仓佣金、部分/全平、亏损、多标的、重开、限价挂单/撤单、重载与历史裁剪、种子/重置。账户净已实现应为总现金+剩余持仓成本-startingEquity（等价equity-startingEquity-unrealizedPnl）；必须用含冻结的总现金，不可用Broker已扣预算后的cash。
 - [ ] 仅改两Store账户派生公式，不新增持久化字段或回写历史，沿用原持仓级realizedPnl语义；新账户累计定义立即计入已支付买卖手续费，文档明确口径，不能将旧持仓利润简单相加。当前仅成交与reset改变资金、无充值提现；未来若新增外部现金流必须调整该恒等式。
 - [ ] 独立复核和相关Broker/Store/研究检查，精确暂存全套验证后独立提交部署；不改变现金、权益、成交数量、价格、成本模型或策略排序输入。
+
+## 模块26：初始化读取与实时事件一致性
+
+**Files:** `src/hooks/useTradingBackend.ts`、新纯同步层helper与单元/真实React回归；必要时在`src/lib/tradingApi.ts`新增仅复用现有受保护`/api/orders?limit=50`读取函数。架构/状态/本计划。模块24已提交后实施；模块25依赖本模块的生命周期失效点。
+
+- [x] 独立React探针证实首读期间四类快照及订单增量被丢弃，已有cache的refresh也会被迟到GET全部回退；首读失败重试丢先前推送，disabled时旧读取仍可回写。
+- [ ] 先写失败回归：首读四字段与订单增量、快照→增量→快照、已缓存refresh迟到、后续无新事件的REST继续前进、失败后重试保留早到事件、1000次行情不重启GET且可完成、旧连接/禁用→启用/卸载/重置不污染。
+- [ ] 用一个有界同步层保存字段最新值及修订号，所有bootstrap/refresh读取共用同一queryFn。请求捕获epoch/起点，结束只合并本请求期间的新事件；首个成功前保留当前epoch尚未应用的事件，成功消费后不永久覆盖后续更新。market覆盖同步health.mode；系统通知不混入数据层。
+- [ ] 订单完整快照最多50条，增量沿用upsert/截50。缺完整快照的兼容路径按id去重并限定缓冲（上限100）；若溢出，不能静默称完整，完成bootstrap后最多触发一次独立权威订单重同步并复用身份/修订门，不因每条行情无限取消或重发。持续无法同步时显示诚实错误，不能伪造完整订单。
+- [ ] 禁用/卸载/重置成功失效epoch并取消旧bootstrap，即使底层无视AbortSignal也不能返写新生命周期；保持实时连接身份门，刷新取消不误称网络离线。不引入轮询所有bootstrap或交易请求。
+- [ ] 相关Hook/API/Query与独立复核后精确暂存全套检查，独立提交部署；没有服务端统一版本，明确仅保证已接收事件的客户端时序，不声称REST多个端点与WS绝对全序/原子快照。
+
+## 模块25：重置账户清除账户依赖研究
+
+**Files:** `src/lib/researchQueries.ts`、`src/hooks/useTradingBackend.ts`与查询/真实React回归，状态/产品/本计划；模块26提交后修改hook，保持模块独立。
+
+- [x] 独立React/QueryClient探针：reset成功更新账户后，资金计划和日/周复盘仍正常success显示旧账户。invalidate保留旧data，remove令活动observer仍显示旧结果；cancel+resetQueries能中止旧signal、立即pending无旧data，并重新读，placeholder不复活旧值。
+- [ ] 新增失败回归：活动计划和placeholder、日/周全部period与inactive、无视取消的旧GET迟到、新报告失败不退回旧数据、inactive重挂重新读、reset失败保留缓存、纯市场查询不重抓；覆盖模块26的重置epoch。
+- [ ] 在researchQueries统一账户研究predicate/helper，仅匹配paper-trading-plan/daily-market-review/weekly-paper-review。reset成功先取消这些旧请求，再resetQueries清数据并使活动observer重读；不等待重型新报告结束才结束账户操作，保持当前用户选择和纯市场缓存。
+- [ ] 独立复核、相关查询/账户检查、精确暂存全套验证，独立提交部署；测试仅隔离mock账户，禁止实际重置生产。

@@ -14,6 +14,7 @@ import type {
   TradingMode,
 } from "../../shared/trading";
 import type { TradingStore } from "../contracts/TradingStore";
+import { hasSufficientCash } from "../broker/executionCosts";
 
 interface MutablePosition {
   symbol: string;
@@ -383,6 +384,7 @@ export class JsonFileTradingStore implements TradingStore {
 
   rejectOrder(order: OrderRecord, reason: string, code: string): OrderRecord {
     const stored = this.requireStoredOrder(order.id);
+    if (stored.status !== "pending" && stored.status !== "accepted") return { ...stored };
     stored.status = "rejected";
     stored.rejectionReason = reason;
     stored.updatedAt = this.now().toISOString();
@@ -436,9 +438,16 @@ export class JsonFileTradingStore implements TradingStore {
     commission: number,
   ): OrderRecord {
     const stored = this.requireStoredOrder(order.id);
+    if (stored.status !== "pending" && stored.status !== "accepted") return { ...stored };
     const wasPending = stored.status === "pending";
     const notional = fillPrice * stored.quantity;
     const current = this.positions.get(stored.symbol);
+    const ownPrincipal = wasPending && stored.side === "buy" && stored.type === "limit" && stored.limitPrice !== undefined
+      ? stored.limitPrice * stored.quantity : 0;
+    const cashDebit = stored.side === "buy" ? notional + commission : Math.max(0, commission - notional);
+    if (!hasSufficientCash(Math.max(0, this.getAvailableCash() + ownPrincipal), cashDebit)) {
+      return this.rejectOrder(stored, "可用资金不足", "INSUFFICIENT_CASH");
+    }
 
     if (wasPending) {
       this.releaseBuyLimitCash(stored);
@@ -457,14 +466,15 @@ export class JsonFileTradingStore implements TradingStore {
         averagePrice: (previousCost + notional) / nextQuantity,
         realizedPnl: current?.realizedPnl ?? 0,
       }, currentLocked + stored.quantity));
-      this.cash -= notional + commission;
+      this.cash = Math.max(0, this.cash - (notional + commission));
     } else if (current) {
       const currentLocked = getT1LockedQuantity(current);
       const realizedPnl =
         (fillPrice - current.averagePrice) * stored.quantity - commission;
       const nextQuantity = current.quantity - stored.quantity;
       const nextLocked = Math.min(currentLocked, Math.max(0, nextQuantity));
-      this.cash += notional - commission;
+      const nextCash = this.cash + (notional - commission);
+      this.cash = notional < commission ? Math.max(0, nextCash) : nextCash;
 
       if (nextQuantity === 0) {
         this.positions.delete(stored.symbol);

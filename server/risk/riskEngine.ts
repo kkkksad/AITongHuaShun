@@ -12,6 +12,7 @@ import type {
   TradingMode,
 } from "../../shared/trading";
 import type { AlertType } from "../notifications/types";
+import { hasSufficientCash } from "../broker/executionCosts";
 
 /** 熔断器事件回调 — 用于集成告警通知 */
 export type CircuitBreakerCallback = (event: {
@@ -137,6 +138,7 @@ export class RiskEngine {
     account: AccountSnapshot;
     position?: PositionSnapshot;
     reservedSellQuantity?: number;
+    requiredCash?: number;
     mode: TradingMode;
   }): RiskDecision {
     const {
@@ -214,7 +216,7 @@ export class RiskEngine {
 
     // ── 买入检查 ──
     if (request.side === "buy") {
-      if (notional > account.cash) {
+      if (!hasSufficientCash(account.cash, Math.max(notional, input.requiredCash ?? notional))) {
         return this.reject("INSUFFICIENT_CASH", "可用资金不足");
       }
 

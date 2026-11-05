@@ -12,6 +12,7 @@ import type {
   TradingMode,
 } from "../../shared/trading";
 import type { TradingStore } from "../contracts/TradingStore";
+import { hasSufficientCash } from "../broker/executionCosts";
 
 interface MutablePosition {
   symbol: string;
@@ -345,6 +346,10 @@ export class InMemoryTradingStore implements TradingStore {
   }
 
   rejectOrder(order: OrderRecord, reason: string, code: string): OrderRecord {
+    const stored = this.findOrderById(order.id);
+    if (!stored) throw new Error(`订单不存在：${order.id}`);
+    order = stored;
+    if (order.status !== "pending" && order.status !== "accepted") return { ...order };
     order.status = "rejected";
     order.rejectionReason = reason;
     order.updatedAt = this.now().toISOString();
@@ -401,9 +406,19 @@ export class InMemoryTradingStore implements TradingStore {
     fillPrice: number,
     commission: number,
   ): OrderRecord {
+    const stored = this.findOrderById(order.id);
+    if (!stored) throw new Error(`订单不存在：${order.id}`);
+    order = stored;
+    if (order.status !== "pending" && order.status !== "accepted") return { ...order };
     const wasPending = order.status === "pending";
     const notional = fillPrice * order.quantity;
     const current = this.positions.get(order.symbol);
+    const ownPrincipal = wasPending && order.side === "buy" && order.type === "limit" && order.limitPrice !== undefined
+      ? order.limitPrice * order.quantity : 0;
+    const cashDebit = order.side === "buy" ? notional + commission : Math.max(0, commission - notional);
+    if (!hasSufficientCash(Math.max(0, this.getAvailableCash() + ownPrincipal), cashDebit)) {
+      return this.rejectOrder(order, "可用资金不足", "INSUFFICIENT_CASH");
+    }
 
     if (wasPending && order.side === "buy" && order.limitPrice !== undefined) {
       this.blockedCash -= order.limitPrice * order.quantity;
@@ -423,14 +438,15 @@ export class InMemoryTradingStore implements TradingStore {
         averagePrice: (previousCost + notional) / nextQuantity,
         realizedPnl: current?.realizedPnl ?? 0,
       }, currentLocked + order.quantity, tradeDate));
-      this.cash -= notional + commission;
+      this.cash = Math.max(0, this.cash - (notional + commission));
     } else if (current) {
       const tradeDate = getChinaTradeDate(this.now());
       const currentLocked = getT1LockedQuantity(current, tradeDate);
       const realizedPnl = (fillPrice - current.averagePrice) * order.quantity - commission;
       const nextQuantity = current.quantity - order.quantity;
       const nextLocked = Math.min(currentLocked, Math.max(0, nextQuantity));
-      this.cash += notional - commission;
+      const nextCash = this.cash + (notional - commission);
+      this.cash = notional < commission ? Math.max(0, nextCash) : nextCash;
 
       if (nextQuantity === 0) {
         this.positions.delete(order.symbol);

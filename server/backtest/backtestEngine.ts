@@ -115,11 +115,7 @@ export class BacktestEngine {
     const firstSnapshot = this.provider.getSnapshot();
 
     // 记录初始权益点
-    const initialAccount = this.store.getAccount(
-      "paper",
-      firstSnapshot,
-      this.limits,
-    );
+    const initialAccount = this.broker.getAccount(firstSnapshot);
     this.equityCurve.push({
       index: 0,
       time: firstSnapshot.marketTime,
@@ -156,7 +152,7 @@ export class BacktestEngine {
       for (const order of pendingOrders) {
         this.recordFilledOrder(order, i, snapshot.marketTime);
       }
-      const account = this.store.getAccount("paper", snapshot, this.limits);
+      const account = this.broker.getAccount(snapshot);
       const positions = this.store.getPositions(snapshot);
 
       // 调用策略
@@ -187,11 +183,7 @@ export class BacktestEngine {
       }
 
       // 再次获取账户快照以反映所有成交
-      const updatedAccount = this.store.getAccount(
-        "paper",
-        snapshot,
-        this.limits,
-      );
+      const updatedAccount = this.broker.getAccount(snapshot);
 
       // 记录权益曲线
       this.equityCurve.push({
@@ -208,11 +200,7 @@ export class BacktestEngine {
 
     // 回调策略 onEnd
     const finalSnapshot = this.provider.getSnapshot();
-    const finalAccount = this.store.getAccount(
-      "paper",
-      finalSnapshot,
-      this.limits,
-    );
+    const finalAccount = this.broker.getAccount(finalSnapshot);
     const finalPositions = this.store.getPositions(finalSnapshot);
 
     if (this.strategy.onEnd) {
