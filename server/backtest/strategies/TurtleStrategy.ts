@@ -25,6 +25,7 @@ export class TurtleStrategy implements BacktestStrategy {
   private readonly prices: number[] = [];
   private readonly highs: number[] = [];
   private readonly lows: number[] = [];
+  private boundSymbol?: string;
   private inPosition = false;
   private entryPrice = 0;
 
@@ -43,13 +44,17 @@ export class TurtleStrategy implements BacktestStrategy {
     this.prices.length = 0;
     this.highs.length = 0;
     this.lows.length = 0;
+    this.boundSymbol = undefined;
     this.inPosition = false;
     this.entryPrice = 0;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = context.snapshot.quotes.find((q) => q.tradable);
+    const quote = this.boundSymbol === undefined
+      ? context.snapshot.quotes.find((q) => q.tradable)
+      : context.snapshot.quotes.find((q) => q.symbol === this.boundSymbol && q.tradable);
     if (!quote) return [];
+    this.boundSymbol ??= quote.symbol;
 
     const price = quote.price;
     this.prices.push(price);
