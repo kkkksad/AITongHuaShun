@@ -984,7 +984,44 @@ export class PaperAutoExecutor {
           skippedOperations,
         );
       }
-      const policy = getIntradayExecutionPolicy(started, plan.adaptiveRouting);
+      const executionTimeBlocker = (
+        checkedAt: Date,
+        stage: string,
+      ): PaperAutoExecutionSkip | null => {
+        const actualTradingDate = getChinaTradeDate(checkedAt);
+        if (actualTradingDate !== tradingDate || actualTradingDate !== plan.tradingDate) {
+          return {
+            symbol: "SYSTEM",
+            action: "observe",
+            reason: `${stage}交易日期已变化（当前 ${actualTradingDate}，本轮 ${tradingDate}，计划 ${plan.tradingDate}），停止本轮剩余 Paper 订单并等待新一轮计划。`,
+          };
+        }
+        const actualSession = getAshareSession(checkedAt);
+        if (this.options.tradeWindowOnly && actualSession !== "open") {
+          return {
+            symbol: "SYSTEM",
+            action: "observe",
+            reason: `${stage}已不在 A 股交易时段（${actualSession}），停止本轮剩余 Paper 订单。`,
+          };
+        }
+        return null;
+      };
+      const researchFinishedAt = this.now();
+      const researchTimeBlocker = executionTimeBlocker(researchFinishedAt, "研究完成时");
+      if (researchTimeBlocker) {
+        skippedOperations.push(researchTimeBlocker);
+        return this.finalizeRun(
+          trigger,
+          started,
+          tradingDate,
+          session,
+          initialPolicy,
+          "watch-only",
+          submittedOrders,
+          skippedOperations,
+        );
+      }
+      const policy = getIntradayExecutionPolicy(researchFinishedAt, plan.adaptiveRouting);
       const snapshot = this.options.system.market.getSnapshot();
       const marketAssessment = assessMarketSnapshot(snapshot);
       const preparedOperations = this.preflightOperations(
@@ -1046,9 +1083,18 @@ export class PaperAutoExecutor {
       };
       await this.options.planNotifier?.notify(plan, notificationContext);
 
+      let executionTimeStopped = false;
       for (const { operation, request } of (
         this.options.enabled ? preparedOperations : []
       )) {
+        // Notifications may wait on the network, and onOrder may change state
+        // between synchronous submissions. Check the real clock for every order.
+        const submissionTimeBlocker = executionTimeBlocker(this.now(), "逐笔提交前");
+        if (submissionTimeBlocker) {
+          skippedOperations.push(submissionTimeBlocker);
+          executionTimeStopped = true;
+          break;
+        }
         const side = request.side;
         const order = this.options.system.broker.submitOrder(request, {
           strategy: operation.strategy,
@@ -1136,7 +1182,7 @@ export class PaperAutoExecutor {
         tradingDate,
         session,
         policy,
-        plan.qualitySummary.planQuality,
+        executionTimeStopped ? "watch-only" : plan.qualitySummary.planQuality,
         submittedOrders,
         skippedOperations,
         buildPaperExecutionResearchContext({
