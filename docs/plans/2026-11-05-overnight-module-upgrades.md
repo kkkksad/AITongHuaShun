@@ -544,15 +544,17 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新14项真实Engine先12红2绿后全绿，仅首次tradable绑定至reset，缺失false等待，不混他股价格/估算高低；保留已修完整N/M过去窗口、均线过滤、±1%估算/权重和原intent状态。实际持仓独立缺陷另列。
 - [x] 作者287项/类型/diff及3组含成本旧新报告一致；独立172项、另3组完整报告与prices之后逐字保持校验通过。默认/小窗、同股进出/filter退出、历史最旧边界、缺失恢复/reset覆盖；root最小实现复核无阻断。
 - [x] 精确暂存树103服务端文件1497项、44前端文件249项、TypeScript/Vite全过，未混入45/46/47/48/49。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块44提交71333fc431fe6bebd89de39abc86bd17eaca98ff已推送并部署，UTC22:41独立校验483个归档文件、三healthy/健康200/匿名401/原Paper账户。
 
 ## 模块45：MACD单标的状态绑定
 
 **Files:** `server/backtest/strategies/MACDStrategy.ts`及新真实Engine专项回归，架构/状态/本计划。
 
 - [x] 独立真实Engine：MACD1/2/2，A1/.9/.8/.7/.6与B14/13/12/11/10均下跌，末换首误买B500@10费5；stable及单股0单。
-- [ ] 先核对实际文件，先红后绿仅首次tradable绑定到reset，缺失false等待；保留EMA/信号线/暖机/交叉/权重/持仓原义。
-- [ ] 独立复核、稳定完整报告、精确全检查与单独提交部署。
+- [x] 新15项真实Engine先12红3绿后全绿，仅首次tradable绑定到reset，缺失false等待；保留EMA/信号线/暖机/交叉/权重/原intent，默认及小周期误买、错误他股退出均覆盖。
+- [x] 作者288项/类型/diff及3组含成本旧新报告一致；独立316项、复跑3组报告、另3组真实gap/他股极值有效bar信号/成交经济字段对照通过，root最小实现复核无阻断。
+- [x] 精确暂存树104服务端文件1512项、44前端文件249项、TypeScript/Vite全过，未混入46/47/48/49/50。
+- [ ] 单独提交部署与独立核验。
 
 ## 模块46：网格基准单标的绑定
 
@@ -586,3 +588,11 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 独立真实部分可卖例：10/9/8/7/10/11/7，day3 bar5真实另买100，bar6实际600但可卖500，原targetWeight1卖600拒，actual诊断仅卖500@7费5、保留100锁定/现金7385。费用拒买后下一真金叉原已恢复，不误报。
 - [ ] 等45发布后先红后绿，actual同股quantity gate+min可卖整手，保留EMA/slow+signal暖机/prevHistogram每次更新及prev<=0/>0或>=0/<0事件；无新交叉不补单。
 - [ ] 验证T+1不叠买、下一新死叉/部分可卖、费用拒买后下一真金叉原报告兼容、其他持仓/reset与正常含成本完整报告；独立复核、精确全检查、单独发布。
+
+## 模块50：研究页签连续键盘焦点
+
+**Files:** `src/hooks/useNavigationFocus.ts`与新真实AppShell/Router/MarketResearchWorkspace集成回归，产品/架构/状态/本计划。
+
+- [x] 独立真实集成证实：A股页签ArrowRight立即选中/聚焦turning，query导航改变location.key后RAF却将焦点抢至main，第二次方向键无法切到stock。当前仅MarketResearch的ARIA tab会触发路由，原快速搜索/跨页定位必须保留。
+- [ ] 先红后绿；导航完成时若无显式targetId，且main中当前activeElement仍是aria-selected=true的role=tab，尊重已由页签管理的焦点并不重复滚动。仍记录completedKey/disconnect，原lazy等待/取消保持；显式深链、主内容外焦点、未选中tab和历史切换继续原导航定位。
+- [ ] 真Router集成覆盖连续左右/循环/Home/End、mouse与lazy完成、refresh不抢焦点、快速搜索进market、跨页、历史返回和显式target；保留原导航7项、独立复核、精确全检查与单独部署。
