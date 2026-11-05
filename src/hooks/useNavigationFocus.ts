@@ -32,6 +32,11 @@ export function useNavigationFocus(
         if (!target || !main.contains(target) || main.querySelector(".page-loader")) return;
         completedKey.current = navigationKey;
         observer.disconnect();
+        const focused = document.activeElement;
+        // Routed tablists already move focus to their selected tab.
+        if (!targetId && focused && main.contains(focused) &&
+          focused.getAttribute("role") === "tab" &&
+          focused.getAttribute("aria-selected") === "true") return;
         target.scrollIntoView?.({ behavior: "smooth", block: "start" });
         if (shouldFocus) target.focus({ preventScroll: true });
       });

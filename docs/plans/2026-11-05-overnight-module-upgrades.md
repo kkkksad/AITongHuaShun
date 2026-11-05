@@ -595,15 +595,17 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 45发布后实施，新21项先14红7绿后全绿，actual同股quantity gate+min可卖整手；EMA/slow+signal暖机/prevHistogram更新与prev<=0/>0或>=0/<0事件保持，无新交叉不补单。
 - [x] 作者159相关/类型/diff，旧symbol仅3处sell形状400/400/500，经济断言保持；独立201项/类型/diff及3组正常含成本完整报告一致。新21区分真实Engine与controlled context，覆盖T+1不叠买、部分可卖/剩余锁定、hist事件/拒买恢复/他股/reset；root完整实现/旧shape复核无阻断。
 - [x] 精确暂存树109服务端文件1622项、44前端文件249项、TypeScript/Vite全过，未混入50/52/53。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块49提交7d6cd93d4400adb519d0870690d712237ecc954f已推送并部署（并补齐48/51远端），UTC23:13独立校验490个归档文件、三healthy/健康200/匿名401/原账户。首次核验web仍starting未通过，等待部署完成后复核全部通过。
 
 ## 模块50：研究页签连续键盘焦点
 
 **Files:** `src/hooks/useNavigationFocus.ts`与新真实AppShell/Router/MarketResearchWorkspace集成回归，产品/架构/状态/本计划。
 
 - [x] 独立真实集成证实：A股页签ArrowRight立即选中/聚焦turning，query导航改变location.key后RAF却将焦点抢至main，第二次方向键无法切到stock。当前仅MarketResearch的ARIA tab会触发路由，原快速搜索/跨页定位必须保留。
-- [ ] 先红后绿；导航完成时若无显式targetId，且main中当前activeElement仍是aria-selected=true的role=tab，尊重已由页签管理的焦点并不重复滚动。仍记录completedKey/disconnect，原lazy等待/取消保持；显式深链、主内容外焦点、未选中tab和历史切换继续原导航定位。
-- [ ] 真Router集成覆盖连续左右/循环/Home/End、mouse与lazy完成、refresh不抢焦点、快速搜索进market、跨页、历史返回和显式target；保留原导航7项、独立复核、精确全检查与单独部署。
+- [x] 新9真实Router集成先6红3绿后全绿；导航完成时若无显式targetId，且main中当前activeElement仍是aria-selected=true的role=tab，尊重已由页签管理的焦点并不重复滚动。仍记录completedKey/disconnect，原lazy等待/取消保持；显式深链、主内容外焦点、未选中tab和历史切换继续原导航定位。
+- [x] 作者38项/app类型/diff，独立33项及3项真实Router/原生Observer完成后不再抢焦点、main外tab、延迟显式target边界通过。9新与原7覆盖连续左右/循环/HomeEnd/lazy/refresh/mouse/header quicksearch/POP/explicit，root完整hook与集成测试读取无阻断。
+- [x] 精确暂存树109服务端文件1622项、45前端文件258项、TypeScript/Vite全过，未混入52/53。
+- [ ] 单独提交部署与独立核验。
 
 ## 模块51：Service Worker业务接口缓存隔离
 
