@@ -86,6 +86,18 @@ export class InMemoryTradingStore implements TradingStore {
   private readonly auditEvents: AuditEvent[] = [];
   private orderSequence = 0;
   private auditSequence = 0;
+  private lastTradeDateTime?: number;
+  private lastTradeDate = "";
+
+  private currentTradeDate(): string {
+    const now = this.now();
+    const timestamp = now.getTime();
+    if (timestamp !== this.lastTradeDateTime) {
+      this.lastTradeDate = getChinaTradeDate(now);
+      this.lastTradeDateTime = timestamp;
+    }
+    return this.lastTradeDate;
+  }
 
   /**
    * @param startingCash 初始总资金
@@ -202,8 +214,9 @@ export class InMemoryTradingStore implements TradingStore {
   }
 
   getPositions(snapshot: MarketSnapshot): PositionSnapshot[] {
+    if (this.positions.size === 0) return [];
     const quoteMap = new Map(snapshot.quotes.map((quote) => [quote.symbol, quote]));
-    const tradeDate = getChinaTradeDate(this.now());
+    const tradeDate = this.currentTradeDate();
     const raw = [...this.positions.values()].map((position) => {
       const quote = quoteMap.get(position.symbol);
       const currentPrice = quote && Number.isFinite(quote.price) && quote.price > 0
