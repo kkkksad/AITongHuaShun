@@ -706,7 +706,10 @@ select:focus-visible {
   left: 0;
   display: grid;
   width: 260px;
-  overflow: hidden;
+  max-height: min(60vh, 30rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 5px;
   background: var(--bg-panel);
   border: 1px solid var(--border-default);
@@ -729,7 +732,7 @@ select:focus-visible {
   cursor: pointer;
 }
 
-.quick-nav-results button:hover,
+.quick-nav-results button:focus-visible,
 .quick-nav-results button.active {
   color: var(--text-primary);
   background: var(--bg-panel-hover);

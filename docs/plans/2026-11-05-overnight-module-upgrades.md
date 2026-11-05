@@ -69,15 +69,16 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 
 - [x] 共享类型注释说明 `totalTrades` 为成交笔数、胜率只统计闭合FIFO配对；已记录[指标决策0011](../decisions/0011-closed-fifo-backtest-win-rate.md)。定向引擎/优化器/稳健性64项通过，不调整门槛掩盖新统计。
 - [x] 模块3精确暂存快照全套66文件/971项服务端、34文件/134项前端通过，TypeScript与Vite构建通过；定向引擎/优化器/稳健性64项通过。
-- [ ] 模块3提交、部署、线上验证。
+- [x] 模块3提交c5b53de0056d9247d295a3c6a8ea9be6a00e7a90，受限部署成功；发布脚本在三容器健康后返回0，独立检查与公网复核见下一轮记录。
 
 ## 模块 4：快速导航键盘体验
 
 **Files:** `src/lib/quickNavigation.ts`、`src/lib/quickNavigation.test.ts`、`src/components/AppShell.tsx`、`src/components/AppShell.interaction.test.tsx`、相关 CSS、状态页和本计划。
 
-- [ ] 明确方向键移动、Enter 打开当前项、Esc 关闭、查询变化重置高亮的行为。
-- [ ] 为已有 combobox/listbox 补选中状态、稳定 option id 和 `aria-activedescendant`；鼠标和键盘打开同一路由。
-- [ ] 必要交互回归通过后全套检查、提交、部署。
+- [x] 方向键循环移动、Enter打开高亮项、Esc关闭、查询变化重置；关闭后Enter不跳转、方向键可重开，中文组合输入与229键码不误跳转。
+- [x] combobox/listbox补选中状态、稳定option id和aria-activedescendant；当前位置用aria-current，鼠标和键盘共享高亮。下拉限制高度并滚动至高亮；定向2文件17项先红后绿，前端类型检查通过。
+- [x] 模块4精确暂存快照全套66服务端文件/971项、34前端文件/140项通过；TypeScript与Vite构建通过。
+- [ ] 模块4提交、部署、独立健康验证。
 
 ## 模块5：参数搜索不阻塞API事件循环
 
@@ -88,9 +89,16 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [ ] 添加真实计时器在长搜索完成前能执行的回归，并比较同输入结果不变；重复探针记录最大间隔和总耗时，不宣称缩短总计算时间。
 - [ ] 定向和全套检查、提交、部署、健康验证。
 
+## 模块6：策略对比结果变化时保持Hooks顺序
+
+**Files:** `src/components/StrategyCompare.tsx`、新`StrategyCompare.test.tsx`、状态页和本计划。
+
+- [x] 代码核实不足2条结果时在两个useMemo之前return，结果从1条到2条或反向变化会改变Hooks数量。
+- [ ] 用React root同实例rerender的真实回归先复现Hooks顺序错误，再把空状态判断移动到所有Hooks之后；不改变对比排名和图表算法。
+- [ ] 覆盖0/1/2条与回到空状态，定向测试和全套检查、提交、部署。
+
 ## 后续候选（先证实，再建独立小计划）
 
-- StrategyCompare 在不足两条结果时提前 return 发生在 useMemo 前，核对结果数量变化是否造成 Hooks 顺序错误。
 - 依据服务端有界性能诊断挑选真实慢点，优先查询复用、取消无效请求和诚实降级；不无限抓取或盲目新增缓存。
 - 资金比例页面逐层解释单笔、单股、阶段预算、费用及最终手数，先验证现有 sizingDiagnostics 是否足够，避免重复造字段。
 

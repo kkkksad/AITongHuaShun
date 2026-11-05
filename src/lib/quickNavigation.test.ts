@@ -22,10 +22,21 @@ describe("快速页面跳转", () => {
     expect(filterQuickNavigationItems([{ ...items[1], keywords: ["Market"] }], "  market  ").map((item) => item.id)).toEqual(["market"]);
   });
 
-  it("回车选择首项，Esc 关闭结果，其他按键不处理", () => {
+  it("回车选择当前项，Esc 关闭结果，其他按键不处理", () => {
     expect(getQuickNavigationKeyAction("Enter", items.slice(1, 3))).toEqual({ type: "select", id: "market" });
+    expect(getQuickNavigationKeyAction("Enter", items, 3)).toEqual({ type: "select", id: "account" });
     expect(getQuickNavigationKeyAction("Enter", [])).toEqual({ type: "none" });
     expect(getQuickNavigationKeyAction("Escape", items)).toEqual({ type: "close" });
-    expect(getQuickNavigationKeyAction("ArrowDown", items)).toEqual({ type: "none" });
+    expect(getQuickNavigationKeyAction("Tab", items)).toEqual({ type: "none" });
+  });
+
+  it("上下键循环切换高亮，无结果时保持不操作", () => {
+    expect(getQuickNavigationKeyAction("ArrowDown", items, 0)).toEqual({ type: "highlight", index: 1 });
+    expect(getQuickNavigationKeyAction("ArrowDown", items, items.length - 1)).toEqual({ type: "highlight", index: 0 });
+    expect(getQuickNavigationKeyAction("ArrowUp", items, 0)).toEqual({ type: "highlight", index: items.length - 1 });
+    expect(getQuickNavigationKeyAction("ArrowUp", items, 3)).toEqual({ type: "highlight", index: 2 });
+    expect(getQuickNavigationKeyAction("ArrowDown", [])).toEqual({ type: "none" });
+    expect(getQuickNavigationKeyAction("ArrowUp", [])).toEqual({ type: "none" });
+    expect(getQuickNavigationKeyAction("Enter", items, 99)).toEqual({ type: "select", id: "overview" });
   });
 });

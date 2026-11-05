@@ -62,7 +62,9 @@ export function AppShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [quickQuery, setQuickQuery] = useState("");
   const [quickOpen, setQuickOpen] = useState(false);
+  const [quickActiveIndex, setQuickActiveIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const composingRef = useRef(false);
 
   const handleNavClick = (view: ViewId) => {
     onViewChange(view);
@@ -126,20 +128,32 @@ export function AppShell({
   }));
   const quickMatches = filterQuickNavigationItems(quickItems, quickQuery);
   const visibleQuickMatches = quickMatches.slice(0, 12);
+  const activeQuickOption = visibleQuickMatches[quickActiveIndex];
+  const activeQuickOptionId = quickOpen && activeQuickOption
+    ? `quick-nav-option-${activeQuickOption.id}`
+    : undefined;
+
+  useEffect(() => {
+    if (!activeQuickOptionId) return;
+    document.getElementById(activeQuickOptionId)?.scrollIntoView?.({ block: "nearest" });
+  }, [activeQuickOptionId]);
 
   const handleQuickSelect = (moduleId: string) => {
     const item = moduleCatalog.find((candidate) => candidate.id === moduleId);
     if (item) onModuleSelect(item);
     setQuickQuery("");
     setQuickOpen(false);
+    setQuickActiveIndex(0);
     setMobileMenuOpen(false);
   };
 
   useEffect(() => {
     const handleShortcut = (event: globalThis.KeyboardEvent) => {
+      if (event.isComposing || composingRef.current || event.keyCode === 229) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setQuickOpen(true);
+        setQuickActiveIndex(0);
         searchInputRef.current?.focus();
       }
     };
@@ -274,6 +288,7 @@ export function AppShell({
               <div className="search-box">
                 <Search size={17} />
                 <input
+                  aria-activedescendant={activeQuickOptionId}
                   aria-autocomplete="list"
                   aria-controls="quick-nav-results"
                   aria-expanded={quickOpen}
@@ -285,13 +300,31 @@ export function AppShell({
                   onChange={(event) => {
                     setQuickQuery(event.target.value);
                     setQuickOpen(true);
+                    setQuickActiveIndex(0);
                   }}
-                  onFocus={() => setQuickOpen(true)}
+                  onCompositionStart={() => { composingRef.current = true; }}
+                  onCompositionEnd={() => { composingRef.current = false; }}
+                  onFocus={() => {
+                    setQuickOpen(true);
+                    setQuickActiveIndex(0);
+                  }}
                   onKeyDown={(event) => {
-                    const action = getQuickNavigationKeyAction(event.key, visibleQuickMatches);
+                    if (event.nativeEvent.isComposing || composingRef.current || event.keyCode === 229) return;
+                    if (!quickOpen) {
+                      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                        event.preventDefault();
+                        setQuickOpen(true);
+                        setQuickActiveIndex(event.key === "ArrowUp" ? Math.max(0, visibleQuickMatches.length - 1) : 0);
+                      }
+                      return;
+                    }
+                    const action = getQuickNavigationKeyAction(event.key, visibleQuickMatches, quickActiveIndex);
                     if (action.type === "close") {
                       event.preventDefault();
                       setQuickOpen(false);
+                    } else if (action.type === "highlight") {
+                      event.preventDefault();
+                      setQuickActiveIndex(action.index);
                     } else if (action.type === "select") {
                       event.preventDefault();
                       handleQuickSelect(action.id);
@@ -303,19 +336,24 @@ export function AppShell({
                 />
               </div>
               {quickOpen && (
-                <div className="quick-nav-results" id="quick-nav-results" role="listbox">
+                <div aria-label={locale === "zh" ? "模块搜索结果" : "Module search results"} className="quick-nav-results" id="quick-nav-results" role="listbox">
                   {quickMatches.length === 0 ? (
                     <span className="quick-nav-empty">没有匹配模块</span>
-                  ) : visibleQuickMatches.map((item) => {
+                  ) : visibleQuickMatches.map((item, index) => {
                     const Icon = item.icon;
                     return (
                       <button
-                        aria-selected={activeModuleId === item.id}
-                        className={activeModuleId === item.id ? "active" : ""}
+                        aria-current={activeModuleId === item.id ? "page" : undefined}
+                        aria-selected={quickActiveIndex === index}
+                        className={quickActiveIndex === index ? "active" : ""}
+                        id={`quick-nav-option-${item.id}`}
                         key={item.id}
+                        onFocus={() => setQuickActiveIndex(index)}
+                        onMouseMove={() => setQuickActiveIndex(index)}
                         onMouseDown={(event) => event.preventDefault()}
                         onClick={() => handleQuickSelect(item.id)}
                         role="option"
+                        tabIndex={-1}
                         type="button"
                       >
                         <Icon size={16} />

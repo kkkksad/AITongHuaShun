@@ -8,6 +8,7 @@ export interface QuickNavigationItem<T extends string = string> {
 
 export type QuickNavigationKeyAction<T extends string = string> =
   | { type: "select"; id: T }
+  | { type: "highlight"; index: number }
   | { type: "close" }
   | { type: "none" };
 
@@ -33,8 +34,17 @@ export function filterQuickNavigationItems<T extends QuickNavigationItem>(
 export function getQuickNavigationKeyAction<T extends QuickNavigationItem>(
   key: string,
   matches: T[],
+  activeIndex = 0,
 ): QuickNavigationKeyAction<T["id"]> {
   if (key === "Escape") return { type: "close" };
-  if (key === "Enter" && matches[0]) return { type: "select", id: matches[0].id };
+  if (matches.length === 0) return { type: "none" };
+  const currentIndex = matches[activeIndex] ? activeIndex : 0;
+  if (key === "ArrowDown") {
+    return { type: "highlight", index: (currentIndex + 1) % matches.length };
+  }
+  if (key === "ArrowUp") {
+    return { type: "highlight", index: (currentIndex + matches.length - 1) % matches.length };
+  }
+  if (key === "Enter") return { type: "select", id: matches[currentIndex].id };
   return { type: "none" };
 }
