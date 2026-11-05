@@ -43,7 +43,7 @@ const SystemMonitor = lazyNamed(() => import("./components/SystemMonitor"), "Sys
 - [x] 账户 `strategies` 与 `monitor` 内容分别包裹 `<Suspense fallback={<LazyFallback />}>`。
 - [x] 精确暂存树隔离快照验证：65 个服务端文件/947 项、34 个前端文件/132 项测试全部通过；TypeScript 与 Vite 构建通过。App 58,814 字节（减少20.9%），gzip 19,435 字节（减少18.9%）；SystemMonitor 6,977 字节、TradingStrategies 8,667 字节独立加载。该结果仅为构建体积，不宣称线上耗时同比改善。
 - [x] 模块1提交 `a65bb8441bb8b5a4b604a25d91c3a9382cb21234` 已通过受限归档部署；UTC 17:23 验证三个容器 healthy、健康接口200、账户/能力/自动执行状态匿名401、公网相同结果。Paper账户仍20,000现金、0持仓、0订单、growth档、auto策略，未重置账户。服务器 `runtime/production-release.json` 记录分支和SHA。
-- [ ] GitHub推送：两次遇到本机至github.com连接重置/443不可达，服务器发布不依赖GitHub，稍后恢复后补推，禁止将未推送写为已同步。
+- [x] GitHub连接已恢复：UTC18:39成功推送模块1至7A全部提交到远端同名分支；后续每模块继续同步，服务器仍走受限归档发布。
 
 ## 模块 2：取消固定现金预留（优先）
 
@@ -110,17 +110,46 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 保持Broker/T+1/成交与审计的独立clock；自动执行比较plan.tradingDate与本轮交易日期，旧日/未来日计划仅观察、不提交、不使用错误日期额度或幂等键、不发通知。语义记录于决策0012与架构。
 - [x] Mock新增3项、HTTP新增7项、错日计划2项先红后绿；匹配日正例成交及T+1正确。Provider/executor/cashPolicy/broker/dataQuality定向7文件160项与服务端类型检查通过。
 - [x] 模块7A精确暂存树隔离验证：69服务端文件/987项、35前端文件/146项全部通过，TypeScript与Vite生产构建通过。独立复核3文件46项通过，未混入7B缓存改动。
-- [ ] 提交部署及独立健康检查。
+- [x] 模块7A提交3a51c840440b3c3cd7c8fcf5e76160ff71b12599并部署，UTC18:46独立验证425个上传归档文件SHA256全部一致、三容器healthy、健康200、匿名保护401，原账户和策略选择不变。归档按换行属性导出，校验实际上传字节。
 
 ## 模块7B：排行榜与Paper研究共享同快照计算
 
 **Files:** 新`server/research/strategyLeaderboardService.ts`及测试，`server/app.ts`、`server/research/paperTradingPlanService.ts`、相关集成测试、架构/状态/本计划。
 
 - [x] 确认排行榜API直接运行全参数搜索，Paper研究内部另运行相同计算；重复打开模块会重复消耗CPU。
-- [ ] 用WeakMap按TradingSystem实例隔离有限只读缓存，复用ResearchResultCache，每实例最多8项，结果完成起30秒TTL，失败移除、同key在途单飞。
-- [ ] key包含provider、bars、seed、requestedSymbols和完整快照JSON的SHA256，保留报价顺序与所有影响样本/质量的字段；不按代码集合或bars单独复用不同快照，不保存原始快照或凭据为key。
-- [ ] 排行榜API和Paper研究统一调用共享服务，只缓存排行榜报告，不缓存账户、现金、最终计划，不触发额外新闻/外盘读取；保留原generatedAt和snapshotTime。
-- [ ] 必要回归覆盖同快照并发单飞、API/Paper调用复用、快照报价/顺序/时间变化、provider/bars/seed/请求池变化、系统隔离、TTL到期、失败重试和容量限制；全套检查后提交部署。
+- [x] WeakMap按TradingSystem隔离，结果完成后30秒TTL，失败移除，最多保留8项。沿用最早插入淘汰（含在途项），这是保留条目上限，不是并发计算上限；仅未被淘汰的同key保证在途复用。
+- [x] key包含provider、bars、seed、requestedSymbols及完整快照JSON的SHA256，保留报价顺序与所有字段；API/Paper统一调用，只缓存排行榜、不缓存账户或最终计划，原generatedAt/snapshotTime保留。
+- [x] 定向3文件31项及服务端类型检查通过，含真实Mock/HTTP时钟前进137ms同版本复用、tick/poll失效、输入/系统隔离、完成后TTL、失败重试、容量与账户变化后重建计划。
+- [x] 本地120bars/8报价/16策略：首次6147.91ms、同版本再次0.057ms且报告相同；只说明本地重复计算节省，不代表生产耗时或新版本计算提速。
+- [x] 模块7B精确暂存树隔离验证：70服务端文件/1005项、35前端文件/146项全部通过，TypeScript与Vite构建通过；未混入模块8/9。
+- [ ] 提交部署及独立归档/健康检查。
+
+## 模块8：交易比例来源与零额度解释
+
+**Files:** 共享sizing类型、Paper计划/降级/通知、浏览器契约、Settings/LearningPipeline及测试、文档。
+
+- [x] 真实复现growth=1/路由0.5/单笔4000得到2000却误称档位缩放；现金0/档位0/路由0误报无约束。
+- [ ] 新增可选档位基础比例与限制说明，保留旧枚举及所有金额/手数/风控计算；旧报告用中性说明。
+- [ ] 分别解释档位/路由/最终比例，手动策略路由不参与；100%使用既定额度不等于全仓。
+- [ ] 覆盖比例来源、手动、现金/单股/整手费用、零额度和旧报告；完整验证后独立发布。
+
+## 模块9：异步等待后的执行时间复查
+
+**Files:** PaperAutoExecutor运行段、新executionTime测试、边界/状态/本计划。
+
+- [x] 内存复现研究跨午休、通知跨收盘仍成交，跨日使用旧幂等日期；Broker实时暂停保护仍有效。
+- [ ] 研究返回后用实际时钟核对日期/时段，阶段策略使用完成时刻；通知后逐笔提交前再检查，时间越界停止余单并保留已有成交和原因。
+- [ ] tradeWindowOnly=false保留同日时段外语义但不跨日复用；报价年龄阈值另行论证，本模块不改暂停/费用/额度/T+1政策。
+- [ ] 先红后绿覆盖异步边界与兼容选项，完整验证后独立发布。
+
+## 模块10：域名证书与续期部署准备
+
+**Files:** Nginx挑战路由、Compose挂载、独立ACME容器脚本及验证、部署文档。
+
+- [x] 只读确认DNS/80/443/CA目录可达，但证书自签且仅IP SAN，挑战落SPA、无续期，PUBLIC_HOST/WEB_ORIGIN仍IP。
+- [ ] 准备webroot、Docker证书脚本、原子安装/验证/重载和续期方案，保留现有证书直到新证书验证通过。
+- [ ] 脚本不默认接受Let's Encrypt订阅协议；完成可审查配置后单独取得条款授权，未授权不注册CA账户、签发或安装续期任务。
+- [ ] 完整验证后独立部署准备；域名环境值按现有站点目标修正，证书签发依赖最终协议确认。
 
 ## 后续候选（先证实，再建独立小计划）
 

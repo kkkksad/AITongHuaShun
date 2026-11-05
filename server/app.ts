@@ -72,10 +72,8 @@ import { buildCurrentPaperTradingPlan } from "./research/paperTradingPlanService
 import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStockTrendForecast } from "./research/stockTrendForecast";
-import {
-  buildStrategyLeaderboard,
-  buildUnavailableStrategyLeaderboard,
-} from "./research/strategyLeaderboard";
+import { buildUnavailableStrategyLeaderboard } from "./research/strategyLeaderboard";
+import { buildCachedStrategyLeaderboard } from "./research/strategyLeaderboardService";
 import { buildStrategyRobustnessReport } from "./research/strategyRobustness";
 import { buildSuperMindSignalPackage } from "./research/supermindSignalBridge";
 import { buildTurningPointReport } from "./research/turningPointScanner";
@@ -773,11 +771,11 @@ export async function buildTradingApp(
   }, async (request) => {
     const { bars } = strategyLeaderboardQuerySchema.parse(request.query);
     const snapshot = system.market.getSnapshot();
-    const report = await buildStrategyLeaderboard(
+    const report = await buildCachedStrategyLeaderboard({
+      system,
       snapshot,
-      system.marketDataProvider,
       bars,
-    ).catch((error) => buildUnavailableStrategyLeaderboard(
+    }).catch((error) => buildUnavailableStrategyLeaderboard(
       snapshot,
       system.marketDataProvider,
       bars,

@@ -28,10 +28,8 @@ import {
   buildUnavailableRealResearchDataFeed,
 } from "./realResearchData";
 import type { RealResearchDataFeed } from "./realResearchData";
-import {
-  buildStrategyLeaderboard,
-  buildUnavailableStrategyLeaderboard,
-} from "./strategyLeaderboard";
+import { buildUnavailableStrategyLeaderboard } from "./strategyLeaderboard";
+import { buildCachedStrategyLeaderboard } from "./strategyLeaderboardService";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 import type { InMemoryResearchStore } from "./researchStore";
 import { ResearchResultCache } from "./researchResultCache";
@@ -231,11 +229,11 @@ async function buildPaperResearchContext(input: {
       : PAPER_RESEARCH_CACHE_TTL_MS,
     async () => {
       const coreResearch = Promise.all([
-        buildStrategyLeaderboard(
-          input.snapshot,
-          input.system.marketDataProvider,
-          input.leaderboardBars,
-        ).catch((error) => buildUnavailableStrategyLeaderboard(
+        buildCachedStrategyLeaderboard({
+          system: input.system,
+          snapshot: input.snapshot,
+          bars: input.leaderboardBars,
+        }).catch((error) => buildUnavailableStrategyLeaderboard(
           input.snapshot,
           input.system.marketDataProvider,
           input.leaderboardBars,
