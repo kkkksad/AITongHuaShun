@@ -15,6 +15,7 @@
 - [0009：多检查点 Paper 通知与事件额度](0009-multi-checkpoint-paper-notifications.md)
 - [0010：Paper 账户取消固定比例现金预留](0010-no-fixed-paper-cash-reserve.md)
 - [0011：回测胜率以已闭合FIFO配对为分母](0011-closed-fifo-backtest-win-rate.md)
+- [0012：行情快照时间表示数据版本形成时间](0012-market-snapshot-version-time.md)
 
 ## 新建格式
 

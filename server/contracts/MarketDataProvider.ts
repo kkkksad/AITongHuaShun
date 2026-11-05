@@ -16,13 +16,13 @@ export interface MarketDataProvider {
   /** 停止行情推送，释放定时器和连接。 */
   stop(): void;
 
-  /** 手动推进一次行情 tick（用于测试和确定性回放）。返回新的快照。 */
+  /** 推进模拟行情或重播已有HTTP行情；仅数据被接纳时递增sequence并更新marketTime。 */
   tick(): MarketSnapshot;
 
   /** 获取单个标的的最新行情快照；未找到返回 undefined。 */
   getQuote(symbol: string): MarketQuote | undefined;
 
-  /** 获取全量行情快照。 */
+  /** 获取全量行情快照；读取不得改变sequence或该版本的marketTime。 */
   getSnapshot(): MarketSnapshot;
 
   /** 订阅 'snapshot' 事件。 */

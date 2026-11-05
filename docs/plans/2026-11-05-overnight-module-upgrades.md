@@ -99,9 +99,20 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 真实React root同实例重渲染4项先复现Rendered more/fewer hooks，再把空状态判断移到全部Hooks之后，排名与图表算法不变。
 - [x] 6项DOM回归通过：0/1初次、1→2、2→1、0→2→0以及选择夏普后2→1→2保留指标和排序；前端类型检查通过。
 - [x] 模块6精确暂存快照67服务端文件/974项、35前端文件/146项、TypeScript和Vite构建通过。
-- [ ] 模块6提交、部署、独立健康验证。
+- [x] 模块6提交3f0fdebf143937b335a603169b0a9079c9b0a783并部署；UTC18:30:38独立验证三容器healthy、健康200、匿名账户/能力/自动状态401，Paper+AkShare、认证开启、真实执行关闭，原账户与策略选择不变。
 
-## 模块7：排行榜与Paper研究共享同快照计算
+## 模块7A：稳定行情版本时间与跨日旧计划拦截
+
+**Files:** `server/market/mockMarket.ts`、`server/market/HttpMarketProvider.ts`、各对应测试、`server/contracts/MarketDataProvider.ts`、`shared/trading.ts`、`server/trading/paperAutoExecutor.ts`与真实执行回归、决策/架构/状态/本计划。
+
+- [x] 独立复核确认两个Provider每次读取都把marketTime重设为now，同一sequence相隔1ms也生成不同缓存key，还会把旧日行情标成新日。
+- [x] marketTime仅在Mock构造/tick或HTTP实际接纳非空结果并更新sequence时变动；读取、重播、失败、空结果不前移，quotes.updatedAt仍为来源时间，质量新鲜度继续按实际时钟计算。
+- [x] 保持Broker/T+1/成交与审计的独立clock；自动执行比较plan.tradingDate与本轮交易日期，旧日/未来日计划仅观察、不提交、不使用错误日期额度或幂等键、不发通知。语义记录于决策0012与架构。
+- [x] Mock新增3项、HTTP新增7项、错日计划2项先红后绿；匹配日正例成交及T+1正确。Provider/executor/cashPolicy/broker/dataQuality定向7文件160项与服务端类型检查通过。
+- [x] 模块7A精确暂存树隔离验证：69服务端文件/987项、35前端文件/146项全部通过，TypeScript与Vite生产构建通过。独立复核3文件46项通过，未混入7B缓存改动。
+- [ ] 提交部署及独立健康检查。
+
+## 模块7B：排行榜与Paper研究共享同快照计算
 
 **Files:** 新`server/research/strategyLeaderboardService.ts`及测试，`server/app.ts`、`server/research/paperTradingPlanService.ts`、相关集成测试、架构/状态/本计划。
 

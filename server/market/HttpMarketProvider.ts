@@ -68,10 +68,11 @@ export class HttpMarketProvider
   };
   private readonly quotes = new Map<string, MarketQuote>();
   private sequence = 0;
+  private marketTime: string;
   private timer?: NodeJS.Timeout;
   private running = false;
   private consecutiveFailures = 0;
-  /** 最近一次 fetch 成功的时间戳（毫秒），用于新鲜度评估 */
+  /** 最近一次实际接纳非空行情的本地时间戳（毫秒），用于新鲜度评估 */
   private lastFetchSuccessMs = 0;
 
   constructor(config: HttpMarketConfig) {
@@ -82,6 +83,7 @@ export class HttpMarketProvider
       timeout: config.timeout ?? 10_000,
       headers: config.headers ?? {},
     };
+    this.marketTime = new Date().toISOString();
 
     for (const symbol of config.symbols) {
       this.quotes.set(symbol, {
@@ -92,7 +94,7 @@ export class HttpMarketProvider
         previousClose: 0,
         changePercent: 0,
         volume: 0,
-        updatedAt: new Date().toISOString(),
+        updatedAt: this.marketTime,
       });
     }
 
@@ -105,7 +107,7 @@ export class HttpMarketProvider
         previousClose: 0,
         changePercent: 0,
         volume: 0,
-        updatedAt: new Date().toISOString(),
+        updatedAt: this.marketTime,
       });
     }
   }
@@ -137,12 +139,12 @@ export class HttpMarketProvider
     return {
       mode: this.cfg.mode,
       sequence: this.sequence,
-      marketTime: new Date().toISOString(),
+      marketTime: this.marketTime,
       quotes: [...this.quotes.values()].map((q) => ({ ...q })),
     };
   }
 
-  /** 返回最近一次成功获取数据的本地时间戳（毫秒），用于质量评分 */
+  /** 返回最近一次实际接纳非空行情的本地时间戳（毫秒），用于质量评分 */
   getLastFetchSuccessMs(): number {
     return this.lastFetchSuccessMs;
   }
@@ -163,10 +165,11 @@ export class HttpMarketProvider
     }
     if (!this.running || result.quotes.length === 0) return;
     this.lastFetchSuccessMs = Date.now();
-    const now = new Date().toISOString();
+    const now = new Date(this.lastFetchSuccessMs).toISOString();
     for (const quote of result.quotes) {
       this.quotes.set(quote.symbol, { ...quote, updatedAt: quote.updatedAt || now });
     }
+    this.marketTime = now;
     this.sequence += 1;
     this.emitSnapshot();
   }

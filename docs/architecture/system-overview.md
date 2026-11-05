@@ -114,6 +114,8 @@ Fastify 使用 Swagger/OpenAPI 发布当前 API 契约，并通过 `/api/capabil
 
 ### `MarketDataProvider`
 
+`sequence`和`marketTime`表示同一行情版本，后者只在本地生成或实际接纳非空新批次时更新；读取、重播、失败和空响应不能刷新旧数据日期。上游报价时间仍在`quotes[].updatedAt`，质量年龄使用实际时钟。Paper执行器在任何计划日期额度、幂等、通知或订单动作前拒绝日期与本轮实际交易日期不符的计划；Broker的成交、审计与T+1时钟独立。见[决策0012](../decisions/0012-market-snapshot-version-time.md)。
+
 当前可使用 MockMarket 或 AkShare 桥接。外部行情必须保留来源、授权、时间戳、交易日历、时区和复权语义；上层逻辑不得直接绑定单一供应商返回格式。
 
 质量报告中的完整度以请求标的数量为分母，缺失和无效报价都会扣分；新鲜度取低 10% 分位而不是整批最大值。合法涨跌停只记录市场状态，超出对应板块涨跌停范围的非停牌价格才进入越界异常。`healthy / degraded / unusable` 只用于界面诊断，不能改变 `AdaptiveStrategyRouter`、`PaperAutoExecutor`、风险限额或订单审批。

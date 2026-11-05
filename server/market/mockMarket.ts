@@ -67,6 +67,7 @@ export class MockMarket extends EventEmitter implements MarketDataProvider {
   private readonly now: () => Date;
   private readonly quotes = new Map<string, MarketQuote>();
   private sequence = 0;
+  private marketTime: string;
   private randomState = 0x9e3779b9;
   private timer?: NodeJS.Timeout;
 
@@ -77,6 +78,7 @@ export class MockMarket extends EventEmitter implements MarketDataProvider {
     this.now = now;
 
     const timestamp = this.now().toISOString();
+    this.marketTime = timestamp;
     for (const quote of initialQuotes) {
       this.quotes.set(quote.symbol, {
         ...quote,
@@ -116,7 +118,7 @@ export class MockMarket extends EventEmitter implements MarketDataProvider {
     return {
       mode: this.mode,
       sequence: this.sequence,
-      marketTime: this.now().toISOString(),
+      marketTime: this.marketTime,
       quotes: [...this.quotes.values()].map((quote) => ({ ...quote })),
     };
   }
@@ -142,6 +144,7 @@ export class MockMarket extends EventEmitter implements MarketDataProvider {
     }
 
     this.sequence += 1;
+    this.marketTime = timestamp;
     return this.emitSnapshot();
   }
 

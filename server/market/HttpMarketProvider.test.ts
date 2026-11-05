@@ -194,6 +194,136 @@ describe("HttpMarketProvider.getSnapshot", () => {
   });
 });
 
+describe("HttpMarketProvider snapshot version time", () => {
+  const constructedAt = new Date("2026-11-05T06:30:00.000Z");
+  const acceptedAt = new Date("2026-11-05T06:30:01.000Z");
+  const followingDay = new Date("2026-11-06T06:30:00.000Z");
+  const sourceTime = "2026-11-05T06:29:58.000Z";
+  let provider: HttpMarketProvider;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(constructedAt);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    provider = new HttpMarketProvider(makeConfig({ symbols: ["600519"] }));
+  });
+
+  afterEach(() => {
+    provider.stop();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  function successfulResponse() {
+    return mockFetchResponse([{
+      symbol: "600519",
+      name: "贵州茅台",
+      tradable: true,
+      price: 1500,
+      previousClose: 1490,
+      changePercent: 0.67,
+      volume: 1_000,
+      updatedAt: sourceTime,
+    }]);
+  }
+
+  it("keeps the same version time across reads and a calendar-day change", () => {
+    const original = provider.getSnapshot();
+    expect(original.marketTime).toBe(constructedAt.toISOString());
+
+    vi.setSystemTime(new Date(constructedAt.getTime() + 1));
+    expect(provider.getSnapshot()).toEqual(original);
+    vi.setSystemTime(followingDay);
+    expect(provider.getSnapshot()).toEqual(original);
+    expect(provider.getLastFetchSuccessMs()).toBe(0);
+  });
+
+  it("replays the current version on tick without advancing its time", () => {
+    const original = provider.getSnapshot();
+    const snapshots = vi.fn();
+    provider.on("snapshot", snapshots);
+
+    vi.setSystemTime(followingDay);
+    expect(provider.tick()).toEqual(original);
+    expect(snapshots).toHaveBeenCalledTimes(1);
+    expect(snapshots).toHaveBeenCalledWith(original);
+    expect(provider.getLastFetchSuccessMs()).toBe(0);
+  });
+
+  it("records the acceptance time once when a nonempty response advances sequence", async () => {
+    let resolveFetch!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    })));
+    const original = provider.getSnapshot();
+    provider.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(provider.getSnapshot()).toEqual(original);
+
+    vi.setSystemTime(acceptedAt);
+    resolveFetch(successfulResponse());
+    await vi.advanceTimersByTimeAsync(0);
+    provider.stop();
+
+    const accepted = provider.getSnapshot();
+    expect(accepted.sequence).toBe(original.sequence + 1);
+    expect(accepted.marketTime).toBe(acceptedAt.toISOString());
+    expect(provider.getLastFetchSuccessMs()).toBe(Date.parse(accepted.marketTime));
+    expect(accepted.quotes[0].updatedAt).toBe(sourceTime);
+    vi.setSystemTime(followingDay);
+    expect(provider.getSnapshot()).toEqual(accepted);
+    expect(provider.tick()).toEqual(accepted);
+  });
+
+  it.each(["http-error", "network-error", "empty-response"] as const)(
+    "preserves the accepted version and success time after %s",
+    async (failure) => {
+      const fetchMock = vi.fn().mockResolvedValueOnce(successfulResponse());
+      if (failure === "network-error") {
+        fetchMock.mockRejectedValueOnce(new Error("bridge unavailable"));
+      } else {
+        fetchMock.mockResolvedValueOnce(
+          failure === "http-error" ? mockFetchError(503) : mockFetchResponse([]),
+        );
+      }
+      vi.stubGlobal("fetch", fetchMock);
+      vi.setSystemTime(acceptedAt);
+      provider.start();
+      await vi.advanceTimersByTimeAsync(0);
+      provider.stop();
+      const accepted = provider.getSnapshot();
+      const successTime = provider.getLastFetchSuccessMs();
+      expect(accepted.sequence).toBe(1);
+
+      vi.setSystemTime(followingDay);
+      provider.start();
+      await vi.advanceTimersByTimeAsync(0);
+      provider.stop();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(provider.getSnapshot()).toEqual(accepted);
+      expect(provider.getLastFetchSuccessMs()).toBe(successTime);
+    },
+  );
+
+  it("does not publish a successful in-flight response after stopping", async () => {
+    let resolveFetch!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    })));
+    const original = provider.getSnapshot();
+    provider.start();
+    provider.stop();
+    vi.setSystemTime(followingDay);
+    resolveFetch(successfulResponse());
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(provider.getSnapshot()).toEqual(original);
+    expect(provider.getLastFetchSuccessMs()).toBe(0);
+  });
+});
+
 // ═══════════════════════════════════════════════
 // tick
 // ═══════════════════════════════════════════════

@@ -939,6 +939,25 @@ export class PaperAutoExecutor {
         }),
         activityMode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
       });
+      // Research can finish with a cached or unchanged snapshot from another
+      // date. Stop before plan-date quotas, idempotency keys or notifications.
+      if (plan.tradingDate !== tradingDate) {
+        skippedOperations.push({
+          symbol: "SYSTEM",
+          action: "observe",
+          reason: `计划交易日期与本轮交易日期不一致（计划 ${plan.tradingDate}，本轮 ${tradingDate}），保持 Paper 观望并等待本交易日行情。`,
+        });
+        return this.finalizeRun(
+          trigger,
+          started,
+          tradingDate,
+          session,
+          initialPolicy,
+          "watch-only",
+          submittedOrders,
+          skippedOperations,
+        );
+      }
       const policy = getIntradayExecutionPolicy(started, plan.adaptiveRouting);
       const snapshot = this.options.system.market.getSnapshot();
       const marketAssessment = assessMarketSnapshot(snapshot);
@@ -1413,6 +1432,7 @@ export class PaperAutoExecutor {
       "Auto execution submits orders only to the local PaperBroker.",
       "REAL_TRADING_ENABLED must remain false and MARKET_MODE must be paper.",
       "A-share lot-size, T+1, cash, position and circuit-breaker checks still run before every order.",
+      "A plan must match this run's trading date before quotas, notifications or orders are processed.",
       "Automatic order counts are paced across opening, morning, afternoon and closing phases without fixed portfolio cash floors.",
       "The daily target may activate a qualified afternoon probe but never overrides plan eligibility or risk checks.",
       "Qualified probes can activate only in the afternoon and still require live history, fees, cash, position, and broker risk checks.",

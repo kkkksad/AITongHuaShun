@@ -241,7 +241,9 @@ export interface DataQualityReport {
 
 export interface MarketSnapshot {
   mode: TradingMode;
+  /** 行情数据版本；读取或重播已有快照不递增。 */
   sequence: number;
+  /** 当前版本在本地生成或接纳的时间；读取不刷新，报价来源时间见quotes[].updatedAt。 */
   marketTime: string;
   quotes: MarketQuote[];
 }
