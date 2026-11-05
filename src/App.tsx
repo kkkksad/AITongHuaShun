@@ -661,6 +661,10 @@ function App() {
         mode={trading.mode}
         onLogout={handleLogout}
         activeModuleId={activeModuleId}
+        navigationKey={location.key}
+        navigationTargetId={activeView === "learning"
+          ? `learning-${learningSection}`
+          : activeView === "settings" ? `settings-${settingsSection}` : undefined}
         onModuleSelect={(item) => navigate(getModuleHref(item))}
         onViewChange={(view) => navigate(viewPaths[view])}
         realtimeState={trading.realtimeState}
@@ -674,7 +678,7 @@ function App() {
             <Route
               element={
                 <Suspense fallback={<LazyFallback />}>
-                  <LearningPipeline activeSection={learningSection} />
+                  <LearningPipeline />
                 </Suspense>
               }
               path="/learning"
@@ -682,7 +686,7 @@ function App() {
             <Route
               element={
                 <Suspense fallback={<LazyFallback />}>
-                  <Settings activeSection={settingsSection} trading={trading} />
+                  <Settings trading={trading} />
                 </Suspense>
               }
               path="/settings"

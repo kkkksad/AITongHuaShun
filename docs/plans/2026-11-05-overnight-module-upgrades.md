@@ -155,7 +155,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] Linux离线24项定义：23项通过，root条件项跳过后单独以真实sudo验证拒绝；Bash、Node、systemd和Compose校验通过，隔离无网络Nginx验证token200/不存在404。独立复核无阻断。
 - [x] 精确暂存树隔离验证：75服务端文件/1054项、37前端文件/155项、TypeScript与Vite生产构建全部通过；未混入模块13/14。
 - [ ] 脚本不默认接受Let's Encrypt订阅协议；完成可审查配置后单独取得条款授权，未授权不注册CA账户、签发或安装续期任务。
-- [ ] 完整验证后独立部署准备；域名环境值按现有站点目标修正，证书签发依赖最终协议确认。
+- [x] 完整验证后独立部署准备；域名环境值按现有站点目标修正，证书签发依赖最终协议确认。
 - [x] 准备版本d9c98cfbd4e66d676b103b914bfc438ddc84c887已推送并部署；UTC19:46校验441个归档文件、三容器healthy、健康200/匿名401、原Paper账户保留。预建ACME目录属ubuntu；PUBLIC_HOST改为kairosq.cn并受限备份原环境/状态，WEB_ORIGIN正确派生。根域/www实际HTTP token200且内容相同、缺失404，探针已删除。仍保留自签证书，未注册/签发/安装续期；具体协议授权问题已提交用户，继续独立工作。
 
 ## 后续候选（先证实，再建独立小计划）
@@ -188,7 +188,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新增3项回归覆盖同毫秒现金/档位/暂停/重置、北京时间午夜T+1解锁与回拨重锁、同时间新报价重新估值；相关store/broker/backtest71项与TypeScript通过，独立复核55项通过。
 - [x] 本地100000次账户调用：空仓139.43→49.53ms、种子仓162.40→109.84ms，完整账户相同。固定8报价/120bar/16策略研究交替顺序：旧6518.21→新3886.25ms，新3570.36对旧6159.51ms；完整报告仅排除generatedAt/dataQuality.timestamp后深度相同。该结果是本地计算收益，不代表生产延迟同比改善。
 - [x] 精确暂存树76服务端文件/1057项、37前端文件/155项、TypeScript与Vite生产构建通过；第二独立复核55项通过，10种旧新Store账户/持仓/订单/审计逐字段相同，涵盖同Date对象午夜/回拨、冻结现金、清仓和重置。
-- [ ] 精确暂存全套验证、提交部署与独立检查。
+- [x] 模块13提交288b796795fb5aca8ebc90d4f3d007b490ef510b已推送并部署；UTC19:50独立校验442个归档文件、三容器healthy、健康200/匿名401，Paper账户20,000现金0持仓0订单、growth/auto保留。
 
 - 依据服务端有界性能诊断挑选真实慢点，优先查询复用、取消无效请求和诚实降级；不无限抓取或盲目新增缓存。
 - 资金比例页面逐层解释单笔、单股、阶段预算、费用及最终手数，先验证现有 sizingDiagnostics 是否足够，避免重复造字段。
@@ -203,7 +203,9 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 
 - [x] 复现同一深链重复点击不重新定位、全局搜索选中后焦点仍在输入框；以`location.key`识别每次导航，等待懒加载目标挂载后滚动/聚焦，一次完成即断开观察。
 - [x] 初次深链保留只滚动语义，后续导航可聚焦`tabIndex=-1`目标；过时导航取消，搜索高亮、Escape与刷新不抢焦点。新增7项回归，定向7文件41项、前端类型与diff检查通过。
-- [ ] 独立复核与精确暂存全套验证，再提交部署。
+- [x] 主代理源码复核与隔离真实浏览器1280×720验证：首次懒加载和重复同URL均focus到settings-execution、搜索关闭，返回初始页focus MAIN；无横向溢出/控制台error。仅测试专用内存mock账户、auto/WxPusher关闭；临时页面与服务已停止，未登录生产。
+- [x] 精确暂存树76服务端文件/1057项、38前端文件/162项、TypeScript与Vite生产构建全部通过，未混入模块15/16。
+- [ ] 提交部署与独立检查。
 
 ## 模块15：回测已成交状态、成交顺序与报告隔离
 
@@ -211,7 +213,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 
 - [x] 纯内存探针证明：挂单先成交但onBar账户仍是成交前；同bar后续市价单先写trades，令FIFO顺序反转；重复run复用曲线/成交数组，首轮报告被次轮清空重写。
 - [ ] 先以限价买入后仅空仓买策略、同bar限价/市价不同费用后FIFO、两次不同结果run和报告对象修改建立失败回归；不改变同bar信号执行、滑点、费用、整手与T+1模型。
-- [ ] 每bar先`markToMarket(snapshot)`、按Broker实际成交顺序收集挂单，再`getAccount/getPositions`构造context；返回`equityCurve.map(point => ({ ...point }))`及`trades.map(trade => ({ ...trade }))`，不共享可变报告数组。
+- [ ] 每bar先`markToMarket(snapshot)`、按Broker实际成交顺序收集挂单，再`getAccount/getPositions`构造context；返回`equityCurve.map(point => ({ ...point }))`及`trades.map(trade => ({ ...trade }))`，报告config也用`{ ...this.config }`，不共享引擎可变状态。
 - [ ] 定向引擎/策略/优化器与报告回归通过后，独立复核、精确暂存全套验证、提交部署；指标变化如实记录，不能称作真实收益提升。
 
 ## 模块16：海龟策略历史通道突破恢复

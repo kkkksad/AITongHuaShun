@@ -17,11 +17,9 @@ import {
 } from "../../shared/trading";
 import type { TradingBackend } from "../hooks/useTradingBackend";
 import { paperTradingPlanQueryOptions } from "../lib/researchQueries";
-import type { SettingsModuleSection } from "../lib/moduleCatalog";
 
 interface SettingsProps {
   trading: TradingBackend;
-  activeSection?: SettingsModuleSection | null;
 }
 
 interface StrategyProfileOption {
@@ -143,7 +141,7 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-export function Settings({ trading, activeSection }: SettingsProps) {
+export function Settings({ trading }: SettingsProps) {
   const paperPlanQuery = useQuery(paperTradingPlanQueryOptions());
   const [selectedProfile, setSelectedProfile] = useState<PaperStrategyProfile>(
     trading.account?.strategyProfile ?? "balanced",
@@ -157,17 +155,6 @@ export function Settings({ trading, activeSection }: SettingsProps) {
   );
   const [confirmation, setConfirmation] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
-
-  useEffect(() => {
-    if (!activeSection) return;
-    const frame = window.requestAnimationFrame(() => {
-      document.getElementById(`settings-${activeSection}`)?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [activeSection]);
 
   useEffect(() => {
     localStorage.removeItem("kairos_api_keys");
@@ -261,7 +248,7 @@ export function Settings({ trading, activeSection }: SettingsProps) {
         </span>
       </section>
 
-      <section className="settings-section" data-module-section="profile" id="settings-profile">
+      <section className="settings-section" data-module-section="profile" id="settings-profile" tabIndex={-1}>
         <div className="settings-section-header">
           <Gauge size={18} />
           <div>
@@ -300,7 +287,7 @@ export function Settings({ trading, activeSection }: SettingsProps) {
         </div>
       </section>
 
-      <section className="settings-section" data-module-section="execution" id="settings-execution">
+      <section className="settings-section" data-module-section="execution" id="settings-execution" tabIndex={-1}>
         <div className="settings-section-header">
           <Gauge size={18} />
           <div>
@@ -421,7 +408,7 @@ export function Settings({ trading, activeSection }: SettingsProps) {
         </div>
       </section>
 
-      <section className="settings-section" data-module-section="account" id="settings-account">
+      <section className="settings-section" data-module-section="account" id="settings-account" tabIndex={-1}>
         <div className="settings-section-header">
           <Banknote size={18} />
           <div>

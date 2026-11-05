@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import type { LearningModuleSection } from "../lib/moduleCatalog";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   BarChart3,
@@ -75,23 +74,9 @@ function adaptiveStrategyLabel(key: string): string {
   return option?.label ?? internalStrategyLabels[key] ?? key;
 }
 
-interface LearningPipelineProps {
-  activeSection?: LearningModuleSection | null;
-}
-
-export default function LearningPipeline({ activeSection }: LearningPipelineProps) {
+export default function LearningPipeline() {
   const [weeklyPeriod, setWeeklyPeriod] = useState<WeeklyPaperReviewWindow>("previous");
 
-  useEffect(() => {
-    if (!activeSection) return;
-    const frame = window.requestAnimationFrame(() => {
-      document.getElementById(`learning-${activeSection}`)?.scrollIntoView({
-        behavior: "smooth",
-        block: "start",
-      });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [activeSection]);
   const weeklyPeriodLabel = weeklyPeriod === "previous" ? "上周" : "本周";
   const leaderboardQuery = useQuery(strategyLeaderboardQueryOptions(120));
   const candidatesQuery = useQuery(dailyCandidatesQueryOptions(24));
@@ -200,7 +185,7 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
   return (
     <div className="learning-layout">
       <div className="learning-main-column">
-        <section className="panel pipeline-panel" data-module-section="pipeline" id="learning-pipeline">
+        <section className="panel pipeline-panel" data-module-section="pipeline" id="learning-pipeline" tabIndex={-1}>
           <div className="panel-header">
             <div>
               <span className="section-kicker">受控研究流程</span>
@@ -233,7 +218,7 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
           </div>
         </section>
 
-        <section className="panel learning-memory-panel weekly-paper-review" data-module-section="weekly-review" id="learning-weekly-review">
+        <section className="panel learning-memory-panel weekly-paper-review" data-module-section="weekly-review" id="learning-weekly-review" tabIndex={-1}>
           <div className="panel-header">
             <div>
               <span className="section-kicker">{weeklyPeriodLabel} Paper 复盘</span>
@@ -452,7 +437,7 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
           )}
         </section>
 
-        <section className="panel learning-memory-panel" data-module-section="memory" id="learning-memory">
+        <section className="panel learning-memory-panel" data-module-section="memory" id="learning-memory" tabIndex={-1}>
           <div className="panel-header">
             <div>
               <span className="section-kicker">研究记忆</span>
@@ -503,7 +488,7 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
           </div>
         </section>
 
-        <section className="panel learning-memory-panel" data-module-section="daily-review" id="learning-daily-review">
+        <section className="panel learning-memory-panel" data-module-section="daily-review" id="learning-daily-review" tabIndex={-1}>
           <div className="panel-header">
             <div>
               <span className="section-kicker">
@@ -622,7 +607,7 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
           )}
         </section>
 
-        <section className="panel learning-memory-panel" data-module-section="paper-plan" id="learning-paper-plan">
+        <section className="panel learning-memory-panel" data-module-section="paper-plan" id="learning-paper-plan" tabIndex={-1}>
           <div className="panel-header">
             <div>
               <span className="section-kicker">纸面操作过程</span>
@@ -815,7 +800,7 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
           </div>
         </section>
 
-        <section className="panel learning-memory-panel" data-module-section="optimization" id="learning-optimization">
+        <section className="panel learning-memory-panel" data-module-section="optimization" id="learning-optimization" tabIndex={-1}>
           <div className="panel-header">
             <div>
               <span className="section-kicker">自动优化</span>

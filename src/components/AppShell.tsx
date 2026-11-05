@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { ConnectionState } from "../hooks/useTradingBackend";
 import { useTheme } from "../hooks/useTheme";
+import { useNavigationFocus } from "../hooks/useNavigationFocus";
 import { useI18n, type Locale } from "../i18n";
 import type { TradingMode } from "../../shared/trading";
 import type { MarketDataProviderName } from "../lib/tradingApi";
@@ -32,6 +33,8 @@ interface AppShellProps {
   activeView: ViewId;
   onViewChange: (view: ViewId) => void;
   activeModuleId?: string;
+  navigationKey?: string;
+  navigationTargetId?: string;
   onModuleSelect: (item: ModuleCatalogItem) => void;
   connectionState: ConnectionState;
   realtimeState?: ConnectionState;
@@ -46,6 +49,8 @@ interface AppShellProps {
 export function AppShell({
   activeView,
   activeModuleId,
+  navigationKey,
+  navigationTargetId,
   onModuleSelect,
   onViewChange,
   connectionState,
@@ -64,7 +69,9 @@ export function AppShell({
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickActiveIndex, setQuickActiveIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
   const composingRef = useRef(false);
+  useNavigationFocus(mainRef, navigationKey, navigationTargetId);
 
   const handleNavClick = (view: ViewId) => {
     onViewChange(view);
@@ -412,7 +419,7 @@ export function AppShell({
             </div>
           </div>
         </header>
-        <main className="main-content">{children}</main>
+        <main className="main-content" ref={mainRef} tabIndex={-1}>{children}</main>
         <MobileNav activeView={activeView} onViewChange={onViewChange} />
       </div>
     </div>
