@@ -520,7 +520,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新17项真实Engine先15红2绿后全绿，首个tradable绑定到reset，后续只按同symbol收历史，缺失/不可交易等待；保留模块30完整N/M历史窗、N+1/M+1暖机、阈值等号和模块32实际持仓/可卖整手。
 - [x] 覆盖默认/小窗误买误卖控制、真实种仓/同股进出/T+1、等待恢复、暖机、reset。作者261项/类型/diff及3组完整报告一致；独立198项与另3组含成本完整报告一致，并逐字验证prices.push后原窗口/持仓实现保持。root完整实现/测试复核无阻断。
 - [x] 精确暂存树101服务端文件1471项、44前端文件249项、TypeScript/Vite全过，未混入43/44/45/46/48。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块42提交d60b0453e8f5e68eed19e678bd6766ba52dcdc12已推送并部署，UTC22:35独立校验481个归档文件、三healthy/健康200/匿名401/原Paper账户。
 
 ## 运维：有界清理可再生构建缓存
 
@@ -531,8 +531,10 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** `server/backtest/strategies/MovingAverageCrossStrategy.ts`与新真实Engine专项回归，架构/状态/本计划。
 
 - [x] 独立真实Engine：MA1/2时A1/.9/.8与B12/11/10均下跌，末bar换首或A=false误买B500@10费5；stable及单股0单。默认5/20的21bar亦复现。
-- [ ] 先红后绿，仅首次tradable绑定至reset，缺失false等待，不混他股历史；保留交叉条件/暖机/权重和原intent状态。实际持仓独立缺陷不混入本模块。
-- [ ] 覆盖换序/不可用恢复/首次选择/reset与稳定完整报告，独立复核、精确全检查、单独提交部署。
+- [x] 新12项真实Engine先9红3绿后全绿，仅首次tradable绑定至reset，缺失false等待，不混他股历史；保留交叉条件/暖机/权重和原intent状态。实际持仓独立缺陷不混入本模块。
+- [x] 作者298项/类型/diff及稳定4成交完整报告相同；独立88项与3组含成本完整报告（17/27/4成交）一致，原交叉/暖机/intent逐行保持。root完整diff/12新测试复核无阻断。
+- [x] 精确暂存树102服务端文件1483项、44前端文件249项、TypeScript/Vite全过，未混入44/45/46/47/48。
+- [ ] 单独提交部署与独立核验。
 
 ## 模块44：海龟单标的状态绑定
 

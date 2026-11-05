@@ -21,6 +21,7 @@ export class MovingAverageCrossStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
   private inPosition = false;
+  private boundSymbol?: string;
 
   constructor(
     private readonly fastPeriod = 5,
@@ -34,11 +35,15 @@ export class MovingAverageCrossStrategy implements BacktestStrategy {
   reset(): void {
     this.prices.length = 0;
     this.inPosition = false;
+    this.boundSymbol = undefined;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = context.snapshot.quotes.find((q) => q.tradable);
+    const quote = this.boundSymbol === undefined
+      ? context.snapshot.quotes.find((q) => q.tradable)
+      : context.snapshot.quotes.find((q) => q.symbol === this.boundSymbol && q.tradable);
     if (!quote) return [];
+    this.boundSymbol ??= quote.symbol;
 
     this.prices.push(quote.price);
 
