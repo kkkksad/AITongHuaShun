@@ -216,6 +216,12 @@ export function useTradingBackend(
             positions: event.data,
           }));
           break;
+        case "orders.snapshot":
+          updateBootstrap((current) => ({
+            ...current,
+            orders: event.data,
+          }));
+          break;
         case "order.updated":
           updateBootstrap((current) => ({
             ...current,

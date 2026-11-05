@@ -1813,6 +1813,10 @@ export async function buildTradingApp(
       type: "positions.snapshot",
       data: system.broker.getPositions(),
     });
+    hub.send(socket, {
+      type: "orders.snapshot",
+      data: system.broker.getOrders(50),
+    });
 
     socket.on("close", () => {
       recordWebSocketConnection(-1);

@@ -381,6 +381,7 @@ export type TradingEvent =
   | { type: "market.snapshot"; data: MarketSnapshot }
   | { type: "account.snapshot"; data: AccountSnapshot }
   | { type: "positions.snapshot"; data: PositionSnapshot[] }
+  | { type: "orders.snapshot"; data: OrderRecord[] }
   | { type: "order.updated"; data: OrderRecord }
   | { type: "system.status"; data: { connected: boolean; message: string } }
   | { type: "signal"; data: TradingSignal };
