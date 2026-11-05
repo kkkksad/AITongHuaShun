@@ -6,7 +6,7 @@ import { MomentumStrategy } from "./MomentumStrategy";
 
 const symbol = "600001";
 const buy = { symbol, side: "buy", type: "market", targetWeight: 0.42 };
-const sell = { symbol, side: "sell", type: "market", targetWeight: 1 };
+const sell = { symbol, side: "sell", type: "market", quantity: 100 };
 
 function snapshots(prices: number[]): MarketSnapshot[] {
   return prices.map((price, index) => {
@@ -40,10 +40,32 @@ function context(snapshot: MarketSnapshot, barIndex: number, totalBars: number):
   };
 }
 
-// These projections retain the existing intention state; only engine tests assert fills.
+// Controlled holdings supply 100 settled shares after an entry and remove them
+// after an exit, isolating channel boundaries. Only engine tests assert real fills.
 function replay(strategy: MomentumStrategy, prices: number[]): StrategySignal[][] {
   const history = snapshots(prices);
-  return history.map((market, index) => strategy.onBar(context(market, index, history.length)));
+  let heldQuantity = 0;
+  let averagePrice = 0;
+  return history.map((market, index) => {
+    const price = market.quotes[0].price;
+    const current = context(market, index, history.length);
+    current.positions = heldQuantity > 0 ? [{
+      symbol, name: "controlled channel holding", quantity: heldQuantity,
+      availableQuantity: heldQuantity, averagePrice, currentPrice: price,
+      marketValue: heldQuantity * price, unrealizedPnl: heldQuantity * (price - averagePrice),
+      realizedPnl: 0, weight: heldQuantity * price / current.equity,
+    }] : [];
+    const output = strategy.onBar(current);
+    for (const signal of output) {
+      if (signal.side === "buy") {
+        heldQuantity = 100;
+        averagePrice = price;
+      } else {
+        heldQuantity = Math.max(0, heldQuantity - (signal.quantity ?? heldQuantity));
+      }
+    }
+    return output;
+  });
 }
 
 function run(prices: number[], entry = 3, exit = 3) {
@@ -103,7 +125,7 @@ describe("MomentumStrategy complete historical windows", () => {
     expect(output[5]).toEqual([sell]);
   });
 
-  it("retains the existing signal state and buy/sell target weights", () => {
+  it("retains the buy target weight and exits the controlled actual holding", () => {
     const output = replay(new MomentumStrategy(3, 2, 0.42), [8, 9, 10, 11, 12, 10, 9, 10, 11]);
 
     expect(output[3]).toEqual([buy]);
@@ -141,9 +163,9 @@ describe("MomentumStrategy complete historical windows", () => {
     }
   });
 
-  it("resets price history and intention state for an identical replay", () => {
+  it("resets price history for an identical controlled-holdings replay", () => {
     const strategy = new MomentumStrategy(3, 2, 0.42, "local momentum replay");
-    const prices = [20, 10, 11, 12, 13]; // Ends with an open intention.
+    const prices = [20, 10, 11, 12, 13]; // Ends with a controlled open holding.
     const expected = replay(strategy, prices);
     expect(expected.flat()).toEqual([buy]);
 

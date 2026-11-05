@@ -20,7 +20,6 @@ import { highest } from "./indicators";
 export class MomentumStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
-  private inPosition = false;
 
   constructor(
     private readonly entryPeriod = 20,
@@ -34,7 +33,6 @@ export class MomentumStrategy implements BacktestStrategy {
 
   reset(): void {
     this.prices.length = 0;
-    this.inPosition = false;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
@@ -51,10 +49,11 @@ export class MomentumStrategy implements BacktestStrategy {
     if (isNaN(nDayHigh)) return [];
 
     const price = quote.price;
+    const position = context.positions.find((item) => item.symbol === quote.symbol);
+    const inPosition = (position?.quantity ?? 0) > 0;
 
     // 突破N日最高价买入
-    if (!this.inPosition && price >= nDayHigh) {
-      this.inPosition = true;
+    if (!inPosition && price >= nDayHigh) {
       return [
         {
           symbol: quote.symbol,
@@ -66,17 +65,20 @@ export class MomentumStrategy implements BacktestStrategy {
     }
 
     // 跌破M日最低价卖出
-    if (this.inPosition && this.prices.length >= this.exitPeriod + 1) {
+    if (position && inPosition && this.prices.length >= this.exitPeriod + 1) {
       const exitPrices = this.prices.slice(-this.exitPeriod - 1, -1);
       const exitLow = Math.min(...exitPrices);
       if (price <= exitLow) {
-        this.inPosition = false;
+        const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+        const quantity = Math.floor(sellable / 100) * 100;
+        // 锁定或不足一手时等待，后续 bar 重新读取真实持仓。
+        if (quantity <= 0) return [];
         return [
           {
             symbol: quote.symbol,
             side: "sell",
             type: "market",
-            targetWeight: 1.0,
+            quantity,
           },
         ];
       }
