@@ -20,6 +20,7 @@
 - [0014：Paper 可用现金包含订单必要成本](0014-paper-execution-cash-costs.md)
 - [0015：账户累计已实现盈亏采用净现金恒等式](0015-account-net-realized-pnl.md)
 - [0016：初始化读取合并已接收的实时事件](0016-bootstrap-realtime-read-windows.md)
+- [0017：Paper 待买暴露与费用后成交仓位](0017-paper-pending-buy-position-exposure.md)
 
 ## 新建格式
 

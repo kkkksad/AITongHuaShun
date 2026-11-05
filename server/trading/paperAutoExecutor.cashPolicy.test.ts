@@ -149,6 +149,9 @@ describe("paper execution without fixed portfolio reserves", () => {
   it("can exceed the former 85% portfolio cap while preserving cash for fees and slippage", async () => {
     const { result, account } = await executeBuy({
       seedHolding: true,
+      // Isolate the aggregate 85% reserve policy: the seeded 80% position also
+      // needs room for its paid fees/slippage under the per-stock fill check.
+      maxPositionWeight: 0.81,
       legacyPlanReserveRatio: 0.5,
     });
 

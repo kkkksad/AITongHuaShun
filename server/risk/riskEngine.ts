@@ -83,6 +83,28 @@ export class RiskEngine {
     return this.calculateDynamicWeight();
   }
 
+  /** Check projected buy exposure without evaluating or changing circuit state. */
+  evaluatePositionWeight(input: {
+    currentValue: number;
+    addedValue: number;
+    equity: number;
+    reservedBuyNotional?: number;
+  }): RiskDecision {
+    const projectedValue = input.currentValue + input.addedValue + (input.reservedBuyNotional ?? 0);
+    const postTradeWeight = input.equity === 0 ? 1 : projectedValue / input.equity;
+    const effectiveMaxWeight = this.getEffectiveMaxPositionWeight();
+    const exceedsLimit = input.equity === 0
+      ? postTradeWeight > effectiveMaxWeight
+      : !hasSufficientCash(input.equity * effectiveMaxWeight, projectedValue);
+    if (exceedsLimit) {
+      return this.reject(
+        "POSITION_WEIGHT_LIMIT",
+        `成交后仓位权重 ${(postTradeWeight * 100).toFixed(1)}% 将超过单标的上限`,
+      );
+    }
+    return { allowed: true, code: "APPROVED", message: "风险检查通过" };
+  }
+
   /** 获取当前有效的单笔订单金额上限 */
   getEffectiveMaxOrderNotional(): number {
     if (!this.limits.dynamicPositionScaling) {
@@ -138,6 +160,7 @@ export class RiskEngine {
     account: AccountSnapshot;
     position?: PositionSnapshot;
     reservedSellQuantity?: number;
+    reservedBuyNotional?: number;
     requiredCash?: number;
     mode: TradingMode;
   }): RiskDecision {
@@ -220,19 +243,13 @@ export class RiskEngine {
         return this.reject("INSUFFICIENT_CASH", "可用资金不足");
       }
 
-      const effectiveMaxWeight = this.getEffectiveMaxPositionWeight();
-      const currentValue = position?.marketValue ?? 0;
-      const postTradeWeight =
-        account.equity === 0
-          ? 1
-          : (currentValue + notional) / account.equity;
-
-      if (postTradeWeight > effectiveMaxWeight) {
-        return this.reject(
-          "POSITION_WEIGHT_LIMIT",
-          `成交后仓位权重 ${(postTradeWeight * 100).toFixed(1)}% 将超过单标的上限`,
-        );
-      }
+      const positionDecision = this.evaluatePositionWeight({
+        currentValue: position?.marketValue ?? 0,
+        addedValue: notional,
+        equity: account.equity,
+        reservedBuyNotional: input.reservedBuyNotional,
+      });
+      if (!positionDecision.allowed) return positionDecision;
     }
 
     // ── 卖出检查 ──

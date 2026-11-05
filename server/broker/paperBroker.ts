@@ -48,16 +48,20 @@ export class PaperBroker extends EventEmitter {
     const position = this.getPositions(snapshot).find(
       (candidate) => candidate.symbol === request.symbol,
     );
-    const reservedSellQuantity = this.store
-      .getPendingOrders()
+    const pendingOrders = this.store.getPendingOrders();
+    const reservedSellQuantity = pendingOrders
       .filter((order) => order.symbol === request.symbol && order.side === "sell")
       .reduce((total, order) => total + order.quantity, 0);
+    const reservedBuyNotional = pendingOrders
+      .filter((order) => order.symbol === request.symbol && order.side === "buy")
+      .reduce((total, order) => total + order.quantity * (order.limitPrice ?? order.requestedPrice), 0);
     const decision = this.risk.evaluate({
       request,
       quote,
       account,
       position,
       reservedSellQuantity,
+      reservedBuyNotional,
       mode: this.options.mode,
       requiredCash: request.side === "buy" && quote
         ? request.type === "limit" && request.limitPrice !== undefined && quote.price > request.limitPrice
@@ -85,7 +89,7 @@ export class PaperBroker extends EventEmitter {
     // Marketable limit orders fill immediately; otherwise they remain pending.
     if (request.type === "limit") {
       if (this.store.checkLimitOrderFill(order, quote)) {
-        const filled = this.fillOrder(order, quote.name, quote.price);
+        const filled = this.fillOrder(order, quote.name, quote.price, snapshot);
         this.emit("order.updated", filled);
         this.emit("account.updated", this.getAccount());
         return filled;
@@ -96,7 +100,7 @@ export class PaperBroker extends EventEmitter {
       return { ...order };
     }
 
-    const filled = this.fillOrder(order, quote.name, quote.price);
+    const filled = this.fillOrder(order, quote.name, quote.price, snapshot);
 
     this.emit("order.updated", filled);
     this.emit("account.updated", this.getAccount());
@@ -168,7 +172,7 @@ export class PaperBroker extends EventEmitter {
       if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) continue;
 
       if (this.store.checkLimitOrderFill(order, quote)) {
-        const filled = this.fillOrder(order, quote.name, quote.price);
+        const filled = this.fillOrder(order, quote.name, quote.price, snapshot);
         this.emit("order.updated", filled);
       }
     }
@@ -219,7 +223,12 @@ export class PaperBroker extends EventEmitter {
     order: OrderRecord,
     name: string,
     marketPrice: number,
+    snapshot: MarketSnapshot,
   ): OrderRecord {
+    const stored = this.store.findOrderById(order.id);
+    if (!stored) throw new Error(`订单不存在：${order.id}`);
+    if (stored.status !== "pending" && stored.status !== "accepted") return { ...stored };
+    order = stored;
     const costs = executionCosts(order, marketPrice, this.options);
     let otherBuyBudgets = 0;
     for (const pending of this.store.getPendingOrders()) {
@@ -230,6 +239,18 @@ export class PaperBroker extends EventEmitter {
     const spendable = Math.max(0, this.store.getCash() - otherBuyBudgets);
     if (!hasSufficientCash(spendable, costs.cashDebit)) {
       return this.store.rejectOrder(order, "可用资金不足", "INSUFFICIENT_CASH");
+    }
+
+    if (order.side === "buy") {
+      const account = this.getAccount(snapshot);
+      const position = this.getPositions(snapshot).find((candidate) => candidate.symbol === order.symbol);
+      const addedValue = order.quantity * marketPrice;
+      const decision = this.risk.evaluatePositionWeight({
+        currentValue: position?.marketValue ?? 0,
+        addedValue,
+        equity: account.equity - costs.cashDebit + addedValue,
+      });
+      if (!decision.allowed) return this.store.rejectOrder(order, decision.message, decision.code);
     }
 
     return this.store.fillOrder(
