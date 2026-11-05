@@ -510,15 +510,17 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新12项真实runOnce先7红5绿后全绿，覆盖精确够钱、多单累计、真正不足先跳、合法fractional最低佣金与二进制噪声。仅预算复用executionCosts的notional/cashDebit与hasSufficientCash，扣减相同cashDebit；保留消息/阶段/幂等/笔数/SELL/原projectedMarketValue名义口径。
 - [x] 作者229项/类型/diff，独立347项及额外7个非零reserve/真实小数缺口/各cap优先/真实SELL预算隔离探针通过；root完整实现和12新测试复核无阻断。
 - [x] 精确暂存树100服务端文件1454项、44前端文件249项、TypeScript/Vite全过，未混入42/43/44/45/46。
-- [ ] 单独提交部署与独立核验；不变费率、生产配置、策略选择或账户。
+- [x] 模块41提交5cb6a53847a0ae324f084933bde4d1b750b966bc已推送并部署，UTC22:33独立校验480个归档文件、三healthy/健康200/匿名401/原账户；未变费率、生产配置、策略选择或账户。
 
 ## 模块42：动量单标的历史绑定
 
 **Files:** `server/backtest/strategies/MomentumStrategy.ts`与真实Engine多标的回归，架构/状态/本计划。
 
 - [x] 独立只读真实Engine：entry2/exit1，A1/.9/.8、B12/11/10各自下跌，stable/A-only/B-only均0单；最后bar换B优先或A不可交易，混合A1/A.9/B10触发误买B500@10费5。默认20/10的21bar同样复现；当前固定顺序提供者/榜单未证明受到影响。
-- [ ] 新失败回归后首个tradable绑定到reset，后续只按同symbol收历史，缺失/不可交易等待；保留模块30完整N/M历史窗、N+1/M+1暖机、阈值等号和模块32实际持仓/可卖整手。
-- [ ] 覆盖误买/误卖控制、等待恢复、暖机、reset与稳定完整报告一致；独立复核、精确全套检查、单独提交部署。
+- [x] 新17项真实Engine先15红2绿后全绿，首个tradable绑定到reset，后续只按同symbol收历史，缺失/不可交易等待；保留模块30完整N/M历史窗、N+1/M+1暖机、阈值等号和模块32实际持仓/可卖整手。
+- [x] 覆盖默认/小窗误买误卖控制、真实种仓/同股进出/T+1、等待恢复、暖机、reset。作者261项/类型/diff及3组完整报告一致；独立198项与另3组含成本完整报告一致，并逐字验证prices.push后原窗口/持仓实现保持。root完整实现/测试复核无阻断。
+- [x] 精确暂存树101服务端文件1471项、44前端文件249项、TypeScript/Vite全过，未混入43/44/45/46/48。
+- [ ] 单独提交部署与独立核验。
 
 ## 运维：有界清理可再生构建缓存
 
@@ -571,3 +573,12 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 独立真实Engine：MA1/2/.5，同日10/9/10/9/10，买500后死叉卖被T+1拒、intent=false，下一金叉实际仍持500却再买400，末900/现金990；仅实际持仓校准对照持500/现金4995。
 - [ ] 等43发布后先红后绿，绑定股实际quantity替代intent gate，退出用实际可卖100整手。保留strict金叉prevFast<=prevSlow且fast>slow、死叉prevFast>=prevSlow且fast<slow及slow+1暖机；不在无新交叉时补卖或持续重买，不套持续突破重试语义。
 - [ ] 验证T+1后不叠买/下一真实死叉退出、拒买后下一真金叉、部分可卖/他股/外部清仓、reset与正常含成本旧新完整报告；独立复核、精确全检查、单独发布。
+
+## 模块49：MACD交叉实际持仓信号
+
+**Files:** 模块45发布后的`MACDStrategy.ts`、新真实Engine持仓专项及旧symbol专项必要信号形状更新，架构/状态/本计划。
+
+- [x] 独立真实Engine：MACD1/2/2/.5，同日10/9/8/7/10/7/10，bar4买500、bar5死叉卖被T+1拒却flag=false、bar6金叉再买400；末900/现金990，actual诊断仅500/现金4995。
+- [x] 独立真实部分可卖例：10/9/8/7/10/11/7，day3 bar5真实另买100，bar6实际600但可卖500，原targetWeight1卖600拒，actual诊断仅卖500@7费5、保留100锁定/现金7385。费用拒买后下一真金叉原已恢复，不误报。
+- [ ] 等45发布后先红后绿，actual同股quantity gate+min可卖整手，保留EMA/slow+signal暖机/prevHistogram每次更新及prev<=0/>0或>=0/<0事件；无新交叉不补单。
+- [ ] 验证T+1不叠买、下一新死叉/部分可卖、费用拒买后下一真金叉原报告兼容、其他持仓/reset与正常含成本完整报告；独立复核、精确全检查、单独发布。
