@@ -3,7 +3,7 @@ name: 部署 KAIROS 生产服务器
 on:
   push:
     branches:
-      - codex/real-market-regime
+      - main
   workflow_dispatch:
 
 permissions:

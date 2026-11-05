@@ -23,8 +23,6 @@ import { PwaInstallPrompt, OfflineBanner } from "./components/PwaInstallPrompt";
 import { LazyFallback } from "./components/Skeleton";
 import { LoginPage } from "./components/LoginPage";
 import { StrategyWorkflow } from "./components/StrategyWorkflow";
-import { TradingStrategies } from "./components/TradingStrategies";
-import { SystemMonitor } from "./components/SystemMonitor";
 import { ViewportDeferred } from "./components/ViewportDeferred";
 import { strategies } from "./data/mockData";
 import { runBacktest } from "./lib/backtest";
@@ -82,6 +80,8 @@ const StrategyCompare = lazyNamed(() => import("./components/StrategyCompare"), 
 const StrategyLab = lazyNamed(() => import("./components/StrategyLab"), "StrategyLab");
 const StrategyLeaderboard = lazyNamed(() => import("./components/StrategyLeaderboard"), "StrategyLeaderboard");
 const StrategyRobustnessPanel = lazyNamed(() => import("./components/StrategyRobustnessPanel"), "StrategyRobustnessPanel");
+const TradingStrategies = lazyNamed(() => import("./components/TradingStrategies"), "TradingStrategies");
+const SystemMonitor = lazyNamed(() => import("./components/SystemMonitor"), "SystemMonitor");
 
 const defaultParameters: StrategyParameters = {
   lookback: 20,
@@ -553,7 +553,11 @@ function App() {
         <PaperAccount backend={trading} />
       </Suspense>
     ),
-    strategies: <TradingStrategies />,
+    strategies: (
+      <Suspense fallback={<LazyFallback />}>
+        <TradingStrategies />
+      </Suspense>
+    ),
     orders: (
       <Suspense fallback={<LazyFallback />}>
         <OrderHistory
@@ -571,7 +575,11 @@ function App() {
         <RiskPanel account={trading.account} limits={trading.limits} />
       </Suspense>
     ),
-    monitor: <SystemMonitor />,
+    monitor: (
+      <Suspense fallback={<LazyFallback />}>
+        <SystemMonitor />
+      </Suspense>
+    ),
     logs: (
       <Suspense fallback={<LazyFallback />}>
         <LogViewer />
