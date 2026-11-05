@@ -278,6 +278,7 @@ const SIZING_CONSTRAINT_LABELS = {
 } as const;
 
 const BLOCKED_REASON_LABELS: Record<string, string> = {
+  "plan-sizing-constrained": "本轮预算、金额上限、整手或费用效率约束",
   "minimum-lot-not-affordable": "最小整手金额超过可用预算",
   "single-order-cap": "单笔金额上限",
   "position-cap": "单标的仓位上限",

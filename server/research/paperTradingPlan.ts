@@ -1051,6 +1051,19 @@ export function buildPaperTradingPlan(input: {
       ],
     });
   } else if (candidatePoolSize > 0 && affordableCandidateCount === 0) {
+    // Explain the existing zero-quantity outcome without changing plan sizing.
+    // A capped or fee-efficient order can be unavailable even when the account
+    // can pay for a minimum lot. Ignore only plan limits for this diagnosis.
+    const accountCashCanCoverMinimumLot = candidatePool.some((candidate) =>
+      candidateQuantity(
+        candidate,
+        input.account.cash,
+        input.account.cash,
+        input.lotSize,
+        input.commissionRate,
+        input.minimumCommission,
+      ) >= input.lotSize,
+    );
     operations.push({
       timestamp: now,
       symbol: "CASH",
@@ -1060,8 +1073,12 @@ export function buildPaperTradingPlan(input: {
       quantity: 0,
       price: 1,
       estimatedNotional: 0,
-      reason: "当前可用现金不足以支付任一候选的一手及预计手续费，停止重复生成不可执行买单。",
-      ruleChecks: ["paper-only", "cash-constrained", "lot-size: not-affordable"],
+      reason: accountCashCanCoverMinimumLot
+        ? "账户现金至少可覆盖一个候选的一手及预计手续费，但本轮预算、金额上限（含策略缩放）、整手或费用效率约束下无法形成满足金额要求的候选买单。"
+        : "当前可用现金不足以支付任一候选的一手及预计手续费，停止重复生成不可执行买单。",
+      ruleChecks: accountCashCanCoverMinimumLot
+        ? ["paper-only", "plan-sizing-constrained", "no-forced-trade"]
+        : ["paper-only", "cash-constrained", "lot-size: not-affordable"],
     });
   }
 

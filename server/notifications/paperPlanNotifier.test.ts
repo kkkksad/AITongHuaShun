@@ -661,6 +661,15 @@ describe("PaperPlanNotifier", () => {
     expect(message.content).not.toContain("新增仓位缩放");
   });
 
+  it("labels a plan-sizing blocker without calling it an account cash shortage", () => {
+    const plan = createPlan("observe");
+    plan.qualitySummary.blockedReasons = { "plan-sizing-constrained": 1 };
+    const message = formatPaperPlanMessage(plan, context(plan));
+
+    expect(message.content).toContain("本轮预算、金额上限、整手或费用效率约束（1 次）");
+    expect(message.content).not.toContain("plan-sizing-constrained");
+  });
+
   it("sends an observation briefing without inventing trades", async () => {
     const plan = createPlan("observe");
     const { notifier, sender } = createNotifier();
