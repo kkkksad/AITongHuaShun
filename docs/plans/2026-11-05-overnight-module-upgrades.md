@@ -355,9 +355,11 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** `src/lib/researchQueries.ts`、`src/hooks/useTradingBackend.ts`与查询/真实React回归，状态/产品/本计划；模块26提交后修改hook，保持模块独立。
 
 - [x] 独立React/QueryClient探针：reset成功更新账户后，资金计划和日/周复盘仍正常success显示旧账户。invalidate保留旧data，remove令活动observer仍显示旧结果；cancel+resetQueries能中止旧signal、立即pending无旧data，并重新读，placeholder不复活旧值。
-- [ ] 新增失败回归：活动计划和placeholder、日/周全部period与inactive、无视取消的旧GET迟到、新报告失败不退回旧数据、inactive重挂重新读、reset失败保留缓存、纯市场查询不重抓；覆盖模块26的重置epoch。
-- [ ] 在researchQueries统一账户研究predicate/helper，仅匹配paper-trading-plan/daily-market-review/weekly-paper-review。reset成功先取消这些旧请求，再resetQueries清数据并使活动observer重读；不等待重型新报告结束才结束账户操作，保持当前用户选择和纯市场缓存。
-- [ ] 独立复核、相关查询/账户检查、精确暂存全套验证，独立提交部署；测试仅隔离mock账户，禁止实际重置生产。
+- [x] 新增9项真实Hook和2项predicate回归；Hook最初8红后全绿，覆盖活动计划/placeholder、日/周全部period与inactive、无视取消的旧GET迟到、新报告失败无旧数据、inactive重挂、失败reset及纯市场/选择缓存保持。
+- [x] researchQueries统一三个账户研究前缀；reset成功先await cancelQueries，再resetQueries清除活动和非活动数据，活动observer后台重读，不等待重型新报告完成。模块26的epoch与socket门保持。
+- [x] 独立复核6文件79项通过，无阻断；未实际重置生产。
+- [x] 精确暂存树91服务端文件/1253项、42前端文件/233项、TypeScript与Vite生产构建全部通过，未混入模块30/31。
+- [ ] 独立提交部署，并核验账户保留。
 
 ## 模块28：RSI信号使用实际持仓
 
@@ -378,7 +380,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新19项先13红6绿后全绿，覆盖费用拒买→可负担买入、T+1次日500股退出、额度拒买/拒卖重试、实际持仓/可卖整手/legacy/symbol/reset、暖机/上下轨与中轨等号及std参数。定向7文件155项、服务端类型/diff通过，共享fixture未改。
 - [x] 仅以同symbol实际context.positions决定买入/退出，卖出可卖整手；保留布林指标、首tradable、买入权重、原>=/<=和OR语义。root独立完整读取两文件及19项断言，无阻断。
 - [x] 精确暂存树91服务端文件/1253项、42前端文件/222项、TypeScript与Vite生产构建全部通过，未混入模块25/30。
-- [ ] 单独提交部署并独立核验；保留模拟与真实数据边界。
+- [x] 模块29提交4415a9c7f4317ecc255a6e705a5db5ebe2e9547a已推送并部署；UTC21:19独立校验468个归档文件、三容器healthy、健康200/匿名401，原Paper账户及策略保留。
 
 ## 模块30：动量策略完整历史窗口
 
@@ -388,3 +390,12 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [ ] 先红回归完整过去N/M条、N+1暖身、最旧边界进出窗口、前缀未来数据隔离/reset及真实引擎有费用成交；区分窗口问题与意图持仓问题，不混称时间穿越。
 - [ ] 通道使用排除当前bar的完整历史窗口，保留>=/<=、权重与成本/风控；实际持仓状态如需调整须另证实范围，不暗含策略参数调优。
 - [ ] 独立复核、定向策略/优化器与精确暂存全套检查，单独提交部署；不更换生产选定策略，不保证获利。
+
+## 模块31：手动下单参考本金与费用说明
+
+**Files:** `src/components/PaperAccount.tsx`与必要真实React回归，产品/状态/本计划。
+
+- [x] 独立只读SSR与真实Broker复现：100股×10元、现金1000/1004.99、最低佣金5时表单显示1000且可提交，Broker正确拒绝费用不足；自定义最低17/37bps同样证明界面不是完整成本。实际没有可买/满仓快捷键。
+- [x] 真实app注入自定义费率后确认bootstrap/capabilities/risk API均未提供执行费用；研究榜成本是独立模型，不得用于伪造执行估算。
+- [ ] 最小调整为“参考本金”，金额显示分位，明确不含手续费/滑点、无固定比例预留但需覆盖必要费用，服务端最终核验；不硬编码费率、不扩展费用API或虚构精确可买量。
+- [ ] 真实交互回归验证市价/限价参考值和实际提交参数不变，独立复核、精确暂存全套检查、单独提交部署。

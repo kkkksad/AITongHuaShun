@@ -38,6 +38,7 @@ import {
   upsertOrder,
   type BootstrapDataEvent,
 } from "../lib/bootstrapSynchronization";
+import { resetAccountResearchQueries } from "../lib/researchQueries";
 
 export type ConnectionState = "connecting" | "connected" | "offline";
 
@@ -438,6 +439,7 @@ export function useTradingBackend(
     },
     onSuccess: async (result) => {
       await invalidateReads();
+      await resetAccountResearchQueries(queryClient);
       updateBootstrap((current) => ({
         ...current,
         account: result.account,

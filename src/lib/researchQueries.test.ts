@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   dailyCandidatesQueryOptions,
   dailyMarketReviewQueryOptions,
+  isAccountResearchQuery,
   paperTradingPlanQueryOptions,
   realResearchNewsFeedQueryOptions,
   strategyLeaderboardQueryOptions,
@@ -9,6 +10,33 @@ import {
 } from "./researchQueries";
 
 describe("research query options", () => {
+  it("matches account-dependent research across every weekly period and parameter variant", () => {
+    for (const queryKey of [
+      paperTradingPlanQueryOptions().queryKey,
+      dailyMarketReviewQueryOptions().queryKey,
+      weeklyPaperReviewQueryOptions("current").queryKey,
+      weeklyPaperReviewQueryOptions("previous").queryKey,
+      ["weekly-paper-review", "archived", { limit: 20 }],
+    ]) {
+      expect(isAccountResearchQuery({ queryKey })).toBe(true);
+    }
+  });
+
+  it("excludes market-only research and similarly named unrelated cache keys", () => {
+    for (const queryKey of [
+      strategyLeaderboardQueryOptions().queryKey,
+      dailyCandidatesQueryOptions().queryKey,
+      realResearchNewsFeedQueryOptions().queryKey,
+      ["market-data-quality"],
+      ["paper-auto-execution-status"],
+      ["paper-trading-plan-history"],
+      ["selected-strategy"],
+      [],
+    ]) {
+      expect(isAccountResearchQuery({ queryKey })).toBe(false);
+    }
+  });
+
   it("reuses one strategy leaderboard cache key for the same parameters", () => {
     const strategyView = strategyLeaderboardQueryOptions(120);
     const pipelineView = strategyLeaderboardQueryOptions(120);

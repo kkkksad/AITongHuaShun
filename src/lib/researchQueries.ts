@@ -1,4 +1,4 @@
-import { queryOptions } from "@tanstack/react-query";
+import { queryOptions, type Query, type QueryClient } from "@tanstack/react-query";
 import {
   fetchDailyCandidates,
   fetchDailyMarketReview,
@@ -8,6 +8,19 @@ import {
   fetchWeeklyPaperReview,
   type WeeklyPaperReviewWindow,
 } from "./tradingApi";
+
+export function isAccountResearchQuery({ queryKey }: Pick<Query, "queryKey">): boolean {
+  return queryKey[0] === "paper-trading-plan" ||
+    queryKey[0] === "daily-market-review" ||
+    queryKey[0] === "weekly-paper-review";
+}
+
+/** Retire old account reads and data; new active reports continue independently. */
+export async function resetAccountResearchQueries(queryClient: QueryClient): Promise<void> {
+  const filters = { predicate: isAccountResearchQuery };
+  await queryClient.cancelQueries(filters);
+  void queryClient.resetQueries(filters);
+}
 
 function boundedInteger(value: number, minimum: number, maximum: number): number {
   if (!Number.isFinite(value)) return minimum;

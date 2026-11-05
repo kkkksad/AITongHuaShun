@@ -1,10 +1,18 @@
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery, type QueryKey, type UseQueryResult } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrderRecord } from "../../shared/trading";
 import { fetchRecentOrders, fetchTradingBootstrap, resetPaperAccount, type TradingBootstrap } from "../lib/tradingApi";
 import { useTradingBackend, type TradingBackend } from "./useTradingBackend";
+import {
+  dailyCandidatesQueryOptions,
+  dailyMarketReviewQueryOptions,
+  paperTradingPlanQueryOptions,
+  realResearchNewsFeedQueryOptions,
+  strategyLeaderboardQueryOptions,
+  weeklyPaperReviewQueryOptions,
+} from "../lib/researchQueries";
 
 vi.mock("../lib/tradingApi", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/tradingApi")>(),
@@ -86,16 +94,40 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+interface ResearchSample { accountEpoch: string }
+interface ResearchDefinition {
+  id: string;
+  queryKey: QueryKey;
+  read(signal: AbortSignal): Promise<ResearchSample>;
+  placeholder?: boolean;
+}
+
 describe("useTradingBackend reconnect order snapshots", () => {
   let root: Root;
   let container: HTMLDivElement;
   let client: QueryClient;
   let backend: TradingBackend;
   let mounted: boolean;
+  let researchDefinitions: ResearchDefinition[];
+  let researchResults: Map<string, UseQueryResult<ResearchSample>>;
+
+  function ResearchProbe({ id, queryKey, read, placeholder }: ResearchDefinition) {
+    const result = useQuery({
+      queryKey,
+      queryFn: ({ signal }) => read(signal),
+      staleTime: Infinity,
+      placeholderData: placeholder ? (previousData) => previousData : undefined,
+    });
+    researchResults.set(id, result);
+    return <output data-research={id}>{JSON.stringify({ data: result.data, status: result.status })}</output>;
+  }
 
   function Probe({ enabled = true }: { enabled?: boolean }) {
     backend = useTradingBackend({ enabled });
-    return <pre>{JSON.stringify(backend.orders.map(({ id, status }) => ({ id, status })))}</pre>;
+    return <>
+      <pre>{JSON.stringify(backend.orders.map(({ id, status }) => ({ id, status })))}</pre>
+      {researchDefinitions.map((definition) => <ResearchProbe key={definition.id} {...definition} />)}
+    </>;
   }
 
   beforeEach(() => {
@@ -106,6 +138,8 @@ describe("useTradingBackend reconnect order snapshots", () => {
     vi.mocked(fetchTradingBootstrap).mockReset().mockResolvedValue(bootstrap());
     vi.mocked(fetchRecentOrders).mockReset();
     vi.mocked(resetPaperAccount).mockReset();
+    researchDefinitions = [];
+    researchResults = new Map();
     client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: Infinity } } });
     client.setQueryData(["trading-bootstrap"], bootstrap());
     container = document.createElement("div");
@@ -152,6 +186,26 @@ describe("useTradingBackend reconnect order snapshots", () => {
   }
 
   async function flush() { await act(() => vi.advanceTimersByTimeAsync(1)); }
+
+  function research(id: string, queryKey: QueryKey, placeholder = false) {
+    const next = deferred<ResearchSample>();
+    const read = vi.fn<(signal: AbortSignal) => Promise<ResearchSample>>(() => next.promise);
+    const definition = { id, queryKey, read, placeholder };
+    return { definition, read, next };
+  }
+
+  function seedResearch(definition: ResearchDefinition) {
+    const sample = { accountEpoch: `old-${definition.id}` };
+    client.setQueryData(definition.queryKey, sample);
+    return sample;
+  }
+
+  async function resetSuccessfully() {
+    const account = { ...bootstrap().account, cash: 20_000, equity: 20_000 };
+    vi.mocked(resetPaperAccount).mockResolvedValueOnce({ account, positions: [], orders: [] });
+    await act(async () => backend.resetAccount({ startingCash: 20_000, strategyProfile: "balanced", confirmation: "重置模拟账户" }));
+    await flush();
+  }
 
   function beginInitialRead() {
     client.removeQueries({ queryKey: ["trading-bootstrap"] });
@@ -609,5 +663,202 @@ describe("useTradingBackend reconnect order snapshots", () => {
       expect(client.getQueryData<TradingBootstrap>(["trading-bootstrap"])!.orders).toEqual([]);
     });
     await completion;
+  });
+
+  it("clears active account research including previous-data placeholders without waiting for new reports", async () => {
+    const queries = [
+      research("plan", paperTradingPlanQueryOptions().queryKey, true),
+      research("daily", dailyMarketReviewQueryOptions().queryKey, true),
+      research("weekly", weeklyPaperReviewQueryOptions("previous").queryKey),
+    ];
+    researchDefinitions = queries.map(({ definition }) => definition);
+    for (const definition of researchDefinitions) seedResearch(definition);
+    await render();
+    expect(container.textContent).toContain("old-plan");
+    expect(container.textContent).toContain("old-daily");
+
+    await resetSuccessfully();
+
+    expect(backend.pendingAction).toBe(false);
+    expect(backend.account?.cash).toBe(20_000);
+    for (const { definition, read } of queries) {
+      const result = researchResults.get(definition.id)!;
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(result.data).toBeUndefined();
+      expect(result.status).toBe("pending");
+      expect(result.fetchStatus).toBe("fetching");
+      expect(result.isPlaceholderData).toBe(false);
+      expect(client.getQueryData(definition.queryKey)).toBeUndefined();
+    }
+    expect(container.textContent).not.toContain("old-");
+  });
+
+  it("clears every inactive weekly period while refetching only the currently observed period", async () => {
+    const selected = research("selected-week", weeklyPaperReviewQueryOptions("previous").queryKey);
+    const inactiveKeys: QueryKey[] = [
+      weeklyPaperReviewQueryOptions("current").queryKey,
+      ["weekly-paper-review", "archived-period"],
+      ["weekly-paper-review", "current", "legacy-parameter"],
+    ];
+    researchDefinitions = [selected.definition];
+    seedResearch(selected.definition);
+    for (const queryKey of inactiveKeys) client.setQueryData(queryKey, { accountEpoch: "old-inactive" });
+    await render();
+
+    await resetSuccessfully();
+
+    expect(selected.read).toHaveBeenCalledTimes(1);
+    expect(researchResults.get("selected-week")?.data).toBeUndefined();
+    expect(researchResults.has("selected-week")).toBe(true);
+    for (const key of inactiveKeys) {
+      expect(client.getQueryState(key)).toMatchObject({ data: undefined, status: "pending", fetchStatus: "idle" });
+    }
+  });
+
+  it.each(["before-new", "after-new"])("ignores an aborted old research GET resolving %s account report", async (order) => {
+    const plan = research("plan", paperTradingPlanQueryOptions().queryKey, true);
+    const oldRead = deferred<ResearchSample>();
+    plan.read.mockReturnValueOnce(oldRead.promise);
+    researchDefinitions = [plan.definition];
+    seedResearch(plan.definition);
+    await render();
+    await act(async () => { void researchResults.get("plan")!.refetch(); });
+    const oldSignal = plan.read.mock.calls[0][0];
+
+    await resetSuccessfully();
+
+    expect(oldSignal.aborted).toBe(true);
+    expect(plan.read).toHaveBeenCalledTimes(2);
+    expect(plan.read.mock.calls[1][0].aborted).toBe(false);
+    if (order === "before-new") {
+      await act(async () => oldRead.resolve({ accountEpoch: "late-old-account" }));
+      await flush();
+      expect(researchResults.get("plan")?.data).toBeUndefined();
+    }
+    const latest = { accountEpoch: "new-account" };
+    await act(async () => plan.next.resolve(latest));
+    await flush();
+    if (order === "after-new") {
+      await act(async () => oldRead.resolve({ accountEpoch: "late-old-account" }));
+      await flush();
+    }
+    expect(researchResults.get("plan")?.data).toEqual(latest);
+    expect(client.getQueryData(plan.definition.queryKey)).toEqual(latest);
+    expect(container.textContent).not.toContain("late-old");
+  });
+
+  it("keeps old account research cleared when the replacement report fails", async () => {
+    const review = research("daily", dailyMarketReviewQueryOptions().queryKey, true);
+    researchDefinitions = [review.definition];
+    seedResearch(review.definition);
+    await render();
+
+    await resetSuccessfully();
+    await act(async () => review.next.reject(new Error("new account report fixture failure")));
+    await flush();
+
+    expect(researchResults.get("daily")?.status).toBe("error");
+    expect(researchResults.get("daily")?.data).toBeUndefined();
+    expect(researchResults.get("daily")?.isPlaceholderData).toBe(false);
+    expect(client.getQueryData(review.definition.queryKey)).toBeUndefined();
+    expect(container.textContent).not.toContain("old-daily");
+    expect(backend.pendingAction).toBe(false);
+    expect(backend.notice).toContain("新的本地模拟");
+  });
+
+  it("refetches a previously unmounted account report without reviving its old placeholder", async () => {
+    const plan = research("plan", paperTradingPlanQueryOptions().queryKey, true);
+    seedResearch(plan.definition);
+    researchDefinitions = [plan.definition];
+    await render();
+    researchDefinitions = [];
+    await render();
+
+    await resetSuccessfully();
+
+    expect(plan.read).not.toHaveBeenCalled();
+    expect(client.getQueryData(plan.definition.queryKey)).toBeUndefined();
+    researchDefinitions = [plan.definition];
+    await render();
+    expect(plan.read).toHaveBeenCalledTimes(1);
+    expect(researchResults.get("plan")?.data).toBeUndefined();
+    expect(container.textContent).not.toContain("old-plan");
+    await act(async () => plan.next.resolve({ accountEpoch: "new-mounted-account" }));
+    await flush();
+    expect(researchResults.get("plan")?.data?.accountEpoch).toBe("new-mounted-account");
+  });
+
+  it("cancels and clears an inactive weekly GET even when its transport ignores abort", async () => {
+    const queryKey: QueryKey = weeklyPaperReviewQueryOptions("current").queryKey;
+    const oldRead = deferred<ResearchSample>();
+    const read = vi.fn<(context: { signal: AbortSignal }) => Promise<ResearchSample>>(() => oldRead.promise);
+    client.setQueryData(queryKey, { accountEpoch: "old-inactive-week" });
+    const completion = client.fetchQuery({ queryKey, queryFn: read, staleTime: 0 }).catch(() => undefined);
+    await render();
+
+    await resetSuccessfully();
+
+    expect(read.mock.calls[0][0].signal.aborted).toBe(true);
+    expect(client.getQueryState(queryKey)).toMatchObject({ data: undefined, status: "pending", fetchStatus: "idle" });
+    await act(async () => oldRead.resolve({ accountEpoch: "late-inactive-old" }));
+    await completion;
+    expect(client.getQueryData(queryKey)).toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves account research and existing requests when the account reset fails", async () => {
+    const plan = research("plan", paperTradingPlanQueryOptions().queryKey, true);
+    const old = seedResearch(plan.definition);
+    const inactiveKey: QueryKey = weeklyPaperReviewQueryOptions("current").queryKey;
+    const inactive = { accountEpoch: "untouched-inactive" };
+    client.setQueryData(inactiveKey, inactive);
+    researchDefinitions = [plan.definition];
+    await render();
+    await act(async () => { void researchResults.get("plan")!.refetch(); });
+    vi.mocked(resetPaperAccount).mockRejectedValueOnce(new Error("reset fixture failure"));
+    let failure: unknown;
+    await act(async () => {
+      try {
+        await backend.resetAccount({ startingCash: 20_000, strategyProfile: "balanced", confirmation: "重置模拟账户" });
+      } catch (error) { failure = error; }
+    });
+    await flush();
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(client.getQueryData(plan.definition.queryKey)).toBe(old);
+    expect(client.getQueryData(inactiveKey)).toBe(inactive);
+    expect(plan.read).toHaveBeenCalledTimes(1);
+    expect(plan.read.mock.calls[0][0].aborted).toBe(false);
+    expect(researchResults.get("plan")?.data).toBe(old);
+    expect(backend.account?.cash).toBe(10_000);
+  });
+
+  it("preserves market research caches, in-flight news and unrelated strategy selection", async () => {
+    const plan = research("plan", paperTradingPlanQueryOptions().queryKey, true);
+    const market = [
+      research("leaderboard", strategyLeaderboardQueryOptions().queryKey),
+      research("candidates", dailyCandidatesQueryOptions().queryKey),
+      research("news", realResearchNewsFeedQueryOptions().queryKey, true),
+      research("quality", ["market-data-quality"]),
+    ];
+    researchDefinitions = [plan.definition, ...market.map(({ definition }) => definition)];
+    seedResearch(plan.definition);
+    const previous = market.map(({ definition }) => seedResearch(definition));
+    const selection = { executionStrategy: "momentum", weeklyPeriod: "previous" };
+    client.setQueryData(["research-strategy-selection"], selection);
+    await render();
+    await act(async () => { void researchResults.get("news")!.refetch(); });
+
+    await resetSuccessfully();
+
+    expect(plan.read).toHaveBeenCalledTimes(1);
+    for (let index = 0; index < market.length; index++) {
+      const { definition, read } = market[index];
+      expect(client.getQueryData(definition.queryKey)).toBe(previous[index]);
+      expect(researchResults.get(definition.id)?.data).toBe(previous[index]);
+      expect(read).toHaveBeenCalledTimes(definition.id === "news" ? 1 : 0);
+    }
+    expect(market[2].read.mock.calls[0][0].aborted).toBe(false);
+    expect(client.getQueryData(["research-strategy-selection"])).toBe(selection);
   });
 });
