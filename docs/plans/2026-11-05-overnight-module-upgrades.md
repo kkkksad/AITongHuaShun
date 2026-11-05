@@ -275,21 +275,32 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 渲染时统一使用currentPage=min(page,totalPages-1)切片/标签/按钮；effect同步原state避免清空后增长回弹。独立代理复核3文件13项通过，无交易请求或生产状态变更。
 - [x] 精确暂存树80服务端文件/1094项、40前端文件/186项、TypeScript与Vite生产构建全部通过，未混入模块21。
 - [ ] 单独提交部署并独立核验。
+- [x] 模块20提交98ef6a921cc98a1200364ee6906b9557e0506138已推送并部署；UTC20:29独立校验450个归档文件、三容器healthy、健康200/匿名401，原Paper账户及策略保留。
 
 ## 模块21：监控路由标签有界与实例隔离
 
 **Files:** `server/app.ts`、`server/metrics.ts`、必要监控helper及回归，架构/状态/本计划。
 
 - [x] 内存app.inject证明未知404路径fallback到原始request.url：Prometheus保留含测试query的完整URL、不同query产生不同永久标签；轻量telemetry虽去query仍保留未知原始路径。第二新app的metrics包含第一app标记，因registry全局共享。
-- [ ] 先写失败回归：未知404/未认证401及大量不同path/query聚合固定unknown桶，不记录原始请求值；已注册参数路由保留模板；method规范化/计时及已有排除规则保持。
-- [ ] app生命周期使用独立metrics实例，HTTP、WS、订单、账户与风控更新统一同一实例；保留指标名/格式，必要保留旧模块函数兼容，但app不再共享全局registry。未知路由统一由安全模板helper输出，不复制原始URL。
-- [ ] 独立复核、定向认证/monitoring/metrics与精确暂存全套验证，单独提交部署；不新增直方图/外部监控账号、不修改认证与真实交易权限，不把未知请求query输出到诊断。
+- [x] 首6项真实app集成全部先红后绿，新增3项collector回归；70个未知path/query共用固定标签且不淘汰业务telemetry，401保护、参数模板、method有限集合/OTHER、转义与秒累计保持。
+- [x] app生命周期使用独立metrics实例，HTTP、WS、订单、账户与风控更新统一同一实例；保留指标名和旧模块函数的独立默认实例。未知路由统一由安全模板helper输出，不复制原始URL。定向34项与TypeScript通过；独立复核初核39项通过，另外真实429/秒计时和legacy隔离探针通过。
+- [x] 独立复核39项、额外真实429/耗时/WS认证拒绝探针通过。精确暂存树82服务端文件/1103项、40前端文件/186项、TypeScript与Vite生产构建全部通过，未混入模块22/24。
+- [ ] 单独提交部署；不新增直方图/外部监控账号、不修改认证与真实交易权限，不把未知请求query输出到诊断。
 
 ## 模块22：内存账户限价卖单只预占持仓
 
-**Files:** `server/store.ts`与Store/Broker生命周期回归，架构/状态/本计划。生产JSON实现已区分买卖，本模块不更改其经济规则。
+**Files:** `server/store/inMemoryTradingStore.ts`与新`server/broker/paperBroker.limitReservations.test.ts`生命周期回归，架构/状态/本计划。生产JSON实现已区分买卖，本模块不更改其经济规则。
 
 - [x] 真实Broker双实现探针：原有BUY100×40占用4000时，新增SELL100×1642令InMemory可用现金643860→479660，JSON仍643860；重复SELL两边均由reservedSellQuantity拒绝，不能称为超卖。旧JSON载入会重算pending BUY冻结，未重现此错。
 - [ ] 先新增失败回归：SELL创建/撤销/拒绝/成交不占用或释放其他BUY冻结；BUY创建/撤销/拒绝/成交仍保留已有本金冻结语义，重复SELL继续受持仓预占检查。
 - [ ] 仅在InMemory四处限价现金冻结/释放条件增加side=buy；遵循现有JSON实现，不修改费用模型或风控额度。无生产重置、真实下单或账户策略变更。
 - [ ] 定向Store/Broker/契约及独立复核、精确暂存全套检查，再单独提交部署。另证实的限价买单佣金缺口独立分析，不以本模块宣称费用已完善。
+
+## 模块24：实时通道重连订单快照
+
+**Files:** `shared/trading.ts`、`server/app.ts`、`src/hooks/useTradingBackend.ts`与新真实app/React回归，架构/产品/状态/本计划。须在模块21提交后修改重叠app文件。
+
+- [x] 独立只读React+QueryClient探针：重连按真实握手发送market/account/positions后，资金和持仓更新、连接显示正常，订单仍是断线前pending；没有REST补读，bootstrap也不轮询。
+- [ ] 新增失败回归：服务端每次握手发送与REST相同上限的最新订单快照；断线期间成交/撤销、新增订单或账户清空后重连正确替换订单。前端忽略旧连接及卸载后快照，随后order.updated继续upsert。
+- [ ] 在TradingEvent新增`orders.snapshot`，认证成功的连接握手同步发送`broker.getOrders(50)`，hook仅替换orders字段，保留当前连接身份保护；不新增REST并发覆盖，不改账户或下单规则。核对实际REST默认上限后实施。
+- [ ] 定向app/WebSocket/React及独立复核、精确暂存全套检查，再单独提交部署。初次bootstrap在途覆盖是现有全量同步议题，如真实回归证实需明确单独范围，不能假称一次快照解决所有竞态。

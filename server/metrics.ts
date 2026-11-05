@@ -33,7 +33,10 @@ interface GaugeMetric {
 type Metric = CounterMetric | GaugeMetric;
 
 function labelKey(labels: MetricLabel, labelNames: string[]): string {
-  return labelNames.map((n) => `${n}="${labels[n] ?? ""}"`).join(",");
+  return labelNames.map((name) => {
+    const value = (labels[name] ?? "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/"/g, '\\"');
+    return `${name}="${value}"`;
+  }).join(",");
 }
 
 class MetricsRegistry {
@@ -98,118 +101,152 @@ class MetricsRegistry {
   }
 }
 
-// ─── Singleton registry ────────────────────────────────────────────────────
+const HTTP_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"]);
 
-const registry = new MetricsRegistry();
-
-// HTTP metrics
-registry.registerCounter(
-  "http_requests_total",
-  "Total HTTP requests",
-  ["method", "route", "status"],
-);
-registry.registerCounter(
-  "http_request_duration_seconds_total",
-  "Total HTTP request duration in seconds",
-  ["method", "route", "status"],
-);
-
-// WebSocket metrics
-registry.registerGauge(
-  "ws_connections",
-  "Active WebSocket connections",
-);
-
-// Trading metrics
-registry.registerCounter(
-  "orders_total",
-  "Total orders submitted",
-  ["side", "status"],
-);
-registry.registerCounter(
-  "order_cancellations_total",
-  "Total order cancellations",
-);
-
-// Account metrics
-registry.registerGauge(
-  "account_equity",
-  "Current account equity in CNY",
-);
-registry.registerGauge(
-  "account_cash",
-  "Current account cash in CNY",
-);
-registry.registerGauge(
-  "account_positions_count",
-  "Number of open positions",
-);
-
-// Risk metrics
-registry.registerGauge(
-  "risk_circuit_breaker",
-  "Circuit breaker active (1 = tripped, 0 = normal)",
-);
-
-// ─── Public API ────────────────────────────────────────────────────────────
-
-export function recordHttpRequest(
-  method: string,
-  route: string,
-  status: number,
-  durationSec: number,
-): void {
-  registry.inc("http_requests_total", {
-    method: method.toUpperCase(),
-    route,
-    status: String(status),
-  });
-  registry.inc("http_request_duration_seconds_total", {
-    method: method.toUpperCase(),
-    route,
-    status: String(status),
-  }, durationSec);
+/** Only pass a registered route template, never a request URL. */
+export function resolveHttpMetricRoute(routeTemplate?: string): string {
+  return routeTemplate?.split("?")[0] || "/__unmatched__";
 }
 
-export function recordWebSocketConnection(delta: number): void {
-  const current = getMetricValue("ws_connections") ?? 0;
-  registry.set("ws_connections", Math.max(0, current + delta));
+function normalizeHttpMethod(method: string): string {
+  const normalized = method.toUpperCase();
+  return HTTP_METHODS.has(normalized) ? normalized : "OTHER";
 }
 
-export function recordOrder(side: string, status: string): void {
-  registry.inc("orders_total", { side, status });
-}
+// Each app owns its registry; the module functions below retain legacy use.
+export function createMetricsCollector() {
+  const registry = new MetricsRegistry();
 
-export function recordOrderCancellation(): void {
-  registry.inc("order_cancellations_total");
-}
+  // HTTP metrics
+  registry.registerCounter(
+    "http_requests_total",
+    "Total HTTP requests",
+    ["method", "route", "status"],
+  );
+  registry.registerCounter(
+    "http_request_duration_seconds_total",
+    "Total HTTP request duration in seconds",
+    ["method", "route", "status"],
+  );
 
-export function recordAccountEquity(equity: number): void {
-  registry.set("account_equity", equity);
-}
+  // WebSocket metrics
+  registry.registerGauge(
+    "ws_connections",
+    "Active WebSocket connections",
+  );
 
-export function recordAccountCash(cash: number): void {
-  registry.set("account_cash", cash);
-}
+  // Trading metrics
+  registry.registerCounter(
+    "orders_total",
+    "Total orders submitted",
+    ["side", "status"],
+  );
+  registry.registerCounter(
+    "order_cancellations_total",
+    "Total order cancellations",
+  );
 
-export function recordAccountPositions(count: number): void {
-  registry.set("account_positions_count", count);
-}
+  // Account metrics
+  registry.registerGauge(
+    "account_equity",
+    "Current account equity in CNY",
+  );
+  registry.registerGauge(
+    "account_cash",
+    "Current account cash in CNY",
+  );
+  registry.registerGauge(
+    "account_positions_count",
+    "Number of open positions",
+  );
 
-export function recordCircuitBreaker(active: boolean): void {
-  registry.set("risk_circuit_breaker", active ? 1 : 0);
-}
+  // Risk metrics
+  registry.registerGauge(
+    "risk_circuit_breaker",
+    "Circuit breaker active (1 = tripped, 0 = normal)",
+  );
 
-export function getMetricsText(): string {
-  return registry.export();
-}
+  // ─── Public API ────────────────────────────────────────────────────────────
 
-function getMetricValue(name: string): number | undefined {
-  const metric = registry.get(name);
-  if (!metric) return undefined;
-  // For gauge with no labels, return first value
-  for (const v of metric.values.values()) {
-    return v;
+  function recordHttpRequest(
+    method: string,
+    route: string,
+    status: number,
+    durationSec: number,
+  ): void {
+    const labels = {
+      method: normalizeHttpMethod(method),
+      route: resolveHttpMetricRoute(route),
+      status: String(status),
+    };
+    registry.inc("http_requests_total", labels);
+    registry.inc("http_request_duration_seconds_total", labels, durationSec);
   }
-  return undefined;
+
+  function recordWebSocketConnection(delta: number): void {
+    const current = getMetricValue("ws_connections") ?? 0;
+    registry.set("ws_connections", Math.max(0, current + delta));
+  }
+
+  function recordOrder(side: string, status: string): void {
+    registry.inc("orders_total", { side, status });
+  }
+
+  function recordOrderCancellation(): void {
+    registry.inc("order_cancellations_total");
+  }
+
+  function recordAccountEquity(equity: number): void {
+    registry.set("account_equity", equity);
+  }
+
+  function recordAccountCash(cash: number): void {
+    registry.set("account_cash", cash);
+  }
+
+  function recordAccountPositions(count: number): void {
+    registry.set("account_positions_count", count);
+  }
+
+  function recordCircuitBreaker(active: boolean): void {
+    registry.set("risk_circuit_breaker", active ? 1 : 0);
+  }
+
+  function getMetricsText(): string {
+    return registry.export();
+  }
+
+  function getMetricValue(name: string): number | undefined {
+    const metric = registry.get(name);
+    if (!metric) return undefined;
+    // For gauge with no labels, return first value
+    for (const v of metric.values.values()) {
+      return v;
+    }
+    return undefined;
+  }
+
+  return {
+    recordHttpRequest,
+    recordWebSocketConnection,
+    recordOrder,
+    recordOrderCancellation,
+    recordAccountEquity,
+    recordAccountCash,
+    recordAccountPositions,
+    recordCircuitBreaker,
+    getMetricsText,
+  };
 }
+
+export const {
+  recordHttpRequest,
+  recordWebSocketConnection,
+  recordOrder,
+  recordOrderCancellation,
+  recordAccountEquity,
+  recordAccountCash,
+  recordAccountPositions,
+  recordCircuitBreaker,
+  getMetricsText,
+} = createMetricsCollector();

@@ -100,7 +100,7 @@ shared/
 2. `MARKET_DATA_PROVIDER` 选择 `MockMarket` 或 `AkShareMarketProvider`。
 3. AkShare 模式通过 FastAPI 桥接读取行情，且必须使用 `MARKET_MODE=paper`。Fastify 行情提供者最多执行一轮在途请求，本轮完成后才安排下一轮；整轮失败有界退避并保留最后成功快照，任一路恢复后回到正常轮询周期。
 4. `/api/market/quality` 对当前内存快照生成只读质量报告，使用私有 5 秒缓存和 15 秒 stale-while-revalidate；它不触发新的行情请求，也不写入策略或订单状态。
-5. Fastify 在请求完成时同时更新 Prometheus 累计指标和应用实例级有限遥测；`/api/system/performance` 自身、健康检查、认证和指标端点不进入业务性能窗口。
+5. Fastify 在请求完成时同时更新应用实例独立的 Prometheus 累计指标和有限遥测；标签只使用已注册路由模板，未知路径统一`/__unmatched__`且不进入业务性能窗口，不保存原始URL/query。`/api/system/performance` 自身、健康检查、认证和指标端点不进入业务性能窗口。
 6. `/api/research/real-data-feed` 优先选择当前持仓，再按实时成交额补足最多 8 只新闻观察标的，并聚合最多 80 条多源新闻；`/api/research/market-regime` 通过桥接读取有界行业/个股历史日线；`/api/research/stock-trend` 先按名称或代码解析单只 A 股，再读取默认 360 日、最多 500 日前复权日线；`/api/research/strategy-robustness` 用固定参数运行三个不重叠真实窗口；`/api/research/cross-market-strategy-context` 组合全球指数与国内期货主连；`/api/research/external-market-impact` 严格用早于 A 股目标日期的美股/亚洲指数日线和沪深 300 对齐；轻量 `/api/research/crypto-market` 只读取 BTC/ETH 24 小时快照并有 5 秒上限；`/api/research/ipo-subscriptions` 读取有界新股表。这些路径都只读且不接触账户或订单。
 7. Fastify 验证会话 Cookie 与 WebSocket 来源后，将行情通过 `/ws` 广播给 React。
 8. React 通过带 Cookie、CSRF 和客户端幂等键的 `POST /api/orders` 提交模拟订单；或 `PaperAutoExecutor` 在启用后按 A 股交易时段把纸面计划提交成本地模拟订单。

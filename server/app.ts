@@ -28,15 +28,8 @@ import {
 } from "./auth";
 import type { ServerConfig } from "./config";
 import {
-  getMetricsText,
-  recordAccountCash,
-  recordAccountEquity,
-  recordAccountPositions,
-  recordCircuitBreaker,
-  recordHttpRequest,
-  recordOrder,
-  recordOrderCancellation,
-  recordWebSocketConnection,
+  createMetricsCollector,
+  resolveHttpMetricRoute,
 } from "./metrics";
 import {
   contentType,
@@ -302,6 +295,17 @@ export async function buildTradingApp(
     trustProxy: options.config.TRUST_PROXY,
   });
   const system = options.system ?? createTradingSystem(options.config, options.clock);
+  const {
+    getMetricsText,
+    recordAccountCash,
+    recordAccountEquity,
+    recordAccountPositions,
+    recordCircuitBreaker,
+    recordHttpRequest,
+    recordOrder,
+    recordOrderCancellation,
+    recordWebSocketConnection,
+  } = createMetricsCollector();
   const hub = new WebSocketHub();
   const researchStore = new InMemoryResearchStore();
   const requestTelemetry = new RequestTelemetry();
@@ -400,7 +404,7 @@ export async function buildTradingApp(
   // ── HTTP request timing hook ─────────────────────────────
   app.addHook("onRequest", async (request) => {
     requestStartTimes.set(request, performance.now());
-    const route = request.routeOptions.url ?? request.url;
+    const route = resolveHttpMetricRoute(request.routeOptions.url);
     if (shouldTrackTelemetryRequest(request.method, route)) {
       telemetryRequests.add(request);
       requestTelemetry.startRequest();
@@ -411,7 +415,7 @@ export async function buildTradingApp(
     const start = requestStartTimes.get(request);
     if (start !== undefined) {
       const durationMs = Math.max(0, performance.now() - start);
-      const route = request.routeOptions.url ?? request.url;
+      const route = resolveHttpMetricRoute(request.routeOptions.url);
       recordHttpRequest(
         request.method,
         route,
