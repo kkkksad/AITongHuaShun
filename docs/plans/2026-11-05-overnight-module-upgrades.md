@@ -500,15 +500,17 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新13项真实Engine先10红3绿后全绿，仅首次tradable绑定到reset，缺失/不可交易等待，不追加别股历史；保留period/std、阈值等号/退出OR、权重/实际可卖整手。
 - [x] 覆盖误买/误卖、同股真实进出、缺失恢复、首次暖机、其他持仓、平仓后重入/reset；作者244项/类型/diff，独立123项及root完整diff/测试复核通过。3组含成本旧新完整报告相同（period3/6/默认20，12/3/10实际成交）。
 - [x] 精确暂存树99服务端文件1442项、44前端文件249项、TypeScript/Vite全过，未混入41/42/43/44。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块40提交db755b14cdd3ecf48e5845bec69af5b144157a32已推送并部署，UTC22:29独立校验479个归档文件、三healthy/健康200/匿名401/原Paper账户。
 
 ## 模块41：自动执行与Broker费用舍入一致
 
 **Files:** `server/trading/paperAutoExecutor.ts`的preflightOperations与真实runOnce回归，架构/安全/状态/本计划。
 
 - [x] 独立真实Executor+Broker证实：默认166.72报价100股滑点后166.80、Broker佣金5.00而预算5.004，恰够16685却误跳；两笔166.76报价佣金应5.01却少预算，第二笔可真差0.01后才被Broker拒。既有110项无覆盖。
-- [ ] 先真实runOnce失败测试精确够钱、多单累计、真正不足先跳、合法fractional最低佣金与二进制噪声。仅预算复用executionCosts的notional/cashDebit与hasSufficientCash，扣减相同cashDebit；保留消息/阶段/幂等/笔数/SELL/原projectedMarketValue名义口径。
-- [ ] 独立复核、精确全套检查、单独提交部署；不变费率、生产配置、策略选择或账户。
+- [x] 新12项真实runOnce先7红5绿后全绿，覆盖精确够钱、多单累计、真正不足先跳、合法fractional最低佣金与二进制噪声。仅预算复用executionCosts的notional/cashDebit与hasSufficientCash，扣减相同cashDebit；保留消息/阶段/幂等/笔数/SELL/原projectedMarketValue名义口径。
+- [x] 作者229项/类型/diff，独立347项及额外7个非零reserve/真实小数缺口/各cap优先/真实SELL预算隔离探针通过；root完整实现和12新测试复核无阻断。
+- [x] 精确暂存树100服务端文件1454项、44前端文件249项、TypeScript/Vite全过，未混入42/43/44/45/46。
+- [ ] 单独提交部署与独立核验；不变费率、生产配置、策略选择或账户。
 
 ## 模块42：动量单标的历史绑定
 
@@ -553,3 +555,19 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 独立真实Engine：默认Grid，A恒100/B恒10，onStart以A100定base后次barB优先或A=false，误生成5笔B100@10/佣金25；stable及单股0单。
 - [ ] 先核对onStart/reset生命周期，先红后绿让base与首标的同步绑定；后续只同股，缺失false等待，reset清全部原状态与绑定。不扩成多股网格或改网格级差/数量/限额。
 - [ ] 独立复核、稳定完整报告、精确全检查与单独提交部署。
+
+## 模块47：海龟实际持仓信号
+
+**Files:** 模块44发布后的`TurtleStrategy.ts`、真实Engine持仓专项及仅必要旧通道fixture更新，架构/状态/本计划。
+
+- [x] 独立真实Engine：Turtle2/1/filter0/weight1、cash2005、9/9.9/10.01/10.2，首次买200+费被拒却flag=true，下一仍突破可买100而无信号；内存仅实际持仓校准对照真实成交100@10.2/费5/现金980。
+- [ ] 等44发布后先红后绿，读取绑定股实际quantity，退出用min(actual,available??actual)100整手；去掉intent/未使用entryPrice。保留完整过去N/M窗口、filter两退出分支、±1%估算/比较/权重；持续突破/退出条件在拒单后仍可检查，T+1锁定等待。
+- [ ] 验证费用/风险拒买后重试、T+1次日退出/拒卖后实际仓、部分可卖/他股隔离、reset与正常稳定旧新报告。旧窗口断言保留，若需持仓只显式控制真实context或Broker种仓，不放松原经济断言。独立复核、精确全检查、单独发布。
+
+## 模块48：均线交叉实际持仓信号
+
+**Files:** 模块43发布后的`MovingAverageCrossStrategy.ts`、真实Engine持仓专项及原symbol回归必要信号形状更新，架构/状态/本计划。
+
+- [x] 独立真实Engine：MA1/2/.5，同日10/9/10/9/10，买500后死叉卖被T+1拒、intent=false，下一金叉实际仍持500却再买400，末900/现金990；仅实际持仓校准对照持500/现金4995。
+- [ ] 等43发布后先红后绿，绑定股实际quantity替代intent gate，退出用实际可卖100整手。保留strict金叉prevFast<=prevSlow且fast>slow、死叉prevFast>=prevSlow且fast<slow及slow+1暖机；不在无新交叉时补卖或持续重买，不套持续突破重试语义。
+- [ ] 验证T+1后不叠买/下一真实死叉退出、拒买后下一真金叉、部分可卖/他股/外部清仓、reset与正常含成本旧新完整报告；独立复核、精确全检查、单独发布。

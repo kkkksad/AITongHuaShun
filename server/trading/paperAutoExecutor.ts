@@ -10,6 +10,7 @@ import {
 } from "../../shared/trading";
 import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
+import { executionCosts, hasSufficientCash } from "../broker/executionCosts";
 import {
   buildExternalMarketNotificationImpact,
   summarizePaperOrders,
@@ -1299,17 +1300,13 @@ export class PaperAutoExecutor {
       }
 
       if (side === "buy") {
-        const fillPrice = Number((
-          quote.price * (1 + this.options.config.SLIPPAGE_BPS / 10_000)
-        ).toFixed(2));
-        const notional = fillPrice * operation.quantity;
-        const commission = Math.max(
-          this.options.config.MIN_COMMISSION,
-          notional * this.options.config.COMMISSION_RATE,
-        );
-        const requiredCash = notional + commission;
+        const { notional, cashDebit: requiredCash } = executionCosts(request, quote.price, {
+          commissionRate: this.options.config.COMMISSION_RATE,
+          minimumCommission: this.options.config.MIN_COMMISSION,
+          slippageBps: this.options.config.SLIPPAGE_BPS,
+        });
         const spendableCash = Math.max(0, projectedCash - cashReserve);
-        if (requiredCash > spendableCash + 0.001) {
+        if (!hasSufficientCash(spendableCash, requiredCash)) {
           skippedOperations.push(paperAutoExecutionSkip(
             operation,
             `累计订单后可用资金不足，需 ${requiredCash.toFixed(2)} 元，可用于新买单 ${spendableCash.toFixed(2)} 元；未创建订单`,
