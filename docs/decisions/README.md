@@ -14,6 +14,7 @@
 - [0008：手动 Paper 策略与市场路由解耦](0008-manual-paper-strategy-routing.md)
 - [0009：多检查点 Paper 通知与事件额度](0009-multi-checkpoint-paper-notifications.md)
 - [0010：Paper 账户取消固定比例现金预留](0010-no-fixed-paper-cash-reserve.md)
+- [0011：回测胜率以已闭合FIFO配对为分母](0011-closed-fifo-backtest-win-rate.md)
 
 ## 新建格式
 

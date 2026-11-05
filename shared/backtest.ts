@@ -109,13 +109,13 @@ export interface BacktestMetrics {
   maxDrawdownPercent: number;
   /** 卡尔玛比率（年化收益/最大回撤） */
   calmarRatio: number;
-  /** 总交易次数 */
+  /** 已成交订单笔数（买入和卖出分别计数，包含尚未平仓的买入） */
   totalTrades: number;
-  /** 盈利交易次数 */
+  /** 费用后盈利的已闭合 FIFO 买卖匹配片段数 */
   winningTrades: number;
-  /** 亏损交易次数 */
+  /** 费用后亏损或持平的已闭合 FIFO 买卖匹配片段数 */
   losingTrades: number;
-  /** 胜率 */
+  /** 盈利片段数 / 已闭合 FIFO 匹配片段数；无闭合样本时为 0 */
   winRate: number;
   /** 平均盈利 */
   avgWin: number;

@@ -1,6 +1,7 @@
 ﻿import { describe, it, expect } from "vitest";
 import type { MarketSnapshot } from "../../shared/trading";
 import type {
+  BacktestConfig,
   BacktestStrategy,
   StrategyContext,
   StrategySignal,
@@ -60,6 +61,48 @@ function generateSnapshots(count: number, seedPrice = 100): MarketSnapshot[] {
   }
 
   return snapshots;
+}
+
+function createScheduledTradeEngine(
+  prices: number[],
+  signals: (StrategySignal | undefined)[],
+  config: Partial<BacktestConfig> = {},
+): BacktestEngine {
+  const snapshots: MarketSnapshot[] = prices.map((price, index) => {
+    const marketTime = new Date(Date.UTC(2024, 0, index + 2, 7)).toISOString();
+    return {
+      mode: "paper",
+      sequence: index + 1,
+      marketTime,
+      quotes: [{
+        symbol: "600519",
+        name: "贵州茅台",
+        tradable: true,
+        price,
+        previousClose: prices[Math.max(0, index - 1)],
+        changePercent: 0,
+        volume: 10_000_000,
+        updatedAt: marketTime,
+      }],
+    };
+  });
+  const strategy: BacktestStrategy = {
+    name: "确定性闭合样本",
+    onBar: ({ barIndex }) => signals[barIndex] ? [signals[barIndex]!] : [],
+  };
+  return new BacktestEngine(snapshots, strategy, {
+    initialCapital: 1_000_000,
+    maxOrderNotional: 1_000_000,
+    maxPositionWeight: 1,
+    commissionRate: 0,
+    minimumCommission: 0,
+    slippageBps: 0,
+    ...config,
+  });
+}
+
+function marketSignal(side: "buy" | "sell", quantity = 100): StrategySignal {
+  return { symbol: "600519", side, quantity, type: "market" };
 }
 
 // ── 测试策略 ──
@@ -204,6 +247,106 @@ describe("HistoricalDataProvider", () => {
 });
 
 describe("BacktestEngine", () => {
+  describe("已闭合 FIFO 配对胜率", () => {
+    it.each([
+      { close: 110, winRate: 1, winningTrades: 1, losingTrades: 0 },
+      { close: 90, winRate: 0, winningTrades: 0, losingTrades: 1 },
+    ])("一次买卖闭合：收盘 $close 的胜率为 $winRate", (expected) => {
+      const report = createScheduledTradeEngine(
+        [100, expected.close],
+        [marketSignal("buy"), marketSignal("sell")],
+      ).run();
+
+      expect(report.metrics.totalTrades).toBe(2);
+      expect(report.metrics.winningTrades).toBe(expected.winningTrades);
+      expect(report.metrics.losingTrades).toBe(expected.losingTrades);
+      expect(report.metrics.winRate).toBe(expected.winRate);
+    });
+
+    it("一赢一亏为50%，尚未平仓的买单不进入胜率分母", () => {
+      const report = createScheduledTradeEngine(
+        [100, 110, 100, 90, 90],
+        [marketSignal("buy"), marketSignal("sell"), marketSignal("buy"),
+          marketSignal("sell"), marketSignal("buy")],
+      ).run();
+
+      expect(report.metrics.totalTrades).toBe(5);
+      expect(report.metrics.winningTrades).toBe(1);
+      expect(report.metrics.losingTrades).toBe(1);
+      expect(report.metrics.winRate).toBe(0.5);
+      expect(report.finalPositions[0].quantity).toBe(100);
+    });
+
+    it("只有未平仓买入时没有已闭合样本", () => {
+      const report = createScheduledTradeEngine(
+        [100, 110],
+        [marketSignal("buy")],
+      ).run();
+
+      expect(report.metrics.totalTrades).toBe(1);
+      expect(report.metrics.winningTrades).toBe(0);
+      expect(report.metrics.losingTrades).toBe(0);
+      expect(report.metrics.winRate).toBe(0);
+    });
+
+    it("一笔卖出跨两个买入批次时保留两个 FIFO 闭合配对", () => {
+      const report = createScheduledTradeEngine(
+        [100, 105, 110],
+        [marketSignal("buy"), marketSignal("buy"), marketSignal("sell", 200)],
+      ).run();
+
+      expect(report.metrics.totalTrades).toBe(3);
+      expect(report.metrics.winningTrades).toBe(2);
+      expect(report.metrics.losingTrades).toBe(0);
+      expect(report.metrics.avgWin).toBe(750);
+      expect(report.metrics.winRate).toBe(1);
+    });
+
+    it("价格毛盈利不足以支付往返佣金时计为净亏损", () => {
+      const report = createScheduledTradeEngine(
+        [100, 100.05],
+        [marketSignal("buy"), marketSignal("sell")],
+        { minimumCommission: 5 },
+      ).run();
+
+      expect(report.metrics.totalCommission).toBe(10);
+      expect(report.metrics.winningTrades).toBe(0);
+      expect(report.metrics.losingTrades).toBe(1);
+      expect(report.metrics.avgLoss).toBeCloseTo(5);
+      expect(report.metrics.winRate).toBe(0);
+    });
+
+    it("部分卖出按匹配数量分摊买入费用，并只统计已卖出的配对", () => {
+      const report = createScheduledTradeEngine(
+        [100, 100.05, 100.1],
+        [marketSignal("buy", 300), marketSignal("sell"), marketSignal("sell")],
+        { minimumCommission: 5 },
+      ).run();
+
+      expect(report.metrics.totalCommission).toBe(15);
+      expect(report.metrics.totalTrades).toBe(3);
+      expect(report.metrics.winningTrades).toBe(1);
+      expect(report.metrics.losingTrades).toBe(1);
+      expect(report.metrics.avgLoss).toBeCloseTo(5 / 3);
+      expect(report.metrics.avgWin).toBeCloseTo(10 / 3);
+      expect(report.metrics.winRate).toBe(0.5);
+      expect(report.finalPositions[0].quantity).toBe(100);
+    });
+
+    it("同一引擎重复运行保持已闭合数量、费用和胜率一致", () => {
+      const engine = createScheduledTradeEngine(
+        [100, 100.05, 100.1],
+        [marketSignal("buy", 300), marketSignal("sell"), marketSignal("sell")],
+        { minimumCommission: 5 },
+      );
+
+      const firstMetrics = engine.run().metrics;
+      const secondMetrics = engine.run().metrics;
+      expect(firstMetrics.winRate).toBe(0.5);
+      expect(secondMetrics).toEqual(firstMetrics);
+    });
+  });
+
   it("买入持有策略：最终权益应反映价格上涨", () => {
     const snapshots: MarketSnapshot[] = [];
     let price = 100;

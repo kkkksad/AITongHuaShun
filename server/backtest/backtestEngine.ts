@@ -412,7 +412,7 @@ export class BacktestEngine {
     const totalCommission = this.trades.reduce((s, t) => s + t.commission, 0);
     const totalSlippage = 0; // 已包含在成交价中
 
-    // 盈亏分析：按成交对分组（买+卖 = 一笔完整交易）
+    // 盈亏分析：按已闭合的 FIFO 买卖匹配片段统计，费用按匹配数量分摊。
     const tradePnls = this.computeTradePnls();
     const winningTrades = tradePnls.filter((p) => p > 0);
     const losingTrades = tradePnls.filter((p) => p <= 0);
@@ -420,7 +420,7 @@ export class BacktestEngine {
     const totalTrades = this.trades.length;
     const winCount = winningTrades.length;
     const lossCount = losingTrades.length;
-    const winRate = totalTrades > 0 ? winCount / totalTrades : 0;
+    const winRate = tradePnls.length > 0 ? winCount / tradePnls.length : 0;
     const avgWin =
       winCount > 0 ? winningTrades.reduce((s, p) => s + p, 0) / winCount : 0;
     const avgLoss =

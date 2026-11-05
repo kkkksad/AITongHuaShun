@@ -53,22 +53,23 @@ const SystemMonitor = lazyNamed(() => import("./components/SystemMonitor"), "Sys
 - [x] 将固定预留来源统一取消：默认配置为0、档位和路由固定floor为0；计划和执行器仅消费显式服务器配置，旧路由/旧计划不能恢复隐性预留。兼容capitalPacing和maxInvestedRatio为1；阶段累计订单笔数预算50%/75%/100%/100%继续有效。
 - [x] 删除复盘的固定现金比例恢复要求；界面明确无固定比例预留，仍按费用和实际风险额度计算可买金额，不承诺满仓或强制成交。
 - [x] 精确暂存快照：66个服务端文件/963项、34个前端文件/134项全部通过，TypeScript与Vite构建通过。新真实执行器回归超过旧85%限制、仍扣滑点/手续费，费用不足不建单，单股超额仍拒。首次检查发现测试可选字段访问类型错误和两个确定性研究计划超过默认5秒，分别修正断言可选访问与该单项集成测试20秒预算后重跑通过，未放宽业务超时。
-- [ ] 检查并仅修改服务器 `PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO=0`；不输出或改动其他凭据配置，随代码部署验证生效。
-- [ ] 模块2提交、部署、状态记录；回滚基线为已验证模块1 a65bb84，服务器旧现金配置另保存在仅服务器可读的runtime备份。
+- [x] 仅修改服务器 `PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO=0`，已在后端容器验证为0；其他凭据未输出或变动。旧配置与Paper状态在服务器runtime/config-backups受限备份。
+- [x] 模块2 `0e4d184f0bed1a4b5affd92380101e6365b5823b` 已部署；UTC18:06验证三容器healthy、健康200、匿名账户/能力/自动状态401、paper+akshare/auth开启/真实执行关闭。Paper仍20,000现金、0持仓0订单、growth与auto未变；单股硬限额0.25、单笔上限100000未变。回滚基线为a65bb84，旧现金配置可从服务器受限备份恢复。
 
 ## 模块 3：回测胜率统计正确性
 
 **Files:** `server/backtest/backtestEngine.ts`、`server/backtest/backtestEngine.test.ts`、`shared/backtest.ts`、状态页和本计划。
 
-- [ ] 添加盈利买卖、盈亏混合、未平仓、费用、部分平仓与重复运行回归。现有实现单笔盈利闭合显示50%。
-- [ ] 保留现有 FIFO 闭合配对口径，只修分母：
+- [x] 新增8项盈利买卖、盈亏混合、未平仓、费用、部分平仓与重复运行回归，5项先失败证明分母错误。原实现单笔盈利闭合显示50%。
+- [x] 保留现有FIFO闭合配对口径，只修分母：
 
 ```ts
 winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 ```
 
-- [ ] 说明 `totalTrades` 为成交笔数、胜率只统计闭合 FIFO 配对；检查优化器和稳健性报告，不用调整门槛掩盖新统计。
-- [ ] 定向测试引擎/优化器/稳健性，全套检查、提交、部署。
+- [x] 共享类型注释说明 `totalTrades` 为成交笔数、胜率只统计闭合FIFO配对；已记录[指标决策0011](../decisions/0011-closed-fifo-backtest-win-rate.md)。定向引擎/优化器/稳健性64项通过，不调整门槛掩盖新统计。
+- [x] 模块3精确暂存快照全套66文件/971项服务端、34文件/134项前端通过，TypeScript与Vite构建通过；定向引擎/优化器/稳健性64项通过。
+- [ ] 模块3提交、部署、线上验证。
 
 ## 模块 4：快速导航键盘体验
 
@@ -77,6 +78,15 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [ ] 明确方向键移动、Enter 打开当前项、Esc 关闭、查询变化重置高亮的行为。
 - [ ] 为已有 combobox/listbox 补选中状态、稳定 option id 和 `aria-activedescendant`；鼠标和键盘打开同一路由。
 - [ ] 必要交互回归通过后全套检查、提交、部署。
+
+## 模块5：参数搜索不阻塞API事件循环
+
+**Files:** `server/optimizer/gridSearch.ts`、对应优化器测试、状态页和本计划。
+
+- [x] 只读探针证实暖模块仍同步阻塞：本地120 bars、16策略、5,717 trial耗时5,848ms，10ms心跳最大间隔5,849ms；AkShare生产路径使用同一代码，但该本地测量不是生产上限。
+- [ ] 在网格搜索约8至16ms的计算时间片后使用`await setImmediate()`让出真正宏任务；保持组合顺序、种子、trial、评分和最佳结果。
+- [ ] 添加真实计时器在长搜索完成前能执行的回归，并比较同输入结果不变；重复探针记录最大间隔和总耗时，不宣称缩短总计算时间。
+- [ ] 定向和全套检查、提交、部署、健康验证。
 
 ## 后续候选（先证实，再建独立小计划）
 
