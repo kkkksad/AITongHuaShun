@@ -347,7 +347,8 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 禁用/卸载/reset失效epoch、取消旧读取；reset同步失效旧socket，不等effect cleanup，迟到GET/推送不能写新账户。刷新取消不误称离线，无持续bootstrap轮询或交易请求。
 - [x] 独立复核59项通过，另发现的“refresh取消catchup后失败还显示进行中”和“reset至effect cleanup窗口旧帧”均先红后修并复验。root完整helper/hook/API复核无阻断。
 - [x] 精确暂存树89服务端文件/1216项、42前端文件/222项、TypeScript与Vite生产构建全部通过，未混入模块28。
-- [ ] 独立提交部署；仅保证已接收事件的客户端时序，不声称服务端多个端点/WS绝对全序或原子快照。
+- [x] 独立提交部署；仅保证已接收事件的客户端时序，不声称服务端多个端点/WS绝对全序或原子快照。
+- [x] 模块26提交77a5f1d957ed8f8c32b7e2f2489e32be28416c18已推送并部署；UTC21:09独立校验466个归档文件、三容器healthy、健康200/匿名401，原Paper账户及策略保留。
 
 ## 模块25：重置账户清除账户依赖研究
 
@@ -363,9 +364,11 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** `server/backtest/strategies/RSIStrategy.ts`与新真实引擎/策略回归，必要既有真实fixture、策略专题/状态/本计划。
 
 - [x] 独立真实引擎复现：RSI2、30/70，现金1005、12→11→10.01买单费用后被拒，后续10本可完整支付但虚拟inPosition已true不再买；同日买后超买卖出T+1被拒，次日仍超买却遗忘实际500股。
-- [ ] 失败回归覆盖拒买后仍满足阈值可重试、真实已持仓不重复买、T+1等待/次日退出、部分可卖整手、拒卖后仍按实际仓重试、symbol隔离/缺可卖字段/重置确定性；保留指标周期、阈值、权重、选首个tradable与暖机。
-- [ ] 删除意图驱动inPosition，改用目标context.positions实际股数；卖出按min(quantity,availableQuantity??quantity)对齐100股，不把返回信号视为成交，不修改费用/额度/T+1或生产策略选择。
-- [ ] 定向真实策略/引擎/优化器、独立复核、精确暂存全套验证，独立提交部署；合成结果/排名可能因修复改变，不声称真实收益提升。
+- [x] 新18项真实RSI/引擎回归先12红6绿后全绿；覆盖费用拒买→可负担重试、额度拒买/拒卖重试、T+1次日退出、实际持仓不重复买、部分可卖/legacy/symbol与reset确定性。阈值、period+1暖身、买入权重和首tradable控制保持。
+- [x] 删除意图inPosition，逐bar读取目标context.positions；卖出min(quantity,available??quantity)对齐100股，锁定等待。未改共享fixture、费用/额度/T+1和生产策略选择。定向136项、服务端类型/diff通过，root源码与测试复核无阻断。
+- [x] 独立复核11文件167项通过，确认真实资金拒单、T+1和可卖量语义。
+- [x] 精确暂存树90服务端文件/1234项、42前端文件/222项、TypeScript与Vite生产构建全部通过，未混入模块25/29。
+- [ ] 独立提交部署；合成结果/排名可能因修复改变，不声称真实收益提升。
 
 ## 模块29：布林带信号使用实际持仓
 

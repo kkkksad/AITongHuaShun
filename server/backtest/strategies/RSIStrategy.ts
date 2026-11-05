@@ -21,7 +21,6 @@ import { rsi } from "./indicators";
 export class RSIStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
-  private inPosition = false;
 
   constructor(
     private readonly period = 14,
@@ -37,7 +36,6 @@ export class RSIStrategy implements BacktestStrategy {
 
   reset(): void {
     this.prices.length = 0;
-    this.inPosition = false;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
@@ -51,9 +49,11 @@ export class RSIStrategy implements BacktestStrategy {
     const currentRsi = rsi(this.prices, this.period);
     if (isNaN(currentRsi)) return [];
 
+    const position = context.positions.find((item) => item.symbol === quote.symbol);
+    const inPosition = (position?.quantity ?? 0) > 0;
+
     // 超卖买入
-    if (!this.inPosition && currentRsi < this.oversoldThreshold) {
-      this.inPosition = true;
+    if (!inPosition && currentRsi < this.oversoldThreshold) {
       return [
         {
           symbol: quote.symbol,
@@ -65,14 +65,17 @@ export class RSIStrategy implements BacktestStrategy {
     }
 
     // 超买卖出
-    if (this.inPosition && currentRsi > this.overboughtThreshold) {
-      this.inPosition = false;
+    if (position && inPosition && currentRsi > this.overboughtThreshold) {
+      const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+      const quantity = Math.floor(sellable / 100) * 100;
+      // 锁定或不足一手时等待；后续 bar 始终重新读取实际持仓。
+      if (quantity <= 0) return [];
       return [
         {
           symbol: quote.symbol,
           side: "sell",
           type: "market",
-          targetWeight: 1.0,
+          quantity,
         },
       ];
     }
