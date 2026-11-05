@@ -12,7 +12,7 @@ import {
   Search,
   XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { apiRequest } from "../lib/tradingApi";
 
@@ -99,9 +99,7 @@ export function LogViewer() {
   const { locale } = useI18n();
   const iszh = locale === "zh";
 
-  const [entries, setEntries] = useState<LogEntry[]>([]);
-  const [total, setTotal] = useState(0);
-  const [filtered, setFiltered] = useState(0);
+  const [result, setResult] = useState<{ scope: string; data: LogsResponse } | null>(null);
   const [currentDate, setCurrentDate] = useState(
     new Date().toISOString().slice(0, 10),
   );
@@ -110,29 +108,47 @@ export function LogViewer() {
   const [moduleInput, setModuleInput] = useState("");
   const [moduleFilter, setModuleFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [pageCount, setPageCount] = useState(1);
-  const [offset, setOffset] = useState(0);
   const [expandedEntry, setExpandedEntry] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const logsRequestRef = useRef<AbortController | null>(null);
+  const queryScope = JSON.stringify([currentDate, levelFilter, moduleFilter, page]);
+  const currentResult = result?.scope === queryScope ? result : null;
+  const entries = currentResult?.data.entries ?? [];
+  const total = currentResult?.data.total ?? 0;
+  const filtered = currentResult?.data.filtered ?? 0;
+  const offset = currentResult?.data.offset ?? 0;
+  const pageCount = currentResult?.data.pageCount ?? 1;
 
   // 获取可用日期列表
-  const fetchDates = useCallback(async () => {
-    try {
-      const data = await apiRequest<DatesResponse>("/api/logs/dates");
-      setDates(data.dates);
-      if (data.dates.length > 0 && !data.dates.includes(currentDate)) {
-        setCurrentDate(data.dates[0]);
-        setPage(1);
+  useEffect(() => {
+    const controller = new AbortController();
+    async function fetchDates() {
+      try {
+        const data = await apiRequest<DatesResponse>("/api/logs/dates", {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        setDates(data.dates);
+        if (data.dates.length > 0 && !data.dates.includes(currentDate)) {
+          setCurrentDate(data.dates[0]);
+          setPage(1);
+        }
+      } catch {
+        // 日期列表失败不影响当前日志查询。
       }
-    } catch {
-      // 静默失败
     }
+    void fetchDates();
+    return () => controller.abort();
   }, [currentDate]);
 
   // 获取日志
   const fetchLogs = useCallback(async () => {
+    logsRequestRef.current?.abort();
+    const controller = new AbortController();
+    logsRequestRef.current = controller;
+    const isCurrentRequest = () => logsRequestRef.current === controller && !controller.signal.aborted;
     setLoading(true);
     setError(null);
     try {
@@ -144,27 +160,31 @@ export function LogViewer() {
       if (levelFilter) params.set("level", levelFilter);
       if (moduleFilter.trim()) params.set("module", moduleFilter.trim());
 
-      const data = await apiRequest<LogsResponse>("/api/logs?" + params.toString());
-      setEntries(data.entries);
-      setTotal(data.total);
-      setFiltered(data.filtered);
-      setOffset(data.offset);
-      setPageCount(data.pageCount);
+      const data = await apiRequest<LogsResponse>("/api/logs?" + params.toString(), {
+        signal: controller.signal,
+      });
+      if (!isCurrentRequest()) return;
+      setResult({ scope: queryScope, data });
       if (data.page !== page) setPage(data.page);
       setExpandedEntry(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "获取日志失败");
+      if (isCurrentRequest()) setError(err instanceof Error ? err.message : "获取日志失败");
     } finally {
-      setLoading(false);
+      if (isCurrentRequest()) {
+        setLoading(false);
+        logsRequestRef.current = null;
+      }
     }
-  }, [currentDate, levelFilter, moduleFilter, page]);
+  }, [currentDate, levelFilter, moduleFilter, page, queryScope]);
 
   useEffect(() => {
-    fetchDates();
-  }, [fetchDates]);
-
-  useEffect(() => {
-    fetchLogs();
+    setResult(null);
+    setExpandedEntry(null);
+    void fetchLogs();
+    return () => {
+      logsRequestRef.current?.abort();
+      logsRequestRef.current = null;
+    };
   }, [fetchLogs]);
 
   useEffect(() => {
@@ -178,12 +198,15 @@ export function LogViewer() {
   // 自动刷新
   useEffect(() => {
     if (!autoRefresh || page !== 1) return;
-    const timer = setInterval(fetchLogs, 10_000);
+    const timer = setInterval(() => {
+      if (!logsRequestRef.current) void fetchLogs();
+    }, 10_000);
     return () => clearInterval(timer);
   }, [autoRefresh, fetchLogs, page]);
 
   // 导出日志
   const handleExport = useCallback(() => {
+    if (!currentResult || entries.length === 0) return;
     const text = entries
       .map((e) =>
         JSON.stringify(e),
@@ -196,7 +219,7 @@ export function LogViewer() {
     a.download = `kairos-logs-${currentDate}-page-${page}.json`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [entries, currentDate, page]);
+  }, [entries, currentDate, currentResult, page]);
 
   const rangeStart = filtered === 0 ? 0 : offset + 1;
   const rangeEnd = filtered === 0 ? 0 : offset + entries.length;
@@ -204,7 +227,7 @@ export function LogViewer() {
   function changePage(nextPage: number) {
     setExpandedEntry(null);
     setAutoRefresh(false);
-    setPage(Math.min(Math.max(1, nextPage), pageCount));
+    setPage(Math.min(Math.max(1, nextPage), currentResult ? pageCount : page));
   }
 
   function toggleAutoRefresh() {
@@ -436,7 +459,9 @@ export function LogViewer() {
 
       <nav aria-label={iszh ? "系统日志分页" : "System log pagination"} className="log-pagination">
         <span>
-          {iszh ? `第 ${page} / ${pageCount} 页` : `Page ${page} of ${pageCount}`}
+          {currentResult
+            ? (iszh ? `第 ${page} / ${pageCount} 页` : `Page ${page} of ${pageCount}`)
+            : (iszh ? `第 ${page} 页 · 总页数待确认` : `Page ${page} · total pages pending`)}
         </span>
         <div>
           <button
@@ -452,7 +477,7 @@ export function LogViewer() {
           <button
             aria-label={iszh ? "日志下一页" : "Next log page"}
             className="log-action-btn"
-            disabled={page >= pageCount || loading}
+            disabled={!currentResult || page >= pageCount || loading}
             onClick={() => changePage(page + 1)}
             title={iszh ? "下一页" : "Next page"}
             type="button"

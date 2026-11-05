@@ -235,8 +235,10 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** `src/components/LogViewer.tsx`与真实React交互回归，状态/产品/本计划。
 
 - [x] ignored诊断中复现：全级别请求A未完成切换ERROR发B，B先成功后A迟到成功会显示INFO行；A迟到失败会给ERROR结果挂上过时错误。现有静态分页测试漏掉请求竞争。
-- [ ] 把两项诊断转为仓库回归，再补筛选/日期/分页/同scope刷新及unmount所需边界；旧请求不得更新当前entries/error/loading。
-- [ ] 使用有生命周期清理的请求身份或AbortController；只接受当前请求完成状态。相同scope刷新保留旧行；date/level/module/page变化立即隐藏旧行/计数/展开并禁用导出，防止新文件名导出旧数据。慢自动刷新不每10秒中止重来，不修改API。
+- [x] 新增17项真实React回归，首轮12项10红，追加scope隔离5项先红后绿；相关5文件29项与前端类型检查通过。覆盖迟到成功/错误/finally、日期列表、分页/模块、scope变更、同scope失败重试、慢请求与卸载。
+- [x] 请求AbortController身份+未中止双门保护，effect cleanup失效旧请求；日期列表独立cleanup。结果带date/level/module/page scope，仅匹配时渲染，切换时立即隐藏旧行/计数/展开且禁导出；同scope保留旧结果和诚实错误。自动10秒tick在请求尚未完成时跳过，避免慢请求饥饿。
+- [x] 独立复核4文件26项通过，无阻断；API signal透传、过时catch/finally、当前scope导出与定时清理均确认。
+- [x] 精确暂存树79服务端文件/1081项、39前端文件/179项、TypeScript与Vite生产构建全部通过，未混入模块19。
 - [ ] 定向日志/研究刷新回归、独立复核和精确暂存全套验证，再单独提交部署。
 
 ## 模块18：遗传优化遵循配置目标
