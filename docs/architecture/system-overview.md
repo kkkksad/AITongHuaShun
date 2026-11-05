@@ -1,5 +1,7 @@
 # 系统架构
 
+固定现金预留与分时总仓位比例默认已按 [决策0010](../decisions/0010-no-fixed-paper-cash-reserve.md) 取消；`cashReserveRatio` / `cashReserveFloor` 内置值为0，`capitalPacing` / `maxInvestedRatio` 兼容值为1。阶段累计订单笔数仍单独限制，不能将这些兼容字段重新解释成必须持有现金。
+
 ## 当前结构
 
 ```text
@@ -78,7 +80,7 @@ shared/
 - `PaperBroker` 依赖行情、风险和仓储，不依赖 HTTP、WebSocket 或 React。
 - `PaperAutoExecutor` 只读取纸面计划并向 `PaperBroker` 提交本地模拟订单；它不能调用真实券商、同花顺、SuperMind 或浏览器自动化能力。
 - `PaperAutoExecutor` 将计划构建或上游研究暂不可用转换为可审计的 `not-run` 观察轮次；定时任务使用完成后调度，上一轮结束后才开始计算下一间隔。启动时空行情不得形成未处理拒绝或终止 Fastify 进程。
-- `AdaptiveStrategyRouter` 直接路由与降级稳定是两个阶段：只有同一交易日已确认的 `risk-off` 或 `risk-off-recovery` 可在真实历史研究短暂降级为 `unclear` 时保留防守标签；稳定阶段必须禁用新增仓位、使用 `hold` 姿态和至少 70% 现金储备，也不得依据缺失历史继续普通减仓。外盘 shadow 和跨日审计不能成为稳定输入。
+- `AdaptiveStrategyRouter` 直接路由与降级稳定是两个阶段：只有同一交易日已确认的 `risk-off` 或 `risk-off-recovery` 可在真实历史研究短暂降级为 `unclear` 时保留防守标签；稳定阶段必须禁用新增仓位、使用 `hold` 姿态，不得依据缺失历史继续普通减仓。旧70%现金储备政策已由决策0010取代；外盘 shadow 和跨日审计不能成为稳定输入。
 - `auto` 执行策略继续由 `AdaptiveStrategyRouter` 决定新增仓位资格和缩放；17 个固定 Paper 策略按自身 setup 生成候选，不使用市场路由的 `allowNewPositions` 或 `newPositionScale`。手动模式仍必须通过策略档位、真实历史、流动性、追高、费用、现金、仓位、整手、T+1、熔断、阶段预算、每日上限、幂等和 PaperBroker 风控；`capital-preservation` 继续禁止新增仓位。
 - 每日复盘从自动执行审计中优先选择最近的有效盘中决策，盘后启动产生的 `not-run` 不能覆盖同日 `open` 交易时段形成的计划质量和跳过原因。没有盘中证据且没有订单时必须返回运行覆盖缺口；行情快照日期与复盘日不一致时，不得使用旧宽度、指数或累计账户结果替代当日证据。
 - `paperTradingPlanService` 在发起真实历史研究前同步生成有界候选，将当前持仓、强势回踩候选和优质股候选按优先级去重后放入最多 12 只历史股票池；`paperTradingPlan` 只允许通过历史持续性、往返佣金和同日回补检查的候选形成新增仓位。

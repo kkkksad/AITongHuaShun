@@ -18,7 +18,6 @@ import { ResearchQueryState } from "./ResearchQueryState";
 import {
   adaptivePostureLabel,
   adaptiveRegimeLabel,
-  formatAdaptiveCapitalPacing,
 } from "../lib/adaptiveStrategyPresentation";
 import {
   fetchLearningState,
@@ -47,7 +46,7 @@ const internalStrategyLabels: Record<string, string> = {
 
 const weeklySizingConstraintLabels: Record<string, string> = {
   "configured-cap": "配置单笔上限",
-  "cash-or-reserve": "现金/现金缓冲",
+  "cash-or-reserve": "可用现金/历史预留",
   "phase-budget": "阶段订单额度",
   "lot-size": "一手/金额不足",
   "strategy-or-signal": "策略/信号门槛",
@@ -644,13 +643,14 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
             <div className="learning-plan-summary">
               <strong>下单规模诊断</strong>
               <p>{paperPlan.capitalPlan.sizingDiagnostics.summary}</p>
+              <p>默认不按固定比例预留现金；实际可买金额仍需覆盖必要手续费和滑点，并受整手、可用现金、单笔/单股硬限额及阶段订单笔数限制约束。</p>
               <span>
                 风控上限 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.riskOrderCapBeforeScale).toLocaleString("zh-CN")}
                 {" · "}档位缩放后 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.riskOrderCapAfterScale).toLocaleString("zh-CN")}
                 {" · "}单票仓位上限 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.positionWeightCapAfterScale).toLocaleString("zh-CN")}
               </span>
               <span>
-                现金储备 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.cashReserveAmount).toLocaleString("zh-CN")}
+                固定现金预留 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.cashReserveAmount).toLocaleString("zh-CN")}
                 {" · "}可部署 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.plannedCashBudget).toLocaleString("zh-CN")}
                 {" · "}单笔生效上限 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.effectiveOrderCap).toLocaleString("zh-CN")}
                 {" · "}最低费用效率金额 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.minimumFeeEfficientNotional).toLocaleString("zh-CN")}
@@ -669,7 +669,7 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
               <strong>{paperPlan.strategyProfile.label}档位</strong>
               <p>{paperPlan.strategyProfile.summary}</p>
               <span>
-                实际现金底线 {(paperPlan.strategyProfile.effectiveCashReserveRatio * 100).toFixed(0)}%
+                固定现金预留 {(paperPlan.strategyProfile.effectiveCashReserveRatio * 100).toFixed(0)}%
                 {" · "}候选最低分 {paperPlan.strategyProfile.minDefensiveScore}
                 {" · "}每轮最多新增 {paperPlan.strategyProfile.maxNewPositionsPerPlan} 只
                 {" · "}{paperPlan.strategyProfile.allowNewPositions ? "允许继续筛选" : "当前停止新增仓位"}
@@ -692,7 +692,7 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
                   <strong>{adaptivePostureLabel(paperPlan.adaptiveRouting.positionPosture)}</strong>
                 </span>
                 <span>
-                  现金储备
+                  固定现金预留
                   <strong>{(paperPlan.adaptiveRouting.cashReserveRatio * 100).toFixed(0)}%</strong>
                 </span>
               </div>
@@ -707,8 +707,8 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
                   <dd>{paperPlan.adaptiveRouting.strategyPlaybook.avoidWhen}</dd>
                 </div>
                 <div>
-                  <dt>分时仓位上限</dt>
-                  <dd>{formatAdaptiveCapitalPacing(paperPlan.adaptiveRouting.capitalPacing)}</dd>
+                  <dt>阶段订单笔数限制</dt>
+                  <dd>按交易阶段控制全天订单额度的累计使用笔数。</dd>
                 </div>
               </dl>
               <small>

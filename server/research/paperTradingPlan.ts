@@ -598,11 +598,9 @@ export function buildPaperTradingPlan(input: {
       ) ?? null
     : input.leaderboard.entries[0] ?? null;
   const profilePolicy = getPaperStrategyProfilePolicy(input.strategyProfile);
-  const effectiveCashReserveRatio = Math.max(
-    input.cashReserveRatio,
-    input.adaptiveRouting?.cashReserveRatio ?? 0,
-    profilePolicy.cashReserveFloor,
-  );
+  // Only an explicit server setting can opt back into a reserve. Legacy routing
+  // fields must not silently restore the removed profile or market cash floors.
+  const effectiveCashReserveRatio = input.cashReserveRatio;
   const cashReserveAmount = Math.min(
     input.account.cash,
     Math.max(0, input.account.equity * effectiveCashReserveRatio),
@@ -1066,7 +1064,7 @@ export function buildPaperTradingPlan(input: {
       quantity: 0,
       price: 1,
       estimatedNotional: 0,
-      reason: "当前可用现金和现金缓冲不足以买入任一候选的一手，停止重复生成不可执行买单。",
+      reason: "当前可用现金不足以支付任一候选的一手及预计手续费，停止重复生成不可执行买单。",
       ruleChecks: ["paper-only", "cash-constrained", "lot-size: not-affordable"],
     });
   }
@@ -1162,7 +1160,7 @@ export function buildPaperTradingPlan(input: {
         quantity: 0,
         price: candidate.price,
         estimatedNotional: 0,
-        reason: "当前批次剩余可用现金不足，已计入前序计划、预计手续费和现金缓冲，不再创建模拟订单。",
+        reason: "当前批次剩余可用资金不足，已计入前序计划和预计手续费，不再创建模拟订单。",
         ruleChecks: [
           "lot-size: blocked",
           "cash-check: blocked",
@@ -1339,7 +1337,7 @@ export function buildPaperTradingPlan(input: {
           "risk-order-cap": "服务端单笔风控上限",
           "strategy-profile-scale": "策略档位缩放",
           "position-weight-cap": "单票仓位权重",
-          "planned-cash-budget": "现金缓冲后的可部署资金",
+          "planned-cash-budget": "可用于本轮买单的实际现金",
           none: "无资金约束",
         };
         const limitingConstraint = maxSingleOrderNotional <= 0.005

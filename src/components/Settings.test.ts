@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PAPER_EXECUTION_STRATEGY_CHOICES } from "../../shared/trading";
+import type { TradingBackend } from "../hooks/useTradingBackend";
 import {
+  Settings,
   canResetPaperAccount,
   groupExecutionStrategies,
   strategyProfileOptions,
@@ -14,6 +19,58 @@ describe("Settings account controls", () => {
       "balanced",
       "growth",
     ]);
+  });
+
+  it("shows fee and risk constraints without a fixed profile cash reserve", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(["paper-trading-plan"], {
+      capitalPlan: {
+        sizingDiagnostics: {
+          effectiveOrderCap: 5_000,
+          minimumFeeEfficientNotional: 1_000,
+          plannedBuyOrderCount: 1,
+          averagePlannedBuyNotional: 4_900,
+          largestPlannedBuyNotional: 4_900,
+          limitingConstraint: "risk-order-cap",
+          plannedCashBudget: 10_000,
+          cashReserveAmount: 0,
+          summary: "必要费用在提交前复核。",
+        },
+      },
+    });
+    const trading: TradingBackend = {
+      connectionState: "connected",
+      realtimeState: "connected",
+      mode: "paper",
+      marketDataProvider: "mock",
+      positions: [],
+      orders: [],
+      pendingAction: false,
+      refresh: async () => undefined,
+      submitOrder: async () => { throw new Error("unexpected submit"); },
+      cancelOrder: async () => { throw new Error("unexpected cancel"); },
+      setPaused: async () => undefined,
+      resetAccount: async () => undefined,
+      setStrategyProfile: async () => undefined,
+      setExecutionStrategy: async () => undefined,
+    };
+    const html = renderToStaticMarkup(createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(Settings, { trading }),
+    ));
+
+    expect(html).toContain("默认不按固定比例预留现金");
+    expect(html).toContain("必要手续费和滑点");
+    expect(html).toContain("阶段订单笔数限制");
+    expect(html).toContain("单笔/单股硬限额");
+    expect(html).not.toContain("阶段仓位上限");
+    expect(html).toContain("固定现金预留");
+    expect(html).toContain("¥0");
+    expect(html).toContain("¥10,000");
+    expect(html).toContain("单笔风控上限");
+    expect(html).not.toMatch(/至少 (20|50|55|80)% 现金/);
+    queryClient.clear();
   });
 
   it("exposes seventeen manual paper strategies before the auto fallback", () => {

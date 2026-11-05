@@ -16,7 +16,7 @@
 - 原目录 main 陈旧且有用户未跟踪文件，保持原样。
 - 服务器 `/opt/kairos` 是归档部署，没有 `.git`，不能根据 `git branch` 推断线上分支。部署前三个关键源码 SHA256 与 dfad497 一致；精确发布标识需本轮补记。
 - 初始线上三个容器 healthy；health 明确 `paper + akshare`、`realTradingEnabled=false`、`authEnabled=true`。
-- 用户新增明确授权：**直接取消固定比例现金预留，仅保留必要费用**。这是本次 Paper 配置变更；保留手续费、滑点、整手、实际可用现金、单笔/单股硬限额、T+1、阶段额度、日额度、熔断、幂等与既有手动策略。
+- 用户新增明确授权：**直接取消固定比例现金预留，仅保留必要费用**。这是本次 Paper 配置变更；保留手续费、滑点、整手、实际可用现金、单笔/单股硬限额、T+1、阶段与每日订单笔数额度、熔断、幂等与既有手动策略。审计发现分时总仓位比例也会机械闲置10%至70%现金，本轮一并取消该比例，总仓位仍受实际现金与各单股硬上限限制。
 - 线程续跑自动化 `kairos` 每 30 分钟检查，截止时间内继续未完成任务；依赖电脑和 Codex 可用。
 
 ## 发布协议（每轮）
@@ -42,18 +42,19 @@ const SystemMonitor = lazyNamed(() => import("./components/SystemMonitor"), "Sys
 
 - [x] 账户 `strategies` 与 `monitor` 内容分别包裹 `<Suspense fallback={<LazyFallback />}>`。
 - [x] 精确暂存树隔离快照验证：65 个服务端文件/947 项、34 个前端文件/132 项测试全部通过；TypeScript 与 Vite 构建通过。App 58,814 字节（减少20.9%），gzip 19,435 字节（减少18.9%）；SystemMonitor 6,977 字节、TradingStrategies 8,667 字节独立加载。该结果仅为构建体积，不宣称线上耗时同比改善。
-- [ ] 模块1提交、部署、验证。
+- [x] 模块1提交 `a65bb8441bb8b5a4b604a25d91c3a9382cb21234` 已通过受限归档部署；UTC 17:23 验证三个容器 healthy、健康接口200、账户/能力/自动执行状态匿名401、公网相同结果。Paper账户仍20,000现金、0持仓、0订单、growth档、auto策略，未重置账户。服务器 `runtime/production-release.json` 记录分支和SHA。
+- [ ] GitHub推送：两次遇到本机至github.com连接重置/443不可达，服务器发布不依赖GitHub，稍后恢复后补推，禁止将未推送写为已同步。
 
 ## 模块 2：取消固定现金预留（优先）
 
-**Files:** `server/config.ts`、`server/trading/paperStrategyProfile.ts`、`server/research/adaptiveStrategyRouter.ts`、`server/research/dailyMarketReview.ts`、`server/research/paperTradingPlan.ts`、`server/trading/paperAutoExecutor.ts`、各对应测试、`src/components/Settings.tsx`、`src/components/LearningPipeline.tsx`、`.env.example`、`deploy/production.env.example`、受影响专题文档。
+**Files:** `server/config.ts`、`server/trading/paperStrategyProfile.ts`、`server/trading/intradayExecutionPolicy.ts`、`server/research/adaptiveStrategyRouter.ts`、`server/research/dailyMarketReview.ts`、`server/research/paperTradingPlan.ts`、`server/trading/paperAutoExecutor.ts`、各对应测试、`src/components/Settings.tsx`、`src/components/LearningPipeline.tsx`、`.env.example`、`deploy/production.env.example`、受影响专题文档。
 
-- [ ] 复现叠加：有效预留原为 `max(配置10%, 档位20%至80%, 路由10%至70%)`；区分固定现金预留与其他风险限额，记录线上实际配置。
-- [ ] 将固定预留来源统一取消：默认配置为 0、档位和路由固定 floor 为 0，计划与执行器一致；保留兼容字段及显式配置校验。
-- [ ] 删除复盘的固定现金比例恢复要求；界面明确“无固定比例预留，仍按费用和实际风险额度计算可买金额”，不得承诺满仓或强制成交。
-- [ ] 测试：低于旧20%/50%现金仍可对合格候选形成计划；同批买单累计扣费用；不足手续费不下单；风险禁止、T+1、硬限额和阶段限制仍生效。
+- [x] 复现叠加：有效预留原为 `max(配置10%, 档位20%至80%, 路由10%至70%)`；线上原配置10%、growth档至少20%、单股硬限额25%，账户20,000现金、无持仓，执行策略auto。
+- [x] 将固定预留来源统一取消：默认配置为0、档位和路由固定floor为0；计划和执行器仅消费显式服务器配置，旧路由/旧计划不能恢复隐性预留。兼容capitalPacing和maxInvestedRatio为1；阶段累计订单笔数预算50%/75%/100%/100%继续有效。
+- [x] 删除复盘的固定现金比例恢复要求；界面明确无固定比例预留，仍按费用和实际风险额度计算可买金额，不承诺满仓或强制成交。
+- [x] 精确暂存快照：66个服务端文件/963项、34个前端文件/134项全部通过，TypeScript与Vite构建通过。新真实执行器回归超过旧85%限制、仍扣滑点/手续费，费用不足不建单，单股超额仍拒。首次检查发现测试可选字段访问类型错误和两个确定性研究计划超过默认5秒，分别修正断言可选访问与该单项集成测试20秒预算后重跑通过，未放宽业务超时。
 - [ ] 检查并仅修改服务器 `PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO=0`；不输出或改动其他凭据配置，随代码部署验证生效。
-- [ ] 定向与全套检查、提交、部署、状态记录。
+- [ ] 模块2提交、部署、状态记录；回滚基线为已验证模块1 a65bb84，服务器旧现金配置另保存在仅服务器可读的runtime备份。
 
 ## 模块 3：回测胜率统计正确性
 
@@ -85,4 +86,4 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 
 ## 验证与部署流水
 
-模块1精确暂存快照已完成全套检查，准备发布；线上结果在发布完成后记录。
+模块1精确暂存快照通过全套检查并完成线上发布验证；模块2、3并行开发，只以各自暂存树的隔离快照验证实际提交内容。

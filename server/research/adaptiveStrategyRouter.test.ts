@@ -196,7 +196,7 @@ describe("routeAdaptiveStrategies", () => {
       "momentum",
       "turtle",
     ]));
-    expect(result.cashReserveRatio).toBe(0.1);
+    expect(result.cashReserveRatio).toBe(0);
     expect(result.confidence).toBeGreaterThanOrEqual(0.6);
     expect(result.version).toBe("1.4.0");
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
@@ -206,9 +206,7 @@ describe("routeAdaptiveStrategies", () => {
       "kairosTrendHealth",
     ]);
     expect(result.strategyPlaybook.useWhen).toContain("趋势");
-    expect(result.capitalPacing.openingMaxInvestedRatio).toBeLessThan(
-      result.capitalPacing.closingMaxInvestedRatio,
-    );
+    expect(Object.values(result.capitalPacing)).toEqual([1, 1, 1, 1]);
   });
 
   it("prefers pullback and defensive strategies when an uptrend is volatile", () => {
@@ -231,9 +229,9 @@ describe("routeAdaptiveStrategies", () => {
       "kairosCapitalShield",
     ]));
     expect(result.newPositionScale).toBeLessThan(1);
-    expect(result.cashReserveRatio).toBeGreaterThanOrEqual(0.25);
+    expect(result.cashReserveRatio).toBe(0);
     expect(result.strategyPlaybook.avoidWhen).toContain("追高");
-    expect(result.capitalPacing.openingMaxInvestedRatio).toBeLessThanOrEqual(0.4);
+    expect(Object.values(result.capitalPacing)).toEqual([1, 1, 1, 1]);
   });
 
   it("switches to capital protection when trends and breadth deteriorate", () => {
@@ -263,10 +261,11 @@ describe("routeAdaptiveStrategies", () => {
     expect(result.positionPosture).toBe("reduce");
     expect(result.allowNewPositions).toBe(false);
     expect(result.eligibleStrategyKeys).toEqual(["kairosCapitalShield"]);
-    expect(result.cashReserveRatio).toBeGreaterThanOrEqual(0.5);
+    expect(result.cashReserveRatio).toBe(0);
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
       "kairosCapitalShield",
     ]);
+    expect(Object.values(result.capitalPacing)).toEqual([1, 1, 1, 1]);
   });
 
   it("separates a broad intraday recovery from a confirmed medium-term trend", () => {
@@ -303,11 +302,12 @@ describe("routeAdaptiveStrategies", () => {
     expect(result.regime).toBe("risk-off-recovery");
     expect(result.positionPosture).toBe("hold");
     expect(result.allowNewPositions).toBe(false);
-    expect(result.cashReserveRatio).toBeGreaterThanOrEqual(0.55);
+    expect(result.cashReserveRatio).toBe(0);
     expect(result.eligibleStrategyKeys).toEqual([
       "kairosRiskOffRecovery",
       "kairosCapitalShield",
     ]);
+    expect(Object.values(result.capitalPacing)).toEqual([1, 1, 1, 1]);
     expect(result.evidence.join(" ")).toContain("单日修复");
     expect(result.riskFlags.join(" ")).toContain("不能直接覆盖");
     expect(result.metrics.averageCurrentChangePercent).toBe(3.2);
@@ -321,7 +321,9 @@ describe("routeAdaptiveStrategies", () => {
     }));
 
     expect(result.regime).toBe("unclear");
+    expect(result.cashReserveRatio).toBe(0);
     expect(result.allowNewPositions).toBe(false);
+    expect(Object.values(result.capitalPacing)).toEqual([1, 1, 1, 1]);
     expect(result.positionPosture).toBe("hold");
     expect(result.eligibleStrategyKeys).toEqual(["kairosCapitalShield"]);
     expect(result.evidence.join(" ")).toContain("降级");
@@ -348,7 +350,9 @@ describe("routeAdaptiveStrategies", () => {
     expect(result.allowNewPositions).toBe(false);
     expect(result.positionPosture).toBe("hold");
     expect(result.newPositionScale).toBe(0);
+    expect(result.cashReserveRatio).toBe(0);
     expect(result.eligibleStrategyKeys).toEqual(["kairosCapitalShield"]);
+    expect(Object.values(result.capitalPacing)).toEqual([1, 1, 1, 1]);
     expect(result.stability).toMatchObject({
       status: "degraded-defensive-hold",
       observedRegime: "unclear",
@@ -412,6 +416,8 @@ describe("routeAdaptiveStrategies", () => {
     }));
 
     expect(result.regime).toBe("range-low-volatility");
+    expect(result.cashReserveRatio).toBe(0);
+    expect(Object.values(result.capitalPacing)).toEqual([1, 1, 1, 1]);
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
       "rsi",
       "bollingerBands",
@@ -436,12 +442,13 @@ describe("routeAdaptiveStrategies", () => {
     }));
 
     expect(result.regime).toBe("range-high-volatility");
+    expect(result.cashReserveRatio).toBe(0);
     expect(result.strategyPlaybook.primaryStrategyKeys).toEqual([
       "kairosRangeRotation",
       "kairosQuietPullback",
       "kairosCapitalShield",
     ]);
-    expect(result.capitalPacing.closingMaxInvestedRatio).toBeLessThanOrEqual(0.6);
+    expect(Object.values(result.capitalPacing)).toEqual([1, 1, 1, 1]);
   });
 
   it("requires available breadth to confirm an otherwise positive trend", () => {

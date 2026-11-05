@@ -12,9 +12,15 @@ describe("paper strategy profile policies", () => {
   it("keeps the growth profile inside the configured hard policy range", () => {
     const growth = PAPER_STRATEGY_PROFILE_POLICIES.growth;
 
-    expect(growth.cashReserveFloor).toBeGreaterThanOrEqual(0.2);
+    expect(growth.cashReserveFloor).toBe(0);
     expect(growth.newPositionScale).toBeLessThanOrEqual(1);
     expect(growth.maxNewPositionsPerPlan).toBeLessThanOrEqual(3);
+  });
+
+  it("does not impose a fixed cash reserve in any profile", () => {
+    for (const policy of Object.values(PAPER_STRATEGY_PROFILE_POLICIES)) {
+      expect(policy.cashReserveFloor, policy.key).toBe(0);
+    }
   });
 
   it("prevents the capital-preservation profile from opening positions", () => {

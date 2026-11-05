@@ -36,28 +36,28 @@ export const strategyProfileOptions: StrategyProfileOption[] = [
   {
     key: "capital-preservation",
     label: "现金防守",
-    cashReserve: "至少 80% 现金",
+    cashReserve: "不固定预留现金",
     pace: "停止新增",
     summary: "市场不明或需要暂时收缩风险时，只处理已有持仓。",
   },
   {
     key: "defensive",
     label: "稳健",
-    cashReserve: "至少 55% 现金",
+    cashReserve: "不固定预留现金",
     pace: "每轮最多 1 只",
     summary: "提高候选门槛并缩小新仓，优先控制回撤。",
   },
   {
     key: "balanced",
     label: "均衡",
-    cashReserve: "至少 50% 现金",
+    cashReserve: "不固定预留现金",
     pace: "每轮最多 2 只",
-    summary: "在现金缓冲和机会参与之间保持中等节奏。",
+    summary: "按候选质量和风控额度保持中等参与节奏。",
   },
   {
     key: "growth",
     label: "进取",
-    cashReserve: "至少 20% 现金",
+    cashReserve: "不固定预留现金",
     pace: "每轮最多 3 只",
     summary: "允许更高资金参与，但不会放宽 T+1、整手和硬风控。",
   },
@@ -293,7 +293,7 @@ export function Settings({ trading, activeSection }: SettingsProps) {
 
         <div className="settings-risk-note">
           <ShieldCheck size={16} />
-          <span>所有档位继续服从 A 股 T+1、100 股整手、可用现金、仓位上限、熔断和 paper-only 边界。</span>
+          <span>默认不按固定比例预留现金；实际可买金额仍需覆盖必要手续费和滑点，并服从 A 股 T+1、100 股整手、可用现金、单笔/单股硬限额、阶段订单笔数限制、熔断和 paper-only 边界。</span>
         </div>
       </section>
 
@@ -392,7 +392,7 @@ export function Settings({ trading, activeSection }: SettingsProps) {
                 </span>
                 <span>
                   计划资金 {formatCurrency(sizingDiagnostics.plannedCashBudget)}，
-                  保留现金 {formatCurrency(sizingDiagnostics.cashReserveAmount)}
+                  固定现金预留 {formatCurrency(sizingDiagnostics.cashReserveAmount)}
                 </span>
               </div>
               <p>{sizingDiagnostics.summary}</p>

@@ -99,7 +99,7 @@ const envSchema = z.object({
     .number()
     .min(0)
     .max(0.5)
-    .default(0.1),
+    .default(0),
   WXPUSHER_ENABLED: z
     .enum(["true", "false"])
     .default("false")

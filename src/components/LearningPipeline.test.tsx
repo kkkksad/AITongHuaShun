@@ -40,7 +40,7 @@ describe("LearningPipeline", () => {
     expect(source).toContain("weeklyPaperReview.capital.maxSingleOrderNotional");
     expect(source).toContain("weeklyPaperReview.capital.maxOrderCapitalRatio");
     expect(source).toContain("weeklyPaperReview.capital.sizingConstraint");
-    expect(source).toContain('"cash-or-reserve": "现金/现金缓冲"');
+    expect(source).toContain('"cash-or-reserve": "可用现金/历史预留"');
     expect(source).toContain('"phase-budget": "阶段订单额度"');
     expect(source).toContain("weeklyPaperReview?.sample.historyCoverage");
     expect(source).toContain("weeklyHistoryCoverage &&");
@@ -50,5 +50,17 @@ describe("LearningPipeline", () => {
     expect(source).toContain("strategy.winRate === null");
     expect(source).toContain("weeklyPaperReview.blockers.slice(0, 4)");
     expect(source).toContain("记录估算金额");
+  });
+
+  it("distinguishes fixed cash reservation from fees and phase order counts", () => {
+    const source = readFileSync("src/components/LearningPipeline.tsx", "utf8");
+
+    expect(source).toContain("默认不按固定比例预留现金");
+    expect(source).toContain("必要手续费和滑点");
+    expect(source).toContain("固定现金预留");
+    expect(source).toContain("阶段订单笔数限制");
+    expect(source).toContain("单笔/单股硬限额");
+    expect(source).not.toContain("分时仓位上限");
+    expect(source).not.toContain("实际现金底线");
   });
 });

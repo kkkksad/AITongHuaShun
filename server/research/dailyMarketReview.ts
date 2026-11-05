@@ -693,17 +693,6 @@ export function buildDailyMarketReview(
   if (rejected.some((order) => order.rejectionReason?.includes("资金不足"))) {
     issues.push("出现资金不足拒绝，说明同批买单曾重复使用原始现金预算。");
   }
-  if (cashRatio < 0.1 && input.account.equity > 0) {
-    issues.push(`收盘现金比例仅 ${(cashRatio * 100).toFixed(1)}%，资金部署过满，缺少调整余地。`);
-  }
-  if (
-    input.account.equity > 0 &&
-    cashRatio + 0.001 < strategyProfile.cashReserveFloor
-  ) {
-    issues.push(
-      `当前现金比例 ${(cashRatio * 100).toFixed(1)}% 低于${strategyProfile.label}档位 ${(strategyProfile.cashReserveFloor * 100).toFixed(0)}% 的目标；只通过后续计划逐步调整，不绕过 T+1 强卖。`,
-    );
-  }
   if (openingBuyAttempts >= 2) {
     issues.push(`开盘 5 分钟内连续尝试 ${openingBuyAttempts} 笔买单，建仓节奏过于集中。`);
   }
@@ -727,7 +716,7 @@ export function buildDailyMarketReview(
   }
   if (tone === "risk-off" && capitalDeployedPercent > 0.7) {
     issues.push(
-      `观察池盘面偏弱时收盘仓位仍为 ${(capitalDeployedPercent * 100).toFixed(1)}%，高于 70% 风险观察线；防守现金目标需要转成分阶段减仓。`,
+      `观察池盘面偏弱时收盘仓位仍为 ${(capitalDeployedPercent * 100).toFixed(1)}%，需要按既有持仓风险复核；不会仅为凑固定现金比例自动减仓。`,
     );
   }
   if (
@@ -768,12 +757,7 @@ export function buildDailyMarketReview(
   }
   if (tone === "risk-off" && capitalDeployedPercent > 0.7) {
     nextActions.push(
-      "risk-off 下优先减持趋势恶化、信号不清或数据不足的仓位，按一手分阶段接近防守现金目标，不机械卖出健康趋势和洗盘候选。",
-    );
-  }
-  if (cashRatio + 0.001 < strategyProfile.cashReserveFloor) {
-    nextActions.push(
-      `下一轮按${strategyProfile.label}档位优先恢复现金缓冲，新增仓位继续服从市场路由和硬风控。`,
+      "risk-off 下按既有持仓风险和一手规则分阶段复核减仓，不机械卖出健康趋势和洗盘候选。",
     );
   }
   if (

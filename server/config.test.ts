@@ -108,7 +108,7 @@ const envSchema = z.object({
     .number()
     .min(0)
     .max(0.5)
-    .default(0.1),
+    .default(0),
   STORE_BACKEND: z.enum(["memory", "json"]).default("memory"),
   DATA_DIR: z.string().default("./data"),
   TRADING_HISTORY_RETENTION_DAYS: z.coerce
@@ -171,6 +171,15 @@ function parse(overrides: Record<string, string | undefined> = {}) {
 }
 
 describe("ServerConfig", () => {
+  it("defaults the real parser to no fixed cash reserve and preserves an explicit opt-in", () => {
+    const baseEnvironment = { NODE_ENV: "test", AUTH_ENABLED: "false" };
+    expect(parseServerConfig(baseEnvironment).PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0);
+    expect(parseServerConfig({
+      ...baseEnvironment,
+      PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO: "0.2",
+    }).PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0.2);
+  });
+
   describe("defaults", () => {
     it("returns sensible defaults for an empty environment", () => {
       const config = parse();
@@ -195,7 +204,7 @@ describe("ServerConfig", () => {
       expect(config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS).toBe(4);
       expect(config.PAPER_AUTO_EXECUTION_TARGET_DAILY_ORDERS).toBe(2);
       expect(config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE).toBe("observe");
-      expect(config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0.1);
+      expect(config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO).toBe(0);
       expect(config.AUTH_ENABLED).toBe(true);
       expect(config.AUTH_SESSION_TTL_SECONDS).toBe(28_800);
       expect(config.AUTH_COOKIE_SECURE).toBe(false);

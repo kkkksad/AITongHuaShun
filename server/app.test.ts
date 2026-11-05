@@ -1501,7 +1501,7 @@ describe("trading API", () => {
     }
   });
 
-  it("paces new paper capital during the opening phase", async () => {
+  it("paces opening paper order counts without reserving a portfolio percentage", async () => {
     const paperApp = await buildTradingApp({
       config: createTestConfig({
         MARKET_MODE: "paper",
@@ -1522,18 +1522,18 @@ describe("trading API", () => {
         method: "POST",
         url: "/api/trading/auto-paper-execution/run",
       });
+      const status = await paperApp.inject({
+        method: "GET",
+        url: "/api/trading/auto-paper-execution/status",
+      });
 
       expect(response.json().run).toMatchObject({
         phase: "opening",
-        phaseMaxInvestedRatio: 0.45,
-        submittedOrders: [],
+        phaseMaxInvestedRatio: 1,
       });
-      expect(response.json().run.skippedOperations).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          action: "paper-buy-plan",
-          reason: expect.stringContaining("开盘观察仓位节奏限制"),
-        }),
-      ]));
+      expect(response.json().run.submittedOrders).toHaveLength(1);
+      expect(status.json().phaseDailyOrderLimit).toBe(2);
+      expect(status.json().phaseRemainingOrders).toBe(1);
     } finally {
       await paperApp.close();
     }
@@ -1563,7 +1563,7 @@ describe("trading API", () => {
 
       expect(response.json().run).toMatchObject({
         phase: "morning-confirmation",
-        phaseMaxInvestedRatio: 0.6,
+        phaseMaxInvestedRatio: 1,
       });
       expect(response.json().run.submittedOrders).toHaveLength(1);
     } finally {
@@ -1588,7 +1588,7 @@ describe("trading API", () => {
         TRADING_SEED_PORTFOLIO: false,
         MAX_ORDER_NOTIONAL: 6_000,
         MAX_POSITION_WEIGHT: 1,
-        PAPER_AUTO_EXECUTION_ENABLED: true,
+        PAPER_AUTO_EXECUTION_ENABLED: false,
         PAPER_AUTO_EXECUTION_TRADE_WINDOW_ONLY: false,
         PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: 1,
         PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: 2,
@@ -1673,7 +1673,12 @@ describe("trading API", () => {
       startMarket: false,
       clock: () => now,
     });
-    await useGrowthPaperProfile(paperApp);
+    const defensiveProfile = await paperApp.inject({
+      method: "PUT",
+      url: "/api/account/strategy-profile",
+      payload: { strategyProfile: "capital-preservation" },
+    });
+    expect(defensiveProfile.statusCode).toBe(200);
 
     try {
       const openingRun = await paperApp.inject({
@@ -1700,6 +1705,7 @@ describe("trading API", () => {
       expect(suppressedAudit.body).not.toContain("SPT_testToken123");
 
       now = todayAtChinaTime("10:30:00");
+      await useGrowthPaperProfile(paperApp);
       const confirmationRun = await paperApp.inject({
         method: "POST",
         url: "/api/trading/auto-paper-execution/run",
@@ -1713,7 +1719,9 @@ describe("trading API", () => {
       await paperApp.close();
       vi.unstubAllGlobals();
     }
-  });
+    // This integration runs two deterministic research plans as well as the
+    // notification/receipt path; allow their bounded CPU work to finish.
+  }, 20_000);
 
   it("returns a SuperMind signal package without credential handling", async () => {
     const response = await app.inject({

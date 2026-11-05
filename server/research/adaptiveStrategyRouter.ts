@@ -48,6 +48,7 @@ export interface AdaptiveStrategyRouting {
   confidence: number;
   positionPosture: AdaptivePositionPosture;
   allowNewPositions: boolean;
+  /** Compatibility field; routing no longer imposes a fixed cash reserve. */
   cashReserveRatio: number;
   newPositionScale: number;
   eligibleStrategyKeys: string[];
@@ -201,46 +202,46 @@ const STRATEGY_PLAYBOOKS: Record<AdaptiveMarketRegime, AdaptiveStrategyPlaybook>
 
 const CAPITAL_PACING: Record<AdaptiveMarketRegime, AdaptiveCapitalPacing> = {
   "trend-up-low-volatility": {
-    openingMaxInvestedRatio: 0.55,
-    morningMaxInvestedRatio: 0.7,
-    afternoonMaxInvestedRatio: 0.82,
-    closingMaxInvestedRatio: 0.9,
+    openingMaxInvestedRatio: 1,
+    morningMaxInvestedRatio: 1,
+    afternoonMaxInvestedRatio: 1,
+    closingMaxInvestedRatio: 1,
   },
   "trend-up-high-volatility": {
-    openingMaxInvestedRatio: 0.4,
-    morningMaxInvestedRatio: 0.5,
-    afternoonMaxInvestedRatio: 0.65,
-    closingMaxInvestedRatio: 0.75,
+    openingMaxInvestedRatio: 1,
+    morningMaxInvestedRatio: 1,
+    afternoonMaxInvestedRatio: 1,
+    closingMaxInvestedRatio: 1,
   },
   "range-low-volatility": {
-    openingMaxInvestedRatio: 0.35,
-    morningMaxInvestedRatio: 0.45,
-    afternoonMaxInvestedRatio: 0.55,
-    closingMaxInvestedRatio: 0.65,
+    openingMaxInvestedRatio: 1,
+    morningMaxInvestedRatio: 1,
+    afternoonMaxInvestedRatio: 1,
+    closingMaxInvestedRatio: 1,
   },
   "range-high-volatility": {
-    openingMaxInvestedRatio: 0.3,
-    morningMaxInvestedRatio: 0.38,
-    afternoonMaxInvestedRatio: 0.48,
-    closingMaxInvestedRatio: 0.58,
+    openingMaxInvestedRatio: 1,
+    morningMaxInvestedRatio: 1,
+    afternoonMaxInvestedRatio: 1,
+    closingMaxInvestedRatio: 1,
   },
   "risk-off-recovery": {
-    openingMaxInvestedRatio: 0.35,
-    morningMaxInvestedRatio: 0.35,
-    afternoonMaxInvestedRatio: 0.35,
-    closingMaxInvestedRatio: 0.4,
+    openingMaxInvestedRatio: 1,
+    morningMaxInvestedRatio: 1,
+    afternoonMaxInvestedRatio: 1,
+    closingMaxInvestedRatio: 1,
   },
   "risk-off": {
-    openingMaxInvestedRatio: 0.35,
-    morningMaxInvestedRatio: 0.35,
-    afternoonMaxInvestedRatio: 0.35,
-    closingMaxInvestedRatio: 0.35,
+    openingMaxInvestedRatio: 1,
+    morningMaxInvestedRatio: 1,
+    afternoonMaxInvestedRatio: 1,
+    closingMaxInvestedRatio: 1,
   },
   unclear: {
-    openingMaxInvestedRatio: 0.3,
-    morningMaxInvestedRatio: 0.3,
-    afternoonMaxInvestedRatio: 0.3,
-    closingMaxInvestedRatio: 0.3,
+    openingMaxInvestedRatio: 1,
+    morningMaxInvestedRatio: 1,
+    afternoonMaxInvestedRatio: 1,
+    closingMaxInvestedRatio: 1,
   },
 };
 
@@ -310,49 +311,49 @@ function riskProfile(regime: AdaptiveMarketRegime): Pick<
       return {
         positionPosture: "accumulate",
         allowNewPositions: true,
-        cashReserveRatio: 0.1,
+        cashReserveRatio: 0,
         newPositionScale: 1,
       };
     case "trend-up-high-volatility":
       return {
         positionPosture: "hold",
         allowNewPositions: true,
-        cashReserveRatio: 0.25,
+        cashReserveRatio: 0,
         newPositionScale: 0.5,
       };
     case "range-low-volatility":
       return {
         positionPosture: "hold",
         allowNewPositions: true,
-        cashReserveRatio: 0.25,
+        cashReserveRatio: 0,
         newPositionScale: 0.45,
       };
     case "range-high-volatility":
       return {
         positionPosture: "hold",
         allowNewPositions: true,
-        cashReserveRatio: 0.4,
+        cashReserveRatio: 0,
         newPositionScale: 0.25,
       };
     case "risk-off-recovery":
       return {
         positionPosture: "hold",
         allowNewPositions: false,
-        cashReserveRatio: 0.55,
+        cashReserveRatio: 0,
         newPositionScale: 0,
       };
     case "risk-off":
       return {
         positionPosture: "reduce",
         allowNewPositions: false,
-        cashReserveRatio: 0.55,
+        cashReserveRatio: 0,
         newPositionScale: 0,
       };
     case "unclear":
       return {
         positionPosture: "hold",
         allowNewPositions: false,
-        cashReserveRatio: 0.7,
+        cashReserveRatio: 0,
         newPositionScale: 0,
       };
   }
@@ -564,7 +565,7 @@ export function stabilizeAdaptiveStrategyRouting(input: {
     confidence: 0,
     positionPosture: "hold",
     allowNewPositions: false,
-    cashReserveRatio: Math.max(0.7, input.current.cashReserveRatio),
+    cashReserveRatio: 0,
     newPositionScale: 0,
     eligibleStrategyKeys: ["kairosCapitalShield"],
     disabledStrategyKeys: ALL_STRATEGY_KEYS.filter(

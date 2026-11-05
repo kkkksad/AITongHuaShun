@@ -548,10 +548,7 @@ function buildUnavailablePaperPlan(input: {
 }): PaperTradingPlan {
   const profile = getPaperStrategyProfilePolicy(input.strategyProfile);
   const executionOption = getPaperExecutionStrategyOption(input.executionStrategy);
-  const cashReserveRatio = Math.max(
-    input.cashReserveRatio,
-    profile.cashReserveFloor,
-  );
+  const cashReserveRatio = input.cashReserveRatio;
   const cashReserveAmount = Math.min(
     input.account.cash,
     Math.max(0, input.account.equity * cashReserveRatio),
@@ -1143,10 +1140,9 @@ export class PaperAutoExecutor {
     const account = this.options.system.broker.getAccount();
     let projectedCash = account.cash;
     let projectedMarketValue = account.marketValue;
-    const reserveRatio = Math.max(
-      this.options.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
-      plan.capitalPlan.cashReserveRatio,
-    );
+    // Server configuration is authoritative; an old plan must not reinstate a
+    // cash floor that the operator has explicitly disabled.
+    const reserveRatio = this.options.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO;
     const cashReserve = account.equity * reserveRatio;
 
     for (const operation of plan.operations) {
@@ -1417,7 +1413,7 @@ export class PaperAutoExecutor {
       "Auto execution submits orders only to the local PaperBroker.",
       "REAL_TRADING_ENABLED must remain false and MARKET_MODE must be paper.",
       "A-share lot-size, T+1, cash, position and circuit-breaker checks still run before every order.",
-      "New paper buys are paced by opening, morning, afternoon and closing invested-ratio caps.",
+      "Automatic order counts are paced across opening, morning, afternoon and closing phases without fixed portfolio cash floors.",
       "The daily target may activate a qualified afternoon probe but never overrides plan eligibility or risk checks.",
       "Qualified probes can activate only in the afternoon and still require live history, fees, cash, position, and broker risk checks.",
       "No TongHuaShun, Zhongxin, SuperMind, browser cookie, password, SMS code or live broker token is used.",

@@ -128,6 +128,22 @@ const auditEvents: AuditEvent[] = [{
 }];
 
 describe("buildDailyMarketReview", () => {
+  it("does not require restoring an arbitrary cash percentage", () => {
+    const report = buildDailyMarketReview({
+      snapshot,
+      provider: "akshare",
+      account,
+      positions,
+      orders: [],
+      auditEvents: [],
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+
+    expect(report.strategyReview.issues.join(" ")).not.toMatch(/收盘现金比例仅|低于.*档位.*目标/);
+    expect(report.strategyReview.nextActions.join(" ")).not.toContain("恢复现金缓冲");
+    expect(report.strategyReview.profile.cashReserveFloor).toBe(0);
+  });
+
   it("classifies broad current weakness only with a sufficient tradable sample", () => {
     const quote = snapshot.quotes[0];
     const broadWeakSnapshot: MarketSnapshot = {

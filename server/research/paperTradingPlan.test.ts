@@ -300,7 +300,7 @@ describe("buildPaperTradingPlan cash reservation", () => {
 
     expect(plan.strategyProfile.key).toBe("growth");
     expect(plan.strategyProfile.allowNewPositions).toBe(false);
-    expect(plan.strategyProfile.effectiveCashReserveRatio).toBe(0.75);
+    expect(plan.strategyProfile.effectiveCashReserveRatio).toBe(0);
     expect(plan.operations.some((operation) => operation.action === "paper-buy-plan")).toBe(false);
   });
 });
@@ -312,6 +312,9 @@ function buildEntryDisciplinePlan(input: {
   confidence?: number;
   orders?: OrderRecord[];
   accountCash?: number;
+  accountEquity?: number;
+  strategyProfile?: "growth" | "balanced";
+  cashReserveRatio?: number;
   candidateScore?: number;
   adaptiveRouting?: AdaptiveStrategyRouting;
   activityTargetActive?: boolean;
@@ -346,8 +349,8 @@ function buildEntryDisciplinePlan(input: {
     accountId: "PAPER-CN-01",
     mode: "paper",
     cash: accountCash,
-    equity: accountCash,
-    marketValue: 0,
+    equity: input.accountEquity ?? accountCash,
+    marketValue: Math.max(0, (input.accountEquity ?? accountCash) - accountCash),
     unrealizedPnl: 0,
     realizedPnl: 0,
     dailyPnl: 0,
@@ -407,8 +410,8 @@ function buildEntryDisciplinePlan(input: {
     maxSingleOrderNotional: input.maxSingleOrderNotional ?? 2_000,
     commissionRate: 0.0003,
     minimumCommission: 5,
-    cashReserveRatio: 0,
-    strategyProfile: "growth",
+    cashReserveRatio: input.cashReserveRatio ?? 0,
+    strategyProfile: input.strategyProfile ?? "growth",
     activityTargetActive: input.activityTargetActive,
     activityMode: input.activityMode,
   });
@@ -496,6 +499,67 @@ describe("buildPaperTradingPlan entry discipline", () => {
         ]),
       }),
     ]));
+  });
+
+  it.each(["balanced", "growth"] as const)(
+    "can plan a qualified buy below the former cash floor in the %s profile",
+    (strategyProfile) => {
+      const plan = buildEntryDisciplinePlan({
+        stockRegime: "healthy-trend",
+        accountCash: 1_500,
+        accountEquity: 10_000,
+        strategyProfile,
+      });
+      const buy = plan.operations.find((operation) => operation.action === "paper-buy-plan");
+
+      expect(plan.capitalPlan.cashReserveRatio).toBe(0);
+      expect(plan.capitalPlan.cashReserveAmount).toBe(0);
+      expect(plan.capitalPlan.sizingDiagnostics?.plannedCashBudget).toBe(1_500);
+      expect(buy).toMatchObject({ quantity: 100, estimatedNotional: 1_000 });
+      expect(buy!.estimatedNotional + 5).toBeLessThanOrEqual(plan.account.cash);
+    },
+  );
+
+  it("still requires cash for commission when the fixed reserve is zero", () => {
+    const plan = buildEntryDisciplinePlan({
+      stockRegime: "healthy-trend",
+      accountCash: 1_000,
+      accountEquity: 10_000,
+    });
+
+    expect(plan.operations.some((operation) => operation.action === "paper-buy-plan")).toBe(false);
+  });
+
+  it("honors an explicitly configured reserve without adding a profile floor", () => {
+    const plan = buildEntryDisciplinePlan({
+      stockRegime: "healthy-trend",
+      accountCash: 1_500,
+      accountEquity: 10_000,
+      cashReserveRatio: 0.1,
+      strategyProfile: "balanced",
+    });
+
+    expect(plan.capitalPlan.cashReserveRatio).toBe(0.1);
+    expect(plan.capitalPlan.cashReserveAmount).toBe(1_000);
+    expect(plan.operations.some((operation) => operation.action === "paper-buy-plan")).toBe(false);
+  });
+
+  it("does not restore a disabled cash reserve from legacy routing fields", () => {
+    const plan = buildEntryDisciplinePlan({
+      stockRegime: "healthy-trend",
+      accountCash: 1_500,
+      accountEquity: 10_000,
+      adaptiveRouting: {
+        ...validationRouting("kairosQualifiedProbe"),
+        cashReserveRatio: 0.9,
+      },
+      activityTargetActive: true,
+      activityMode: "qualified-probe",
+    });
+
+    expect(plan.capitalPlan.cashReserveRatio).toBe(0);
+    expect(plan.capitalPlan.cashReserveAmount).toBe(0);
+    expect(plan.operations.some((operation) => operation.action === "paper-buy-plan")).toBe(true);
   });
 
   it("blocks the small BaoSteel order when minimum round-trip fees dominate", () => {

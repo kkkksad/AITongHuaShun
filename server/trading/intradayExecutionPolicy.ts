@@ -1,7 +1,4 @@
-import type {
-  AdaptiveCapitalPacing,
-  AdaptiveStrategyRouting,
-} from "../research/adaptiveStrategyRouter";
+import type { AdaptiveStrategyRouting } from "../research/adaptiveStrategyRouter";
 import {
   getChinaMinutes,
   isAshareTradingTime,
@@ -20,13 +17,6 @@ export interface IntradayExecutionPolicy {
   maxInvestedRatio: number;
   source: "adaptive-routing" | "conservative-default";
 }
-
-const DEFAULT_PACING: AdaptiveCapitalPacing = {
-  openingMaxInvestedRatio: 0.45,
-  morningMaxInvestedRatio: 0.6,
-  afternoonMaxInvestedRatio: 0.75,
-  closingMaxInvestedRatio: 0.85,
-};
 
 const PHASE_LABELS: Record<AShareTradingPhase, string> = {
   opening: "开盘观察",
@@ -71,33 +61,17 @@ export function getAshareTradingPhase(value = new Date()): AShareTradingPhase {
   return "closed";
 }
 
-function maxInvestedRatio(
-  phase: AShareTradingPhase,
-  pacing: AdaptiveCapitalPacing,
-): number {
-  switch (phase) {
-    case "opening":
-      return pacing.openingMaxInvestedRatio;
-    case "morning-confirmation":
-      return pacing.morningMaxInvestedRatio;
-    case "afternoon-confirmation":
-      return pacing.afternoonMaxInvestedRatio;
-    case "closing-risk-review":
-    case "closed":
-      return pacing.closingMaxInvestedRatio;
-  }
-}
-
 export function getIntradayExecutionPolicy(
   value: Date,
   routing: AdaptiveStrategyRouting | null,
 ): IntradayExecutionPolicy {
   const phase = getAshareTradingPhase(value);
-  const pacing = routing?.capitalPacing ?? DEFAULT_PACING;
   return {
     phase,
     phaseLabel: PHASE_LABELS[phase],
-    maxInvestedRatio: maxInvestedRatio(phase, pacing),
+    // Keep the field for clients, but never recreate a cash floor from old
+    // routing ratios. Fees, cash and broker risk limits govern affordability.
+    maxInvestedRatio: 1,
     source: routing ? "adaptive-routing" : "conservative-default",
   };
 }

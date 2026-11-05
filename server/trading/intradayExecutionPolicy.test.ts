@@ -74,36 +74,47 @@ describe("intraday execution policy", () => {
     expect(phase).toBe("closed");
     expect(reason).toBeTruthy();
   });
-  it("uses the routing cap for each phase", () => {
+  it("ignores legacy routing ratios instead of recreating a fixed cash reserve", () => {
     expect(getIntradayExecutionPolicy(
       new Date("2026-07-17T09:45:00+08:00"),
       routing(),
-    ).maxInvestedRatio).toBe(0.55);
+    ).maxInvestedRatio).toBe(1);
     expect(getIntradayExecutionPolicy(
       new Date("2026-07-17T14:30:00+08:00"),
       routing(),
-    ).maxInvestedRatio).toBe(0.9);
+    ).maxInvestedRatio).toBe(1);
   });
 
-  it("uses conservative defaults without real adaptive routing", () => {
+  it("does not reserve a fixed portfolio fraction without adaptive routing", () => {
     const result = getIntradayExecutionPolicy(
       new Date("2026-07-17T09:45:00+08:00"),
       null,
     );
 
     expect(result.phase).toBe("opening");
-    expect(result.maxInvestedRatio).toBe(0.45);
+    expect(result.maxInvestedRatio).toBe(1);
     expect(result.source).toBe("conservative-default");
   });
 
-  it("uses the closing cap for an explicit out-of-session manual paper run", () => {
+  it("does not reserve a fixed fraction for an explicit out-of-session manual paper run", () => {
     const result = getIntradayExecutionPolicy(
       new Date("2026-07-17T20:00:00+08:00"),
       routing(),
     );
 
     expect(result.phase).toBe("closed");
-    expect(result.maxInvestedRatio).toBe(0.9);
+    expect(result.maxInvestedRatio).toBe(1);
+  });
+
+  it.each([
+    "2026-07-17T09:35:00+08:00",
+    "2026-07-17T10:30:00+08:00",
+    "2026-07-17T13:30:00+08:00",
+    "2026-07-17T14:30:00+08:00",
+    "2026-07-17T20:00:00+08:00",
+  ])("keeps the portfolio ratio at one in every phase at %s", (value) => {
+    expect(getIntradayExecutionPolicy(new Date(value), null).maxInvestedRatio).toBe(1);
+    expect(getIntradayExecutionPolicy(new Date(value), routing()).maxInvestedRatio).toBe(1);
   });
 
   it("reserves automatic order capacity for later confirmation phases", () => {
