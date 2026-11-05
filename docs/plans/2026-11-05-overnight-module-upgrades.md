@@ -627,12 +627,36 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新18项完整真实计划/Broker先8红10绿后全绿；仅candidateQuantity用rounded min上界与estimatedCommission分舍入、hasSufficientCash现金比较，邻近一手与while共用严格notional<=原cap，真实分位/小数缺口仍拒。
 - [x] 作者182相关/类型/diff与96组正常整份plan一致；独立亲跑182项、另96组完整对照及9个自定义lot/reserve/while高费率/严格本金cap边界通过。price>=1/排序/档位/资格/费用效率/lot/reserve/结构保持，不引入滑点模型；Broker对照均明确slip0隔离佣金。root完整实现与18新测试复核无阻断。
 - [x] 精确暂存树110服务端文件1640项、45前端文件258项、TypeScript/Vite全过，未混入53。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块52提交1b1ad650b0614d4bf85c56b53dd8c8fa3ca65888已推送并部署，UTC23:22独立校验492个归档文件、三healthy/健康200/匿名401/原账户；固定reserve0与风险限额保持。
 
 ## 模块53：缺块恢复跨刷新上限
 
 **Files:** `src/main.tsx`、`src/lib/chunkRecovery.ts`、必要旧storage控制更新与真实main事件/React.lazy跨document集成回归，架构/产品/状态/本计划。
 
 - [x] 真实main注册/React.lazy源码受控跨document模拟：同session同完整href，延迟import在load后失败，每文档load清marker，3次文档各reload1次；不触发清理/无SW控制为[1,0]。仅去清理后，getter失败fallbackMap每文档重建、set抛错/静默失败仍[1,1]且同文档可多刷。探针runtime/chunk-recovery-lifecycle.probe.mjs；未称线上已发生事故。
-- [ ] 先红后绿，移除main的load无条件清标记；正常可持久session相同最近href连续reload最多一次，其他href原可恢复行为保持。自动reload前必须确认真实sessionStorage set/readback成功；fallback Map只可保留同document兼容，不当作跨reload持久证据，不可写/不可读/静默丢写时不自动刷新。
-- [ ] 保留错误识别/显式clear helper/其他URL/手动重试及ErrorBoundary；不引入全session URL集合或新持久认证存储。覆盖lazy与vite:preloadError先后/重复、load前后/跨document、getter/读/写失败及静默失败、普通错误不刷新、SW生产注册/开发清理保持。独立复核、精确全检查、单独部署。
+- [x] 新15项真实main源码/React.lazy/Suspense/DOM/ErrorBoundary受控跨document测试先10红5绿后全绿；移除load无条件清标记，真实sessionStorage必须set/readback成功才reload，fallback Map不作为持久证据。原3项storage控制同步更新，其他href、显式clear、错误识别与手动按钮保持；未声称真实浏览器导航实测。
+- [x] 作者与独立各7文件52项、app类型/diff通过，独立逐行确认原SW生产注册/DEV清理和最近href语义保持。覆盖lazy/vite先后重复、load前后跨document、getter/read/write/静默/readback失败和普通错误，root完整实现/15项复核无阻断。
+- [x] 精确暂存树110服务端文件1640项、46前端文件273项、TypeScript/Vite全过，未混入54/55实现。
+- [ ] 单独提交部署与独立核验。
+
+## 模块54：重新认证的私有查询缓存边界
+
+**Files:** `src/App.tsx`认证生命周期、`useTradingBackend`必要认证epoch写回隔离、QueryClient辅助/真实App与Settings集成回归及旧fixture最小适配，架构/安全/状态/本计划。
+
+- [x] 独立真实App/Settings/useTradingBackend/LoginPage/Router/QueryClient两项复现：注销或AUTH_EXPIRED后重登录，bootstrap已更新到8000，仍复用45秒新鲜期内旧会话计划且plan网络读取为0。原disabled只清bootstrap，非市场HTTP响应本身已no-store；未触碰生产、未声称当前单用户产品跨用户泄露。
+- [x] 迟到mutation亦确证：真实App档位请求挂起→退出重登录新账户8000→旧返回1234覆盖新显示；独立真实hook六种mutation均能回填A覆盖已登录B。批准最小认证epoch隔离，含reset已进入await后再次检查，不改变mutation返回与同会话行为。
+- [ ] 先红后绿，在明确认证边界取消并清除旧私有query缓存，重新认证读新数据，旧未完成GET不得复活旧缓存；不把策略/路由选择当查询清掉，不改变同会话成功重置流程或生产账户。
+- [ ] 覆盖主动退出、会话过期、退出失败本地清理、重新登录新计划/日周报告、旧GET迟到、同会话复用。涉及异步mutation写回仅在确证后处理，不无证据扩大范围。独立复核、精确全检查、单独提交部署与核验。
+
+## 模块55：无行情降级计划的动态风险上限说明
+
+**Files:** `PaperAutoExecutor`无有效行情分支与真实执行器降级计划回归，架构/状态/本计划。
+
+- [x] 独立真实Executor证实：无有效行情不提交订单，但通知用原始配置25%/2500，而RiskEngine当前有效上限15.625%/1562.5；普通有行情计划服务原已正确读取动态Risk上限。
+- [ ] 先红后绿，仅让降级计划读取RiskEngine当前有效单股/单笔上限，保持暂停/无行情跳过/通知额度及原有执行行为；不增加通知发送、不改生产状态或提高限额。覆盖原始上限、动态收缩、单笔/单股独立约束和恢复。
+- [ ] 独立复核、精确全检查、单独提交部署与核验。
+
+## 后续研究记录：计划边界与费用后单股权益
+
+- [x] 独立完整真实plan→Broker/Executor发现边界不一致：E10000/cap.25/price25，计划100股2500、手续费检查通过，Broker按费用后权益9995正确拒绝25.0125%；动态cap.15625/price15.62同类。slippage0及5bps、正常低价/缩放控制均已验证，探针仅位于忽略runtime。
+- [ ] 计划层目前未建模滑点，不能用提高Broker cap或去掉费用后检查掩盖。需要另立成本投影设计与验证，确保持仓、待买和多单累计口径后再实施；本次未直接更改此金融模型。

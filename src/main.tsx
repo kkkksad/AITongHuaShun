@@ -7,7 +7,6 @@ import { I18nProvider } from "./i18n";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { shouldRetryQuery } from "./lib/apiError";
 import {
-  clearChunkRecoveryAttempt,
   getChunkRecoveryStorage,
   lazyWithChunkRecovery,
   recoverFromChunkLoadError,
@@ -50,7 +49,6 @@ async function unregisterDevelopmentServiceWorkers(): Promise<void> {
 // stale cached JS/CSS cannot mask the current Vite build.
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    clearChunkRecoveryAttempt(getChunkRecoveryStorage());
     if (import.meta.env.DEV) {
       unregisterDevelopmentServiceWorkers()
         .then(() => {

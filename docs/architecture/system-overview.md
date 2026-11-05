@@ -14,6 +14,8 @@ Paper暂停保留已有挂单及预占，行情估值/account事件和主动撤�
 
 WebSocket每次认证握手除市场/账户/持仓外还发送`orders.snapshot`最近50笔，等同浏览器bootstrap的显式订单读取上限。初始化/刷新按[决策0016](../decisions/0016-bootstrap-realtime-read-windows.md)合并本轮已收到的更新，首读失败保留未落地事件；旧生命周期/socket不能回写。缺完整订单快照时兼容增量有界缓冲，溢出仅补读一次并诚实显示失败，不提供服务端绝对全序保证。
 
+动态资源加载失败恢复只对当前session最近完整href自动刷新一次；`window.load`不代表所有懒加载成功，不能清恢复标记。自动刷新前必须向真实sessionStorage写入并读回标记，存储不可用或静默丢写时保留错误边界和手动恢复；document内Map不能证明跨刷新上限。
+
 ## 当前结构
 
 ```text

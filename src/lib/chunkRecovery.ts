@@ -39,6 +39,8 @@ export function shouldAttemptChunkRecovery(
   storage: RecoveryStorage,
   pageKey: string,
 ): boolean {
+  // Document memory is lost on reload and cannot enforce a cross-reload limit.
+  if (storage === fallbackRecoveryStorage) return false;
   try {
     return storage.getItem(CHUNK_RECOVERY_SESSION_KEY) !== pageKey;
   } catch {
@@ -49,11 +51,14 @@ export function shouldAttemptChunkRecovery(
 export function markChunkRecoveryAttempt(
   storage: RecoveryStorage,
   pageKey: string,
-): void {
+): boolean {
+  if (storage === fallbackRecoveryStorage) return false;
   try {
     storage.setItem(CHUNK_RECOVERY_SESSION_KEY, pageKey);
+    return storage.getItem(CHUNK_RECOVERY_SESSION_KEY) === pageKey;
   } catch {
     // A blocked sessionStorage must not prevent the error boundary from rendering.
+    return false;
   }
 }
 
@@ -77,7 +82,7 @@ export function recoverFromChunkLoadError(input: {
   ) {
     return false;
   }
-  markChunkRecoveryAttempt(input.storage, input.pageKey);
+  if (!markChunkRecoveryAttempt(input.storage, input.pageKey)) return false;
   input.reload();
   return true;
 }

@@ -55,7 +55,7 @@ describe("chunk recovery", () => {
     expect(shouldAttemptChunkRecovery(session, "/market")).toBe(true);
   });
 
-  it("falls back when sessionStorage access is blocked", () => {
+  it("does not automatically reload when sessionStorage access falls back to document memory", () => {
     const descriptor = Object.getOwnPropertyDescriptor(window, "sessionStorage");
     Object.defineProperty(window, "sessionStorage", {
       configurable: true,
@@ -65,15 +65,15 @@ describe("chunk recovery", () => {
     });
     try {
       const blockedStorage = getChunkRecoveryStorage();
-      expect(shouldAttemptChunkRecovery(blockedStorage, "/blocked-storage")).toBe(true);
+      expect(shouldAttemptChunkRecovery(blockedStorage, "/blocked-storage")).toBe(false);
       const reload = vi.fn();
       expect(recoverFromChunkLoadError({
         error: new Error("ChunkLoadError: loading chunk 12 failed"),
         storage: blockedStorage,
         pageKey: "/blocked-storage",
         reload,
-      })).toBe(true);
-      expect(reload).toHaveBeenCalledTimes(1);
+      })).toBe(false);
+      expect(reload).not.toHaveBeenCalled();
       expect(shouldAttemptChunkRecovery(blockedStorage, "/blocked-storage")).toBe(false);
       clearChunkRecoveryAttempt(blockedStorage);
     } finally {
