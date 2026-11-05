@@ -605,7 +605,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新9真实Router集成先6红3绿后全绿；导航完成时若无显式targetId，且main中当前activeElement仍是aria-selected=true的role=tab，尊重已由页签管理的焦点并不重复滚动。仍记录completedKey/disconnect，原lazy等待/取消保持；显式深链、主内容外焦点、未选中tab和历史切换继续原导航定位。
 - [x] 作者38项/app类型/diff，独立33项及3项真实Router/原生Observer完成后不再抢焦点、main外tab、延迟显式target边界通过。9新与原7覆盖连续左右/循环/HomeEnd/lazy/refresh/mouse/header quicksearch/POP/explicit，root完整hook与集成测试读取无阻断。
 - [x] 精确暂存树109服务端文件1622项、45前端文件258项、TypeScript/Vite全过，未混入52/53。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块50提交663f6b9b3558e4264cd6029ad57752d8c908a0c3已推送并部署，UTC23:16独立校验491个归档文件、三healthy/健康200/匿名401/原账户；首次核验web仍starting，待部署完成后全部通过。
 
 ## 模块51：Service Worker业务接口缓存隔离
 
@@ -624,8 +624,10 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** `server/research/paperTradingPlan.ts`候选资金计算及新真实完整计划/Broker回归，架构/状态/本计划。
 
 - [x] 独立真实buildPaperTradingPlan+Broker六控制：slippage0隔离费用，价166.72/现金16677、默认佣金的100股Broker恰fill但计划0；合法min5.004/价20/cash2005同类误0；min5.0052/cash2005.0052计划100却不足，cash2005.01控制足够。无替换operations/资格/路由/费用效率阻止。现Executor/Broker仍安全拦截真正不足，缺陷在计划整手/说明。
-- [ ] 先红后绿，仅candidateQuantity复用现estimatedCommission的分位舍入，初始上界不得因未舍入最低费提前丢弃可买手；资金比较复用hasSufficientCash，仅容二进制噪声，真实分位/小数缺口仍拒。若需检查紧邻一手修除法噪声，必须再严格检查原本金硬cap。
-- [ ] 保持price>=1的原clamp、整手/候选排序/档位/资格/费用效率/单股单笔cap/reserve与返回结构；不引入滑点建模或改执行费用/真实配置。覆盖完整计划+真Broker双向小数min/默认佣金、现金不足/两单累计/噪声和硬cap控制，独立复核、精确全检查、单独发布。
+- [x] 新18项完整真实计划/Broker先8红10绿后全绿；仅candidateQuantity用rounded min上界与estimatedCommission分舍入、hasSufficientCash现金比较，邻近一手与while共用严格notional<=原cap，真实分位/小数缺口仍拒。
+- [x] 作者182相关/类型/diff与96组正常整份plan一致；独立亲跑182项、另96组完整对照及9个自定义lot/reserve/while高费率/严格本金cap边界通过。price>=1/排序/档位/资格/费用效率/lot/reserve/结构保持，不引入滑点模型；Broker对照均明确slip0隔离佣金。root完整实现与18新测试复核无阻断。
+- [x] 精确暂存树110服务端文件1640项、45前端文件258项、TypeScript/Vite全过，未混入53。
+- [ ] 单独提交部署与独立核验。
 
 ## 模块53：缺块恢复跨刷新上限
 

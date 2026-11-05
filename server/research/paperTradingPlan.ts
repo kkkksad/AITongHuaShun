@@ -35,6 +35,7 @@ import type {
   StockRegimeResult,
 } from "./marketRegimeResearch";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
+import { hasSufficientCash } from "../broker/executionCosts";
 
 export type PaperTradingOperationAction =
   | "observe"
@@ -188,14 +189,21 @@ function candidateQuantity(
   minimumCommission: number,
 ): number {
   const price = Math.max(candidate.price, 1);
+  const minimumFee = Number(minimumCommission.toFixed(2));
   let quantity = roundLot(
-    Math.min(maxSingleOrderNotional, Math.max(0, cash - minimumCommission)) / price,
+    Math.min(maxSingleOrderNotional, Math.max(0, cash - minimumFee)) / price,
     lotSize,
   );
+  const fitsBudget = (shares: number) => {
+    const notional = shares * price;
+    const commission = estimatedCommission(notional, commissionRate, minimumCommission);
+    return notional <= maxSingleOrderNotional && hasSufficientCash(cash, notional + commission);
+  };
+  // Division can lose an exact-fit lot to binary noise. The adjacent lot still
+  // must satisfy the strict principal cap and the broker's cash comparison.
+  if (fitsBudget(quantity + lotSize)) quantity += lotSize;
   while (quantity >= lotSize) {
-    const notional = quantity * price;
-    const commission = Math.max(minimumCommission, notional * commissionRate);
-    if (notional + commission <= cash) return quantity;
+    if (fitsBudget(quantity)) return quantity;
     quantity -= lotSize;
   }
   return 0;
