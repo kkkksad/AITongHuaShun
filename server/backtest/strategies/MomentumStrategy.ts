@@ -43,9 +43,11 @@ export class MomentumStrategy implements BacktestStrategy {
 
     this.prices.push(quote.price);
 
-    if (this.prices.length < this.entryPeriod) return [];
+    if (this.prices.length < this.entryPeriod + 1) return [];
 
-    const nDayHigh = highest(this.prices, this.entryPeriod);
+    // 完整的过去 N 条观察值，不把当前判断价格计入通道。
+    const entryPrices = this.prices.slice(-this.entryPeriod - 1, -1);
+    const nDayHigh = highest(entryPrices, this.entryPeriod);
     if (isNaN(nDayHigh)) return [];
 
     const price = quote.price;
@@ -64,10 +66,8 @@ export class MomentumStrategy implements BacktestStrategy {
     }
 
     // 跌破M日最低价卖出
-    if (this.inPosition && this.prices.length >= this.exitPeriod) {
-      // 使用 slice(-exitPeriod-1, -1) 来获取不包括当前bar的过去exitPeriod个最低价
-      // 但我们想用当前bar价格判断，所以用 prices 包括当前bar
-      const exitPrices = this.prices.slice(-this.exitPeriod);
+    if (this.inPosition && this.prices.length >= this.exitPeriod + 1) {
+      const exitPrices = this.prices.slice(-this.exitPeriod - 1, -1);
       const exitLow = Math.min(...exitPrices);
       if (price <= exitLow) {
         this.inPosition = false;
