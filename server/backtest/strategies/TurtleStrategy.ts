@@ -26,8 +26,6 @@ export class TurtleStrategy implements BacktestStrategy {
   private readonly highs: number[] = [];
   private readonly lows: number[] = [];
   private boundSymbol?: string;
-  private inPosition = false;
-  private entryPrice = 0;
 
   constructor(
     private readonly entryPeriod = 20,
@@ -45,8 +43,6 @@ export class TurtleStrategy implements BacktestStrategy {
     this.highs.length = 0;
     this.lows.length = 0;
     this.boundSymbol = undefined;
-    this.inPosition = false;
-    this.entryPrice = 0;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
@@ -73,22 +69,26 @@ export class TurtleStrategy implements BacktestStrategy {
     // bar's estimated high/low makes a positive price unable to break either.
     const previousHighs = this.highs.slice(0, -1);
     const previousLows = this.lows.slice(0, -1);
+    const position = context.positions.find((item) => item.symbol === quote.symbol);
+    const inPosition = (position?.quantity ?? 0) > 0;
 
     // 趋势过滤：价格必须在均线上方才做多
     if (this.trendFilterPeriod > 0) {
       const ma = sma(this.prices, this.trendFilterPeriod);
       if (!isNaN(ma) && price < ma) {
         // 价格在均线下方，如果持有多头则考虑退出
-        if (this.inPosition && previousLows.length >= this.exitPeriod) {
+        if (position && inPosition && previousLows.length >= this.exitPeriod) {
           const channel = donchianChannel(previousHighs, previousLows, this.exitPeriod);
           if (price <= channel.lower) {
-            this.inPosition = false;
+            const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+            const quantity = Math.floor(sellable / 100) * 100;
+            if (quantity <= 0) return [];
             return [
               {
                 symbol: quote.symbol,
                 side: "sell",
                 type: "market",
-                targetWeight: 1.0,
+                quantity,
               },
             ];
           }
@@ -100,9 +100,7 @@ export class TurtleStrategy implements BacktestStrategy {
     const entryChannel = donchianChannel(previousHighs, previousLows, this.entryPeriod);
 
     // 突破上轨买入
-    if (!this.inPosition && price >= entryChannel.upper) {
-      this.inPosition = true;
-      this.entryPrice = price;
+    if (!inPosition && price >= entryChannel.upper) {
       return [
         {
           symbol: quote.symbol,
@@ -114,16 +112,18 @@ export class TurtleStrategy implements BacktestStrategy {
     }
 
     // 跌破下轨卖出
-    if (this.inPosition && previousLows.length >= this.exitPeriod) {
+    if (position && inPosition && previousLows.length >= this.exitPeriod) {
       const exitChannel = donchianChannel(previousHighs, previousLows, this.exitPeriod);
       if (price <= exitChannel.lower) {
-        this.inPosition = false;
+        const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+        const quantity = Math.floor(sellable / 100) * 100;
+        if (quantity <= 0) return [];
         return [
           {
             symbol: quote.symbol,
             side: "sell",
             type: "market",
-            targetWeight: 1.0,
+            quantity,
           },
         ];
       }

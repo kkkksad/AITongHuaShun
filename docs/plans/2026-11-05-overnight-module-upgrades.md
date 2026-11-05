@@ -564,15 +564,17 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新14项真实Engine先10红4绿后全绿，onStart同一quote同步绑定base与symbol；后续只同股，缺失false等待，reset清全部原状态与绑定。初始empty/全false仍整轮停用，不扩多股或后续启用，不改公式/levels/数量/限额。
 - [x] 作者316项/类型/diff及3组含成本旧新报告一致；独立100项及亲自重跑3组报告（56/31/20成交，含原拒单）通过，原log/round/clamp/双level同步逐行保持。root最小实现复核无阻断。
 - [x] 精确暂存树105服务端文件1526项、44前端文件249项、TypeScript/Vite全过，未混入47/48/49/50。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块46提交a6f4c7f5cb46ad832d97f367796e35c8b3971d4d已推送并部署，UTC22:47独立校验485个归档文件、三healthy/健康200/匿名401/原Paper账户。
 
 ## 模块47：海龟实际持仓信号
 
 **Files:** 模块44发布后的`TurtleStrategy.ts`、真实Engine持仓专项及仅必要旧通道fixture更新，架构/状态/本计划。
 
 - [x] 独立真实Engine：Turtle2/1/filter0/weight1、cash2005、9/9.9/10.01/10.2，首次买200+费被拒却flag=true，下一仍突破可买100而无信号；内存仅实际持仓校准对照真实成交100@10.2/费5/现金980。
-- [ ] 等44发布后先红后绿，读取绑定股实际quantity，退出用min(actual,available??actual)100整手；去掉intent/未使用entryPrice。保留完整过去N/M窗口、filter两退出分支、±1%估算/比较/权重；持续突破/退出条件在拒单后仍可检查，T+1锁定等待。
-- [ ] 验证费用/风险拒买后重试、T+1次日退出/拒卖后实际仓、部分可卖/他股隔离、reset与正常稳定旧新报告。旧窗口断言保留，若需持仓只显式控制真实context或Broker种仓，不放松原经济断言。独立复核、精确全检查、单独发布。
+- [x] 44发布后实施，新21项先17红4绿后全绿（7真实Engine、14明确controlled context），读取绑定股实际quantity，退出用min(actual,available??actual)100整手；去掉intent/未使用entryPrice。完整过去N/M窗口、filter两退出分支、±1%估算/比较/权重保持；持续突破/退出在拒单后仍检查，T+1等待。
+- [x] 作者168相关/类型/diff及3组含成本旧新报告一致，覆盖费用/风险拒买、两filter T+1/拒卖、实际可卖/他股/reset；旧10窗口与14symbol全过。旧窗口只补明确受控100股context，全部原窗口/真实Engine经济断言保持；symbol仅sell300形状。root完整四文件diff/21新测试复核无阻断。
+- [x] 独立249项/类型/diff及3组正常含成本完整报告一致，原窗口与真实经济断言无放松。精确暂存树106服务端文件1547项、44前端文件249项、TypeScript/Vite全过，未混入48/49/50/51。
+- [ ] 单独提交部署与独立核验。
 
 ## 模块48：均线交叉实际持仓信号
 
@@ -598,3 +600,20 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 独立真实集成证实：A股页签ArrowRight立即选中/聚焦turning，query导航改变location.key后RAF却将焦点抢至main，第二次方向键无法切到stock。当前仅MarketResearch的ARIA tab会触发路由，原快速搜索/跨页定位必须保留。
 - [ ] 先红后绿；导航完成时若无显式targetId，且main中当前activeElement仍是aria-selected=true的role=tab，尊重已由页签管理的焦点并不重复滚动。仍记录completedKey/disconnect，原lazy等待/取消保持；显式深链、主内容外焦点、未选中tab和历史切换继续原导航定位。
 - [ ] 真Router集成覆盖连续左右/循环/Home/End、mouse与lazy完成、refresh不抢焦点、快速搜索进market、跨页、历史返回和显式target；保留原导航7项、独立复核、精确全检查与单独部署。
+
+## 模块51：Service Worker业务接口缓存隔离
+
+**Files:** `public/sw.js`、新执行原脚本的缓存/生命周期回归（使用现有Node测试域），架构/安全/产品/状态/决策0018及本计划。
+
+- [x] 独立Node VM执行原样SW脚本三项证实：no-store账户20000→网络8000仍返回20000且只触网一次；session服务端变401却返回旧200/auth/fixture CSRF；POST订单成功后GET仍返回旧空。当前非assets GET落入cache-first，显式Cache API put忽略HTTP no-store。未访问生产账户。
+- [ ] 先红后绿，限定同源GET静态资源白名单（核对public实际文件）及已知SPA页面导航；/assets仍network-first/offline fallback。其余API（含query/导航mode）、非GET和跨源完全不respondWith/不读写缓存，浏览器按原网络处理；保留必要静态离线能力。
+- [ ] 只缓存成功basic静态/HTML壳响应，不缓存业务/错误响应；升级KAIROS cache版本，激活只清旧KAIROS命名缓存并在清理后claim，清掉v2残留账户/认证/订单，不删除无关命名缓存。旧控制器在更新激活前仍可能旧行为，不能声称部署即已清所有用户浏览器。
+- [ ] 执行原脚本验证API fresh/401/POST后GET、旧私密cache不回退、offline API拒绝不伪造、same-origin/跨源/POST/未知GET、真实静态与导航回退、错误不缓存、安装激活清理次序；独立复核、精确全检查、单独提交部署，公开静态脚本验证新字节/缓存版本。
+
+## 模块52：计划候选整手佣金舍入
+
+**Files:** `server/research/paperTradingPlan.ts`候选资金计算及新真实完整计划/Broker回归，架构/状态/本计划。
+
+- [x] 独立真实buildPaperTradingPlan+Broker六控制：slippage0隔离费用，价166.72/现金16677、默认佣金的100股Broker恰fill但计划0；合法min5.004/价20/cash2005同类误0；min5.0052/cash2005.0052计划100却不足，cash2005.01控制足够。无替换operations/资格/路由/费用效率阻止。现Executor/Broker仍安全拦截真正不足，缺陷在计划整手/说明。
+- [ ] 先红后绿，仅candidateQuantity复用现estimatedCommission的分位舍入，初始上界不得因未舍入最低费提前丢弃可买手；资金比较复用hasSufficientCash，仅容二进制噪声，真实分位/小数缺口仍拒。若需检查紧邻一手修除法噪声，必须再严格检查原本金硬cap。
+- [ ] 保持price>=1的原clamp、整手/候选排序/档位/资格/费用效率/单股单笔cap/reserve与返回结构；不引入滑点建模或改执行费用/真实配置。覆盖完整计划+真Broker双向小数min/默认佣金、现金不足/两单累计/噪声和硬cap控制，独立复核、精确全检查、单独发布。

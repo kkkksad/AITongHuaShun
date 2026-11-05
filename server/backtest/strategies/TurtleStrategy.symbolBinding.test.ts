@@ -88,7 +88,7 @@ describe("Turtle bound-symbol warmup, channels and reset", () => {
     const { engine, signals } = createRun(reordered([10, 10, 11, 12, 9]), new TurtleStrategy(2, 1, 0, 0.42));
     const report = engine.run();
     expect(signals[2]).toEqual([{ symbol: symbolA, side: "buy", type: "market", targetWeight: 0.42 }]);
-    expect(signals[4]).toEqual([{ symbol: symbolA, side: "sell", type: "market", targetWeight: 1 }]);
+    expect(signals[4]).toEqual([{ symbol: symbolA, side: "sell", type: "market", quantity: 300 }]);
     expect(report.trades).toMatchObject([
       { symbol: symbolA, side: "buy", quantity: 300, price: 11, commission: 5, barIndex: 2 },
       { symbol: symbolA, side: "sell", quantity: 300, price: 9, commission: 5, barIndex: 4 },

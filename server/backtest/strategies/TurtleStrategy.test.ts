@@ -52,11 +52,34 @@ function context(snapshot: MarketSnapshot, index: number, totalBars: number): St
 
 function replay(strategy: TurtleStrategy, prices: number[]): StrategySignal[][] {
   const history = snapshots(prices);
-  return history.map((snapshot, index) => strategy.onBar(context(snapshot, index, history.length)));
+  let heldQuantity = 0;
+  let averagePrice = 0;
+  // Controlled settled shares isolate the historical channel boundaries.
+  // Only the engine test below asserts actual fills and paid fees.
+  return history.map((snapshot, index) => {
+    const price = snapshot.quotes[0].price;
+    const current = context(snapshot, index, history.length);
+    current.positions = heldQuantity > 0 ? [{
+      symbol: "600001", name: "controlled turtle channel holding", quantity: heldQuantity,
+      availableQuantity: heldQuantity, averagePrice, currentPrice: price,
+      marketValue: heldQuantity * price, unrealizedPnl: heldQuantity * (price - averagePrice),
+      realizedPnl: 0, weight: heldQuantity * price / current.equity,
+    }] : [];
+    const output = strategy.onBar(current);
+    for (const signal of output) {
+      if (signal.side === "buy") {
+        heldQuantity = 100;
+        averagePrice = price;
+      } else {
+        heldQuantity = Math.max(0, heldQuantity - (signal.quantity ?? heldQuantity));
+      }
+    }
+    return output;
+  });
 }
 
 const buy = { symbol: "600001", side: "buy", type: "market", targetWeight: 0.2 };
-const sell = { symbol: "600001", side: "sell", type: "market", targetWeight: 1 };
+const sell = { symbol: "600001", side: "sell", type: "market", quantity: 100 };
 
 describe("TurtleStrategy historical channel boundaries", () => {
   it("requires N complete prior observations before evaluating a breakout", () => {
