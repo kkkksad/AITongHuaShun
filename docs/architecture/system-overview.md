@@ -18,6 +18,8 @@ WebSocket每次认证握手除市场/账户/持仓外还发送`orders.snapshot`�
 
 动态资源加载失败恢复只对当前session最近完整href自动刷新一次；`window.load`不代表所有懒加载成功，不能清恢复标记。自动刷新前必须向真实sessionStorage写入并读回标记，存储不可用或静默丢写时保留错误边界和手动恢复；document内Map不能证明跨刷新上限。
 
+浏览器认证边界按[决策0019](../decisions/0019-browser-authentication-lifecycle-isolation.md)同步推进App内存epoch，再取消/清除业务QueryClient；六类mutation及跨await研究清理只写发起时认证仍有效的缓存与提示。旧verify/退出不覆盖新认证，切换清旧pending并重建socket；同会话缓存、路由和参数保持。这不撤销已提交到服务器的操作。
+
 ## 当前结构
 
 ```text

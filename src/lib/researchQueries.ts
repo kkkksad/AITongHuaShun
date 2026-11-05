@@ -16,9 +16,10 @@ export function isAccountResearchQuery({ queryKey }: Pick<Query, "queryKey">): b
 }
 
 /** Retire old account reads and data; new active reports continue independently. */
-export async function resetAccountResearchQueries(queryClient: QueryClient): Promise<void> {
+export async function resetAccountResearchQueries(queryClient: QueryClient, isCurrent = () => true): Promise<void> {
   const filters = { predicate: isAccountResearchQuery };
   await queryClient.cancelQueries(filters);
+  if (!isCurrent()) return;
   void queryClient.resetQueries(filters);
 }
 

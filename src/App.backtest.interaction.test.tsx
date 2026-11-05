@@ -1,5 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -43,6 +44,7 @@ describe("App submitted backtest interactions", () => {
   let container: HTMLDivElement;
   let path: string;
   let mounted: boolean;
+  let client: QueryClient;
 
   function LocationProbe() {
     const location = useLocation();
@@ -70,17 +72,19 @@ describe("App submitted backtest interactions", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
+    client = new QueryClient();
     mounted = true;
-    await act(async () => root.render(<ThemeProvider><I18nProvider>
+    await act(async () => root.render(<QueryClientProvider client={client}><ThemeProvider><I18nProvider>
       <MemoryRouter initialEntries={["/market", "/strategy?stage=configure"]} initialIndex={1}>
         <LocationProbe /><App />
       </MemoryRouter>
-    </I18nProvider></ThemeProvider>));
+    </I18nProvider></ThemeProvider></QueryClientProvider>));
     expect(container.querySelector(".strategy-lab .primary-button")).not.toBeNull();
   });
 
   afterEach(() => {
     if (mounted) act(() => root.unmount());
+    client.clear();
     container.remove();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();

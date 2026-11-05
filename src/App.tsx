@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode, Suspense } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, Suspense } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
   ArrowRight,
@@ -150,10 +151,20 @@ const overviewModuleIds = [
 ];
 
 function App() {
+  const queryClient = useQueryClient();
+  const authenticationEpoch = useRef(0);
   const [authChecked, setAuthChecked] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const changeAuthentication = useCallback((user: AuthUser | null) => {
+    // Advance synchronously, including when React batches logout and login.
+    authenticationEpoch.current += 1;
+    void queryClient.cancelQueries();
+    queryClient.clear();
+    setAuthUser(user);
+  }, [queryClient]);
   const trading = useTradingBackend({
     enabled: authChecked && Boolean(authUser),
+    authenticationEpoch,
   });
   const location = useLocation();
   const navigate = useNavigate();
@@ -211,12 +222,13 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    const epoch = authenticationEpoch.current;
     async function checkAuth() {
       try {
         const verified = await verifyLogin();
-        if (!cancelled) setAuthUser(verified.user);
+        if (!cancelled && authenticationEpoch.current === epoch) changeAuthentication(verified.user);
       } catch {
-        if (!cancelled) setAuthUser(null);
+        if (!cancelled && authenticationEpoch.current === epoch) changeAuthentication(null);
       } finally {
         if (!cancelled) setAuthChecked(true);
       }
@@ -225,19 +237,22 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [changeAuthentication]);
 
   useEffect(() => {
-    const handleAuthExpired = () => setAuthUser(null);
+    const handleAuthExpired = () => changeAuthentication(null);
     window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
-  }, []);
+  }, [changeAuthentication]);
 
   async function handleLogout() {
+    const epoch = authenticationEpoch.current;
     try {
       await logout();
+    } catch {
+      // Local authentication still ends when the server cannot be reached.
     } finally {
-      setAuthUser(null);
+      if (authenticationEpoch.current === epoch) changeAuthentication(null);
     }
   }
 
@@ -246,7 +261,7 @@ function App() {
   }
 
   if (!authUser) {
-    return <LoginPage onAuthenticated={setAuthUser} />;
+    return <LoginPage onAuthenticated={changeAuthentication} />;
   }
 
   const pendingOrderCount = trading.orders.filter((order) => order.status === "pending").length;

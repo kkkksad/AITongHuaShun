@@ -71,6 +71,8 @@ export interface TradingBackend {
 
 interface UseTradingBackendOptions {
   enabled?: boolean;
+  /** App advances this before clearing queries at each authentication boundary. */
+  authenticationEpoch?: { readonly current: number };
 }
 
 const tradingQueryKey = ["trading-bootstrap"] as const;
@@ -94,6 +96,10 @@ export function useTradingBackend(
   options: UseTradingBackendOptions = {},
 ): TradingBackend {
   const enabled = options.enabled ?? true;
+  const authenticationEpoch = options.authenticationEpoch;
+  const epoch = authenticationEpoch?.current ?? 0;
+  const mutationEpoch = () => authenticationEpoch?.current ?? 0;
+  const isCurrentMutation = (started: number | undefined) => started === mutationEpoch();
   const queryClient = useQueryClient();
   const [realtimeState, setRealtimeState] =
     useState<ConnectionState>("connecting");
@@ -359,15 +365,17 @@ export function useTradingBackend(
       socket = undefined;
       void invalidateReads();
     };
-  }, [enabled, connectionEpoch, applyDataEvent, invalidateReads, queryClient, synchronization]);
+  }, [enabled, epoch, connectionEpoch, applyDataEvent, invalidateReads, queryClient, synchronization]);
 
   const submitMutation = useMutation({
     mutationFn: submitPaperOrder,
     onMutate: () => {
       setNotice(undefined);
       setTransportError(undefined);
+      return mutationEpoch();
     },
-    onSuccess: (result) => {
+    onSuccess: (result, _request, started) => {
+      if (!isCurrentMutation(started)) return;
       updateBootstrap((current) => ({
         ...current,
         account: result.account,
@@ -389,7 +397,8 @@ export function useTradingBackend(
         );
       }
     },
-    onError: (submitError) => {
+    onError: (submitError, _request, started) => {
+      if (!isCurrentMutation(started)) return;
       setTransportError(errorMessage(submitError, "模拟下单失败"));
     },
   });
@@ -399,8 +408,10 @@ export function useTradingBackend(
     onMutate: () => {
       setNotice(undefined);
       setTransportError(undefined);
+      return mutationEpoch();
     },
-    onSuccess: (result) => {
+    onSuccess: (result, _orderId, started) => {
+      if (!isCurrentMutation(started)) return;
       updateBootstrap((current) => ({
         ...current,
         account: result.account,
@@ -409,7 +420,8 @@ export function useTradingBackend(
       }));
       setNotice("订单已撤销");
     },
-    onError: (cancelError) => {
+    onError: (cancelError, _orderId, started) => {
+      if (!isCurrentMutation(started)) return;
       setTransportError(errorMessage(cancelError, "撤单失败"));
     },
   });
@@ -418,15 +430,18 @@ export function useTradingBackend(
     mutationFn: setPaperTradingPaused,
     onMutate: () => {
       setTransportError(undefined);
+      return mutationEpoch();
     },
-    onSuccess: (result, paused) => {
+    onSuccess: (result, paused, started) => {
+      if (!isCurrentMutation(started)) return;
       updateBootstrap((current) => ({
         ...current,
         account: result.account,
       }));
       setNotice(paused ? "模拟交易已暂停" : "模拟交易已恢复");
     },
-    onError: (pauseError) => {
+    onError: (pauseError, _paused, started) => {
+      if (!isCurrentMutation(started)) return;
       setTransportError(errorMessage(pauseError, "交易状态更新失败"));
     },
   });
@@ -436,10 +451,14 @@ export function useTradingBackend(
     onMutate: () => {
       setNotice(undefined);
       setTransportError(undefined);
+      return mutationEpoch();
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, _request, started) => {
+      if (!isCurrentMutation(started)) return;
       await invalidateReads();
-      await resetAccountResearchQueries(queryClient);
+      if (!isCurrentMutation(started)) return;
+      await resetAccountResearchQueries(queryClient, () => isCurrentMutation(started));
+      if (!isCurrentMutation(started)) return;
       updateBootstrap((current) => ({
         ...current,
         account: result.account,
@@ -452,7 +471,8 @@ export function useTradingBackend(
         `已开始新的本地模拟：初始资金 ¥${result.account.equity.toLocaleString("zh-CN")}，旧 Paper 数据已删除`,
       );
     },
-    onError: (resetError) => {
+    onError: (resetError, _request, started) => {
+      if (!isCurrentMutation(started)) return;
       setTransportError(errorMessage(resetError, "重置模拟账户失败"));
     },
   });
@@ -462,13 +482,16 @@ export function useTradingBackend(
     onMutate: () => {
       setNotice(undefined);
       setTransportError(undefined);
+      return mutationEpoch();
     },
-    onSuccess: (result) => {
+    onSuccess: (result, _strategy, started) => {
+      if (!isCurrentMutation(started)) return;
       updateBootstrap((current) => ({ ...current, account: result.account }));
       void queryClient.invalidateQueries({ queryKey: ["paper-trading-plan"] });
       setNotice("Paper 执行策略已更新，下一轮 Paper 买入计划开始生效");
     },
-    onError: (strategyError) => {
+    onError: (strategyError, _strategy, started) => {
+      if (!isCurrentMutation(started)) return;
       setTransportError(errorMessage(strategyError, "更新执行策略失败"));
     },
   });
@@ -478,16 +501,32 @@ export function useTradingBackend(
     onMutate: () => {
       setNotice(undefined);
       setTransportError(undefined);
+      return mutationEpoch();
     },
-    onSuccess: (result) => {
+    onSuccess: (result, _profile, started) => {
+      if (!isCurrentMutation(started)) return;
       updateBootstrap((current) => ({ ...current, account: result.account }));
       void queryClient.invalidateQueries({ queryKey: ["paper-trading-plan"] });
       setNotice("Paper 策略档位已更新，下一轮计划开始生效");
     },
-    onError: (profileError) => {
+    onError: (profileError, _profile, started) => {
+      if (!isCurrentMutation(started)) return;
       setTransportError(errorMessage(profileError, "更新策略档位失败"));
     },
   });
+
+  const resetSubmit = submitMutation.reset;
+  const resetCancel = cancelMutation.reset;
+  const resetPause = pauseMutation.reset;
+  const resetAccountControl = resetAccountMutation.reset;
+  const resetExecutionStrategy = executionStrategyMutation.reset;
+  const resetStrategyProfile = strategyProfileMutation.reset;
+  useEffect(() => {
+    resetSubmit(); resetCancel(); resetPause(); resetAccountControl(); resetExecutionStrategy(); resetStrategyProfile();
+    setNotice(undefined);
+    setTransportError(undefined);
+    setOrderSyncError(undefined);
+  }, [epoch, resetSubmit, resetCancel, resetPause, resetAccountControl, resetExecutionStrategy, resetStrategyProfile]);
 
   const submitOrder = useCallback(
     async (request: OrderRequest) =>

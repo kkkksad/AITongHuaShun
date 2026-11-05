@@ -645,8 +645,10 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 
 - [x] 独立真实App/Settings/useTradingBackend/LoginPage/Router/QueryClient两项复现：注销或AUTH_EXPIRED后重登录，bootstrap已更新到8000，仍复用45秒新鲜期内旧会话计划且plan网络读取为0。原disabled只清bootstrap，非市场HTTP响应本身已no-store；未触碰生产、未声称当前单用户产品跨用户泄露。
 - [x] 迟到mutation亦确证：真实App档位请求挂起→退出重登录新账户8000→旧返回1234覆盖新显示；独立真实hook六种mutation均能回填A覆盖已登录B。批准最小认证epoch隔离，含reset已进入await后再次检查，不改变mutation返回与同会话行为。
-- [ ] 先红后绿，在明确认证边界取消并清除旧私有query缓存，重新认证读新数据，旧未完成GET不得复活旧缓存；不把策略/路由选择当查询清掉，不改变同会话成功重置流程或生产账户。
-- [ ] 覆盖主动退出、会话过期、退出失败本地清理、重新登录新计划/日周报告、旧GET迟到、同会话复用。涉及异步mutation写回仅在确证后处理，不无证据扩大范围。独立复核、精确全检查、单独提交部署与核验。
+- [x] 新30项（10真实App/Settings/Router/QueryClient，20真实hook）全部绿；最初22项20红2绿、另旧logout两项先红。同步epoch后cancel+clear全业务QueryClient，六mutation成功/失败及reset每段await只写当前认证；清旧pending/notice并重建socket。旧verify/退出完成guard，当前退出失败仍本地清理，原Promise语义保持。
+- [x] 作者与独立各5文件82项/app类型/diff通过；旧8App只补QueryProvider且断言不放松，旧36reconnect/8query通过。同批次六invoke先捕获epoch、两reset await窗口、日周/其他业务缓存、旧GET迟到及同会话复用覆盖；默认库onMutate同步已核对。root完整6文件复核无阻断，限制仅客户端写回不撤销服务端操作。决策0019记录。
+- [x] 精确暂存树111服务端文件1650项、48前端文件303项、TypeScript/Vite全过，未混入56源码与16项新测试。
+- [ ] 单独提交部署与核验。
 
 ## 模块55：无行情降级计划的动态风险上限说明
 
@@ -657,9 +659,17 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 作者11相关文件118项、服务端类型/diff通过；root完整两行实现/10测试复核无初步阻断。
 - [x] 独立11文件132项/服务端类型/diff通过，另9个真实系统边界涵盖drawdown0/微量/.079999/.08/.2、90%显式reserve、balanced/defensive/capital-preservation，getter/档位/现金min一致、无下单/风险变更。
 - [x] 精确暂存树111服务端文件1650项、46前端文件273项、TypeScript/Vite全过，未混入54。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块55提交1ecfaead9df4d229a3221fe5120c3c73e54b6472已推送并部署（53补推亦完成），UTC23:35独立校验494个归档文件、三healthy/健康200/匿名401/原账户。只读资源检查根盘剩16G、内存available2384MiB，未再清理生产资源。
 
 ## 后续研究记录：计划边界与费用后单股权益
 
 - [x] 独立完整真实plan→Broker/Executor发现边界不一致：E10000/cap.25/price25，计划100股2500、手续费检查通过，Broker按费用后权益9995正确拒绝25.0125%；动态cap.15625/price15.62同类。slippage0及5bps、正常低价/缩放控制均已验证，探针仅位于忽略runtime。
 - [ ] 计划层目前未建模滑点，不能用提高Broker cap或去掉费用后检查掩盖。需要另立成本投影设计与验证，确保持仓、待买和多单累计口径后再实施；本次未直接更改此金融模型。
+
+## 模块56：旧请求401与新会话隔离
+
+**Files:** `src/lib/tradingApi.ts`认证请求边界与原生HTTP/fetch回归，架构/安全/状态/本计划。
+
+- [x] 独立真实tradingApi+localhost HTTP/native fetch/Response.text三项证实：旧会话GET或无signal档位PUT已读取半截401 JSON→新login成功且POST带csrf-B→旧body结束，无条件AUTH_EXPIRED清新csrf并使App退出。真实abort GET控制正确AbortError/零事件/保留B，不能声称已取消的正常GET仍穿透。
+- [ ] 先红后绿，每个请求捕获内存认证generation，明确登录/会话确认/退出/过期边界推进；旧保护请求401仍向原调用方拒绝，但不得清新会话CSRF或发送新会话过期事件，当前401/显式通知仍生效。不持久化认证材料，不修改cookie/权限/请求返回结构。
+- [ ] 覆盖旧GET与PUT、新登录/verify边界、真实abort控制、当前401及重复旧响应、旧logout清理若独立确证则纳入最小guard；保留同会话CSRF与错误格式。独立复核、精确全检查、单独提交部署核验。
