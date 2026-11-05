@@ -431,8 +431,11 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** `deploy/nginx.conf`、必要独立隔离Nginx回归及部署/状态/本计划。
 
 - [x] UTC21:35:55独立公网公开静态GET：现charts JS在identity/gzip请求均200/443899字节、CSS均169865字节，皆无Content-Encoding/Vary，解码hash一致。官方Nginx gzip默认off；当前配置未开启。TLS仍自签，本探针不算可信链验证。
-- [ ] 只在既有/assets/启用gzip与Vary，level5/min1024，明确JS/CSS/SVG等文本MIME，保持immutable/过期/404；不扩到HTML/API/WS，不压已压缩图片/字体，不新增依赖或预生成资源。
-- [ ] 隔离Nginx验证配置、identity/gzip解码等价、缓存/404、API/HTML不压缩；独立复核、现有检查与构建通过后单独部署，线上测实际字节与一致性，不用估算冒称收益。
+- [x] 仅/assets新增gzip/Vary/level5/min1024/文本MIME五行，独立逐字验证移除五行与HEAD一致；候选SHA256=23a5f318effbda59b7ef86bd34df940acee703a3701d8f2caf0adde7c9143b23，root复核配置无阻断。
+- [x] 服务器现有Nginx1.27.5镜像独立128MiB/loopback容器，整份候选配置+临时测试证书与自身stub，nginx-t、gzip/identity/q=0、解码SHA/Vary/30d immutable全部过。实际JS443899→118328B(-73.34%)、CSS169865→28384B(-83.29%)；SVGfixture95411→9796B。小文本21B、根HTML84041B、真实index1234B、APIstub75042B与WS426未压，缺asset404。
+- [x] 临时三个container与专属目录全部按名称/label验证清理，生产web ID/启动时间/restart0前后相同，无reload或真实账户/API/通知请求。无需实现镜像单测。
+- [x] 精确暂存树95服务端文件1352项、44前端文件249项、TypeScript与Vite生产构建全部通过，未混入模块36/37。
+- [ ] 单独部署后线上测实际字节与一致性；隔离测量不能冒称已上线。
 
 ## 模块36：窄屏下单表单不被表格撑宽
 
@@ -470,4 +473,4 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 作者相关21文件439项、独立13文件286项及额外3边界探针通过，TypeScript/diff通过；旧Broker/Risk与当前真实引擎同7单/7成交/9权益点完整报告deepEqual，末权益100200/佣金35。root实现和核心测试复核无阻断。
 - [x] 首次精确快照全量服务端1351绿/1红：既有零预留回归用800股在80%硬限恰卡手续费前边界，新费用后检查正确拒绝。仅该场景测试上限设81%以隔离总仓位85%政策，保持800股、零预留/90%总仓位与最终现金981断言；生产额度与其他单股拒绝测试不改。前端44文件249项、TypeScript/Vite通过，修正后复验见下。
 - [x] 修正fixture后的精确暂存树95服务端文件/1352项与全TypeScript通过；运行源码与前次前端44文件249项/Vite已过版本相同，仅测试与文档变化。独立69项确认fixture仍抓旧总仓位预留且不放宽生产限制，未混入模块35/36。
-- [ ] 单独部署；上限只约束买入时刻，之后市场波动仍会改变权重。
+- [x] 模块34提交35f18abe71d384748bc913f2128af3fa522e6566已推送并部署；UTC21:57独立校验475个归档文件、三容器healthy、健康200/匿名401，原Paper账户及策略保留。上限只约束买入时刻，之后市场波动仍会改变权重。

@@ -2,6 +2,8 @@
 
 生产部署使用 `docker-compose.production.yml`。它只公开 Nginx 的 80/443，Fastify 与 AkShare 桥仅在容器网络内通信。所有订单仍写入本地 PaperBroker，`REAL_TRADING_ENABLED=false` 不得修改。
 
+`/assets/`对至少1024字节的JS/CSS/SVG等文本启用gzip（level5），发送`Vary: Accept-Encoding`并保留30天immutable缓存。HTML、API和WebSocket不在压缩范围；缺少的静态文件仍返回404。可用同一资源分别发送`Accept-Encoding: identity`与`gzip`，比较原始响应体字节，并验证gzip解码后哈希一致；不要用压缩响应体与原文哈希直接比较。TLS可信链须另行验证，`-k`静态传输探针不能证明证书可信。
+
 ## 首次部署
 
 ```bash
