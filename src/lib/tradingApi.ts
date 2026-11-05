@@ -1526,6 +1526,7 @@ const API_PROXY_MISS_HINT =
   "API 代理未命中：请求返回了前端 HTML。请确认使用 npm run dev 或 npm run dev:a-share 启动，且 4173 端口由 config/vite.app.config.js 提供；如果只启动前端，请设置 VITE_API_BASE_URL=http://127.0.0.1:8787。";
 export const AUTH_EXPIRED_EVENT = "kairos:auth-expired";
 let csrfToken: string | null = null;
+let authenticationGeneration = 0;
 
 export function isUnauthorizedWebSocketClose(
   event: Pick<CloseEvent, "code" | "reason">,
@@ -1711,6 +1712,7 @@ export async function apiRequest<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const requestAuthenticationGeneration = authenticationGeneration;
   const url = getApiUrl(path);
   let response: Response;
 
@@ -1761,7 +1763,8 @@ export async function apiRequest<T>(
     if (
       response.status === 401 &&
       path !== "/api/auth/login" &&
-      path !== "/api/auth/session"
+      path !== "/api/auth/session" &&
+      requestAuthenticationGeneration === authenticationGeneration
     ) {
       notifyAuthExpired();
     }
@@ -1776,6 +1779,7 @@ export async function apiRequest<T>(
 }
 
 export function notifyAuthExpired(): void {
+  authenticationGeneration += 1;
   csrfToken = null;
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
@@ -1802,21 +1806,30 @@ export async function login(username: string, password: string): Promise<LoginRe
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
+  authenticationGeneration += 1;
   csrfToken = response.csrfToken;
   return response;
 }
 
 export async function verifyLogin(): Promise<AuthVerifyResponse> {
+  const requestAuthenticationGeneration = authenticationGeneration;
   const response = await apiRequest<AuthVerifyResponse>("/api/auth/session");
-  csrfToken = response.csrfToken;
+  if (requestAuthenticationGeneration === authenticationGeneration) {
+    authenticationGeneration += 1;
+    csrfToken = response.csrfToken;
+  }
   return response;
 }
 
 export async function logout(): Promise<void> {
+  const logoutAuthenticationGeneration = ++authenticationGeneration;
   try {
     await authApiRequest<{ message: string }>("/api/auth/logout", { method: "POST" });
   } finally {
-    csrfToken = null;
+    if (logoutAuthenticationGeneration === authenticationGeneration) {
+      authenticationGeneration += 1;
+      csrfToken = null;
+    }
   }
 }
 

@@ -20,6 +20,8 @@ WebSocket每次认证握手除市场/账户/持仓外还发送`orders.snapshot`�
 
 浏览器认证边界按[决策0019](../decisions/0019-browser-authentication-lifecycle-isolation.md)同步推进App内存epoch，再取消/清除业务QueryClient；六类mutation及跨await研究清理只写发起时认证仍有效的缓存与提示。旧verify/退出不覆盖新认证，切换清旧pending并重建socket；同会话缓存、路由和参数保持。这不撤销已提交到服务器的操作。
 
+API请求另捕获认证generation，旧保护请求401只向原调用方拒绝，不触发新会话过期或清新CSRF；当前401与显式过期继续生效。当前verify成功推进边界，旧verify和旧logout清理不能覆写后来的内存CSRF；不保证浏览器并发Set-Cookie顺序。
+
 ## 当前结构
 
 ```text

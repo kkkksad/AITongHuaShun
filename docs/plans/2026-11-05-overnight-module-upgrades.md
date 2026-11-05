@@ -648,7 +648,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新30项（10真实App/Settings/Router/QueryClient，20真实hook）全部绿；最初22项20红2绿、另旧logout两项先红。同步epoch后cancel+clear全业务QueryClient，六mutation成功/失败及reset每段await只写当前认证；清旧pending/notice并重建socket。旧verify/退出完成guard，当前退出失败仍本地清理，原Promise语义保持。
 - [x] 作者与独立各5文件82项/app类型/diff通过；旧8App只补QueryProvider且断言不放松，旧36reconnect/8query通过。同批次六invoke先捕获epoch、两reset await窗口、日周/其他业务缓存、旧GET迟到及同会话复用覆盖；默认库onMutate同步已核对。root完整6文件复核无阻断，限制仅客户端写回不撤销服务端操作。决策0019记录。
 - [x] 精确暂存树111服务端文件1650项、48前端文件303项、TypeScript/Vite全过，未混入56源码与16项新测试。
-- [ ] 单独提交部署与核验。
+- [x] 模块54提交9ef50b81f47f7c5f38ef42e220e3edc91e8522e8已部署，UTC23:43独立校验497个归档文件、三healthy/健康200/匿名401/原账户；GitHub暂不可达，随56补推。
 
 ## 模块55：无行情降级计划的动态风险上限说明
 
@@ -671,5 +671,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** `src/lib/tradingApi.ts`认证请求边界与原生HTTP/fetch回归，架构/安全/状态/本计划。
 
 - [x] 独立真实tradingApi+localhost HTTP/native fetch/Response.text三项证实：旧会话GET或无signal档位PUT已读取半截401 JSON→新login成功且POST带csrf-B→旧body结束，无条件AUTH_EXPIRED清新csrf并使App退出。真实abort GET控制正确AbortError/零事件/保留B，不能声称已取消的正常GET仍穿透。
-- [ ] 先红后绿，每个请求捕获内存认证generation，明确登录/会话确认/退出/过期边界推进；旧保护请求401仍向原调用方拒绝，但不得清新会话CSRF或发送新会话过期事件，当前401/显式通知仍生效。不持久化认证材料，不修改cookie/权限/请求返回结构。
-- [ ] 覆盖旧GET与PUT、新登录/verify边界、真实abort控制、当前401及重复旧响应、旧logout清理若独立确证则纳入最小guard；保留同会话CSRF与错误格式。独立复核、精确全检查、单独提交部署核验。
+- [x] 最初12项真实nativeHTTP/fetch/流式Response.text先8红4绿；另4边界共16绿，旧logout200/500 finally清B、旧verify成功覆B和notify后旧verify复活均先正式确证再guard。请求捕获generation，login成功/当前verify成功/notify/退出推进；只有当前保护401通知过期，旧401保留reject，旧verify/退出清理只改所属认证状态。
+- [x] 作者与独立各4文件68项/app类型/diff通过，独立另3项同代并发401只一次expiry、verify早于logout及logout等待中verify交错绿。真实abort保持，auth端点自有401不通知；CSRF仍只内存，无cookie/权限/API返回格式改变。root完整diff/16测试无阻断；范围不包括浏览器迟到Set-Cookie顺序或撤销已收到的请求，决策0019已明确。
+- [x] 精确暂存树111服务端文件1650项、49前端文件319项、TypeScript/Vite全过。
+- [ ] 单独提交部署与核验。
