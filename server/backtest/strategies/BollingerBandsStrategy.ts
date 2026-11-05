@@ -21,7 +21,6 @@ import { bollingerBands } from "./indicators";
 export class BollingerBandsStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
-  private inPosition = false;
 
   constructor(
     private readonly period = 20,
@@ -35,7 +34,6 @@ export class BollingerBandsStrategy implements BacktestStrategy {
 
   reset(): void {
     this.prices.length = 0;
-    this.inPosition = false;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
@@ -50,10 +48,11 @@ export class BollingerBandsStrategy implements BacktestStrategy {
     if (isNaN(bb.lower) || isNaN(bb.middle) || isNaN(bb.upper)) return [];
 
     const price = quote.price;
+    const position = context.positions.find((item) => item.symbol === quote.symbol);
+    const inPosition = (position?.quantity ?? 0) > 0;
 
     // 触及下轨买入
-    if (!this.inPosition && price <= bb.lower) {
-      this.inPosition = true;
+    if (!inPosition && price <= bb.lower) {
       return [
         {
           symbol: quote.symbol,
@@ -65,14 +64,17 @@ export class BollingerBandsStrategy implements BacktestStrategy {
     }
 
     // 回归中轨或触及上轨卖出
-    if (this.inPosition && (price >= bb.middle || price >= bb.upper)) {
-      this.inPosition = false;
+    if (position && inPosition && (price >= bb.middle || price >= bb.upper)) {
+      const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+      const quantity = Math.floor(sellable / 100) * 100;
+      // 锁定或不足一手时等待；后续 bar 始终重新读取实际持仓。
+      if (quantity <= 0) return [];
       return [
         {
           symbol: quote.symbol,
           side: "sell",
           type: "market",
-          targetWeight: 1.0,
+          quantity,
         },
       ];
     }
