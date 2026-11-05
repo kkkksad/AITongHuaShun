@@ -22,6 +22,7 @@ import {
   fetchStockTrendForecast,
   fetchTurningPointResearch,
   fetchTradingBootstrap,
+  fetchRecentOrders,
   fetchWeeklyPaperReview,
   getTradingSocketUrl,
   isUnauthorizedWebSocketClose,
@@ -228,6 +229,18 @@ describe("session-aware trading API", () => {
     for (const [, init] of fetchMock.mock.calls) {
       expect(init).toEqual(expect.objectContaining({ signal: controller.signal }));
     }
+  });
+
+  it("reads the bounded recent order catchup with cookie auth and cancellation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    expect(await fetchRecentOrders(controller.signal)).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/orders\?limit=50$/),
+      expect.objectContaining({ credentials: "include", signal: controller.signal }),
+    );
   });
 
   it("preserves an aborted request instead of presenting it as an API outage", async () => {

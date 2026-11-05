@@ -8,7 +8,7 @@
 
 账户累计`realizedPnl`按[决策0015](../decisions/0015-account-net-realized-pnl.md)从总现金、剩余持仓成交成本和初始权益派生，已付买卖费用即时计入，清仓/重开/历史裁剪不丢累计净结果；挂单预算不是费用。持仓级字段与研究FIFO定义独立保留，不能求当前持仓已实现之和代替账户累计。
 
-WebSocket每次认证握手除市场/账户/持仓外还发送`orders.snapshot`最近50笔，等同浏览器bootstrap的显式订单读取上限；已有缓存的客户端整体替换订单，再接受`order.updated`增量。旧socket和卸载后的消息被身份门忽略；初次bootstrap在途与推送之间的全量竞态尚需独立处理。
+WebSocket每次认证握手除市场/账户/持仓外还发送`orders.snapshot`最近50笔，等同浏览器bootstrap的显式订单读取上限。初始化/刷新按[决策0016](../decisions/0016-bootstrap-realtime-read-windows.md)合并本轮已收到的更新，首读失败保留未落地事件；旧生命周期/socket不能回写。缺完整订单快照时兼容增量有界缓冲，溢出仅补读一次并诚实显示失败，不提供服务端绝对全序保证。
 
 ## 当前结构
 

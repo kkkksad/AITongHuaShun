@@ -1842,6 +1842,10 @@ export async function fetchTradingBootstrap(signal?: AbortSignal): Promise<Tradi
   return { health, capabilities, market, account, positions, orders, limits };
 }
 
+export function fetchRecentOrders(signal?: AbortSignal): Promise<OrderRecord[]> {
+  return authApiRequest<OrderRecord[]>("/api/orders?limit=50", { signal });
+}
+
 export function fetchMarketDataQuality(
   signal?: AbortSignal,
 ): Promise<DataQualityReport> {

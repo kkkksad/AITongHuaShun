@@ -1,14 +1,16 @@
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrderRecord } from "../../shared/trading";
-import { fetchTradingBootstrap, type TradingBootstrap } from "../lib/tradingApi";
+import { fetchRecentOrders, fetchTradingBootstrap, resetPaperAccount, type TradingBootstrap } from "../lib/tradingApi";
 import { useTradingBackend, type TradingBackend } from "./useTradingBackend";
 
 vi.mock("../lib/tradingApi", async (importOriginal) => ({
   ...await importOriginal<typeof import("../lib/tradingApi")>(),
   fetchTradingBootstrap: vi.fn(),
+  fetchRecentOrders: vi.fn(),
+  resetPaperAccount: vi.fn(),
   getTradingSocketUrl: () => "ws://127.0.0.1/test-only",
 }));
 
@@ -76,6 +78,14 @@ function bootstrap(orders = [order("fill"), order("cancel"), order("removed")]):
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  void promise.catch(() => undefined);
+  return { promise, resolve, reject };
+}
+
 describe("useTradingBackend reconnect order snapshots", () => {
   let root: Root;
   let container: HTMLDivElement;
@@ -94,6 +104,8 @@ describe("useTradingBackend reconnect order snapshots", () => {
     vi.stubGlobal("WebSocket", MockWebSocket);
     MockWebSocket.instances = [];
     vi.mocked(fetchTradingBootstrap).mockReset().mockResolvedValue(bootstrap());
+    vi.mocked(fetchRecentOrders).mockReset();
+    vi.mocked(resetPaperAccount).mockReset();
     client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: Infinity } } });
     client.setQueryData(["trading-bootstrap"], bootstrap());
     container = document.createElement("div");
@@ -137,6 +149,23 @@ describe("useTradingBackend reconnect order snapshots", () => {
   async function receive(socket: MockWebSocket, type: string, data: unknown) {
     await act(async () => socket.receive(type, data));
     await act(() => vi.advanceTimersByTimeAsync(1));
+  }
+
+  async function flush() { await act(() => vi.advanceTimersByTimeAsync(1)); }
+
+  function beginInitialRead() {
+    client.removeQueries({ queryKey: ["trading-bootstrap"] });
+    const read = deferred<TradingBootstrap>();
+    vi.mocked(fetchTradingBootstrap).mockReturnValueOnce(read.promise);
+    return read;
+  }
+
+  async function beginRefresh() {
+    const read = deferred<TradingBootstrap>();
+    vi.mocked(fetchTradingBootstrap).mockReturnValueOnce(read.promise);
+    let completion!: Promise<void>;
+    await act(async () => { completion = backend.refresh(); });
+    return { ...read, completion };
   }
 
   it("replaces stale orders with filled, cancelled and new orders after reconnect", async () => {
@@ -209,5 +238,376 @@ describe("useTradingBackend reconnect order snapshots", () => {
 
     expect(client.getQueryData(["trading-bootstrap"])).toBe(previous);
     expect(backend.orders).toEqual([]);
+  });
+
+  it("replays every early snapshot and order update over the first delayed bootstrap", async () => {
+    const read = beginInitialRead();
+    const socket = await connect();
+    const incoming = bootstrap([order("filled", "filled")]);
+    incoming.market = { ...incoming.market, sequence: 2, mode: "mock" };
+    incoming.account = { ...incoming.account, cash: 9_000 };
+    incoming.positions = [{
+      symbol: "600519", name: "本地测试", quantity: 100, availableQuantity: 0,
+      averagePrice: 10, currentPrice: 10, marketValue: 1_000,
+      unrealizedPnl: 0, realizedPnl: 0, weight: 0.1,
+    }];
+    await receive(socket, "market.snapshot", incoming.market);
+    await receive(socket, "account.snapshot", incoming.account);
+    await receive(socket, "positions.snapshot", incoming.positions);
+    await receive(socket, "orders.snapshot", incoming.orders);
+    await receive(socket, "order.updated", order("new"));
+    await act(async () => read.resolve(bootstrap()));
+    await flush();
+
+    expect(backend.market).toEqual(incoming.market);
+    expect(backend.account).toEqual(incoming.account);
+    expect(backend.positions).toEqual(incoming.positions);
+    expect(backend.orders).toEqual([order("new"), ...incoming.orders]);
+    expect(backend.mode).toBe("mock");
+    expect(fetchRecentOrders).not.toHaveBeenCalled();
+  });
+
+  it("uses the last full snapshot and preserves the subsequent incremental order", async () => {
+    const read = beginInitialRead();
+    const socket = await connect();
+    await receive(socket, "orders.snapshot", [order("discard")]);
+    await receive(socket, "order.updated", order("discard-new"));
+    await receive(socket, "orders.snapshot", [order("keep")]);
+    await receive(socket, "order.updated", order("keep", "filled"));
+    await receive(socket, "order.updated", order("keep-new"));
+    await act(async () => read.resolve(bootstrap()));
+    await flush();
+
+    expect(backend.orders).toEqual([order("keep-new"), order("keep", "filled")]);
+  });
+
+  it("replays legacy order updates without a full snapshot and retains the 50-order bound", async () => {
+    const read = beginInitialRead();
+    const socket = await connect();
+    await receive(socket, "order.updated", order("fill", "filled"));
+    await receive(socket, "order.updated", order("new"));
+    await receive(socket, "order.updated", order("fill", "cancelled"));
+    await act(async () => read.resolve(bootstrap(Array.from({ length: 50 }, (_, index) => order(index === 0 ? "fill" : `base-${index}`)))));
+    await flush();
+
+    expect(backend.orders).toHaveLength(50);
+    expect(backend.orders[0]).toEqual(order("new"));
+    expect(backend.orders[1]).toEqual(order("fill", "cancelled"));
+    expect(fetchRecentOrders).not.toHaveBeenCalled();
+  });
+
+  it("protects live fields during refresh but allows a later REST read to advance", async () => {
+    const socket = await connect();
+    const read = await beginRefresh();
+    const incoming = bootstrap([order("live")]);
+    incoming.market = { ...incoming.market, sequence: 2 };
+    incoming.account = { ...incoming.account, cash: 9_000 };
+    await receive(socket, "market.snapshot", incoming.market);
+    await receive(socket, "account.snapshot", incoming.account);
+    await receive(socket, "orders.snapshot", incoming.orders);
+    await act(async () => read.resolve(bootstrap()));
+    await read.completion;
+    await flush();
+    expect(backend.market?.sequence).toBe(2);
+    expect(backend.account?.cash).toBe(9_000);
+    expect(backend.orders).toEqual(incoming.orders);
+
+    const later = bootstrap([order("later-rest")]);
+    later.market = { ...later.market, sequence: 3 };
+    later.account = { ...later.account, cash: 8_000 };
+    vi.mocked(fetchTradingBootstrap).mockResolvedValueOnce(later);
+    await act(async () => backend.refresh());
+    await flush();
+    expect(backend.market?.sequence).toBe(3);
+    expect(backend.account?.cash).toBe(8_000);
+    expect(backend.orders).toEqual(later.orders);
+  });
+
+  it("keeps early events through an initial failure and retry", async () => {
+    const read = beginInitialRead();
+    const socket = await connect();
+    await receive(socket, "account.snapshot", { ...bootstrap().account, cash: 9_000 });
+    await receive(socket, "orders.snapshot", [order("early")]);
+    await act(async () => read.reject(new Error("initial fixture failure")));
+    await flush();
+    expect(backend.error).toContain("initial fixture failure");
+    vi.mocked(fetchTradingBootstrap).mockResolvedValueOnce(bootstrap());
+    await act(async () => backend.refresh());
+    await flush();
+    expect(backend.account?.cash).toBe(9_000);
+    expect(backend.orders).toEqual([order("early")]);
+    expect(backend.error).toBeUndefined();
+  });
+
+  it("finishes the first read after 1000 market events without restarting it", async () => {
+    const read = beginInitialRead();
+    const socket = await connect();
+    await act(async () => {
+      for (let sequence = 2; sequence <= 1_001; sequence++) {
+        socket.receive("market.snapshot", { ...bootstrap().market, sequence });
+      }
+    });
+    expect(fetchTradingBootstrap).toHaveBeenCalledTimes(1);
+    await act(async () => read.resolve(bootstrap()));
+    await flush();
+    expect(backend.market?.sequence).toBe(1_001);
+    expect(fetchTradingBootstrap).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels a disabled initial read and does not reuse its late result on re-enable", async () => {
+    const read = beginInitialRead();
+    const oldSocket = await connect();
+    const signal = vi.mocked(fetchTradingBootstrap).mock.calls[0][0]!;
+    await receive(oldSocket, "orders.snapshot", [order("old-session")]);
+    await render(false);
+    expect(signal.aborted).toBe(true);
+    const fresh = bootstrap([order("fresh-session")]);
+    vi.mocked(fetchTradingBootstrap).mockResolvedValueOnce(fresh);
+    await render(true);
+    await receive(oldSocket, "orders.snapshot", [order("late-old-session")]);
+    await act(async () => read.resolve(bootstrap([order("late-rest")])));
+    await flush();
+    expect(backend.orders).toEqual(fresh.orders);
+    expect(fetchTradingBootstrap).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats cancellation of a refresh as lifecycle cleanup rather than a connection failure", async () => {
+    await connect();
+    const read = await beginRefresh();
+    const completion = read.completion.catch((error: unknown) => error);
+    await render(false);
+    await act(async () => read.resolve(bootstrap([order("late")])));
+    expect(await completion).toBeUndefined();
+    await render(true);
+    await flush();
+    expect(backend.error).toBeUndefined();
+  });
+
+  it("starts a new reset epoch and ignores the old refresh and socket", async () => {
+    const oldSocket = await connect();
+    const read = await beginRefresh();
+    const completion = read.completion.catch((error: unknown) => error);
+    await receive(oldSocket, "orders.snapshot", [order("old-overlay")]);
+    const account = { ...bootstrap().account, cash: 20_000, equity: 20_000 };
+    vi.mocked(resetPaperAccount).mockResolvedValueOnce({ account, positions: [], orders: [] });
+    await act(async () => backend.resetAccount({ startingCash: 20_000, strategyProfile: "balanced", confirmation: "重置模拟账户" }));
+    await receive(oldSocket, "orders.snapshot", [order("late-old-socket")]);
+    await act(async () => read.resolve(bootstrap([order("late-old-rest")])));
+    await completion;
+    await flush();
+    expect(backend.account).toEqual(account);
+    expect(backend.orders).toEqual([]);
+  });
+
+  it("performs one bounded order catchup after a legacy pre-bootstrap buffer overflows", async () => {
+    const read = beginInitialRead();
+    const catchup = deferred<OrderRecord[]>();
+    vi.mocked(fetchRecentOrders).mockReturnValueOnce(catchup.promise);
+    const socket = await connect();
+    await act(async () => {
+      for (let index = 0; index < 101; index++) socket.receive("order.updated", order(`early-${index}`));
+    });
+    await act(async () => read.resolve(bootstrap()));
+    await flush();
+    expect(backend.account).toBeDefined();
+    expect(fetchTradingBootstrap).toHaveBeenCalledTimes(1);
+    expect(fetchRecentOrders).toHaveBeenCalledTimes(1);
+    expect(fetchRecentOrders).toHaveBeenCalledWith(expect.any(AbortSignal));
+    await receive(socket, "order.updated", order("during-catchup"));
+    await act(async () => catchup.resolve([order("authoritative")]));
+    await flush();
+    expect(backend.orders).toEqual([order("during-catchup"), order("authoritative")]);
+    expect(backend.error).toBeUndefined();
+  });
+
+  it("reports a failed catchup honestly and accepts a later full snapshot", async () => {
+    const read = beginInitialRead();
+    const catchup = deferred<OrderRecord[]>();
+    vi.mocked(fetchRecentOrders).mockReturnValueOnce(catchup.promise);
+    const socket = await connect();
+    await act(async () => {
+      for (let index = 0; index < 101; index++) socket.receive("order.updated", order(`overflow-${index}`));
+    });
+    await act(async () => read.resolve(bootstrap()));
+    await flush();
+    await act(async () => catchup.reject(new Error("fixture catchup failure")));
+    await flush();
+    expect(backend.error).toContain("订单");
+    expect(backend.realtimeState).toBe("connected");
+    expect(fetchRecentOrders).toHaveBeenCalledTimes(1);
+    await receive(socket, "orders.snapshot", [order("recovered")]);
+    expect(backend.orders).toEqual([order("recovered")]);
+    expect(backend.error).toBeUndefined();
+  });
+
+  it("does not retry forever when the catchup itself overflows", async () => {
+    const read = beginInitialRead();
+    const catchup = deferred<OrderRecord[]>();
+    vi.mocked(fetchRecentOrders).mockReturnValueOnce(catchup.promise);
+    const socket = await connect();
+    await act(async () => {
+      for (let index = 0; index < 101; index++) socket.receive("order.updated", order(`first-${index}`));
+    });
+    await act(async () => read.resolve(bootstrap()));
+    await flush();
+    await act(async () => {
+      for (let index = 0; index < 101; index++) socket.receive("order.updated", order(`second-${index}`));
+      catchup.resolve([order("not-a-complete-view")]);
+    });
+    await flush();
+    expect(fetchRecentOrders).toHaveBeenCalledTimes(1);
+    expect(backend.error).toContain("订单");
+    expect(backend.orders.some((entry) => entry.id === "not-a-complete-view")).toBe(false);
+  });
+
+  it("prevents a catchup from an old connection from replacing a newer handshake", async () => {
+    const read = beginInitialRead();
+    const catchup = deferred<OrderRecord[]>();
+    vi.mocked(fetchRecentOrders).mockReturnValueOnce(catchup.promise);
+    const first = await connect();
+    await act(async () => {
+      for (let index = 0; index < 101; index++) first.receive("order.updated", order(`old-${index}`));
+    });
+    await act(async () => read.resolve(bootstrap()));
+    await flush();
+    const current = await reconnect(first);
+    await receive(current, "orders.snapshot", [order("new-connection")]);
+    await act(async () => catchup.resolve([order("late-catchup")]));
+    await flush();
+    expect(backend.orders).toEqual([order("new-connection")]);
+    expect(backend.error).toBeUndefined();
+  });
+
+  it("merges incremental updates into fresh REST orders instead of replacing them with the old cache", async () => {
+    const socket = await connect();
+    const read = await beginRefresh();
+    await receive(socket, "order.updated", order("fill", "filled"));
+    const fresh = bootstrap([order("server-new"), order("fill"), order("cancel")]);
+    await act(async () => read.resolve(fresh));
+    await read.completion;
+    await flush();
+    expect(backend.orders).toEqual([order("server-new"), order("fill", "filled"), order("cancel")]);
+  });
+
+  it("cancels a pending initial read on unmount even if the mocked transport ignores abort", async () => {
+    const read = beginInitialRead();
+    const socket = await connect();
+    const signal = vi.mocked(fetchTradingBootstrap).mock.calls[0][0]!;
+    await receive(socket, "orders.snapshot", [order("early")]);
+    await act(async () => root.unmount());
+    mounted = false;
+    expect(signal.aborted).toBe(true);
+    await act(async () => read.resolve(bootstrap([order("late")])));
+    await flush();
+    expect(client.getQueryData(["trading-bootstrap"])).toBeUndefined();
+  });
+
+  it("cancels an old catchup when authentication disables the backend", async () => {
+    const read = beginInitialRead();
+    const catchup = deferred<OrderRecord[]>();
+    vi.mocked(fetchRecentOrders).mockReturnValueOnce(catchup.promise);
+    const socket = await connect();
+    await act(async () => {
+      for (let index = 0; index < 101; index++) socket.receive("order.updated", order(`overflow-${index}`));
+    });
+    await act(async () => read.resolve(bootstrap()));
+    await flush();
+    const signal = vi.mocked(fetchRecentOrders).mock.calls[0][0]!;
+    await render(false);
+    expect(signal.aborted).toBe(true);
+    await act(async () => catchup.resolve([order("late-old-catchup")]));
+    await flush();
+    expect(client.getQueryData(["trading-bootstrap"])).toBeUndefined();
+    expect(backend.error).toBeUndefined();
+  });
+
+  it("keeps a newer full snapshot when an older catchup fails", async () => {
+    const read = beginInitialRead();
+    const catchup = deferred<OrderRecord[]>();
+    vi.mocked(fetchRecentOrders).mockReturnValueOnce(catchup.promise);
+    const socket = await connect();
+    await act(async () => {
+      for (let index = 0; index < 101; index++) socket.receive("order.updated", order(`overflow-${index}`));
+    });
+    await act(async () => read.resolve(bootstrap()));
+    await flush();
+    await receive(socket, "orders.snapshot", [order("fresh-handshake")]);
+    await act(async () => catchup.reject(new Error("late obsolete failure")));
+    await flush();
+    expect(backend.orders).toEqual([order("fresh-handshake")]);
+    expect(backend.error).toBeUndefined();
+  });
+
+  it("starts a fresh read window after reset without retaining the previous account overlay", async () => {
+    const socket = await connect();
+    await receive(socket, "account.snapshot", { ...bootstrap().account, cash: 9_000 });
+    const account = { ...bootstrap().account, cash: 20_000, equity: 20_000 };
+    vi.mocked(resetPaperAccount).mockResolvedValueOnce({ account, positions: [], orders: [] });
+    await act(async () => backend.resetAccount({ startingCash: 20_000, strategyProfile: "balanced", confirmation: "重置模拟账户" }));
+    const next = bootstrap([]);
+    next.account = { ...account, cash: 19_000 };
+    vi.mocked(fetchTradingBootstrap).mockResolvedValueOnce(next);
+    await act(async () => backend.refresh());
+    await flush();
+    expect(backend.account?.cash).toBe(19_000);
+  });
+
+  it("survives StrictMode's cancelled setup and accepts events in its current initial read", async () => {
+    const first = beginInitialRead();
+    const second = deferred<TradingBootstrap>();
+    vi.mocked(fetchTradingBootstrap).mockReturnValueOnce(second.promise);
+    await act(async () => root.render(
+      <StrictMode><QueryClientProvider client={client}><Probe /></QueryClientProvider></StrictMode>,
+    ));
+    await flush();
+    const socket = MockWebSocket.instances.at(-1)!;
+    await act(async () => socket.emit("open"));
+    await receive(socket, "orders.snapshot", [order("strict-current")]);
+    await act(async () => { first.resolve(bootstrap([order("strict-old")])); second.resolve(bootstrap()); });
+    await flush();
+    expect(backend.orders).toEqual([order("strict-current")]);
+    expect(backend.error).toBeUndefined();
+  });
+
+  it("reports a failed manual refresh after cancelling an unfinished order catchup", async () => {
+    const initial = beginInitialRead();
+    const catchup = deferred<OrderRecord[]>();
+    vi.mocked(fetchRecentOrders).mockReturnValueOnce(catchup.promise);
+    const socket = await connect();
+    await act(async () => {
+      for (let index = 0; index < 101; index++) socket.receive("order.updated", order(`overflow-${index}`));
+      initial.resolve(bootstrap());
+    });
+    await flush();
+    const refresh = await beginRefresh();
+    const completion = refresh.completion.catch(() => undefined);
+    await act(async () => refresh.reject(new Error("manual refresh fixture failure")));
+    await completion;
+    await flush();
+    expect(backend.error).toContain("订单");
+    expect(backend.error).toContain("失败");
+    expect(backend.error).not.toContain("正在重新同步");
+    expect(fetchRecentOrders).toHaveBeenCalledTimes(1);
+  });
+
+  it("retires the old socket synchronously at reset before React runs effect cleanup", async () => {
+    const socket = await connect();
+    const reset = deferred<Awaited<ReturnType<typeof resetPaperAccount>>>();
+    vi.mocked(resetPaperAccount).mockReturnValueOnce(reset.promise);
+    let completion!: Promise<void>;
+    await act(async () => {
+      completion = backend.resetAccount({ startingCash: 20_000, strategyProfile: "balanced", confirmation: "重置模拟账户" });
+    });
+    await act(async () => {
+      const account = { ...bootstrap().account, cash: 20_000, equity: 20_000 };
+      reset.resolve({ account, positions: [], orders: [] });
+      for (let index = 0; index < 20; index++) await Promise.resolve();
+      expect(client.getQueryData<TradingBootstrap>(["trading-bootstrap"])!.account.cash).toBe(20_000);
+      socket.receive("account.snapshot", bootstrap().account);
+      socket.receive("orders.snapshot", [order("old-queued-frame")]);
+      expect(client.getQueryData<TradingBootstrap>(["trading-bootstrap"])!.account.cash).toBe(20_000);
+      expect(client.getQueryData<TradingBootstrap>(["trading-bootstrap"])!.orders).toEqual([]);
+    });
+    await completion;
   });
 });

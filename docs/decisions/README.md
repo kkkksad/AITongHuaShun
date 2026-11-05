@@ -19,6 +19,7 @@
 - [0013：域名证书独立签发与续期](0013-managed-domain-certificates.md)
 - [0014：Paper 可用现金包含订单必要成本](0014-paper-execution-cash-costs.md)
 - [0015：账户累计已实现盈亏采用净现金恒等式](0015-account-net-realized-pnl.md)
+- [0016：初始化读取合并已接收的实时事件](0016-bootstrap-realtime-read-windows.md)
 
 ## 新建格式
 

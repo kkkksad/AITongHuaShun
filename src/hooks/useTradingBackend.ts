@@ -2,6 +2,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  isCancelledError,
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
@@ -19,6 +20,7 @@ import type {
 import {
   cancelPaperOrder,
   fetchTradingBootstrap,
+  fetchRecentOrders,
   getTradingSocketUrl,
   isUnauthorizedWebSocketClose,
   notifyAuthExpired,
@@ -30,6 +32,12 @@ import {
   type MarketDataProviderName,
   type TradingBootstrap,
 } from "../lib/tradingApi";
+import {
+  applyBootstrapEvent,
+  BootstrapSynchronization,
+  upsertOrder,
+  type BootstrapDataEvent,
+} from "../lib/bootstrapSynchronization";
 
 export type ConnectionState = "connecting" | "connected" | "offline";
 
@@ -70,20 +78,15 @@ const RECONNECT_MAX_MS = 30_000;
 const HEARTBEAT_GRACE_MS = 60_000;
 const HEARTBEAT_CHECK_MS = 15_000;
 
-function upsertOrder(orders: OrderRecord[], next: OrderRecord): OrderRecord[] {
-  const existingIndex = orders.findIndex((order) => order.id === next.id);
-  if (existingIndex < 0) {
-    return [next, ...orders].slice(0, 50);
-  }
-
-  return orders.map((order, index) => (index === existingIndex ? next : order));
-}
-
 function errorMessage(error: unknown, fallback?: string): string | undefined {
   if (error instanceof Error) {
     return error.message;
   }
   return fallback;
+}
+
+function isReadCancellation(error: unknown): boolean {
+  return isCancelledError(error) || (error instanceof Error && error.name === "AbortError");
 }
 
 export function useTradingBackend(
@@ -95,11 +98,42 @@ export function useTradingBackend(
     useState<ConnectionState>("connecting");
   const [transportError, setTransportError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [orderSyncError, setOrderSyncError] = useState<string>();
+  const [connectionEpoch, setConnectionEpoch] = useState(0);
   const reconnectAttemptRef = useRef(0);
+  const synchronizationRef = useRef<BootstrapSynchronization | null>(null);
+  if (!synchronizationRef.current) synchronizationRef.current = new BootstrapSynchronization();
+  const synchronization = synchronizationRef.current;
+  const ordersControllerRef = useRef<AbortController | undefined>(undefined);
+  const socketGenerationRef = useRef(0);
+
+  const invalidateReads = useCallback(() => {
+    synchronization.invalidate();
+    ordersControllerRef.current?.abort();
+    return queryClient.cancelQueries({ queryKey: tradingQueryKey, exact: true });
+  }, [queryClient, synchronization]);
+
+  const loadBootstrap = useCallback(async ({ signal }: { signal: AbortSignal }) => {
+    ordersControllerRef.current?.abort();
+    const token = synchronization.beginBootstrap(Boolean(queryClient.getQueryData(tradingQueryKey)));
+    try {
+      const data = await fetchTradingBootstrap(signal);
+      if (signal.aborted || !synchronization.isCurrentBootstrap(token)) {
+        throw new DOMException("Bootstrap read was cancelled", "AbortError");
+      }
+      return synchronization.finishBootstrap(token, data);
+    } catch (error) {
+      if (!signal.aborted && synchronization.isCurrentBootstrap(token) && synchronization.ordersIncomplete) {
+        setOrderSyncError(`订单同步失败，列表可能不完整：${errorMessage(error, "请刷新或重新连接")}`);
+      }
+      synchronization.failBootstrap(token);
+      throw error;
+    }
+  }, [queryClient, synchronization]);
 
   const bootstrapQuery = useQuery({
     queryKey: tradingQueryKey,
-    queryFn: ({ signal }) => fetchTradingBootstrap(signal),
+    queryFn: loadBootstrap,
     enabled,
   });
 
@@ -113,29 +147,70 @@ export function useTradingBackend(
     [queryClient],
   );
 
+  const applyDataEvent = useCallback((event: BootstrapDataEvent) => {
+    synchronization.record(event, Boolean(queryClient.getQueryData(tradingQueryKey)));
+    updateBootstrap((current) => applyBootstrapEvent(current, event));
+    if (event.type === "orders.snapshot") setOrderSyncError(undefined);
+  }, [queryClient, synchronization, updateBootstrap]);
+
+  useEffect(() => {
+    if (!enabled || !bootstrapQuery.data) return;
+    if (!synchronization.ordersIncomplete) setOrderSyncError(undefined);
+    const token = synchronization.takeOrdersCatchup();
+    if (!token) return;
+    const controller = new AbortController();
+    ordersControllerRef.current = controller;
+    const socketGeneration = socketGenerationRef.current;
+    setOrderSyncError("订单更新超出初始化缓冲，正在重新同步；当前列表可能不完整。");
+    const isCurrent = () => !controller.signal.aborted &&
+      socketGenerationRef.current === socketGeneration && synchronization.isCurrentOrders(token);
+    void (async () => {
+      try {
+        const result = await fetchRecentOrders(controller.signal);
+        if (!isCurrent()) return;
+        const orders = synchronization.finishOrders(token, result);
+        if (orders) applyDataEvent({ type: "orders.snapshot", data: orders });
+        else setOrderSyncError("订单更新仍超出同步缓冲，列表可能不完整，请刷新或重新连接。");
+      } catch (error) {
+        if (!isCurrent()) return;
+        synchronization.cancelOrders();
+        if (synchronization.ordersIncomplete) {
+          setOrderSyncError(`订单同步失败，列表可能不完整：${errorMessage(error, "请刷新或重新连接")}`);
+        }
+      } finally {
+        if (ordersControllerRef.current === controller) ordersControllerRef.current = undefined;
+      }
+    })();
+  }, [enabled, bootstrapQuery.dataUpdatedAt, bootstrapQuery.data, synchronization, applyDataEvent]);
+
   const refresh = useCallback(async () => {
     if (!enabled) {
       return;
     }
 
+    const generation = synchronization.generation;
     try {
       await queryClient.fetchQuery({
         queryKey: tradingQueryKey,
-        queryFn: ({ signal }) => fetchTradingBootstrap(signal),
+        queryFn: loadBootstrap,
         staleTime: 0,
       });
-      setTransportError(undefined);
+      if (synchronization.generation === generation) setTransportError(undefined);
     } catch (refreshError) {
+      if (isReadCancellation(refreshError) || synchronization.generation !== generation) return;
       setRealtimeState("offline");
       setTransportError(errorMessage(refreshError, "交易后端不可用"));
       throw refreshError;
     }
-  }, [enabled, queryClient]);
+  }, [enabled, queryClient, loadBootstrap, synchronization]);
 
   useEffect(() => {
     if (!enabled) {
+      void invalidateReads();
+      void queryClient.resetQueries({ queryKey: tradingQueryKey, exact: true });
       setRealtimeState("offline");
       setTransportError(undefined);
+      setOrderSyncError(undefined);
       reconnectAttemptRef.current = 0;
       return;
     }
@@ -145,6 +220,8 @@ export function useTradingBackend(
     let heartbeatTimer: number | undefined;
     let lastMessageTime = Date.now();
     let active = true;
+    const connectionGeneration = synchronization.generation;
+    const isCurrentConnection = () => active && synchronization.generation === connectionGeneration;
 
     const resetReconnectDelay = () => {
       reconnectAttemptRef.current = 0;
@@ -162,7 +239,7 @@ export function useTradingBackend(
     };
 
     const scheduleReconnect = () => {
-      if (!active) {
+      if (!isCurrentConnection()) {
         return;
       }
       setRealtimeState("offline");
@@ -182,7 +259,7 @@ export function useTradingBackend(
         window.clearInterval(heartbeatTimer);
       }
       heartbeatTimer = window.setInterval(() => {
-        if (!active) {
+        if (!isCurrentConnection()) {
           return;
         }
         if (Date.now() - lastMessageTime > HEARTBEAT_GRACE_MS) {
@@ -195,38 +272,11 @@ export function useTradingBackend(
     const applyEvent = (event: TradingEvent) => {
       switch (event.type) {
         case "market.snapshot":
-          updateBootstrap((current) => ({
-            ...current,
-            health: {
-              ...current.health,
-              mode: event.data.mode,
-            },
-            market: event.data,
-          }));
-          break;
         case "account.snapshot":
-          updateBootstrap((current) => ({
-            ...current,
-            account: event.data,
-          }));
-          break;
         case "positions.snapshot":
-          updateBootstrap((current) => ({
-            ...current,
-            positions: event.data,
-          }));
-          break;
         case "orders.snapshot":
-          updateBootstrap((current) => ({
-            ...current,
-            orders: event.data,
-          }));
-          break;
         case "order.updated":
-          updateBootstrap((current) => ({
-            ...current,
-            orders: upsertOrder(current.orders, event.data),
-          }));
+          applyDataEvent(event);
           break;
         case "system.status":
           setNotice(event.data.message);
@@ -235,7 +285,7 @@ export function useTradingBackend(
     };
 
     const connect = () => {
-      if (!active) {
+      if (!isCurrentConnection()) {
         return;
       }
       if (
@@ -246,11 +296,13 @@ export function useTradingBackend(
         return;
       }
       setRealtimeState("connecting");
+      socketGenerationRef.current++;
       const currentSocket = new WebSocket(getTradingSocketUrl());
       socket = currentSocket;
+      const isCurrentSocket = () => isCurrentConnection() && socket === currentSocket;
 
       currentSocket.addEventListener("open", () => {
-        if (!active || socket !== currentSocket) {
+        if (!isCurrentSocket()) {
           currentSocket.close();
           return;
         }
@@ -261,7 +313,7 @@ export function useTradingBackend(
       });
 
       currentSocket.addEventListener("message", (message) => {
-        if (!active || socket !== currentSocket) {
+        if (!isCurrentSocket()) {
           return;
         }
         lastMessageTime = Date.now();
@@ -273,18 +325,24 @@ export function useTradingBackend(
       });
 
       currentSocket.addEventListener("close", (event) => {
+        if (!isCurrentSocket()) return;
         if (isUnauthorizedWebSocketClose(event)) {
           notifyAuthExpired();
           return;
         }
-        if (active && socket === currentSocket) {
+        if (isCurrentSocket()) {
+          ordersControllerRef.current?.abort();
+          synchronization.cancelOrders();
+          if (synchronization.ordersIncomplete) {
+            setOrderSyncError("订单同步未完成，列表可能不完整，等待实时通道重新连接。");
+          }
           socket = undefined;
           scheduleReconnect();
         }
       });
 
       currentSocket.addEventListener("error", () => {
-        if (!active || socket !== currentSocket) {
+        if (!isCurrentSocket()) {
           return;
         }
         setTransportError("实时通道连接失败，正在重试");
@@ -298,8 +356,9 @@ export function useTradingBackend(
       clearTimers();
       socket?.close();
       socket = undefined;
+      void invalidateReads();
     };
-  }, [enabled, updateBootstrap]);
+  }, [enabled, connectionEpoch, applyDataEvent, invalidateReads, queryClient, synchronization]);
 
   const submitMutation = useMutation({
     mutationFn: submitPaperOrder,
@@ -377,13 +436,16 @@ export function useTradingBackend(
       setNotice(undefined);
       setTransportError(undefined);
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      await invalidateReads();
       updateBootstrap((current) => ({
         ...current,
         account: result.account,
         positions: result.positions,
         orders: result.orders,
       }));
+      setOrderSyncError(undefined);
+      setConnectionEpoch((current) => current + 1);
       setNotice(
         `已开始新的本地模拟：初始资金 ¥${result.account.equity.toLocaleString("zh-CN")}，旧 Paper 数据已删除`,
       );
@@ -446,7 +508,7 @@ export function useTradingBackend(
 
   const bootstrap = enabled ? bootstrapQuery.data : undefined;
   const backendError = enabled
-    ? transportError ?? (bootstrap ? undefined : errorMessage(bootstrapQuery.error, "交易后端不可用"))
+    ? orderSyncError ?? transportError ?? (bootstrap ? undefined : errorMessage(bootstrapQuery.error, "交易后端不可用"))
     : undefined;
   const pendingAction =
     submitMutation.isPending ||
