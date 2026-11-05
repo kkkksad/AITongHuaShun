@@ -414,15 +414,33 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 删除flag，读取同symbol实际quantity，卖min(actual,available??actual)100整手；保留30窗口/暖机/阈值/首tradable/买权重。原15窗口断言全部保留，fixture明确100股已结算控制持仓；原两个引擎现金6092/9782与费用数量断言不变。
 - [x] 独立复核10文件162项、TypeScript/diff通过，root完整三文件复核无阻断。
 - [x] 精确暂存树93服务端文件/1286项、43前端文件/241项、TypeScript与Vite生产构建全部通过，未混入模块33/34。
-- [ ] 单独提交部署并独立核验。
+- [x] 模块32提交d55f440d8edeb5066fe4bbe07bd7621ad30ef64f已推送并部署；UTC21:42独立校验471个归档文件、三容器healthy、健康200/匿名401，原Paper账户及策略保留。首次GitHub连接失败，重试推送成功后才部署。
 
 ## 模块33：回测完成不抢后续导航
 
 **Files:** `src/App.tsx`与新真实App/Router交互回归，产品/状态/本计划。
 
 - [x] 真实App/StrategyLab/Workflow探针复现：点击运行后420ms内切到真实验证或市场，旧setTimeout会强制拉回回测；两项先红。原runBacktest是同步纯计算，此等待没有实际计算/网络任务。
-- [ ] 删除人为等待，点击时直接提交策略/参数副本、标记完成并导航；保留确定性算法、模拟声明和已提交参数口径，不引入假异步任务。
-- [ ] 首次/重复运行、后续阶段/市场/后退/卸载/参数变更不被旧回调抢占，保留真实App集成而非复写handler；独立复核、全套检查和单独部署。
+- [x] 删除人为等待与仅供假等待的isRunning state，点击直接提交策略/参数副本、完成并导航，StrategyLab接口保留false。算法/种子/默认参数和模拟声明均未改。
+- [x] 新8项真实App/Router先7红1绿后全绿，首次/重复与新提交、后续阶段/市场/后退/卸载、参数副本/过期提示覆盖；作者36项、独立6文件34项与前端TypeScript/diff通过，root完整实现/测试复核无阻断。
+- [x] 精确暂存树93服务端文件/1286项、44前端文件/249项、TypeScript与Vite生产构建全部通过，未混入模块34/35。
+- [ ] 单独提交部署并独立核验。
+
+## 模块35：静态资源传输压缩
+
+**Files:** `deploy/nginx.conf`、必要独立隔离Nginx回归及部署/状态/本计划。
+
+- [x] UTC21:35:55独立公网公开静态GET：现charts JS在identity/gzip请求均200/443899字节、CSS均169865字节，皆无Content-Encoding/Vary，解码hash一致。官方Nginx gzip默认off；当前配置未开启。TLS仍自签，本探针不算可信链验证。
+- [ ] 只在既有/assets/启用gzip与Vary，level5/min1024，明确JS/CSS/SVG等文本MIME，保持immutable/过期/404；不扩到HTML/API/WS，不压已压缩图片/字体，不新增依赖或预生成资源。
+- [ ] 隔离Nginx验证配置、identity/gzip解码等价、缓存/404、API/HTML不压缩；独立复核、现有检查与构建通过后单独部署，线上测实际字节与一致性，不用估算冒称收益。
+
+## 模块36：窄屏下单表单不被表格撑宽
+
+**Files:** `src/styles/index.css`的账户列最小宽度/响应式规则；产品/状态/本计划。
+
+- [x] 真实浏览器隔离内存账户479px检查复现：account-panel宽444、client442但scroll590，table和order-ticket均560宽，表单right554超过viewport479；根页未横向溢出但panel overflow hidden裁切本金和费用说明，不能仅以root scrollWidth判断正常。
+- [ ] 仅约束账户grid直接子项min-width:0及必要单列minmax，表格在原table-scroll内部滚动、表单按剩余宽度排版；不隐藏列、移除数据或改金额与订单规则。
+- [ ] 真浏览器移动/桌面、市价/限价、键盘焦点与表格独立滚动复验，保留右侧本金/费用和按钮完整；CSS低影响不写实现镜像测试，做现有回归/构建与单独部署。
 
 ## 模块34：同股待买暴露与成交仓位复核
 

@@ -162,7 +162,6 @@ function App() {
   const [committedParameters, setCommittedParameters] =
     useState<StrategyParameters>(defaultParameters);
   const [committedStrategy, setCommittedStrategy] = useState<StrategyId>("momentum");
-  const [isRunning, setIsRunning] = useState(false);
   const [hasCompletedBacktest, setHasCompletedBacktest] = useState(false);
   const strategyStage: StrategyWorkflowStage = parseStrategyStage(location.search);
 
@@ -204,14 +203,10 @@ function App() {
   const committedStrategyName = strategies.find((item) => item.id === committedStrategy)?.name ?? committedStrategy;
 
   const handleRun = () => {
-    setIsRunning(true);
-    window.setTimeout(() => {
-      setCommittedStrategy(selectedStrategy);
-      setCommittedParameters({ ...parameters });
-      setHasCompletedBacktest(true);
-      navigate("/strategy?stage=backtest");
-      setIsRunning(false);
-    }, 420);
+    setCommittedStrategy(selectedStrategy);
+    setCommittedParameters({ ...parameters });
+    setHasCompletedBacktest(true);
+    navigate("/strategy?stage=backtest");
   };
 
   useEffect(() => {
@@ -475,7 +470,7 @@ function App() {
       {strategyStage === "configure" && (
         <Suspense fallback={<LazyFallback />}>
           <StrategyLab
-            isRunning={isRunning}
+            isRunning={false}
             onParameterChange={(key: string, value: number) =>
               setParameters((current) => ({ ...current, [key]: value }))
             }
