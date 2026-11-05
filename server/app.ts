@@ -1752,7 +1752,7 @@ export async function buildTradingApp(
     schema: {
       tags: ["交易"],
       summary: "暂停交易",
-      description: "暂停模拟交易撮合，新订单将排队等待",
+      description: "暂停模拟交易撮合，保留已有挂单与预占，新订单将被拒绝；行情估值和主动撤单仍可使用",
     },
   }, async () => ({
     account: system.broker.pause(),
@@ -1762,7 +1762,7 @@ export async function buildTradingApp(
     schema: {
       tags: ["交易"],
       summary: "恢复交易",
-      description: "恢复模拟交易撮合，处理排队订单",
+      description: "恢复模拟交易撮合，已有挂单从下一次行情更新起继续检查成交",
     },
   }, async () => ({
     account: system.broker.resume(),

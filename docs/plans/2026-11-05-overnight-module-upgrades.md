@@ -435,7 +435,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 服务器现有Nginx1.27.5镜像独立128MiB/loopback容器，整份候选配置+临时测试证书与自身stub，nginx-t、gzip/identity/q=0、解码SHA/Vary/30d immutable全部过。实际JS443899→118328B(-73.34%)、CSS169865→28384B(-83.29%)；SVGfixture95411→9796B。小文本21B、根HTML84041B、真实index1234B、APIstub75042B与WS426未压，缺asset404。
 - [x] 临时三个container与专属目录全部按名称/label验证清理，生产web ID/启动时间/restart0前后相同，无reload或真实账户/API/通知请求。无需实现镜像单测。
 - [x] 精确暂存树95服务端文件1352项、44前端文件249项、TypeScript与Vite生产构建全部通过，未混入模块36/37。
-- [ ] 单独部署后线上测实际字节与一致性；隔离测量不能冒称已上线。
+- [x] 模块35提交dd8f8e0b7c2cd501ec9f95cb065309c1f7634220已推送并部署；UTC22:00独立校验475个归档文件/三healthy/健康200/匿名401/原账户。公网匿名实际entry199172→64234B(-67.75%)、charts443899→118328B(-73.34%)、CSS169865→28384B(-83.29%)；gzip/identity/q=0、Vary/缓存与解码hash全过。根HTML1234B、匿名401响应70B/健康3B未压，缺asset404；TLS仍自签，此字节测量不算可信链验证。
 
 ## 模块36：窄屏下单表单不被表格撑宽
 
@@ -446,15 +446,17 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] HEAD33加候选CSS独立生产构建通过；真实479px浏览器panel scroll442=client442、form宽382/right423，不再裁切；table容器382/内容560且真实滚动至178，根页scrollX0。市价/限价12.34×200=2468.00、键盘焦点和费用说明完整；1440px桌面双列685.3/353.7与表单right1368正常。无console error，临时viewport已reset，未下单或重置账户。
 - [x] 独立CSS/DOM与全部相关断点复核通过，class仅本组件使用，表格独立滚动和桌面两列保持；未加实现镜像测试。
 - [x] 精确暂存树95服务端文件1352项、44前端文件249项、TypeScript与Vite生产构建全部通过，未混入模块37/39。
-- [ ] 单独提交部署并独立核验。
+- [x] 模块36提交15b4b683c08d3fc002d88074ed721990381b8cb6已推送并部署；UTC22:06独立校验475个归档文件、三容器healthy、健康200/匿名401，原Paper账户及策略保留。
 
 ## 模块37：暂停期间停止已有挂单撮合
 
 **Files:** `server/broker/paperBroker.ts`、新真实双Store暂停回归与`server/app.ts`既有暂停说明，产品/架构/状态/本计划。待模块34重叠Broker发布后实施。
 
 - [x] 独立真实双Store复现4项暂停目标先红：BUY暂停时仍买100股、现金8995→8090；SELL仍卖100股、现金7995→9290。当前新单在暂停时被拒、主动撤单正常，已有77项相关回归全绿但无挂单暂停覆盖。
-- [ ] 每笔匹配前读取当前pause状态，暂停停止匹配但继续行情估值与account事件；保留订单/资金和股数预约、允许主动撤销，resume后下一tick再按现有费用/仓位/T+1撮合。order.updated监听器中途pause必须停止同批余单，不把暂停当撤单/拒单。
-- [ ] 先红回归双Store BUY/SELL、市价新单拒绝、估值更新/事件、撤单、恢复与同tick中途暂停；OpenAPI更正“新单排队”为现有实际拒绝行为。独立复核、全套检查与单独部署，不操作生产暂停状态。
+- [x] 每loop查pause并break，private fill匹配专用defer标记在canonical/现金/仓位回调后、改账或拒单前再查；暂停返回原未决单且不发伪order事件，直提路径原生命周期保持。估值/account事件继续，保留预约与撤单，resume下一tick才按原规则撮合，OpenAPI更正排队说明。
+- [x] 新37项真实双Store先23红14绿后全绿，含BUY/SELL、事件/预约、撤单/恢复、新单拒绝、各回调中途pause、JSON重开；作者429相关、独立249项与额外双Store6边界探针及TypeScript/diff通过。root完整实现/测试复核无阻断。
+- [x] 精确暂存树96服务端文件1389项、44前端文件249项、TypeScript与Vite生产构建全部通过，未混入模块39；不操作生产暂停状态。
+- [ ] 单独提交部署并独立核验。
 
 ## 模块38：不可交易报价不触发挂单成交
 

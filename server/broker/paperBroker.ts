@@ -168,11 +168,13 @@ export class PaperBroker extends EventEmitter {
     const quoteMap = new Map(snapshot.quotes.map((q) => [q.symbol, q]));
 
     for (const order of pendingOrders) {
+      if (this.store.isPaused()) break;
       const quote = quoteMap.get(order.symbol);
       if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) continue;
 
       if (this.store.checkLimitOrderFill(order, quote)) {
-        const filled = this.fillOrder(order, quote.name, quote.price, snapshot);
+        const filled = this.fillOrder(order, quote.name, quote.price, snapshot, true);
+        if (filled.status === "pending" || filled.status === "accepted") break;
         this.emit("order.updated", filled);
       }
     }
@@ -224,11 +226,15 @@ export class PaperBroker extends EventEmitter {
     name: string,
     marketPrice: number,
     snapshot: MarketSnapshot,
+    deferWhenPaused = false,
   ): OrderRecord {
     const stored = this.store.findOrderById(order.id);
     if (!stored) throw new Error(`订单不存在：${order.id}`);
     if (stored.status !== "pending" && stored.status !== "accepted") return { ...stored };
     order = stored;
+    // Tick matching rechecks after synchronous store/risk callbacks before any mutation.
+    // Direct submissions retain their existing risk check and order lifecycle.
+    if (deferWhenPaused && this.store.isPaused()) return { ...order };
     const costs = executionCosts(order, marketPrice, this.options);
     let otherBuyBudgets = 0;
     for (const pending of this.store.getPendingOrders()) {
@@ -237,6 +243,7 @@ export class PaperBroker extends EventEmitter {
       }
     }
     const spendable = Math.max(0, this.store.getCash() - otherBuyBudgets);
+    if (deferWhenPaused && this.store.isPaused()) return { ...order };
     if (!hasSufficientCash(spendable, costs.cashDebit)) {
       return this.store.rejectOrder(order, "可用资金不足", "INSUFFICIENT_CASH");
     }
@@ -250,6 +257,7 @@ export class PaperBroker extends EventEmitter {
         addedValue,
         equity: account.equity - costs.cashDebit + addedValue,
       });
+      if (deferWhenPaused && this.store.isPaused()) return { ...order };
       if (!decision.allowed) return this.store.rejectOrder(order, decision.message, decision.code);
     }
 
