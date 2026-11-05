@@ -20,7 +20,6 @@ import { sma } from "./indicators";
 export class MovingAverageCrossStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
-  private inPosition = false;
   private boundSymbol?: string;
 
   constructor(
@@ -34,7 +33,6 @@ export class MovingAverageCrossStrategy implements BacktestStrategy {
 
   reset(): void {
     this.prices.length = 0;
-    this.inPosition = false;
     this.boundSymbol = undefined;
   }
 
@@ -58,9 +56,11 @@ export class MovingAverageCrossStrategy implements BacktestStrategy {
       return [];
     }
 
+    const position = context.positions.find((item) => item.symbol === quote.symbol);
+    const inPosition = (position?.quantity ?? 0) > 0;
+
     // 金叉买入
-    if (!this.inPosition && prevFastMa <= prevSlowMa && fastMa > slowMa) {
-      this.inPosition = true;
+    if (!inPosition && prevFastMa <= prevSlowMa && fastMa > slowMa) {
       return [
         {
           symbol: quote.symbol,
@@ -72,14 +72,16 @@ export class MovingAverageCrossStrategy implements BacktestStrategy {
     }
 
     // 死叉卖出
-    if (this.inPosition && prevFastMa >= prevSlowMa && fastMa < slowMa) {
-      this.inPosition = false;
+    if (position && inPosition && prevFastMa >= prevSlowMa && fastMa < slowMa) {
+      const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+      const quantity = Math.floor(sellable / 100) * 100;
+      if (quantity <= 0) return [];
       return [
         {
           symbol: quote.symbol,
           side: "sell",
           type: "market",
-          targetWeight: 1.0,
+          quantity,
         },
       ];
     }

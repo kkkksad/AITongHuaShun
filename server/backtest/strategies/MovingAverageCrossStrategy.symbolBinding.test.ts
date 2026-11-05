@@ -106,7 +106,7 @@ describe("MovingAverageCrossStrategy single-symbol history binding", () => {
     }));
     const { report, contexts, signals } = run(snapshots);
     expect(contexts[3].positions).toMatchObject([{ symbol: symbolA, quantity: 500, availableQuantity: 500 }]);
-    expect(signals[3]).toEqual([{ symbol: symbolA, side: "sell", type: "market", targetWeight: 1 }]);
+    expect(signals[3]).toEqual([{ symbol: symbolA, side: "sell", type: "market", quantity: 500 }]);
     expect(report.trades).toMatchObject([
       { symbol: symbolA, side: "buy", barIndex: 2, quantity: 500, price: 10, commission: 5 },
       { symbol: symbolA, side: "sell", barIndex: 3, quantity: 500, price: 9, commission: 5 },
@@ -142,7 +142,7 @@ describe("MovingAverageCrossStrategy single-symbol history binding", () => {
     const { report, signals, contexts } = run(snapshots);
     expect(signals[3]).toEqual([]);
     expect(contexts[4].positions).toMatchObject([{ symbol: symbolA, quantity: 500, availableQuantity: 500 }]);
-    expect(signals[4]).toEqual([{ symbol: symbolA, side: "sell", type: "market", targetWeight: 1 }]);
+    expect(signals[4]).toEqual([{ symbol: symbolA, side: "sell", type: "market", quantity: 500 }]);
     expect(report.trades.map(({ symbol, side, barIndex }) => [symbol, side, barIndex]))
       .toEqual([[symbolA, "buy", 2], [symbolA, "sell", 4]]);
     expect(report.finalPositions).toEqual([]);
@@ -173,7 +173,7 @@ describe("MovingAverageCrossStrategy single-symbol history binding", () => {
     expect(report.orders).toEqual([]);
   });
 
-  it("clears binding, history and original intent state on reset before choosing a new first stock", () => {
+  it("clears binding and history on reset before choosing a new first stock", () => {
     const strategy = new MovingAverageCrossStrategy(1, 2, 0.42, "local MA replay");
     const first = history([10, 9, 10].map((price) => [{ symbol: symbolA, price }]));
     const firstRun = run(first, strategy);

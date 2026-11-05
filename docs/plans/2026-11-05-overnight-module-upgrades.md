@@ -574,15 +574,17 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 44发布后实施，新21项先17红4绿后全绿（7真实Engine、14明确controlled context），读取绑定股实际quantity，退出用min(actual,available??actual)100整手；去掉intent/未使用entryPrice。完整过去N/M窗口、filter两退出分支、±1%估算/比较/权重保持；持续突破/退出在拒单后仍检查，T+1等待。
 - [x] 作者168相关/类型/diff及3组含成本旧新报告一致，覆盖费用/风险拒买、两filter T+1/拒卖、实际可卖/他股/reset；旧10窗口与14symbol全过。旧窗口只补明确受控100股context，全部原窗口/真实Engine经济断言保持；symbol仅sell300形状。root完整四文件diff/21新测试复核无阻断。
 - [x] 独立249项/类型/diff及3组正常含成本完整报告一致，原窗口与真实经济断言无放松。精确暂存树106服务端文件1547项、44前端文件249项、TypeScript/Vite全过，未混入48/49/50/51。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块47提交4375c0b84a71f525ba855c1c0905c58ab9907dc6已推送并部署，UTC22:55独立校验486个归档文件、三healthy/健康200/匿名401/原Paper账户。
 
 ## 模块48：均线交叉实际持仓信号
 
 **Files:** 模块43发布后的`MovingAverageCrossStrategy.ts`、真实Engine持仓专项及原symbol回归必要信号形状更新，架构/状态/本计划。
 
 - [x] 独立真实Engine：MA1/2/.5，同日10/9/10/9/10，买500后死叉卖被T+1拒、intent=false，下一金叉实际仍持500却再买400，末900/现金990；仅实际持仓校准对照持500/现金4995。
-- [ ] 等43发布后先红后绿，绑定股实际quantity替代intent gate，退出用实际可卖100整手。保留strict金叉prevFast<=prevSlow且fast>slow、死叉prevFast>=prevSlow且fast<slow及slow+1暖机；不在无新交叉时补卖或持续重买，不套持续突破重试语义。
-- [ ] 验证T+1后不叠买/下一真实死叉退出、拒买后下一真金叉、部分可卖/他股/外部清仓、reset与正常含成本旧新完整报告；独立复核、精确全检查、单独发布。
+- [x] 43发布后实施，17新真实Engine先11红6绿后全绿，绑定股实际quantity替代intent，退出实际可卖100整手。保留strict金叉prevFast<=prevSlow且fast>slow、死叉prevFast>=prevSlow且fast<slow及slow+1暖机；无新交叉不补卖/重买。
+- [x] 作者177项/类型/diff，旧12symbol仅两处sell形状quantity500及过时测试名更新，原经济断言保持；独立152项及6个可卖边界通过。作者与独立各3组正常含成本旧新完整报告相同；覆盖T+1不叠买/下一死叉、拒买真金叉、部分可卖/他股/外部清仓/reset，root完整三文件复核无阻断。
+- [x] 精确暂存树107服务端文件1564项、44前端文件249项、TypeScript/Vite全过，未混入49/50/51/52。
+- [ ] 单独提交部署与独立核验。
 
 ## 模块49：MACD交叉实际持仓信号
 
