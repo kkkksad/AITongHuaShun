@@ -2222,6 +2222,10 @@ select:focus-visible {
   padding: 24px 26px 28px;
 }
 
+.account-columns > * {
+  min-width: 0;
+}
+
 .trading-rail {
   display: flex;
   min-width: 0;
