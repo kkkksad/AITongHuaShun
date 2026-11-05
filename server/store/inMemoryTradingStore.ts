@@ -328,7 +328,7 @@ export class InMemoryTradingStore implements TradingStore {
 
     this.orders.unshift(order);
 
-    if (isLimitOrder && request.limitPrice !== undefined) {
+    if (isLimitOrder && request.side === "buy" && request.limitPrice !== undefined) {
       const notional = request.limitPrice * request.quantity;
       this.blockedCash += notional;
     }
@@ -349,7 +349,7 @@ export class InMemoryTradingStore implements TradingStore {
     order.rejectionReason = reason;
     order.updatedAt = this.now().toISOString();
 
-    if (order.type === "limit" && order.limitPrice !== undefined) {
+    if (order.type === "limit" && order.side === "buy" && order.limitPrice !== undefined) {
       this.blockedCash -= order.limitPrice * order.quantity;
     }
 
@@ -365,7 +365,7 @@ export class InMemoryTradingStore implements TradingStore {
     order.status = "cancelled";
     order.updatedAt = this.now().toISOString();
 
-    if (order.limitPrice !== undefined) {
+    if (order.side === "buy" && order.limitPrice !== undefined) {
       this.blockedCash -= order.limitPrice * order.quantity;
     }
 
@@ -405,7 +405,7 @@ export class InMemoryTradingStore implements TradingStore {
     const notional = fillPrice * order.quantity;
     const current = this.positions.get(order.symbol);
 
-    if (wasPending && order.limitPrice !== undefined) {
+    if (wasPending && order.side === "buy" && order.limitPrice !== undefined) {
       this.blockedCash -= order.limitPrice * order.quantity;
     }
 
