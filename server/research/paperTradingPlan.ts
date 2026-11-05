@@ -3,6 +3,8 @@ import type {
   PaperTradingPlanSizingConstraint,
   PaperTradingPlanSizingDiagnostics,
 } from "../../shared/paperTradingSizing";
+import type { PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
+export type { PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
 export type {
   PaperTradingPlanSizingConstraint,
   PaperTradingPlanSizingDiagnostics,
@@ -73,6 +75,8 @@ export interface PaperTradingPlanQualitySummary {
   cashDeploymentPercent: number;
   remainingCashAfterPlan: number;
   strategyCoverage: {
+    /** Optional additive field; old reports retain the legacy counters. */
+    coverageMode?: PaperTradingStrategyCoverageMode;
     eligibleKeys: string[];
     matchedKeys: string[];
     matchedCandidateCount: number;
@@ -1006,7 +1010,15 @@ export function buildPaperTradingPlan(input: {
   const eligibleKeysForCoverage = manualExecutionStrategy
     ? [manualExecutionStrategy]
     : [...(input.adaptiveRouting?.eligibleStrategyKeys ?? [])];
+  const coverageMode: PaperTradingStrategyCoverageMode = candidatePoolSize === 0
+    ? "none"
+    : manualExecutionStrategy
+      ? "manual-strategy"
+      : input.adaptiveRouting
+        ? "adaptive-routing"
+        : "snapshot-fallback";
   const strategyCoverage = {
+    coverageMode,
     eligibleKeys: eligibleKeysForCoverage,
     matchedKeys,
     matchedCandidateCount,
@@ -1017,7 +1029,9 @@ export function buildPaperTradingPlan(input: {
       ? selectedStrategyMatched
         ? `本轮有 ${matchedCandidateCount} 个候选匹配手动策略 ${executionStrategyOption?.label ?? manualExecutionStrategy}；仍须通过资金与风控复核。`
         : `本轮没有候选匹配手动策略 ${executionStrategyOption?.label ?? manualExecutionStrategy}，保持观察，不强制交易。`
-      : matchedKeys.length > 0
+      : coverageMode === "snapshot-fallback"
+        ? "当前候选来自快照/质量筛选，未启用市场策略路由；仍须通过金额、候选质量和风控复核。"
+        : matchedKeys.length > 0
         ? `当前候选覆盖 ${matchedKeys.length} 个路由策略，最高覆盖为 ${dominantStrategyKey}；未匹配候选 ${unmatchedCandidateCount} 个。`
         : "当前没有候选通过可用策略规则，保持观察，不强行增加交易。",
   } satisfies PaperTradingPlanQualitySummary["strategyCoverage"];

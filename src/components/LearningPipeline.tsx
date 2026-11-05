@@ -126,6 +126,18 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
   const routeScale = paperPlan?.adaptiveRouting?.newPositionScale;
   const effectiveScale = paperPlan?.strategyProfile?.effectiveNewPositionScale;
   const paperPlanQuality = paperPlan?.qualitySummary;
+  const coverageMode = paperPlanQuality
+    ? paperPlanQuality.strategyCoverage.coverageMode ?? (
+        paperPlan.executionStrategy.mode === "manual"
+          ? "manual-strategy"
+          : paperPlan.adaptiveRouting
+            ? "adaptive-routing"
+            : paperPlanQuality.candidatePoolSize > 0
+              ? "snapshot-fallback"
+              : "none"
+      )
+    : "none";
+  const usesSnapshotCoverage = coverageMode === "snapshot-fallback";
   const dailyReview = dailyReviewQuery.data;
   const weeklyPaperReview = weeklyPaperReviewQuery.data;
   const weeklyHistoryCoverage = weeklyPaperReview?.sample.historyCoverage;
@@ -747,22 +759,30 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
                 ，拟投入 {(paperPlanQuality.cashDeploymentPercent * 100).toFixed(1)}%，拦截{" "}
                 {paperPlanQuality.actionCounts.blocked}，持有 {paperPlanQuality.actionCounts.hold}
               </span>
-              <span>
-                执行策略 {paperPlan.executionStrategy.label} ·{" "}
-                {paperPlan.executionStrategy.mode === "manual" ? "手动指定" : "市场自动路由"} ·{" "}
-                {paperPlan.executionStrategy.selectedStrategyMatched
-                  ? "当前有匹配候选"
-                  : "当前无匹配候选"}
-              </span>
-              <span>
-                策略命中 {paperPlan.executionStrategy.matchedCandidateCount} 个候选 · 覆盖{" "}
-                {paperPlanQuality.strategyCoverage.matchedKeys.length > 0
-                  ? paperPlanQuality.strategyCoverage.matchedKeys
-                      .map(adaptiveStrategyLabel)
-                      .join(" / ")
-                  : "暂无"}
-                {" · "}未匹配 {paperPlanQuality.strategyCoverage.unmatchedCandidateCount} 个
-              </span>
+              {usesSnapshotCoverage ? (
+                <span>
+                  快照候选筛选（未启用市场策略路由）·候选 {paperPlanQuality.candidatePoolSize} 个
+                </span>
+              ) : (
+                <>
+                  <span>
+                    执行策略 {paperPlan.executionStrategy.label} ·{" "}
+                    {paperPlan.executionStrategy.mode === "manual" ? "手动指定" : "市场自动路由"} ·{" "}
+                    {paperPlan.executionStrategy.selectedStrategyMatched
+                      ? "当前有匹配候选"
+                      : "当前无匹配候选"}
+                  </span>
+                  <span>
+                    策略命中 {paperPlan.executionStrategy.matchedCandidateCount} 个候选 · 覆盖{" "}
+                    {paperPlanQuality.strategyCoverage.matchedKeys.length > 0
+                      ? paperPlanQuality.strategyCoverage.matchedKeys
+                          .map(adaptiveStrategyLabel)
+                          .join(" / ")
+                      : "暂无"}
+                    {" · "}未匹配 {paperPlanQuality.strategyCoverage.unmatchedCandidateCount} 个
+                  </span>
+                </>
+              )}
               <span>
                 主要拦截：{paperPlanQuality.strategyCoverage.dominantBlocker ?? "无"}
               </span>

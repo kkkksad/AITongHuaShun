@@ -13,6 +13,7 @@ import type {
 } from "../../shared/trading";
 import type { ApiPerformanceSnapshot } from "../../shared/systemMonitoring";
 import type { PaperTradingPlanSizingDiagnostics } from "../../shared/paperTradingSizing";
+import type { PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
 import { ApiRequestError } from "./apiError";
 
 export interface HealthSnapshot {
@@ -578,6 +579,7 @@ export interface PaperTradingPlanQualitySummary {
   cashDeploymentPercent: number;
   remainingCashAfterPlan: number;
   strategyCoverage: {
+    coverageMode?: PaperTradingStrategyCoverageMode;
     eligibleKeys: string[];
     matchedKeys: string[];
     matchedCandidateCount: number;
