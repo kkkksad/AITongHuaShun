@@ -466,7 +466,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 仅原guard追加quote.tradable === false，跳过明确不可交易报价并保留挂单/预约与估值，true后继续撮合；缺字段legacy仍兼容，缺报价/非正有限价格原保护保持。
 - [x] 新28项真实双Store先16红12绿后全绿；覆盖BUY/SELL、费用/股数预约、无伪事件/审计、主动撤单、他股继续、缺报价/坏价、undefined兼容与JSON重开。作者414相关/TypeScript/diff通过，root完整实现/测试读取无阻断。
 - [x] 独立404项、额外6项false先遍历/legacy他股/暂停与JSON字节探针、TypeScript/diff通过。精确暂存树98服务端文件1429项、44前端文件249项、TypeScript/Vite全过，未混入40/41/42。
-- [ ] 单独提交部署与独立核验；不扩行情权限或改变费用、T+1、现金/仓位上限。
+- [x] 模块38提交97f4b6ac48493ccb1edfd2fa5ef00096d212b7aa已推送并部署，UTC22:25独立校验478个归档文件、三healthy/健康200/匿名401/原账户；不扩行情权限或改变费用、T+1、现金/仓位上限。
 
 ## 模块39：RSI单标的历史绑定
 
@@ -497,8 +497,10 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** `server/backtest/strategies/BollingerBandsStrategy.ts`与独立真实Engine多标的回归，架构/状态/本计划。
 
 - [x] 独立真实Engine4项证实：period6、2σ，两股各自上涨/下跌均无额外单，最后bar换首或首股不可交易会拼接价格、误买B500@10或误卖已有B100@100。原实际持仓lookup正确，问题在单prices跨symbol。
-- [ ] 先增加失败回归；首次tradable绑定到reset，缺失/不可交易等待，不追加别股历史；保留period/std、阈值等号/退出OR、权重/实际可卖整手。
-- [ ] 验证换序、缺失恢复、首次暖机、其他持仓不误卖、reset与稳定完整报告；独立复核、精确全套检查、单独提交部署。
+- [x] 新13项真实Engine先10红3绿后全绿，仅首次tradable绑定到reset，缺失/不可交易等待，不追加别股历史；保留period/std、阈值等号/退出OR、权重/实际可卖整手。
+- [x] 覆盖误买/误卖、同股真实进出、缺失恢复、首次暖机、其他持仓、平仓后重入/reset；作者244项/类型/diff，独立123项及root完整diff/测试复核通过。3组含成本旧新完整报告相同（period3/6/默认20，12/3/10实际成交）。
+- [x] 精确暂存树99服务端文件1442项、44前端文件249项、TypeScript/Vite全过，未混入41/42/43/44。
+- [ ] 单独提交部署与独立核验。
 
 ## 模块41：自动执行与Broker费用舍入一致
 
