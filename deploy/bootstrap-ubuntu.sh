@@ -28,6 +28,12 @@ install -d -m 0750 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" /opt/kairos/runtime
 install -d -m 0750 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" /opt/kairos/runtime/data
 install -d -m 0750 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" /opt/kairos/runtime/logs
 install -d -m 0750 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" /opt/kairos/runtime/certs
+for acme_path in /opt/kairos/runtime/acme /opt/kairos/runtime/acme/config /opt/kairos/runtime/acme/work /opt/kairos/runtime/acme/logs; do
+  install -d -m 0700 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" "${acme_path}"
+done
+for webroot_path in /opt/kairos/runtime/acme/webroot /opt/kairos/runtime/acme/webroot/.well-known /opt/kairos/runtime/acme/webroot/.well-known/acme-challenge; do
+  install -d -m 0755 -o "${DEPLOY_USER}" -g "${DEPLOY_USER}" "${webroot_path}"
+done
 
 CERT_DIR=/opt/kairos/runtime/certs
 if [[ ! -s "${CERT_DIR}/kairos.crt" || ! -s "${CERT_DIR}/kairos.key" ]]; then

@@ -56,11 +56,13 @@ docker compose --profile prod ps
 Nginx 证书目录使用 `runtime/certs/kairos.crt` 与 `runtime/certs/kairos.key`。可在服务器上使用受信任 CA 签发的域名证书替换这两个文件，并确认私钥权限为 `600`、证书权限为 `644`，然后执行：
 
 ```bash
-sudo nginx -t
+docker compose --env-file .env.production -f docker-compose.production.yml exec -T web nginx -t
 docker compose --env-file .env.production -f docker-compose.production.yml up -d --force-recreate web
 ```
 
 换证书前确认 DNS 的 `@` 和 `www` A 记录都指向 `124.221.165.45`；换证书后分别检查 `https://kairosq.cn/healthz`、`https://www.kairosq.cn/healthz` 和浏览器证书 SAN。
+
+仓库提供普通部署用户执行的ACME容器工具，具体协议授权、双域签发、原子安装/回滚和续期步骤统一维护在[生产部署手册](../../deploy/README.md#域名证书与续期)。配置发布仅准备挑战路由，不代表已接受第三方协议或取得有效证书。
 
 Caddy 示例：
 

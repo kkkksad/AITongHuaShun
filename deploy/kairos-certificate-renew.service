@@ -1,0 +1,14 @@
+# Install and enable only after human authorization of the named agreement
+# and a successful first issuance for both domains. No deployment enables this.
+[Unit]
+Description=Renew the KAIROS public TLS certificate
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/kairos
+UMask=0077
+ExecStart=/usr/bin/bash /opt/kairos/deploy/manage-certificate.sh renew --domain kairosq.cn --domain www.kairosq.cn --accept-subscriber-agreement https://letsencrypt.org/documents/LE-SA-v1.8-July-06-2026.pdf

@@ -1,0 +1,13 @@
+# Install and enable only after human authorization of the named agreement
+# and a successful first issuance. This example is never installed automatically.
+[Unit]
+Description=Check the KAIROS certificate twice daily
+
+[Timer]
+OnCalendar=*-*-* 00,12:00:00
+RandomizedDelaySec=1h
+Persistent=true
+Unit=kairos-certificate-renew.service
+
+[Install]
+WantedBy=timers.target

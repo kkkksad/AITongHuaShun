@@ -33,6 +33,25 @@ compose() {
   docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" "$@"
 }
 
+# The ACME webroot is a host bind mount. Create it as the deployment user
+# before Compose can silently create a root-owned directory for the container.
+prepare_acme_runtime() {
+  local acme="${ROOT}/runtime/acme"
+  local path
+  for path in "${acme}" "${acme}/config" "${acme}/work" "${acme}/logs" "${acme}/webroot" "${acme}/webroot/.well-known" "${acme}/webroot/.well-known/acme-challenge"; do
+    if [[ -e "${path}" || -L "${path}" ]]; then
+      [[ -d "${path}" && ! -L "${path}" && -O "${path}" ]] || { echo "ACME runtime path is not owned by the deployment user. Fix ownership before retrying." >&2; exit 1; }
+    fi
+  done
+  install -d -m 0700 "${acme}" "${acme}/config" "${acme}/work" "${acme}/logs"
+  install -d -m 0755 "${acme}/webroot" "${acme}/webroot/.well-known" "${acme}/webroot/.well-known/acme-challenge"
+  for path in "${acme}" "${acme}/config" "${acme}/work" "${acme}/logs" "${acme}/webroot"; do
+    [[ -O "${path}" ]] || { echo "ACME runtime path is not owned by the deployment user: ${path}. Fix ownership before retrying." >&2; exit 1; }
+  done
+}
+
+prepare_acme_runtime
+
 previous_commit="$(git rev-parse HEAD 2>/dev/null || true)"
 
 replace_source_from_archive() {

@@ -116,6 +116,7 @@ services:
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./runtime/certs:/etc/nginx/certs:ro
+      - ./runtime/acme/webroot:/var/www/acme:ro
     depends_on:
       backend:
         condition: service_healthy

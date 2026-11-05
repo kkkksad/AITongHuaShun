@@ -29,6 +29,32 @@ docker compose --env-file .env.production -f docker-compose.production.yml ps
 
 初期 IP 证书为自签名证书，浏览器会显示风险提示。绑定域名后应替换 `runtime/certs/kairos.crt` 和 `kairos.key`，并同步更新 `PUBLIC_HOST` 与 `WEB_ORIGIN`。
 
+## 域名证书与续期
+
+Nginx的HTTP80端口独立提供`/.well-known/acme-challenge/`，仅映射`runtime/acme/webroot`，不存在的挑战文件返回404；账户密钥和续期状态不在Web目录中。bootstrap和update会以部署用户预建目录。首次从旧部署升级时，先以`ubuntu`创建`runtime/acme/{config,work,logs}`（0700）与`runtime/acme/webroot/.well-known/acme-challenge`（0755），再发布新Compose；旧脚本不会在同次替换时执行新目录准备逻辑。若目录已被Docker建为root所有，应由管理员修正到部署用户，不能通过sudo运行证书工具绕过。
+
+先执行纯本地预览，不注册账户、不联网、不写入文件：
+
+```bash
+bash deploy/manage-certificate.sh issue --domain kairosq.cn --domain www.kairosq.cn --dry-run
+```
+
+实际申请须先由域名持有人明确接受[Let's Encrypt订阅协议v1.8](https://letsencrypt.org/documents/LE-SA-v1.8-July-06-2026.pdf)。只有得到该具体版本授权后，才能以普通部署用户`ubuntu`运行：
+
+```bash
+bash deploy/manage-certificate.sh issue \
+  --domain kairosq.cn --domain www.kairosq.cn \
+  --accept-subscriber-agreement https://letsencrypt.org/documents/LE-SA-v1.8-July-06-2026.pdf
+```
+
+脚本拒绝root、非本用户目录与异常锁，和应用发布共用部署锁；默认使用已核实官方版本`certbot/certbot:v5.9.0`，不是不可变digest。若已单独核实官方镜像digest，可用`KAIROS_CERTBOT_IMAGE`固定。镜像尚未拉取时的registry可达性仍需实际申请时验证。脚本不注册邮箱，账户密钥、续期配置和Certbot运行日志仅保留在受限`runtime/acme`，不得提交或输出这些材料。
+
+每次实际运行都会比对CA目录公布的协议URL；版本变化就停止，等待重新审核授权。签发或续期后检查信任链、全部主/别域名、至少一天有效期和私钥匹配，再通过单一版本目录指针切换证书对；执行容器内`nginx -t`与reload，失败恢复旧指针。旧证书对保留在本地受限版本目录。实际续期将上面`issue`改为`renew`，首个域名必须保持为`kairosq.cn`以复用同一lineage。
+
+签发成功后才安装`deploy/kairos-certificate-renew.service`与`.timer`样例并启用：服务固定`User/Group=ubuntu`、根域与www、已审核协议版本，每天两次并随机延迟；不使用PrivateTmp，以保持共享部署锁可见。当前提交只提供样例，部署脚本不会安装或启动它们。条款授权、首次签发和定时启用分别记录于状态页；不得把离线mock通过写成CA签发成功。
+
+把未提交`.env.production`中的`PUBLIC_HOST`设为`kairosq.cn`，Compose会派生`WEB_ORIGIN=https://kairosq.cn`。最终必须用不带`-k`的HTTPS检查根域和www的`/healthz`及`/api/health`，确认SAN、信任链及认证保护；自签名证书检查不能代替该验证。详细决策见[0013](../docs/decisions/0013-managed-domain-certificates.md)。
+
 ## 固定密码重置
 
 固定密码必须在服务器终端隐藏输入，不能出现在命令参数、Git 或 `.env.production` 明文中。当前单用户部署允许 8 至 256 个字符；公网部署仍应使用未在其他位置复用的密码。
