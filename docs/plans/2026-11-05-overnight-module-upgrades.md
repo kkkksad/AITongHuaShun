@@ -24,7 +24,7 @@
 1. 先记录预期行为、涉及文件和可验证结果，补必要的回归测试。
 2. 定向测试通过后跑前后端全套 Vitest、TypeScript 与 Vite 生产构建；Python 发生修改时加桥接测试。
 3. 主代理检查 diff、`git diff --check`，只提交该模块及相应文档。
-4. 推送工作分支；用 `git archive HEAD` 生成二进制归档，通过既有受限 `deploy-upload <40位SHA>` SSH 入口部署。不得使用 PowerShell 文本管道传二进制。
+4. 优先推送工作分支；GitHub网络持续不可达时，可对已完成独立复核/精确全检查的本地提交按同SHA归档部署，并明确记录未推送状态、恢复后补推，不堆积未部署代码提交。用 `git archive HEAD` 生成二进制归档，通过既有受限 `deploy-upload <40位SHA>` SSH 入口部署。不得使用 PowerShell 文本管道传二进制。
 5. 记录上一发布标识、部署输出；检查三容器 healthy、`/healthz`、`/api/health`、匿名账户/能力/自动执行接口 401 和源码哈希。保留原账户、订单、凭据。
 6. 发布失败先回滚/修复，不堆叠下一轮。下一轮文档记录上一轮线上结果，避免为记一行状态再次发布。
 
@@ -463,8 +463,10 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** 模块37发布后的`PaperBroker.markToMarket`及独立双Store回归，边界/架构/状态/本计划。
 
 - [x] 同一独立探针另4项先红：tradable=false但穿价的报价，仍能使两Store买卖挂单成交；新提交本来会拒绝该报价，不能混为所有检查皆缺失。
-- [ ] 匹配跳过明确不可交易报价，保留挂单/预约与估值、后续合法可交易报价再按既有约束撮合；缺报价/非正有限价格原保护保持，不伪造停牌或指数成交。
-- [ ] 新失败回归、独立复核与全套检查后单独部署；不扩行情权限或改变费用、T+1、现金/仓位上限。
+- [x] 仅原guard追加quote.tradable === false，跳过明确不可交易报价并保留挂单/预约与估值，true后继续撮合；缺字段legacy仍兼容，缺报价/非正有限价格原保护保持。
+- [x] 新28项真实双Store先16红12绿后全绿；覆盖BUY/SELL、费用/股数预约、无伪事件/审计、主动撤单、他股继续、缺报价/坏价、undefined兼容与JSON重开。作者414相关/TypeScript/diff通过，root完整实现/测试读取无阻断。
+- [x] 独立404项、额外6项false先遍历/legacy他股/暂停与JSON字节探针、TypeScript/diff通过。精确暂存树98服务端文件1429项、44前端文件249项、TypeScript/Vite全过，未混入40/41/42。
+- [ ] 单独提交部署与独立核验；不扩行情权限或改变费用、T+1、现金/仓位上限。
 
 ## 模块39：RSI单标的历史绑定
 
@@ -475,7 +477,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 首次可交易标的绑定到reset，之后按symbol查找，缺失/不可交易返回空并不追加他股历史，reset清绑定/历史。保留单标的模型与现稳定序列经济语义，不扩成多股Map或增加参数/工厂/生产策略变更。
 - [x] 新12项先9红3绿后全绿，覆盖换序、缺失/不可交易→恢复、空暖机/首次选择、他股持仓不误卖、reset重选及引擎重复确定性；作者256项、独立231项及服务端类型/diff通过。稳定双股旧新完整报告deepEqual，均3单/3成交、佣金15、期末现金5980/权益10980。root完整实现/测试复核无阻断。
 - [x] 精确暂存树97服务端文件1401项、44前端文件249项、TypeScript与Vite生产构建全部通过，未混入模块38/40/41。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块39提交8095f1aee48aabab5bed5cc89861c80e435f9ae3已部署并于UTC22:22独立校验477个归档文件、三healthy/健康200/匿名401/原账户。GitHub先持续连接失败，按已验证本地SHA部署；连接恢复后已成功补推。
 
 ## 模块34：同股待买暴露与成交仓位复核
 
@@ -505,3 +507,47 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 独立真实Executor+Broker证实：默认166.72报价100股滑点后166.80、Broker佣金5.00而预算5.004，恰够16685却误跳；两笔166.76报价佣金应5.01却少预算，第二笔可真差0.01后才被Broker拒。既有110项无覆盖。
 - [ ] 先真实runOnce失败测试精确够钱、多单累计、真正不足先跳、合法fractional最低佣金与二进制噪声。仅预算复用executionCosts的notional/cashDebit与hasSufficientCash，扣减相同cashDebit；保留消息/阶段/幂等/笔数/SELL/原projectedMarketValue名义口径。
 - [ ] 独立复核、精确全套检查、单独提交部署；不变费率、生产配置、策略选择或账户。
+
+## 模块42：动量单标的历史绑定
+
+**Files:** `server/backtest/strategies/MomentumStrategy.ts`与真实Engine多标的回归，架构/状态/本计划。
+
+- [x] 独立只读真实Engine：entry2/exit1，A1/.9/.8、B12/11/10各自下跌，stable/A-only/B-only均0单；最后bar换B优先或A不可交易，混合A1/A.9/B10触发误买B500@10费5。默认20/10的21bar同样复现；当前固定顺序提供者/榜单未证明受到影响。
+- [ ] 新失败回归后首个tradable绑定到reset，后续只按同symbol收历史，缺失/不可交易等待；保留模块30完整N/M历史窗、N+1/M+1暖机、阈值等号和模块32实际持仓/可卖整手。
+- [ ] 覆盖误买/误卖控制、等待恢复、暖机、reset与稳定完整报告一致；独立复核、精确全套检查、单独提交部署。
+
+## 运维：有界清理可再生构建缓存
+
+- [x] UTC22:13无部署构建期间，仅Docker build cache清理（until=1h、keep-storage=8GB），释放14.72GB，根盘可用7.0G→21G/使用82%→46%。三个生产容器ID/healthy前后相同，未清镜像/volume/账户/配置/证书。原始结果保存在忽略runtime/module-37-build-cache-maintenance.log。
+
+## 模块43：均线交叉单标的状态绑定
+
+**Files:** `server/backtest/strategies/MovingAverageCrossStrategy.ts`与新真实Engine专项回归，架构/状态/本计划。
+
+- [x] 独立真实Engine：MA1/2时A1/.9/.8与B12/11/10均下跌，末bar换首或A=false误买B500@10费5；stable及单股0单。默认5/20的21bar亦复现。
+- [ ] 先红后绿，仅首次tradable绑定至reset，缺失false等待，不混他股历史；保留交叉条件/暖机/权重和原intent状态。实际持仓独立缺陷不混入本模块。
+- [ ] 覆盖换序/不可用恢复/首次选择/reset与稳定完整报告，独立复核、精确全检查、单独提交部署。
+
+## 模块44：海龟单标的状态绑定
+
+**Files:** `server/backtest/strategies/TurtleStrategy.ts`与新真实Engine专项回归，架构/状态/本计划。
+
+- [x] 独立真实Engine：Turtle2/1/0时A1/.9/.8与B12/11/10均下跌，末bar换首或A=false误买B500@10费5；stable及单股0单。默认20/10/50的50bar亦复现。
+- [ ] 先红后绿，仅首次tradable绑定至reset，缺失false等待，不混他股价格/估算高低；保留已修完整N/M过去窗口、均线过滤、±1%估算/权重和原intent状态。实际持仓独立缺陷另列。
+- [ ] 覆盖换序/不可用恢复/首次选择/reset与稳定完整报告，独立复核、精确全检查、单独提交部署。
+
+## 模块45：MACD单标的状态绑定
+
+**Files:** `server/backtest/strategies/MACDStrategy.ts`及新真实Engine专项回归，架构/状态/本计划。
+
+- [x] 独立真实Engine：MACD1/2/2，A1/.9/.8/.7/.6与B14/13/12/11/10均下跌，末换首误买B500@10费5；stable及单股0单。
+- [ ] 先核对实际文件，先红后绿仅首次tradable绑定到reset，缺失false等待；保留EMA/信号线/暖机/交叉/权重/持仓原义。
+- [ ] 独立复核、稳定完整报告、精确全检查与单独提交部署。
+
+## 模块46：网格基准单标的绑定
+
+**Files:** `server/backtest/strategies/GridTradingStrategy.ts`及新真实Engine专项回归，架构/状态/本计划。
+
+- [x] 独立真实Engine：默认Grid，A恒100/B恒10，onStart以A100定base后次barB优先或A=false，误生成5笔B100@10/佣金25；stable及单股0单。
+- [ ] 先核对onStart/reset生命周期，先红后绿让base与首标的同步绑定；后续只同股，缺失false等待，reset清全部原状态与绑定。不扩成多股网格或改网格级差/数量/限额。
+- [ ] 独立复核、稳定完整报告、精确全检查与单独提交部署。

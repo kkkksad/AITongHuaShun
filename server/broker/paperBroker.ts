@@ -170,7 +170,7 @@ export class PaperBroker extends EventEmitter {
     for (const order of pendingOrders) {
       if (this.store.isPaused()) break;
       const quote = quoteMap.get(order.symbol);
-      if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) continue;
+      if (!quote || quote.tradable === false || !Number.isFinite(quote.price) || quote.price <= 0) continue;
 
       if (this.store.checkLimitOrderFill(order, quote)) {
         const filled = this.fillOrder(order, quote.name, quote.price, snapshot, true);
