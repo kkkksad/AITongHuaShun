@@ -60,6 +60,14 @@ const weeklyHistoryCoverageLabels: Record<string, string> = {
   unknown: "留存状态未知",
 };
 
+const planSizingConstraintLabels = {
+  "risk-order-cap": "单笔风控上限",
+  "strategy-profile-scale": "新增仓位缩放",
+  "position-weight-cap": "单标的仓位上限",
+  "planned-cash-budget": "本轮计划资金预算",
+  none: "未识别金额约束",
+} as const;
+
 function adaptiveStrategyLabel(key: string): string {
   const option = PAPER_EXECUTION_STRATEGY_CHOICES.find(
     (candidate) => candidate.key === key,
@@ -114,6 +122,9 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
   const topStrategy = leaderboardQuery.data?.entries[0];
   const learningState = learningStateQuery.data;
   const paperPlan = paperPlanQuery.data;
+  const profileScale = paperPlan?.capitalPlan.sizingDiagnostics?.profileNewPositionScale;
+  const routeScale = paperPlan?.adaptiveRouting?.newPositionScale;
+  const effectiveScale = paperPlan?.strategyProfile?.effectiveNewPositionScale;
   const paperPlanQuality = paperPlan?.qualitySummary;
   const dailyReview = dailyReviewQuery.data;
   const weeklyPaperReview = weeklyPaperReviewQuery.data;
@@ -643,10 +654,19 @@ export default function LearningPipeline({ activeSection }: LearningPipelineProp
             <div className="learning-plan-summary">
               <strong>下单规模诊断</strong>
               <p>{paperPlan.capitalPlan.sizingDiagnostics.summary}</p>
+              <p>主要限制：{paperPlan.capitalPlan.sizingDiagnostics.limitingConstraintLabel ?? planSizingConstraintLabels[paperPlan.capitalPlan.sizingDiagnostics.limitingConstraint]}</p>
+              <span>
+                档位比例 {profileScale === undefined ? "未提供" : `${(profileScale * 100).toFixed(0)}%`}
+                {" · "}市场路由 {paperPlan.executionStrategy?.mode === "manual"
+                  ? "不参与"
+                  : routeScale === undefined ? "未提供" : `${(routeScale * 100).toFixed(0)}%`}
+                {" · "}最终生效 {effectiveScale === undefined ? "未提供" : `${(effectiveScale * 100).toFixed(0)}%`}
+              </span>
+              <p>比例用于缩放单笔和单股金额上限，不表示整体仓位比例或满仓目标。</p>
               <p>默认不按固定比例预留现金；实际可买金额仍需覆盖必要手续费和滑点，并受整手、可用现金、单笔/单股硬限额及阶段订单笔数限制约束。</p>
               <span>
                 风控上限 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.riskOrderCapBeforeScale).toLocaleString("zh-CN")}
-                {" · "}档位缩放后 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.riskOrderCapAfterScale).toLocaleString("zh-CN")}
+                {" · "}最终缩放后 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.riskOrderCapAfterScale).toLocaleString("zh-CN")}
                 {" · "}单票仓位上限 ¥{Math.round(paperPlan.capitalPlan.sizingDiagnostics.positionWeightCapAfterScale).toLocaleString("zh-CN")}
               </span>
               <span>

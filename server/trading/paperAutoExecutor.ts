@@ -27,6 +27,7 @@ import {
 import type {
   PaperTradingOperation,
   PaperTradingPlan,
+  PaperTradingPlanSizingConstraint,
 } from "../research/paperTradingPlan";
 import {
   getAshareTradingPhase,
@@ -563,6 +564,29 @@ function buildUnavailablePaperPlan(input: {
     strategyScaledPositionCap,
     plannedCashBudget,
   );
+  const limitingConstraint: PaperTradingPlanSizingConstraint = plannedCashBudget <= 0
+    ? "planned-cash-budget"
+    : profile.newPositionScale <= 0
+      ? "strategy-profile-scale"
+      : input.maxSingleOrderNotional <= 0
+        ? "risk-order-cap"
+        : plannedCashBudget <= strategyScaledOrderCap + 0.005 &&
+            plannedCashBudget <= strategyScaledPositionCap + 0.005
+          ? "planned-cash-budget"
+          : strategyScaledPositionCap <= strategyScaledOrderCap + 0.005
+            ? "position-weight-cap"
+            : profile.newPositionScale < 1 - 0.000001
+              ? "strategy-profile-scale"
+              : "risk-order-cap";
+  const constraintLabels: Record<PaperTradingPlanSizingConstraint, string> = {
+    "risk-order-cap": "服务端单笔风控上限",
+    "strategy-profile-scale": profile.newPositionScale <= 0
+      ? "策略档位停止新增仓位"
+      : "策略档位缩放",
+    "position-weight-cap": "单票仓位权重",
+    "planned-cash-budget": "可用于本轮买单的实际现金",
+    none: "未识别金额约束",
+  };
   const isManual = input.executionStrategy !== "auto";
   return {
     generatedAt: input.now.toISOString(),
@@ -583,6 +607,7 @@ function buildUnavailablePaperPlan(input: {
       cashReserveRatio,
       cashReserveAmount: Number(cashReserveAmount.toFixed(2)),
       sizingDiagnostics: {
+        profileNewPositionScale: profile.newPositionScale,
         riskOrderCapBeforeScale: input.maxSingleOrderNotional,
         riskOrderCapAfterScale: Number(strategyScaledOrderCap.toFixed(2)),
         positionWeightCapAfterScale: Number(strategyScaledPositionCap.toFixed(2)),
@@ -596,7 +621,8 @@ function buildUnavailablePaperPlan(input: {
         plannedBuyNotional: 0,
         averagePlannedBuyNotional: 0,
         largestPlannedBuyNotional: 0,
-        limitingConstraint: "planned-cash-budget",
+        limitingConstraint,
+        limitingConstraintLabel: constraintLabels[limitingConstraint],
         summary: "当前没有可交易行情，无法形成金额计划；金额上限仅作账户风控展示。",
       },
     },

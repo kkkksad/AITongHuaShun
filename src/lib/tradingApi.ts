@@ -12,6 +12,7 @@ import type {
   TradingMode,
 } from "../../shared/trading";
 import type { ApiPerformanceSnapshot } from "../../shared/systemMonitoring";
+import type { PaperTradingPlanSizingDiagnostics } from "../../shared/paperTradingSizing";
 import { ApiRequestError } from "./apiError";
 
 export interface HealthSnapshot {
@@ -680,26 +681,7 @@ export interface PaperTradingPlan {
     lotSize: number;
     cashReserveRatio: number;
     cashReserveAmount: number;
-    sizingDiagnostics?: {
-      riskOrderCapBeforeScale: number;
-      riskOrderCapAfterScale: number;
-      positionWeightCapAfterScale: number;
-      cashReserveAmount: number;
-      plannedCashBudget: number;
-      effectiveOrderCap: number;
-      minimumFeeEfficientNotional: number;
-      plannedBuyOrderCount: number;
-      plannedBuyNotional: number;
-      averagePlannedBuyNotional: number;
-      largestPlannedBuyNotional: number;
-      limitingConstraint:
-        | "risk-order-cap"
-        | "strategy-profile-scale"
-        | "position-weight-cap"
-        | "planned-cash-budget"
-        | "none";
-      summary: string;
-    };
+    sizingDiagnostics?: PaperTradingPlanSizingDiagnostics;
   };
   strategyProfile: PaperTradingPlanStrategyProfile;
   executionStrategy: {

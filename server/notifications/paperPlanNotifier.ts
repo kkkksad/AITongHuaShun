@@ -271,10 +271,10 @@ const ASHARE_MARKET_CLOSE_MINUTE = 15 * 60;
 
 const SIZING_CONSTRAINT_LABELS = {
   "risk-order-cap": "单笔风控上限",
-  "strategy-profile-scale": "策略档位缩放",
+  "strategy-profile-scale": "新增仓位缩放",
   "position-weight-cap": "单标的仓位上限",
   "planned-cash-budget": "本轮计划资金预算",
-  none: "暂无金额限制",
+  none: "未识别金额约束",
 } as const;
 
 const BLOCKED_REASON_LABELS: Record<string, string> = {
@@ -687,7 +687,7 @@ export function formatPaperPlanMessage(
   const effectiveOrderCap =
     sizing?.effectiveOrderCap ?? plan.capitalPlan?.maxSingleOrderNotional ?? 0;
   const limitingConstraint = sizing
-    ? SIZING_CONSTRAINT_LABELS[sizing.limitingConstraint]
+    ? sizing.limitingConstraintLabel ?? SIZING_CONSTRAINT_LABELS[sizing.limitingConstraint]
     : "单笔风控上限";
   const strongestEvidence = uniqueText([
     operations[0]?.reason,

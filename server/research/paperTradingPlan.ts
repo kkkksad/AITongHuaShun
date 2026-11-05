@@ -1,5 +1,13 @@
 import { getPaperExecutionStrategyOption } from "../../shared/trading";
 import type {
+  PaperTradingPlanSizingConstraint,
+  PaperTradingPlanSizingDiagnostics,
+} from "../../shared/paperTradingSizing";
+export type {
+  PaperTradingPlanSizingConstraint,
+  PaperTradingPlanSizingDiagnostics,
+} from "../../shared/paperTradingSizing";
+import type {
   AccountSnapshot,
   MarketQuote,
   MarketSnapshot,
@@ -90,29 +98,6 @@ export interface PaperTradingPlanStrategyProfile
   allowNewPositions: boolean;
   effectiveCashReserveRatio: number;
   effectiveNewPositionScale: number;
-}
-
-export type PaperTradingPlanSizingConstraint =
-  | "risk-order-cap"
-  | "strategy-profile-scale"
-  | "position-weight-cap"
-  | "planned-cash-budget"
-  | "none";
-
-export interface PaperTradingPlanSizingDiagnostics {
-  riskOrderCapBeforeScale: number;
-  riskOrderCapAfterScale: number;
-  positionWeightCapAfterScale: number;
-  cashReserveAmount: number;
-  plannedCashBudget: number;
-  effectiveOrderCap: number;
-  minimumFeeEfficientNotional: number;
-  plannedBuyOrderCount: number;
-  plannedBuyNotional: number;
-  averagePlannedBuyNotional: number;
-  largestPlannedBuyNotional: number;
-  limitingConstraint: PaperTradingPlanSizingConstraint;
-  summary: string;
 }
 
 export interface PaperTradingPlan {
@@ -620,7 +605,17 @@ export function buildPaperTradingPlan(input: {
     strategyScaledPositionCap,
     plannedCashBudget,
   );
-  const sizingConstraint: PaperTradingPlanSizingConstraint =
+  const zeroSizingConstraint: PaperTradingPlanSizingConstraint | null =
+    plannedCashBudget <= 0
+      ? "planned-cash-budget"
+      : newPositionScale <= 0
+        ? "strategy-profile-scale"
+        : input.maxSingleOrderNotional <= 0
+          ? "risk-order-cap"
+          : strategyScaledPositionCap <= 0
+            ? "position-weight-cap"
+            : null;
+  const sizingConstraint: PaperTradingPlanSizingConstraint = zeroSizingConstraint ?? (
     plannedCashBudget <= strategyScaledOrderCap + 0.005 &&
     plannedCashBudget <= strategyScaledPositionCap + 0.005
       ? "planned-cash-budget"
@@ -628,7 +623,8 @@ export function buildPaperTradingPlan(input: {
         ? "position-weight-cap"
         : newPositionScale < 1 - 0.000001
           ? "strategy-profile-scale"
-          : "risk-order-cap";
+          : "risk-order-cap"
+  );
   const alreadyReducedToday = filledAutoSellSymbols(
     input.orders ?? [],
     tradingDate,
@@ -1335,15 +1331,25 @@ export function buildPaperTradingPlan(input: {
           : 0;
         const constraintLabels: Record<PaperTradingPlanSizingConstraint, string> = {
           "risk-order-cap": "服务端单笔风控上限",
-          "strategy-profile-scale": "策略档位缩放",
+          "strategy-profile-scale": "新增仓位缩放",
           "position-weight-cap": "单票仓位权重",
           "planned-cash-budget": "可用于本轮买单的实际现金",
-          none: "无资金约束",
+          none: "未识别金额约束",
         };
-        const limitingConstraint = maxSingleOrderNotional <= 0.005
-          ? "none"
-          : sizingConstraint;
+        const limitingConstraint = sizingConstraint;
+        const routeScale = input.adaptiveRouting?.newPositionScale;
+        const scaleSource = manualExecutionStrategy || routeScale === undefined
+          ? "策略档位"
+          : Math.abs(profilePolicy.newPositionScale - routeScale) < 0.000001
+            ? "策略档位与市场路由共同"
+            : routeScale < profilePolicy.newPositionScale
+              ? "市场路由"
+              : "策略档位";
+        const limitingConstraintLabel = limitingConstraint === "strategy-profile-scale"
+          ? `${scaleSource}${newPositionScale <= 0 ? "停止新增仓位" : "缩放"}`
+          : constraintLabels[limitingConstraint];
         return {
+          profileNewPositionScale: profilePolicy.newPositionScale,
           riskOrderCapBeforeScale: Number(input.maxSingleOrderNotional.toFixed(2)),
           riskOrderCapAfterScale: Number(strategyScaledOrderCap.toFixed(2)),
           positionWeightCapAfterScale: Number(strategyScaledPositionCap.toFixed(2)),
@@ -1358,9 +1364,10 @@ export function buildPaperTradingPlan(input: {
           averagePlannedBuyNotional: Number(averagePlannedBuyNotional.toFixed(2)),
           largestPlannedBuyNotional: Number(largestPlannedBuyNotional.toFixed(2)),
           limitingConstraint,
+          limitingConstraintLabel,
           summary: plannedBuyOrderCount > 0
-            ? `当前单笔计划上限约 ${Math.round(maxSingleOrderNotional).toLocaleString("zh-CN")} 元，主要受${constraintLabels[limitingConstraint]}限制；计划买入 ${plannedBuyOrderCount} 笔，平均 ${Math.round(averagePlannedBuyNotional).toLocaleString("zh-CN")} 元。`
-            : `当前单笔计划上限约 ${Math.round(maxSingleOrderNotional).toLocaleString("zh-CN")} 元，主要受${constraintLabels[limitingConstraint]}限制；本轮没有通过全部门槛的 Paper 买单。`,
+            ? `当前单笔计划上限约 ${Math.round(maxSingleOrderNotional).toLocaleString("zh-CN")} 元，主要受${limitingConstraintLabel}限制；计划买入 ${plannedBuyOrderCount} 笔，平均 ${Math.round(averagePlannedBuyNotional).toLocaleString("zh-CN")} 元。`
+            : `当前单笔计划上限约 ${Math.round(maxSingleOrderNotional).toLocaleString("zh-CN")} 元，主要受${limitingConstraintLabel}限制；本轮没有通过全部门槛的 Paper 买单。`,
         } satisfies PaperTradingPlanSizingDiagnostics;
       })(),
     },

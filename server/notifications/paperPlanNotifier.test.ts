@@ -622,7 +622,7 @@ describe("PaperPlanNotifier", () => {
     expect(message.content).toContain("最强证据");
     expect(message.content).toContain("主要阻塞");
     expect(message.content).toContain("实际单笔上限 1600.00 元");
-    expect(message.content).toContain("策略档位缩放");
+    expect(message.content).toContain("新增仓位缩放");
     expect(message.content).toContain("计划后约 100 股");
     expect(message.content).toContain("策略与档位：");
     expect(message.content).toContain("<h3>今日成交与拒单</h3>");
@@ -632,6 +632,33 @@ describe("PaperPlanNotifier", () => {
     expect(message.content).toContain("<h3>边界</h3>");
     expect(message.content).toContain("仅 Paper 模拟研究");
     expect(message.content).toContain("每个真实交易日发送 6 条定时简报");
+  });
+
+  it("prefers the precise sizing label and escapes it in notification HTML", () => {
+    const plan = createPlan();
+    plan.capitalPlan.sizingDiagnostics = {
+      profileNewPositionScale: 1,
+      riskOrderCapBeforeScale: 2_000,
+      riskOrderCapAfterScale: 1_000,
+      positionWeightCapAfterScale: 2_500,
+      cashReserveAmount: 0,
+      plannedCashBudget: 5_000,
+      effectiveOrderCap: 1_000,
+      minimumFeeEfficientNotional: 1_000,
+      plannedBuyOrderCount: 0,
+      plannedBuyNotional: 0,
+      averagePlannedBuyNotional: 0,
+      largestPlannedBuyNotional: 0,
+      limitingConstraint: "strategy-profile-scale",
+      limitingConstraintLabel: "市场路由缩放 <研究&观察>",
+      summary: "市场路由调整额度。",
+    };
+
+    const message = formatPaperPlanMessage(plan, context(plan));
+
+    expect(message.content).toContain("市场路由缩放 &lt;研究&amp;观察&gt;");
+    expect(message.content).not.toContain("市场路由缩放 <研究&观察>");
+    expect(message.content).not.toContain("新增仓位缩放");
   });
 
   it("sends an observation briefing without inventing trades", async () => {

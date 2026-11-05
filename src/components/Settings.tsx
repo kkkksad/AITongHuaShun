@@ -111,10 +111,10 @@ export function groupExecutionStrategies() {
 
 const sizingConstraintLabels = {
   "risk-order-cap": "单笔风控上限",
-  "strategy-profile-scale": "策略档位缩放",
+  "strategy-profile-scale": "新增仓位缩放",
   "position-weight-cap": "单标的仓位上限",
   "planned-cash-budget": "本轮计划资金预算",
-  none: "暂无金额限制",
+  none: "未识别金额约束",
 } as const;
 
 export function canResetPaperAccount(input: {
@@ -244,6 +244,9 @@ export function Settings({ trading, activeSection }: SettingsProps) {
 
   const sizingDiagnostics = paperPlanQuery.data?.capitalPlan.sizingDiagnostics;
   const planExecutionStrategy = paperPlanQuery.data?.executionStrategy;
+  const profileScale = sizingDiagnostics?.profileNewPositionScale;
+  const routeScale = paperPlanQuery.data?.adaptiveRouting?.newPositionScale;
+  const effectiveScale = paperPlanQuery.data?.strategyProfile?.effectiveNewPositionScale;
 
   return (
     <div className="page-stack settings-page">
@@ -388,13 +391,21 @@ export function Settings({ trading, activeSection }: SettingsProps) {
               </div>
               <div className="settings-sizing-footer">
                 <span>
-                  主要限制：<strong>{sizingConstraintLabels[sizingDiagnostics.limitingConstraint]}</strong>
+                  主要限制：<strong>{sizingDiagnostics.limitingConstraintLabel ?? sizingConstraintLabels[sizingDiagnostics.limitingConstraint]}</strong>
                 </span>
                 <span>
                   计划资金 {formatCurrency(sizingDiagnostics.plannedCashBudget)}，
                   固定现金预留 {formatCurrency(sizingDiagnostics.cashReserveAmount)}
                 </span>
               </div>
+              <p>
+                档位比例 {profileScale === undefined ? "未提供" : `${(profileScale * 100).toFixed(0)}%`}
+                {" · "}市场路由 {planExecutionStrategy?.mode === "manual"
+                  ? "不参与"
+                  : routeScale === undefined ? "未提供" : `${(routeScale * 100).toFixed(0)}%`}
+                {" · "}最终生效 {effectiveScale === undefined ? "未提供" : `${(effectiveScale * 100).toFixed(0)}%`}
+              </p>
+              <p>比例用于缩放单笔和单股金额上限，不表示整体仓位比例或满仓目标。</p>
               <p>{sizingDiagnostics.summary}</p>
             </>
           ) : (
