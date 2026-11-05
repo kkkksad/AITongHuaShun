@@ -54,23 +54,28 @@ export class TurtleStrategy implements BacktestStrategy {
     const price = quote.price;
     this.prices.push(price);
 
-    // 模拟日内高低点（用价格 ± 2% 估算）
+    // 模拟日内高低点（沿用价格 ± 1% 估算）
     const dayHigh = price * (1 + 0.01);
     const dayLow = price * (1 - 0.01);
     this.highs.push(dayHigh);
     this.lows.push(dayLow);
 
-    if (this.prices.length < Math.max(this.entryPeriod, this.trendFilterPeriod)) {
+    if (this.prices.length < Math.max(this.entryPeriod + 1, this.trendFilterPeriod)) {
       return [];
     }
+
+    // Compare this price with complete prior observations. Including this
+    // bar's estimated high/low makes a positive price unable to break either.
+    const previousHighs = this.highs.slice(0, -1);
+    const previousLows = this.lows.slice(0, -1);
 
     // 趋势过滤：价格必须在均线上方才做多
     if (this.trendFilterPeriod > 0) {
       const ma = sma(this.prices, this.trendFilterPeriod);
       if (!isNaN(ma) && price < ma) {
         // 价格在均线下方，如果持有多头则考虑退出
-        if (this.inPosition) {
-          const channel = donchianChannel(this.highs, this.lows, this.exitPeriod);
+        if (this.inPosition && previousLows.length >= this.exitPeriod) {
+          const channel = donchianChannel(previousHighs, previousLows, this.exitPeriod);
           if (price <= channel.lower) {
             this.inPosition = false;
             return [
@@ -87,7 +92,7 @@ export class TurtleStrategy implements BacktestStrategy {
       }
     }
 
-    const entryChannel = donchianChannel(this.highs, this.lows, this.entryPeriod);
+    const entryChannel = donchianChannel(previousHighs, previousLows, this.entryPeriod);
 
     // 突破上轨买入
     if (!this.inPosition && price >= entryChannel.upper) {
@@ -104,8 +109,8 @@ export class TurtleStrategy implements BacktestStrategy {
     }
 
     // 跌破下轨卖出
-    if (this.inPosition) {
-      const exitChannel = donchianChannel(this.highs, this.lows, this.exitPeriod);
+    if (this.inPosition && previousLows.length >= this.exitPeriod) {
+      const exitChannel = donchianChannel(previousHighs, previousLows, this.exitPeriod);
       if (price <= exitChannel.lower) {
         this.inPosition = false;
         return [

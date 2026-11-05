@@ -816,7 +816,8 @@ describe("TurtleStrategy", () => {
     let price = 100;
     const random = createSeededRandom(0x2001);
     for (let i = 0; i < 200; i++) {
-      price = price * (1 + 0.003 + (random() - 0.5) * 0.01);
+      // Breakouts must clear the strategy's existing 1% estimated daily high.
+      price = price * (1 + 0.012 + (random() - 0.5) * 0.01);
       snapshots.push({
         mode: "paper",
         sequence: i + 1,
@@ -847,6 +848,8 @@ describe("TurtleStrategy", () => {
     const report = engine.run();
     validateStrategyReport(report);
     expect(report.strategyName).toContain("Turtle");
+    expect(report.trades.length).toBeGreaterThan(0);
+    expect(report.trades.some((trade) => trade.side === "buy")).toBe(true);
   });
 
   it("custom params reflected in name", () => {
