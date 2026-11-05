@@ -22,6 +22,7 @@ export class GridTradingStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
   private basePrice: number | null = null;
+  private boundSymbol?: string;
   /** 上次成交时价格所在的网格层级 */
   private lastBuyLevel: number | null = null;
   private lastSellLevel: number | null = null;
@@ -39,6 +40,7 @@ export class GridTradingStrategy implements BacktestStrategy {
   reset(): void {
     this.prices.length = 0;
     this.basePrice = null;
+    this.boundSymbol = undefined;
     this.lastBuyLevel = null;
     this.lastSellLevel = null;
   }
@@ -50,6 +52,7 @@ export class GridTradingStrategy implements BacktestStrategy {
       (q) => q.tradable,
     );
     if (quote) {
+      this.boundSymbol = quote.symbol;
       this.basePrice = quote.price;
       this.lastBuyLevel = this.gridCount; // 初始认为在中间位置
       this.lastSellLevel = this.gridCount;
@@ -57,7 +60,7 @@ export class GridTradingStrategy implements BacktestStrategy {
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = context.snapshot.quotes.find((q) => q.tradable);
+    const quote = context.snapshot.quotes.find((q) => q.symbol === this.boundSymbol && q.tradable);
     if (!quote || this.basePrice === null) return [];
 
     this.prices.push(quote.price);

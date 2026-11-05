@@ -554,15 +554,17 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 新15项真实Engine先12红3绿后全绿，仅首次tradable绑定到reset，缺失false等待；保留EMA/信号线/暖机/交叉/权重/原intent，默认及小周期误买、错误他股退出均覆盖。
 - [x] 作者288项/类型/diff及3组含成本旧新报告一致；独立316项、复跑3组报告、另3组真实gap/他股极值有效bar信号/成交经济字段对照通过，root最小实现复核无阻断。
 - [x] 精确暂存树104服务端文件1512项、44前端文件249项、TypeScript/Vite全过，未混入46/47/48/49/50。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块45提交0957e2c1db20672634b8c635577b4b7c6861a743已推送并部署，UTC22:45独立校验484个归档文件、三healthy/健康200/匿名401/原Paper账户。
 
 ## 模块46：网格基准单标的绑定
 
 **Files:** `server/backtest/strategies/GridTradingStrategy.ts`及新真实Engine专项回归，架构/状态/本计划。
 
 - [x] 独立真实Engine：默认Grid，A恒100/B恒10，onStart以A100定base后次barB优先或A=false，误生成5笔B100@10/佣金25；stable及单股0单。
-- [ ] 先核对onStart/reset生命周期，先红后绿让base与首标的同步绑定；后续只同股，缺失false等待，reset清全部原状态与绑定。不扩成多股网格或改网格级差/数量/限额。
-- [ ] 独立复核、稳定完整报告、精确全检查与单独提交部署。
+- [x] 新14项真实Engine先10红4绿后全绿，onStart同一quote同步绑定base与symbol；后续只同股，缺失false等待，reset清全部原状态与绑定。初始empty/全false仍整轮停用，不扩多股或后续启用，不改公式/levels/数量/限额。
+- [x] 作者316项/类型/diff及3组含成本旧新报告一致；独立100项及亲自重跑3组报告（56/31/20成交，含原拒单）通过，原log/round/clamp/双level同步逐行保持。root最小实现复核无阻断。
+- [x] 精确暂存树105服务端文件1526项、44前端文件249项、TypeScript/Vite全过，未混入47/48/49/50。
+- [ ] 单独提交部署与独立核验。
 
 ## 模块47：海龟实际持仓信号
 
