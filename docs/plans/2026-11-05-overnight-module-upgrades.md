@@ -674,4 +674,13 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 最初12项真实nativeHTTP/fetch/流式Response.text先8红4绿；另4边界共16绿，旧logout200/500 finally清B、旧verify成功覆B和notify后旧verify复活均先正式确证再guard。请求捕获generation，login成功/当前verify成功/notify/退出推进；只有当前保护401通知过期，旧401保留reject，旧verify/退出清理只改所属认证状态。
 - [x] 作者与独立各4文件68项/app类型/diff通过，独立另3项同代并发401只一次expiry、verify早于logout及logout等待中verify交错绿。真实abort保持，auth端点自有401不通知；CSRF仍只内存，无cookie/权限/API返回格式改变。root完整diff/16测试无阻断；范围不包括浏览器迟到Set-Cookie顺序或撤销已收到的请求，决策0019已明确。
 - [x] 精确暂存树111服务端文件1650项、49前端文件319项、TypeScript/Vite全过。
-- [ ] 单独提交部署与核验。
+- [x] 模块56提交d1abafb2c6b5b3911261d68ef9f9412e265580f7已部署，UTC23:47独立校验498个归档文件、三healthy/健康200/匿名401/原账户。54/56推送时GitHub连接中断，收尾继续补推。
+
+## 收尾与交接（北京时间2026-11-06早上）
+
+- [x] UTC23:45代码冻结，不再启动新代码模块；当前最后代码提交d1abafb2c6b5b3911261d68ef9f9412e265580f7。最新完整检查为111服务端文件1650项、49前端文件319项、TypeScript/Vite全部通过；后续仅整理本记录与状态页，不重复声称新的代码测试。
+- [x] UTC23:48从实际后端容器只读取公开配置核验：固定reserve=0、单股cap=.25、单笔cap100000、最低佣金5、佣金率.0003、滑点5bps；Paper原20,000现金/权益、growth、auto、未暂停、0持仓0订单保持。真实执行继续关闭，未增加WxPusher消息。
+- [x] 所有代码模块均经过精确暂存树全检查、单独提交、逐次归档部署和独立文件哈希/健康/匿名权限核验。分支为codex/overnight-optimization-2026-11-05，服务器精确最终发布标识由runtime/production-release.json终检记录；该服务器目录没有.git。
+- [x] UTC23:50仍观察到GitHub443连接重置/超时，54/56远端同步尚待补齐；已尝试HTTP/1.1和仅本次请求使用实际DNS查询的备用地址且保留TLS校验，不修改全局Git/TLS。最后同步结果以聊天终检为准，服务器部署不依赖这次连接恢复。
+- [x] 到北京时间08:00结束本次目标，定时续跑RRULE本已限定该截止，收尾停止后续触发并释放本任务临时本地服务/防睡眠；不新建持续升级任务或后台代码循环。
+- **明确剩余：** 域名可信证书仍等待用户对Let's Encrypt协议授权，保持原自签证书；计划层滑点/费用后单股权益投影需另立设计，边界候选仍可能被Broker正确拒绝；JS认证隔离不保证浏览器并发Set-Cookie顺序或撤销服务端已接收的请求。
