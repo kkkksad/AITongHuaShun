@@ -239,7 +239,8 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 请求AbortController身份+未中止双门保护，effect cleanup失效旧请求；日期列表独立cleanup。结果带date/level/module/page scope，仅匹配时渲染，切换时立即隐藏旧行/计数/展开且禁导出；同scope保留旧结果和诚实错误。自动10秒tick在请求尚未完成时跳过，避免慢请求饥饿。
 - [x] 独立复核4文件26项通过，无阻断；API signal透传、过时catch/finally、当前scope导出与定时清理均确认。
 - [x] 精确暂存树79服务端文件/1081项、39前端文件/179项、TypeScript与Vite生产构建全部通过，未混入模块19。
-- [ ] 定向日志/研究刷新回归、独立复核和精确暂存全套验证，再单独提交部署。
+- [x] 模块17提交aa519b21d5db75a886d6f52149aab9160a6980e5已推送并部署；UTC20:16独立校验448个归档文件、三容器healthy、健康200/匿名401，原Paper账户与策略保留。
+- [x] 定向日志/研究刷新回归、独立复核和精确暂存全套验证已完成，提交与部署结果见上。
 
 ## 模块18：遗传优化遵循配置目标
 
@@ -250,14 +251,34 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 将config.objectives传入每个个体的共享computeScore，沿用归一化/缓存/种子/变异/预算；实现仅3行增加/2行替换。定向优化器/策略6文件96项、TypeScript和diff检查通过，主代理源码与测试复核无阻断。
 - [x] 独立复核34项通过，另以2基因/12人口/5代真实引擎比较旧新Sharpe经济报告：16个unique trial的参数/指标/分数/id/best/收敛全等；公开runOptimization(genetic)负totalReturn逐trial评分及best=max符合配置。
 - [x] 精确暂存树79服务端文件/1081项、38前端文件/162项、TypeScript与Vite生产构建全部通过，未混入模块17/19。
-- [ ] 独立复核、定向优化/策略测试与精确暂存全套验证，独立提交部署。当前研究排行榜使用gridSearch，此修复覆盖公开genetic/runOptimization路径，不声称已有榜单因此错误或保证获得更佳收益。
+- [x] 模块18提交abc69dc1c63e2b77df05bf41218097f59968d307已推送并部署；UTC20:14独立校验447个归档文件、三容器healthy、健康200/匿名401，原Paper账户与策略保留。
+- [x] 独立复核、定向优化/策略测试与精确暂存全套验证、独立提交部署已完成。当前研究排行榜使用gridSearch，此修复覆盖公开genetic/runOptimization路径，不声称已有榜单因此错误或保证获得更佳收益。
 
 ## 模块19：定投止盈使用实际持仓
 
 **Files:** `server/backtest/strategies/DCAStrategy.ts`与新真实引擎回归，架构/状态/本计划。
 
 - [x] 两位代理只读真实引擎复现：DCA每bar1000元、10/10/10/12、初始10000、15%单股上限，实际只买100股而虚拟账累加300，止盈卖300被拒；同日止盈T+1拒绝后虚拟账清空，次日不再退出。探针风控参数不修改生产配置。
-- [ ] 先新增失败回归：拒买后只卖实际股数、T+1锁定后次日重试、部分可卖、均价含滑点不含佣金、symbol隔离、尝试间隔/reset确定性；保留真实Broker费用/额度检查。
-- [ ] 删除模拟已成交的investedShares/investedTotal/averageCost，止盈依据目标`context.positions`的quantity/averagePrice；卖量按`min(quantity, availableQuantity ?? quantity)`整手对齐。达到止盈但可卖0则观察，下bar重新检查实际持仓，不预先清账。
-- [ ] 保留lastInvestBar为发出买入意图的尝试周期；盈利阈值沿用`((value - cost) / cost) * 100`的价差口径，均价来自真实模拟填单、未含佣金，不能称净收益20%。
-- [ ] 定向策略/引擎/优化器验证、独立复核、精确暂存全套检查，独立提交部署；仅修DCA事实来源，不扩大成所有策略状态重构，不改变生产策略选择或风险额度。
+- [x] 新增13项真实DCA回归，先10红3绿后全部绿：拒买只卖实际量、T+1等待/次日退出、拒卖重试、滑点均价、真实部分解锁、legacy缺可卖字段/整手/上限、symbol隔离、尝试间隔和reset。定向7文件141项、服务端类型与diff检查通过。
+- [x] 删除三个虚拟持仓字段，止盈读取目标context.positions实际quantity/averagePrice；可卖量取min并100整手对齐。达到止盈但可卖0观察，下bar读取实际账，不清虚拟账或把意图当成交。
+- [x] lastInvestBar仍为买入尝试周期；阈值沿用差额/成本口径，真实模拟均价含滑点不含佣金。20元报价20.01成交、5元费用案例验证，不能称为费用后收益阈值。
+- [x] 独立复核确认含滑点不含佣金、T+1/部分解锁/拒卖重试与原尝试节奏，93项定向通过；精确暂存树80服务端文件/1094项、39前端文件/179项、TypeScript与Vite生产构建全部通过，未混入模块20/21。
+- [ ] 独立提交部署；仅修DCA事实来源，不扩大成所有策略状态重构，不改变生产策略选择或风险额度。
+
+## 模块20：实时订单列表页码恢复
+
+**Files:** `src/components/OrderHistory.tsx`与真实React分页回归，状态/本计划。
+
+- [x] ignored真实React探针复现：16笔pending在第2页时，唯一行更新为filled，剩15笔pending但page未收缩；显示无匹配订单且分页条因仅1页消失，用户无法返回现有记录。
+- [ ] 写失败回归：当前页记录因实时状态/数量变化减少时，渲染有效末页并同步页码；账户重置空列表、数据重新增加、过滤/排序/导出/撤单的原语义不变。
+- [ ] 使用既有分页纯函数或按渲染时有效页码切片，避免一帧空白/旧页面编号与不可达页；不得发交易请求或重置生产数据。
+- [ ] 定向交互与独立复核、精确暂存全套检查，再单独提交部署。
+
+## 模块21：监控路由标签有界与实例隔离
+
+**Files:** `server/app.ts`、`server/metrics.ts`、必要监控helper及回归，架构/状态/本计划。
+
+- [x] 内存app.inject证明未知404路径fallback到原始request.url：Prometheus保留含测试query的完整URL、不同query产生不同永久标签；轻量telemetry虽去query仍保留未知原始路径。第二新app的metrics包含第一app标记，因registry全局共享。
+- [ ] 先写失败回归：未知404/未认证401及大量不同path/query聚合固定unknown桶，不记录原始请求值；已注册参数路由保留模板；method规范化/计时及已有排除规则保持。
+- [ ] app生命周期使用独立metrics实例，HTTP、WS、订单、账户与风控更新统一同一实例；保留指标名/格式，必要保留旧模块函数兼容，但app不再共享全局registry。未知路由统一由安全模板helper输出，不复制原始URL。
+- [ ] 独立复核、定向认证/monitoring/metrics与精确暂存全套验证，单独提交部署；不新增直方图/外部监控账号、不修改认证与真实交易权限，不把未知请求query输出到诊断。

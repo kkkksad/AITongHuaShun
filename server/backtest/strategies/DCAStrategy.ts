@@ -10,7 +10,7 @@ import type {
  * 规则：
  * - 按固定周期（每 N 根 K 线）投入固定金额
  * - 无论市场价格高低，持续买入指定标的
- * - 可选止盈：当持仓盈利超过止盈阈值时全部卖出
+ * - 可选止盈：按实际成交均价检查价格收益，卖出当前可卖的整手持仓
  *
  * 参数：
  * - intervalBars: 定投间隔（K 线数），默认 5 根（约每周）
@@ -21,9 +21,6 @@ import type {
 export class DCAStrategy implements BacktestStrategy {
   readonly name: string;
   private lastInvestBar = -1;
-  private investedTotal = 0;
-  private investedShares = 0;
-  private averageCost = 0;
 
   constructor(
     private readonly intervalBars: number = 5,
@@ -38,9 +35,6 @@ export class DCAStrategy implements BacktestStrategy {
 
   reset(): void {
     this.lastInvestBar = -1;
-    this.investedTotal = 0;
-    this.investedShares = 0;
-    this.averageCost = 0;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
@@ -51,18 +45,19 @@ export class DCAStrategy implements BacktestStrategy {
 
     if (!quote || quote.price <= 0) return [];
 
-    // 检查止盈条件
-    if (this.investedShares > 0 && this.takeProfitPercent > 0) {
-      const currentValue = this.investedShares * quote.price;
+    // 成交均价包含滑点、不含佣金；只读取账户事实，不把信号视为已成交。
+    const position = context.positions.find((p) => p.symbol === quote.symbol);
+    if (position && position.quantity > 0 && position.averagePrice > 0 && this.takeProfitPercent > 0) {
+      const currentValue = position.quantity * quote.price;
+      const cost = position.quantity * position.averagePrice;
       const profitPercent =
-        ((currentValue - this.investedTotal) / this.investedTotal) * 100;
+        ((currentValue - cost) / cost) * 100;
 
       if (profitPercent >= this.takeProfitPercent) {
-        // 触发止盈：全部卖出
-        const sharesToSell = this.investedShares;
-        this.investedShares = 0;
-        this.investedTotal = 0;
-        this.averageCost = 0;
+        const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+        const sharesToSell = Math.floor(sellable / 100) * 100;
+        // T+1 锁定或不足一手时等待；拒单或部分卖出后由下一根 bar 的持仓决定。
+        if (sharesToSell <= 0) return [];
         return [
           {
             symbol: quote.symbol,
@@ -85,14 +80,7 @@ export class DCAStrategy implements BacktestStrategy {
     const rawShares = Math.floor(this.investAmount / quote.price / 100) * 100;
     if (rawShares <= 0) return [];
 
-    const actualCost = rawShares * quote.price;
-
-    // 更新持仓记录
-    const newTotalShares = this.investedShares + rawShares;
-    this.averageCost =
-      (this.investedTotal + actualCost) / (newTotalShares || 1);
-    this.investedTotal += actualCost;
-    this.investedShares = newTotalShares;
+    // 保留发出买入意图的尝试间隔，无论订单最终是否被风控接受。
     this.lastInvestBar = context.barIndex;
 
     return [
