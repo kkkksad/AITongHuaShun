@@ -228,7 +228,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 三个通道均排除当前bar，entry需完整过去N条、exit需完整M条；沿用price±1%估算、包含当前价格的MA、>=/<=比较、权重及所有风控。旧趋势fixture原单日不超过0.8%不足跨估算高点，明确改成可突破的趋势并断言buy，不放宽策略。
 - [x] 定向策略/优化器/稳健性90项与类型检查通过，独立复核84项通过；新海龟在模块15修改前后引擎的完整6bar报告相同，bar3买100/bar5卖100且至少各5元费用，证明不依赖模块15。
 - [x] 精确暂存树78服务端文件/1075项、38前端文件/162项、TypeScript与Vite生产构建全部通过，未混入模块17。
-- [ ] 定向策略/优化器与真实引擎验证、独立复核、精确暂存全套检查，单独提交部署并明确此为策略正确性修复，不保证收益。
+- [x] 模块16提交077d6dddb7f6d9ced07c1fbdcc04d93db49af50c已推送并部署；UTC20:05独立校验446个归档文件、三容器healthy、健康200/匿名401、原Paper账户和策略保留。
 
 ## 模块17：日志筛选请求顺序保护
 
@@ -236,5 +236,26 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 
 - [x] ignored诊断中复现：全级别请求A未完成切换ERROR发B，B先成功后A迟到成功会显示INFO行；A迟到失败会给ERROR结果挂上过时错误。现有静态分页测试漏掉请求竞争。
 - [ ] 把两项诊断转为仓库回归，再补筛选/日期/分页/同scope刷新及unmount所需边界；旧请求不得更新当前entries/error/loading。
-- [ ] 使用有生命周期清理的请求身份或AbortController；只接受当前请求完成状态，当前scope刷新保留原有可见数据和诚实错误，不修改服务端日志内容或API契约。
+- [ ] 使用有生命周期清理的请求身份或AbortController；只接受当前请求完成状态。相同scope刷新保留旧行；date/level/module/page变化立即隐藏旧行/计数/展开并禁用导出，防止新文件名导出旧数据。慢自动刷新不每10秒中止重来，不修改API。
 - [ ] 定向日志/研究刷新回归、独立复核和精确暂存全套验证，再单独提交部署。
+
+## 模块18：遗传优化遵循配置目标
+
+**Files:** `server/optimizer/geneticAlgorithm.ts`与新目标回归，架构/状态/本计划。
+
+- [x] 真实内存探针复现：价格10/11/12、lots2/3、目标totalReturn权重1的应有分0.04/0.06却都为10（硬编码Sharpe）；换权重-1后best/score/收敛曲线完全相同，目标未参与选择。固定种子本身仍确定。
+- [x] 新增6项真实引擎回归，最初5红1绿，再全部通过；验证正/负目标、组合权重、原Sharpe费用/滑点兼容、缓存后的best/avg和固定seed重复。GA当前没有onProgress接口，不新增该能力；score/best/已有收敛曲线统一使用配置目标。
+- [x] 将config.objectives传入每个个体的共享computeScore，沿用归一化/缓存/种子/变异/预算；实现仅3行增加/2行替换。定向优化器/策略6文件96项、TypeScript和diff检查通过，主代理源码与测试复核无阻断。
+- [x] 独立复核34项通过，另以2基因/12人口/5代真实引擎比较旧新Sharpe经济报告：16个unique trial的参数/指标/分数/id/best/收敛全等；公开runOptimization(genetic)负totalReturn逐trial评分及best=max符合配置。
+- [x] 精确暂存树79服务端文件/1081项、38前端文件/162项、TypeScript与Vite生产构建全部通过，未混入模块17/19。
+- [ ] 独立复核、定向优化/策略测试与精确暂存全套验证，独立提交部署。当前研究排行榜使用gridSearch，此修复覆盖公开genetic/runOptimization路径，不声称已有榜单因此错误或保证获得更佳收益。
+
+## 模块19：定投止盈使用实际持仓
+
+**Files:** `server/backtest/strategies/DCAStrategy.ts`与新真实引擎回归，架构/状态/本计划。
+
+- [x] 两位代理只读真实引擎复现：DCA每bar1000元、10/10/10/12、初始10000、15%单股上限，实际只买100股而虚拟账累加300，止盈卖300被拒；同日止盈T+1拒绝后虚拟账清空，次日不再退出。探针风控参数不修改生产配置。
+- [ ] 先新增失败回归：拒买后只卖实际股数、T+1锁定后次日重试、部分可卖、均价含滑点不含佣金、symbol隔离、尝试间隔/reset确定性；保留真实Broker费用/额度检查。
+- [ ] 删除模拟已成交的investedShares/investedTotal/averageCost，止盈依据目标`context.positions`的quantity/averagePrice；卖量按`min(quantity, availableQuantity ?? quantity)`整手对齐。达到止盈但可卖0则观察，下bar重新检查实际持仓，不预先清账。
+- [ ] 保留lastInvestBar为发出买入意图的尝试周期；盈利阈值沿用`((value - cost) / cost) * 100`的价差口径，均价来自真实模拟填单、未含佣金，不能称净收益20%。
+- [ ] 定向策略/引擎/优化器验证、独立复核、精确暂存全套检查，独立提交部署；仅修DCA事实来源，不扩大成所有策略状态重构，不改变生产策略选择或风险额度。

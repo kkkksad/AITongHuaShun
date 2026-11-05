@@ -133,6 +133,7 @@ async function evaluateIndividual(
   snapshots: MarketSnapshot[],
   factory: StrategyFactory,
   backtestConfig: Record<string, number>,
+  objectives: GeneticAlgorithmConfig["objectives"],
   trialId: number,
 ): Promise<Individual> {
   const trialStart = Date.now();
@@ -142,7 +143,7 @@ async function evaluateIndividual(
     const strategy = await factory.create(individual.params);
     const engine = new BacktestEngine(snapshots, strategy, backtestConfig);
     const report = engine.run();
-    fitness = computeScore(report.metrics, [{ metric: "sharpeRatio", weight: 1 }]);
+    fitness = computeScore(report.metrics, objectives);
 
     individual.trial = {
       id: trialId,
@@ -213,7 +214,7 @@ export async function geneticAlgorithm(
         individual.trial = cached;
       } else if (individual.fitness === 0) {
         trialIdCounter++;
-        await evaluateIndividual(individual, snapshots, factory, btCfg, trialIdCounter);
+        await evaluateIndividual(individual, snapshots, factory, btCfg, config.objectives, trialIdCounter);
         if (individual.trial) allTrials.set(key, individual.trial);
       }
     }
