@@ -16,7 +16,8 @@ function money(value: number): string {
   return new Intl.NumberFormat("zh-CN", {
     style: "currency",
     currency: "CNY",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(value);
 }
 
@@ -349,9 +350,13 @@ export function PaperAccount({ backend }: PaperAccountProps) {
                   ? `¥${Number(limitPrice).toFixed(2)}`
                   : `¥${selectedQuote?.price.toFixed(2) ?? "--"}`}
               </strong>
-              <span>预计金额</span>
+              <span>参考本金</span>
               <strong>{money(estimatedNotional)}</strong>
             </div>
+            <p className="risk-hint">
+              参考本金按{orderType === "limit" ? "输入限价" : "当前参考价"}与数量计算，不含手续费和滑点。
+              无固定比例现金预留；买单仍需覆盖必要费用，实际成交金额与资金是否充足由服务端最终核验。
+            </p>
             <p className="risk-hint">{riskHint}</p>
             {(backend.notice || backend.error) && (
               <p className={backend.error ? "order-feedback error" : "order-feedback"}>
