@@ -22,6 +22,8 @@
 - [0016：初始化读取合并已接收的实时事件](0016-bootstrap-realtime-read-windows.md)
 - [0017：Paper 待买暴露与费用后成交仓位](0017-paper-pending-buy-position-exposure.md)
 
+- [0018：Service Worker只缓存公开静态资源](0018-service-worker-static-cache-boundary.md)
+
 ## 新建格式
 
 文件名使用 `NNNN-short-title.md`。

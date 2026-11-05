@@ -84,6 +84,7 @@ shared/
 
 ## 依赖方向
 
+- Service Worker只拦截同源白名单静态资源/已知SPA壳；API、认证、账户、订单及未知/跨源请求完全透传，不读取旧版本缓存。v3激活先清旧kairos-*后claim，保留无关cache，见[决策0018](../decisions/0018-service-worker-static-cache-boundary.md)。
 - React 组件只能通过 `tradingApi` 和 `useTradingBackend` 访问服务端，不直接依赖存储或券商实现。
 - React Router 只负责视图 URL；`src/lib/moduleCatalog.ts` 是主页面和二级模块导航、搜索关键词与 query 深链接的唯一目录，TanStack Query 保存 REST 快照，WebSocket 和交易 mutation 增量更新同一缓存。
 - `src/lib/researchQueries.ts` 是重复研究请求的 Query Key、stale 时间和轮询策略唯一入口；展示位置不得再进入同参数请求的缓存键。

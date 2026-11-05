@@ -584,7 +584,7 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 43发布后实施，17新真实Engine先11红6绿后全绿，绑定股实际quantity替代intent，退出实际可卖100整手。保留strict金叉prevFast<=prevSlow且fast>slow、死叉prevFast>=prevSlow且fast<slow及slow+1暖机；无新交叉不补卖/重买。
 - [x] 作者177项/类型/diff，旧12symbol仅两处sell形状quantity500及过时测试名更新，原经济断言保持；独立152项及6个可卖边界通过。作者与独立各3组正常含成本旧新完整报告相同；覆盖T+1不叠买/下一死叉、拒买真金叉、部分可卖/他股/外部清仓/reset，root完整三文件复核无阻断。
 - [x] 精确暂存树107服务端文件1564项、44前端文件249项、TypeScript/Vite全过，未混入49/50/51/52。
-- [ ] 单独提交部署与独立核验。
+- [x] 模块48提交a71e1e8c59d50ec0b9e471b5fc3103fa33d67d96已部署，UTC23:04独立校验487个归档文件、三healthy/健康200/匿名401/原Paper账户；GitHub连接中断，补推状态随下一发布记录。
 
 ## 模块49：MACD交叉实际持仓信号
 
@@ -608,9 +608,12 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 **Files:** `public/sw.js`、新执行原脚本的缓存/生命周期回归（使用现有Node测试域），架构/安全/产品/状态/决策0018及本计划。
 
 - [x] 独立Node VM执行原样SW脚本三项证实：no-store账户20000→网络8000仍返回20000且只触网一次；session服务端变401却返回旧200/auth/fixture CSRF；POST订单成功后GET仍返回旧空。当前非assets GET落入cache-first，显式Cache API put忽略HTTP no-store。未访问生产账户。
-- [ ] 先红后绿，限定同源GET静态资源白名单（核对public实际文件）及已知SPA页面导航；/assets仍network-first/offline fallback。其余API（含query/导航mode）、非GET和跨源完全不respondWith/不读写缓存，浏览器按原网络处理；保留必要静态离线能力。
-- [ ] 只缓存成功basic静态/HTML壳响应，不缓存业务/错误响应；升级KAIROS cache版本，激活只清旧KAIROS命名缓存并在清理后claim，清掉v2残留账户/认证/订单，不删除无关命名缓存。旧控制器在更新激活前仍可能旧行为，不能声称部署即已清所有用户浏览器。
-- [ ] 执行原脚本验证API fresh/401/POST后GET、旧私密cache不回退、offline API拒绝不伪造、same-origin/跨源/POST/未知GET、真实静态与导航回退、错误不缓存、安装激活清理次序；独立复核、精确全检查、单独提交部署，公开静态脚本验证新字节/缓存版本。
+- [x] 首34项先28红6绿，补3边界共37全绿；限定同源GET静态资源白名单（核对public实际文件）及已知SPA页面导航；/assets仍network-first/offline fallback。其余API（含query/导航mode）、非GET和跨源完全不respondWith/不读写缓存，浏览器按原网络处理；保留必要静态离线能力。
+- [x] 只缓存成功basic静态/HTML壳响应，不缓存业务/错误响应；升级KAIROS cache版本，激活只清旧KAIROS命名缓存并在清理后claim，清掉v2残留账户/认证/订单，不删除无关命名缓存。旧控制器在更新激活前仍可能旧行为，不能声称部署即已清所有用户浏览器。
+- [x] 37执行脚本覆盖API fresh/401/POST后GET、旧私密cache、offline不伪造、same-origin/跨源/POST/未知GET、静态/导航回退、错误不覆盖及安装激活次序；作者111相关/类型/diff通过，root完整源码复核无初步阻断。
+- [x] 独立111项/类型/diff通过。Chrome155全新profile/双localhost原脚本真实验证13边界：延迟网络then中的waitUntil接受、200先返回/cache.put释放后写入，API/query/iframe navigate/跨源/未知全透传、旧cache清理/v3-only/静态与HTML/断网回退通过；W3C respondWith lifetime promise语义一致。profile/浏览器/服务器已清理。
+- [x] 精确暂存树108服务端文件1601项、44前端文件249项、TypeScript/Vite全过，未混入49/50/52/53。
+- [ ] 单独提交部署与独立核验，公开脚本验证新字节/缓存版本。
 
 ## 模块52：计划候选整手佣金舍入
 
