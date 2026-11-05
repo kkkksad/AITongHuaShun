@@ -6,6 +6,8 @@
 
 执行成本按[决策0014](../decisions/0014-paper-execution-cash-costs.md)统一：Store保留本金冻结，Broker派生挂单必要费用补差并对外扣除；回测上下文/曲线也经Broker读取。每次实际撮合先保留其他待买完整预算，再核验本单含佣金现金流，Store修改前作独立余额兜底；不增加固定比例或迁移订单字段/JSON版本。
 
+账户累计`realizedPnl`按[决策0015](../decisions/0015-account-net-realized-pnl.md)从总现金、剩余持仓成交成本和初始权益派生，已付买卖费用即时计入，清仓/重开/历史裁剪不丢累计净结果；挂单预算不是费用。持仓级字段与研究FIFO定义独立保留，不能求当前持仓已实现之和代替账户累计。
+
 WebSocket每次认证握手除市场/账户/持仓外还发送`orders.snapshot`最近50笔，等同浏览器bootstrap的显式订单读取上限；已有缓存的客户端整体替换订单，再接受`order.updated`增量。旧socket和卸载后的消息被身份门忽略；初次bootstrap在途与推送之间的全量竞态尚需独立处理。
 
 ## 当前结构

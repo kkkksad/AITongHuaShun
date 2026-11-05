@@ -285,10 +285,12 @@ export class JsonFileTradingStore implements TradingStore {
       (total, position) => total + position.unrealizedPnl,
       0,
     );
-    const realizedPnl = positions.reduce(
-      (total, position) => total + position.realizedPnl,
+    const remainingCost = positions.reduce(
+      (total, position) => total + position.quantity * position.averagePrice,
       0,
     );
+    // Total cash includes reservations; only paid costs reduce the net result.
+    const realizedPnl = this.cash + remainingCost - this.startingEquity;
     const equity = this.cash + marketValue;
     const dailyPnl = equity - this.startingEquity;
     const baseline = Math.max(1, equity - dailyPnl);

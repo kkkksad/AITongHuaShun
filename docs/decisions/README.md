@@ -18,6 +18,7 @@
 - [0012：行情快照时间表示数据版本形成时间](0012-market-snapshot-version-time.md)
 - [0013：域名证书独立签发与续期](0013-managed-domain-certificates.md)
 - [0014：Paper 可用现金包含订单必要成本](0014-paper-execution-cash-costs.md)
+- [0015：账户累计已实现盈亏采用净现金恒等式](0015-account-net-realized-pnl.md)
 
 ## 新建格式
 

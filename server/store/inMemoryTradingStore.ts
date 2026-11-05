@@ -260,10 +260,12 @@ export class InMemoryTradingStore implements TradingStore {
       (total, position) => total + position.unrealizedPnl,
       0,
     );
-    const realizedPnl = positions.reduce(
-      (total, position) => total + position.realizedPnl,
+    const remainingCost = positions.reduce(
+      (total, position) => total + position.quantity * position.averagePrice,
       0,
     );
+    // Total cash includes reservations; only paid costs reduce the net result.
+    const realizedPnl = this.cash + remainingCost - this.startingEquity;
     const availableCash = this.cash - this.blockedCash;
     const equity = this.cash + marketValue;
     const dailyPnl = equity - this.startingEquity;
