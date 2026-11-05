@@ -205,15 +205,18 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 初次深链保留只滚动语义，后续导航可聚焦`tabIndex=-1`目标；过时导航取消，搜索高亮、Escape与刷新不抢焦点。新增7项回归，定向7文件41项、前端类型与diff检查通过。
 - [x] 主代理源码复核与隔离真实浏览器1280×720验证：首次懒加载和重复同URL均focus到settings-execution、搜索关闭，返回初始页focus MAIN；无横向溢出/控制台error。仅测试专用内存mock账户、auto/WxPusher关闭；临时页面与服务已停止，未登录生产。
 - [x] 精确暂存树76服务端文件/1057项、38前端文件/162项、TypeScript与Vite生产构建全部通过，未混入模块15/16。
-- [ ] 提交部署与独立检查。
+- [x] 模块14提交b3f6d79868c8b01ffbc006c59ceb8955c76ed958已推送并部署；UTC19:58独立校验444个归档文件、三容器healthy、健康200/匿名401，原Paper账户及策略保留。
 
 ## 模块15：回测已成交状态、成交顺序与报告隔离
 
 **Files:** `server/backtest/backtestEngine.ts`与对应真实引擎回归，架构/状态/本计划。
 
 - [x] 纯内存探针证明：挂单先成交但onBar账户仍是成交前；同bar后续市价单先写trades，令FIFO顺序反转；重复run复用曲线/成交数组，首轮报告被次轮清空重写。
-- [ ] 先以限价买入后仅空仓买策略、同bar限价/市价不同费用后FIFO、两次不同结果run和报告对象修改建立失败回归；不改变同bar信号执行、滑点、费用、整手与T+1模型。
-- [ ] 每bar先`markToMarket(snapshot)`、按Broker实际成交顺序收集挂单，再`getAccount/getPositions`构造context；返回`equityCurve.map(point => ({ ...point }))`及`trades.map(trade => ({ ...trade }))`，报告config也用`{ ...this.config }`，不共享引擎可变状态。
+- [x] 新增8项真实引擎回归，最初7项5红2绿；追加配置共享问题先红1项。覆盖挂单买/卖后context、pending→market FIFO、多挂单实际最新优先顺序、同bar共享context、不同结果重复run、数组/元素和7项config修改隔离。
+- [x] 每bar先获取pending引用序列、`markToMarket(snapshot)`，按Broker实际遍历顺序记成交，再`getAccount/getPositions`构造context；即时成交使用同一个去重记录函数。报告curve/trades逐元素拷贝、config浅拷贝，不共享引擎可变状态。
+- [x] 定向6文件125项、TypeScript及diff检查通过；首7项版本独立复核6文件127项通过，最终config拷贝另行复核。当前内置策略不主动生成限价信号，此时序修复主要影响公共引擎的自定义限价策略；报告隔离影响同引擎重复运行调用方，不声称全部既有榜单都曾出错。
+- [x] 最终config浅拷贝由独立代理复核8/8通过，涵盖改旧报告全部配置后新报告完整经济结果一致。
+- [x] 精确暂存树77服务端文件/1065项、38前端文件/162项、TypeScript与Vite构建全部通过，未混入模块16/17。
 - [ ] 定向引擎/策略/优化器与报告回归通过后，独立复核、精确暂存全套验证、提交部署；指标变化如实记录，不能称作真实收益提升。
 
 ## 模块16：海龟策略历史通道突破恢复
@@ -224,3 +227,12 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [ ] 建立完整N个历史bar暖身、N+1突破买入、历史M日下轨退出、前缀/未来数据隔离与reset确定性回归；旧“produces trades”测试须断言实际交易。
 - [ ] 计算通道时排除当前bar，仅使用此前历史；保持现有估算高低点、费用、风险及账户策略选择不变。不借此新增真实OHLC接口或参数寻优。
 - [ ] 定向策略/优化器与真实引擎验证、独立复核、精确暂存全套检查，单独提交部署并明确此为策略正确性修复，不保证收益。
+
+## 模块17：日志筛选请求顺序保护
+
+**Files:** `src/components/LogViewer.tsx`与真实React交互回归，状态/产品/本计划。
+
+- [x] ignored诊断中复现：全级别请求A未完成切换ERROR发B，B先成功后A迟到成功会显示INFO行；A迟到失败会给ERROR结果挂上过时错误。现有静态分页测试漏掉请求竞争。
+- [ ] 把两项诊断转为仓库回归，再补筛选/日期/分页/同scope刷新及unmount所需边界；旧请求不得更新当前entries/error/loading。
+- [ ] 使用有生命周期清理的请求身份或AbortController；只接受当前请求完成状态，当前scope刷新保留原有可见数据和诚实错误，不修改服务端日志内容或API契约。
+- [ ] 定向日志/研究刷新回归、独立复核和精确暂存全套验证，再单独提交部署。

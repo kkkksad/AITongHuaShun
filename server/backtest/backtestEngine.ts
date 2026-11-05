@@ -149,11 +149,15 @@ export class BacktestEngine {
       }
 
       const snapshot = this.provider.getSnapshot();
+
+      // 按 Broker 遍历挂单的实际顺序记录成交，再向策略提供撮合后的账户。
+      const pendingOrders = this.store.getPendingOrders();
+      this.broker.markToMarket(snapshot);
+      for (const order of pendingOrders) {
+        this.recordFilledOrder(order, i, snapshot.marketTime);
+      }
       const account = this.store.getAccount("paper", snapshot, this.limits);
       const positions = this.store.getPositions(snapshot);
-
-      // 先处理挂单的限价单成交检查
-      this.broker.markToMarket(snapshot);
 
       // 调用策略
       const context: StrategyContext = {
@@ -188,32 +192,6 @@ export class BacktestEngine {
         snapshot,
         this.limits,
       );
-
-      // 收集本bar产生的已成交订单
-      const newFilledOrders = this.store
-        .listOrders()
-        .filter(
-          (o) =>
-            o.status === "filled" &&
-            !this.allOrders.some((ao) => ao.id === o.id),
-        );
-      for (const order of newFilledOrders) {
-        this.allOrders.push(order);
-        const quote = this.provider.getQuote(order.symbol);
-        this.trades.push({
-          orderId: order.id,
-          symbol: order.symbol,
-          name: quote?.name ?? order.symbol,
-          side: order.side,
-          type: order.type,
-          quantity: order.quantity,
-          price: order.filledPrice ?? 0,
-          notional: order.notional,
-          commission: order.commission,
-          time: snapshot.marketTime,
-          barIndex: i,
-        });
-      }
 
       // 记录权益曲线
       this.equityCurve.push({
@@ -254,16 +232,37 @@ export class BacktestEngine {
     return {
       strategyName: this.strategy.name,
       metrics,
-      equityCurve: this.equityCurve,
+      equityCurve: this.equityCurve.map((point) => ({ ...point })),
       orders: this.store.listOrders(10_000),
-      trades: this.trades,
+      trades: this.trades.map((trade) => ({ ...trade })),
       finalAccount,
       finalPositions,
-      config: this.config,
+      config: { ...this.config },
     };
   }
 
   // ── 信号处理 ──
+
+  private recordFilledOrder(order: OrderRecord, barIndex: number, time: string): void {
+    if (order.status !== "filled" || this.allOrders.some((recorded) => recorded.id === order.id)) {
+      return;
+    }
+    this.allOrders.push(order);
+    const quote = this.provider.getQuote(order.symbol);
+    this.trades.push({
+      orderId: order.id,
+      symbol: order.symbol,
+      name: quote?.name ?? order.symbol,
+      side: order.side,
+      type: order.type,
+      quantity: order.quantity,
+      price: order.filledPrice ?? 0,
+      notional: order.notional,
+      commission: order.commission,
+      time,
+      barIndex,
+    });
+  }
 
   private processSignal(
     signal: StrategySignal,
@@ -314,22 +313,7 @@ export class BacktestEngine {
 
     try {
       const order = this.broker.submitOrder(orderRequest);
-      if (order.status === "filled") {
-        this.allOrders.push(order);
-        this.trades.push({
-          orderId: order.id,
-          symbol: order.symbol,
-          name: quote.name,
-          side: order.side,
-          type: order.type,
-          quantity: order.quantity,
-          price: order.filledPrice ?? 0,
-          notional: order.notional,
-          commission: order.commission,
-          time,
-          barIndex,
-        });
-      }
+      this.recordFilledOrder(order, barIndex, time);
     } catch (err) {
       console.error(
         `[BacktestEngine] 下单失败 bar=${barIndex} symbol=${signal.symbol}:`,
