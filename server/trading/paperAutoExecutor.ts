@@ -878,8 +878,8 @@ export class PaperAutoExecutor {
           initialCapital:
             account.startingEquity ?? this.options.config.TRADING_STARTING_CASH,
           lotSize: 100,
-          maxPositionWeight: this.options.config.MAX_POSITION_WEIGHT,
-          maxSingleOrderNotional: this.options.config.MAX_ORDER_NOTIONAL,
+          maxPositionWeight: this.options.system.risk.getEffectiveMaxPositionWeight(),
+          maxSingleOrderNotional: this.options.system.risk.getEffectiveMaxOrderNotional(),
           minimumCommission: this.options.config.MIN_COMMISSION,
           cashReserveRatio:
             this.options.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
