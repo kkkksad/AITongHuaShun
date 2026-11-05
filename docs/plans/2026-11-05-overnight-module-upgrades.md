@@ -78,16 +78,18 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 方向键循环移动、Enter打开高亮项、Esc关闭、查询变化重置；关闭后Enter不跳转、方向键可重开，中文组合输入与229键码不误跳转。
 - [x] combobox/listbox补选中状态、稳定option id和aria-activedescendant；当前位置用aria-current，鼠标和键盘共享高亮。下拉限制高度并滚动至高亮；定向2文件17项先红后绿，前端类型检查通过。
 - [x] 模块4精确暂存快照全套66服务端文件/971项、34前端文件/140项通过；TypeScript与Vite构建通过。
-- [ ] 模块4提交、部署、独立健康验证。
+- [x] 模块4提交5ce8a3a4f6f3e4aaf9b4a64e647371e5dcebb919并部署，UTC18:12独立验证三容器healthy、健康200、匿名保护401、Paper模式及原账户不变。
 
 ## 模块5：参数搜索不阻塞API事件循环
 
-**Files:** `server/optimizer/gridSearch.ts`、对应优化器测试、状态页和本计划。
+**Files:** `server/optimizer/gridSearch.ts`、新`gridSearch.scheduling.test.ts`、`server/app.test.ts`、`server/trading/paperAutoExecutor.cashPolicy.test.ts`、架构/状态页和本计划。
 
 - [x] 只读探针证实暖模块仍同步阻塞：本地120 bars、16策略、5,717 trial耗时5,848ms，10ms心跳最大间隔5,849ms；AkShare生产路径使用同一代码，但该本地测量不是生产上限。
-- [ ] 在网格搜索约8至16ms的计算时间片后使用`await setImmediate()`让出真正宏任务；保持组合顺序、种子、trial、评分和最佳结果。
-- [ ] 添加真实计时器在长搜索完成前能执行的回归，并比较同输入结果不变；重复探针记录最大间隔和总耗时，不宣称缩短总计算时间。
-- [ ] 定向和全套检查、提交、部署、健康验证。
+- [x] 每约8ms使用node setImmediate让出真正宏任务，成功与失败组合均切片，保持组合顺序、种子、trial、评分和最佳结果。
+- [x] 新增3项真实计时器/完整结果等价回归，2项先红后绿；定向67项通过。相同本地探针：10ms心跳最大gap由5849ms降至24ms，380次心跳；总计算从5848ms增至6338ms（约8.4%），改善响应性，不宣称计算提速或生产延迟同比结果。单trial和笛卡尔积仍同步。
+- [x] 真正让出后暴露既有测试同步阻塞掩盖的5秒超时：完整研究API用例明确20秒预算，其他API保持默认；资金回归使用轻量真实计划fixture，避免无关全参数搜索，3例从约18至21秒降至23ms并保留真实executor/broker验证。
+- [x] 模块5精确暂存快照67服务端文件/974项、34前端文件/140项全部通过，TypeScript与Vite构建通过。
+- [ ] 模块5提交、部署、健康验证。
 
 ## 模块6：策略对比结果变化时保持Hooks顺序
 
@@ -96,6 +98,16 @@ winRate: tradePnls.length > 0 ? winCount / tradePnls.length : 0,
 - [x] 代码核实不足2条结果时在两个useMemo之前return，结果从1条到2条或反向变化会改变Hooks数量。
 - [ ] 用React root同实例rerender的真实回归先复现Hooks顺序错误，再把空状态判断移动到所有Hooks之后；不改变对比排名和图表算法。
 - [ ] 覆盖0/1/2条与回到空状态，定向测试和全套检查、提交、部署。
+
+## 模块7：排行榜与Paper研究共享同快照计算
+
+**Files:** 新`server/research/strategyLeaderboardService.ts`及测试，`server/app.ts`、`server/research/paperTradingPlanService.ts`、相关集成测试、架构/状态/本计划。
+
+- [x] 确认排行榜API直接运行全参数搜索，Paper研究内部另运行相同计算；重复打开模块会重复消耗CPU。
+- [ ] 用WeakMap按TradingSystem实例隔离有限只读缓存，复用ResearchResultCache，每实例最多8项，结果完成起30秒TTL，失败移除、同key在途单飞。
+- [ ] key包含provider、bars、seed、requestedSymbols和完整快照JSON的SHA256，保留报价顺序与所有影响样本/质量的字段；不按代码集合或bars单独复用不同快照，不保存原始快照或凭据为key。
+- [ ] 排行榜API和Paper研究统一调用共享服务，只缓存排行榜报告，不缓存账户、现金、最终计划，不触发额外新闻/外盘读取；保留原generatedAt和snapshotTime。
+- [ ] 必要回归覆盖同快照并发单飞、API/Paper调用复用、快照报价/顺序/时间变化、provider/bars/seed/请求池变化、系统隔离、TTL到期、失败重试和容量限制；全套检查后提交部署。
 
 ## 后续候选（先证实，再建独立小计划）
 

@@ -5,6 +5,11 @@ import { hashPassword } from "./auth";
 import { createTradingSystem } from "./system";
 import { createTestConfig } from "./test/testConfig";
 
+// These integration cases run the full deterministic parameter search, which
+// now yields to timers. Give that CPU work a per-test budget without widening
+// the default timeout for lightweight API tests or production requests.
+const FULL_RESEARCH_TEST_TIMEOUT_MS = 20_000;
+
 async function useGrowthPaperProfile(app: FastifyInstance): Promise<void> {
   const response = await app.inject({
     method: "PUT",
@@ -518,7 +523,7 @@ describe("trading API", () => {
       ),
     ).toBe(true);
     expect(response.json().guardrails.join("")).toContain("不代表真实收益");
-  });
+  }, FULL_RESEARCH_TEST_TIMEOUT_MS);
 
   it("keeps the strategy research endpoint available when the quote snapshot is empty", async () => {
     const emptySystem = createTradingSystem(createTestConfig());
@@ -659,7 +664,7 @@ describe("trading API", () => {
     });
     expect(response.json().researchLoop.latestRuns).toHaveLength(3);
     expect(response.json().guardrails.join("")).toContain("不代表真实收益");
-  });
+  }, FULL_RESEARCH_TEST_TIMEOUT_MS);
 
   it("returns self-optimization and bounded research data policy", async () => {
     const response = await app.inject({
@@ -1207,7 +1212,7 @@ describe("trading API", () => {
       planQuality: expect.stringMatching(/^(actionable|watch-only|blocked)$/),
     });
     expect(response.json().operations.length).toBeGreaterThan(0);
-  });
+  }, FULL_RESEARCH_TEST_TIMEOUT_MS);
 
   it("returns a weekly Paper review with closed-fill evidence boundaries", async () => {
     const response = await app.inject({
@@ -1499,7 +1504,7 @@ describe("trading API", () => {
     } finally {
       await paperApp.close();
     }
-  });
+  }, FULL_RESEARCH_TEST_TIMEOUT_MS);
 
   it("paces opening paper order counts without reserving a portfolio percentage", async () => {
     const paperApp = await buildTradingApp({
@@ -1537,7 +1542,7 @@ describe("trading API", () => {
     } finally {
       await paperApp.close();
     }
-  });
+  }, FULL_RESEARCH_TEST_TIMEOUT_MS);
 
   it("allows the same bounded paper plan after morning confirmation", async () => {
     const paperApp = await buildTradingApp({
@@ -1569,7 +1574,7 @@ describe("trading API", () => {
     } finally {
       await paperApp.close();
     }
-  });
+  }, FULL_RESEARCH_TEST_TIMEOUT_MS);
 
   it("sends one honest degraded briefing per checkpoint when market data is not live", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
@@ -1643,7 +1648,7 @@ describe("trading API", () => {
       await paperApp.close();
       vi.unstubAllGlobals();
     }
-  });
+  }, FULL_RESEARCH_TEST_TIMEOUT_MS);
 
   it("does not let a failed 09:35 notification block later execution or its order receipt", async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
@@ -1748,5 +1753,5 @@ describe("trading API", () => {
     expect(response.json().guardrails.join("")).toContain("Do not paste passwords");
     expect(payloadText).not.toContain("AUTH_PASSWORD");
     expect(payloadText).not.toContain("Cookie");
-  });
+  }, FULL_RESEARCH_TEST_TIMEOUT_MS);
 });

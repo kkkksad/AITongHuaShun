@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MarketSnapshot } from "../../shared/trading";
+import { routeAdaptiveStrategies } from "../research/adaptiveStrategyRouter";
+import { buildDailyCandidates } from "../research/dailyCandidates";
+import { buildDailyQualityStocks } from "../research/dailyQualityStocks";
+import { buildUnavailableExternalMarketImpact } from "../research/externalMarketImpact";
+import { buildUnavailableMarketRegimeResearch } from "../research/marketRegimeResearch";
+import { buildPaperTradingPlan } from "../research/paperTradingPlan";
 import * as paperPlans from "../research/paperTradingPlanService";
+import { buildUnavailableRealResearchDataFeed } from "../research/realResearchData";
+import { buildUnavailableStrategyLeaderboard } from "../research/strategyLeaderboard";
 import { createTradingSystem } from "../system";
 import { createTestConfig } from "../test/testConfig";
 import { PaperAutoExecutor } from "./paperAutoExecutor";
@@ -54,15 +62,58 @@ async function executeBuy(input: {
     }).status).toBe("filled");
   }
 
-  // Supply a deterministic candidate to exercise the real executor and broker,
-  // independently of whether today's research rules select this test symbol.
-  const research = await paperPlans.buildCurrentPaperTradingPlan({ system, config, now });
+  // Cash policy tests exercise the real executor and broker. Build complete,
+  // lightweight research reports instead of running an unrelated parameter search.
+  const provider = system.marketDataProvider;
+  const reportInput = {
+    bridgeUrl: config.AKSHARE_BRIDGE_URL,
+    marketDataProvider: provider,
+    mode: config.MARKET_MODE,
+    snapshot,
+    timeoutMs: config.MARKET_DATA_TIMEOUT_MS,
+  };
+  const leaderboard = buildUnavailableStrategyLeaderboard(snapshot, provider);
+  const candidates = buildDailyCandidates(snapshot, provider, 40);
+  const qualityStocks = buildDailyQualityStocks(snapshot, provider, 60);
+  const marketRegimeResearch = buildUnavailableMarketRegimeResearch({
+    ...reportInput,
+    sectorLimit: 6,
+    stockLimit: 6,
+    days: 180,
+  });
+  const realResearchDataFeed = buildUnavailableRealResearchDataFeed(reportInput);
+  const externalMarketImpact = buildUnavailableExternalMarketImpact({ ...reportInput, days: 500 });
+  const adaptiveRouting = routeAdaptiveStrategies(marketRegimeResearch);
+  const plan = buildPaperTradingPlan({
+    snapshot,
+    provider,
+    account: system.broker.getAccount(snapshot),
+    positions: system.broker.getPositions(snapshot),
+    leaderboard,
+    candidates,
+    qualityStocks,
+    initialCapital: config.TRADING_STARTING_CASH,
+    lotSize: system.limits.lotSize,
+    maxPositionWeight: system.risk.getEffectiveMaxPositionWeight(),
+    maxSingleOrderNotional: system.risk.getEffectiveMaxOrderNotional(),
+    commissionRate: config.COMMISSION_RATE,
+    minimumCommission: config.MIN_COMMISSION,
+    cashReserveRatio: config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
+    strategyProfile: system.store.getStrategyProfile(),
+    executionStrategy: system.store.getExecutionStrategy(),
+  });
   vi.spyOn(paperPlans, "buildCurrentPaperTradingPlan").mockResolvedValue({
-    ...research,
+    leaderboard,
+    candidates,
+    qualityStocks,
+    marketRegimeResearch,
+    realResearchDataFeed,
+    externalMarketImpact,
+    adaptiveRouting,
     plan: {
-      ...research.plan,
+      ...plan,
       capitalPlan: {
-        ...research.plan.capitalPlan,
+        ...plan.capitalPlan,
         cashReserveRatio: input.legacyPlanReserveRatio ?? 0,
       },
       operations: [{

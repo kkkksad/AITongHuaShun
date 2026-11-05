@@ -2,6 +2,8 @@
  * 网格搜索优化器 —— 对离散参数空间进行穷举搜索。
  */
 
+import { performance } from "node:perf_hooks";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import type { MarketSnapshot } from "../../shared/trading";
 import { BacktestEngine } from "../backtest/backtestEngine";
 import type {
@@ -12,6 +14,8 @@ import type {
   StrategyFactory,
 } from "./types";
 import { computeScore } from "./scoreUtils";
+
+const COMPUTE_SLICE_MS = 8;
 
 function enumerateValues(range: ParameterRange): number[] {
   const step = range.step ?? 1;
@@ -71,6 +75,7 @@ export async function gridSearch(
 
   const trials: OptimizationTrial[] = [];
   let trialId = 0;
+  let sliceStartedAt = performance.now();
 
   for (const params of combinations) {
     const trialStart = Date.now();
@@ -103,6 +108,13 @@ export async function gridSearch(
         `[GridSearch] params ${JSON.stringify(params)} failed:`,
         err instanceof Error ? err.message : String(err),
       );
+    }
+
+    // A resolved factory promise only yields to microtasks. Give timers and
+    // socket I/O a real turn between CPU-bound trials, including failed ones.
+    if (performance.now() - sliceStartedAt >= COMPUTE_SLICE_MS) {
+      await yieldToEventLoop();
+      sliceStartedAt = performance.now();
     }
   }
 
