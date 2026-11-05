@@ -44,23 +44,6 @@ interface MergedCurvePoint {
 export function StrategyCompare({ results }: StrategyCompareProps) {
   const [selectedMetric, setSelectedMetric] = useState<"totalReturn" | "sharpe" | "maxDrawdown" | "winRate">("totalReturn");
 
-  if (results.length < 2) {
-    return (
-      <section className="panel compare-panel">
-        <div className="panel-header">
-          <div>
-            <span className="section-kicker">策略对比</span>
-            <h2>多策略对决</h2>
-          </div>
-          <BarChart3 size={20} />
-        </div>
-        <div className="empty-copy" style={{ padding: "2rem 0", textAlign: "center", color: "#8b94a1" }}>
-          需要至少2个策略结果才能进行对比
-        </div>
-      </section>
-    );
-  }
-
   // Merge equity curves by date
   const mergedCurve: MergedCurvePoint[] = useMemo(() => {
     const dateMap = new Map<string, MergedCurvePoint>();
@@ -98,6 +81,23 @@ export function StrategyCompare({ results }: StrategyCompareProps) {
     });
     return sorted;
   }, [results, selectedMetric]);
+
+  if (results.length < 2) {
+    return (
+      <section className="panel compare-panel">
+        <div className="panel-header">
+          <div>
+            <span className="section-kicker">策略对比</span>
+            <h2>多策略对决</h2>
+          </div>
+          <BarChart3 size={20} />
+        </div>
+        <div className="empty-copy" style={{ padding: "2rem 0", textAlign: "center", color: "#8b94a1" }}>
+          需要至少2个策略结果才能进行对比
+        </div>
+      </section>
+    );
+  }
 
   const metricConfigs = [
     { key: "totalReturn" as const, label: "累计收益", icon: TrendingUp, better: "higher" },
