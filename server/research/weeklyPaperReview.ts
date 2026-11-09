@@ -293,17 +293,22 @@ function round(value: number, digits = 2): number {
   return Number(value.toFixed(digits));
 }
 
-function filledQuantity(order: OrderRecord): number {
-  return Math.max(0, order.filledQuantity || order.quantity || 0);
-}
-
-function filledPrice(order: OrderRecord): number {
-  return Math.max(0, order.filledPrice ?? order.requestedPrice ?? 0);
+function hasCompleteFill(order: OrderRecord): boolean {
+  const price = order.filledPrice;
+  return order.status === "filled" &&
+    Number.isSafeInteger(order.filledQuantity) && order.filledQuantity > 0 &&
+    typeof price === "number" && Number.isFinite(price) && price > 0 &&
+    Number.isFinite(order.notional) && order.notional > 0 &&
+    Number.isFinite(order.commission) && order.commission >= 0 &&
+    Math.abs(order.notional - order.filledQuantity * price) <= 0.010000001;
 }
 
 function filledNotional(order: OrderRecord): number {
-  const quantity = filledQuantity(order);
-  return Math.max(0, order.notional || quantity * filledPrice(order));
+  return hasCompleteFill(order) ? order.notional : 0;
+}
+
+function filledCommission(order: OrderRecord): number {
+  return hasCompleteFill(order) ? order.commission : 0;
 }
 
 function estimatedOrderNotional(order: OrderRecord): number {
@@ -488,6 +493,7 @@ function resolveTimedFills(allOrders: OrderRecord[], cutoff: number) {
   const ambiguousSymbols = new Set<string>();
   const seen = new Set<string>();
   let unresolvedFillTimes = 0;
+  let incompleteFills = 0;
   for (const order of allOrders) {
     if (order.status !== "filled") continue;
     const time = getOrderFillTime(order);
@@ -497,6 +503,10 @@ function resolveTimedFills(allOrders: OrderRecord[], cutoff: number) {
       continue;
     }
     if (Date.parse(time) > cutoff) continue;
+    if (!hasCompleteFill(order)) {
+      incompleteFills += 1;
+      uncertainSymbols.add(order.symbol);
+    }
     const key = `${order.symbol}:${time}`;
     if (seen.has(key)) {
       ambiguousSymbols.add(order.symbol);
@@ -506,7 +516,7 @@ function resolveTimedFills(allOrders: OrderRecord[], cutoff: number) {
     timed.push({ order, time });
   }
   timed.sort((left, right) => Date.parse(left.time) - Date.parse(right.time));
-  return { timed, uncertainSymbols, ambiguousSymbols, unresolvedFillTimes };
+  return { timed, uncertainSymbols, ambiguousSymbols, unresolvedFillTimes, incompleteFills };
 }
 
 function buildClosedTrades(
@@ -521,11 +531,10 @@ function buildClosedTrades(
   let unmatchedSellQuantity = 0;
 
   for (const { order, time } of fills) {
-    if (uncertainSymbols.has(order.symbol) || filledQuantity(order) <= 0) continue;
-    const quantity = filledQuantity(order);
-    const price = filledPrice(order);
-    if (price <= 0) continue;
-    const orderFee = Math.max(0, order.commission || 0);
+    if (uncertainSymbols.has(order.symbol) || !hasCompleteFill(order)) continue;
+    const quantity = order.filledQuantity;
+    const price = order.notional / quantity;
+    const orderFee = order.commission;
     if (order.side === "buy") {
       const lots = lotsBySymbol.get(order.symbol) ?? [];
       lots.push({
@@ -624,6 +633,8 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
   const pending = periodOrders.filter((order) => order.status === "pending" || order.status === "accepted");
   const filledBuys = filled.filter((order) => order.side === "buy");
   const filledSells = filled.filter((order) => order.side === "sell");
+  const completeFilledCount = filled.filter(hasCompleteFill).length;
+  const incompletePeriodFills = filled.length - completeFilledCount;
   const grossBuyNotional = filledBuys.reduce((sum, order) => sum + filledNotional(order), 0);
   const grossSellNotional = filledSells.reduce((sum, order) => sum + filledNotional(order), 0);
   const grossTurnover = grossBuyNotional + grossSellNotional;
@@ -631,7 +642,7 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
     .filter(isAutomaticOrder)
     .reduce((sum, order) => sum + filledNotional(order), 0);
   const initialCapital = Math.max(0, input.initialCapital);
-  const averageFilledOrderNotional = filled.length > 0 ? grossTurnover / filled.length : 0;
+  const averageFilledOrderNotional = completeFilledCount > 0 ? grossTurnover / completeFilledCount : 0;
   const currentDeployedRatio = input.account.equity > 0
     ? input.account.marketValue / input.account.equity
     : 0;
@@ -696,12 +707,14 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
       : buyCapitalRatio > 0.75 || currentDeployedRatio > 0.85
         ? "high"
         : "balanced";
-  const utilizationSummary = utilization === "low"
+  const utilizationSummary = incompletePeriodFills > 0
+    ? "本期成交金额和费用仅为完整执行记录的部分统计；缺证据时不能判断完整资金部署，平均单笔金额只平均完整记录。"
+    : utilization === "low"
     ? `${periodLabel}成交覆盖不足，资金大部分没有进入成交记录。`
     : utilization === "small-ticket"
       ? `${periodLabel}有成交，但平均单笔金额偏小，资金使用更像试探仓而不是完整风险预算。`
-      : utilization === "high"
-        ? `${periodLabel}资金使用偏高，后续仍需优先保留现金和阶段性调整空间。`
+    : utilization === "high"
+        ? `${periodLabel}资金使用偏高，后续需按实际费用、现金和风险额度核对调整空间。`
         : `${periodLabel}成交金额和当前仓位处于可观察的均衡区间。`;
   const initialCapitalLabel = initialCapital >= 10_000
     ? `${(initialCapital / 10_000).toLocaleString("zh-CN")} 万元`
@@ -712,7 +725,9 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
         maximumFractionDigits: 2,
       })} 元，占初始资金 ${initialCapitalLabel} 的 ${(maxOrderCapitalRatio * 100).toFixed(1)}%。`
     : "当前没有可用的单笔风控上限数据，不能判断订单金额是否被配置上限压缩。";
-  const planSummary = planSnapshotDays === 0
+  const planSummary = incompletePeriodFills > 0
+    ? "本期计划落地率仅反映已核验完整成交金额，不能据此确认计划未成交。"
+    : planSnapshotDays === 0
     ? "该复盘周期没有可解析的自动计划金额快照。"
     : `已记录 ${planSnapshotDays} 天自动计划，日峰值计划买入额最高 ${maxDailyPlannedBuyNotional.toFixed(2)} 元，累计计划买入 ${plannedBuyNotional.toFixed(2)} 元，占初始资金 ${(plannedBuyCapitalRatio * 100).toFixed(1)}%；自动 Paper 买入成交 ${automaticFilledBuyNotional.toFixed(2)} 元，计划落地率 ${planRealizationRatio === null ? "暂无" : `${(planRealizationRatio * 100).toFixed(1)}%`}。`;
 
@@ -726,7 +741,7 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
   const grossLoss = losingTrades.reduce((sum, trade) => sum + trade.pnl, 0);
   const realizedPnl = closedTrades.reduce((sum, trade) => sum + trade.pnl, 0);
   const winRate = closedTrades.length > 0 ? winningTrades.length / closedTrades.length : null;
-  const commission = filled.reduce((sum, order) => sum + Math.max(0, order.commission || 0), 0);
+  const commission = filled.reduce((sum, order) => sum + filledCommission(order), 0);
   const performanceSummary = closedTrades.length === 0
     ? `${periodLabel}暂无可核验的FIFO闭合片段，胜率暂不可用；未用未实现收益或合成回测结果替代。`
     : `${periodLabel}已匹配 ${closedTrades.length} 个 FIFO 闭合片段，片段胜率 ${(winRate! * 100).toFixed(1)}%，已匹配盈亏 ${realizedPnl.toFixed(2)} 元；不是完整持仓周期胜率。`;
@@ -756,7 +771,7 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
     stat.buyOrders += order.side === "buy" ? 1 : 0;
     stat.sellOrders += order.side === "sell" ? 1 : 0;
     stat.filledNotional += filledNotional(order);
-    stat.commission += Math.max(0, order.commission || 0);
+    stat.commission += filledCommission(order);
   }
   for (const trade of closedTrades) {
     const stat = ensureStrategy(trade.strategy);
@@ -803,9 +818,9 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
       planRealizationRatio: dayPlannedBuyNotional > 0
         ? round(dayAutomaticFilledBuyNotional / dayPlannedBuyNotional, 4)
         : null,
-      commission: round(dayFilled.reduce((sum, order) => sum + Math.max(0, order.commission || 0), 0)),
-      averageFilledOrderNotional: dayFilled.length > 0
-        ? round((dayBuyNotional + daySellNotional) / dayFilled.length)
+      commission: round(dayFilled.reduce((sum, order) => sum + filledCommission(order), 0)),
+      averageFilledOrderNotional: dayFilled.some(hasCompleteFill)
+        ? round((dayBuyNotional + daySellNotional) / dayFilled.filter(hasCompleteFill).length)
         : 0,
     };
   });
@@ -864,6 +879,12 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
   if (fillEvidence.ambiguousSymbols.size > 0) {
     findings.push(`${fillEvidence.ambiguousSymbols.size} 只股票同毫秒成交先后无法确认，不参与FIFO；成交数量和金额仍按可确认日期统计。`);
   }
+  if (fillEvidence.incompleteFills > 0) {
+    findings.push(`${fillEvidence.incompleteFills} 笔保留成交记录的实际量价、金额或费用不完整，相关股票不参与FIFO盈亏和胜率；不使用委托价、委托数量或默认零费用补齐。`);
+  }
+  if (incompletePeriodFills > 0) {
+    findings.push(`本期有 ${incompletePeriodFills} 笔成交缺少完整执行证据；金额、费用和计划落地率仅为完整记录的部分统计，平均单笔金额只平均完整记录，不能据此确认零金额或完整资金部署。`);
+  }
   if (closedEvidence.unmatchedSellQuantity > 0) {
     findings.push(`${closedEvidence.unmatchedSellQuantity} 股卖出缺少此前买入记录，未纳入FIFO盈亏和胜率。`);
   }
@@ -879,18 +900,18 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
   if (automaticRunCount > 0 && planSnapshotDays === 0) {
     findings.push(`${periodLabel}有 ${automaticRunCount} 次自动运行审计，但没有计划金额快照；当前无法区分没有计划、计划被过滤还是旧版本未留痕。`);
   }
-  if (planSnapshotDays > 0 && automaticFilledBuyNotional <= 0) {
+  if (incompletePeriodFills === 0 && planSnapshotDays > 0 && automaticFilledBuyNotional <= 0) {
     findings.push(`${periodLabel}记录到计划买入 ${plannedBuyNotional.toFixed(2)} 元，但没有自动 Paper 买入成交；需要结合现金、阶段额度、T+1、数据和风控阻塞继续核对。`);
   } else if (
-    plannedBuyNotional > 0 &&
+    incompletePeriodFills === 0 && plannedBuyNotional > 0 &&
     planRealizationRatio !== null &&
     planRealizationRatio < 0.5
   ) {
     findings.push(`${periodLabel}计划买入 ${plannedBuyNotional.toFixed(2)} 元，自动成交 ${automaticFilledBuyNotional.toFixed(2)} 元，计划落地率仅 ${(planRealizationRatio * 100).toFixed(1)}%；计划金额明显高于最终成交。`);
   }
-  if (utilization === "low") {
+  if (incompletePeriodFills === 0 && utilization === "low") {
     findings.push(`${periodLabel}买入成交额 ${grossBuyNotional.toFixed(2)} 元，占初始资金 ${(buyCapitalRatio * 100).toFixed(1)}%，资金部署偏低。`);
-  } else if (utilization === "small-ticket") {
+  } else if (incompletePeriodFills === 0 && utilization === "small-ticket") {
     findings.push(`${periodLabel}平均单笔成交 ${averageFilledOrderNotional.toFixed(2)} 元，占初始资金 ${(averageOrderCapitalRatio * 100).toFixed(1)}%，存在试探仓偏小问题。`);
   }
   if (closedTrades.length > 0 && winRate! < 0.5) {
@@ -906,15 +927,18 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
     "用周度成交金额、平均单笔金额和现金比例校准风险预算，不通过强制下单制造交易次数。",
     "保留手续费、现金、单票仓位、T+1、熔断和每日硬上限；低于费用效率的订单继续拦截。",
   ];
-  if (utilization === "low" || utilization === "small-ticket") {
+  if (incompletePeriodFills > 0) {
+    nextActions.unshift("先核对缺失的实际成交量价、金额和费用，再评价资金部署与计划落地；委托信息不能替代成交证据。");
+  }
+  if (incompletePeriodFills === 0 && (utilization === "low" || utilization === "small-ticket")) {
     nextActions.push("扩大合格候选的历史覆盖并按单票风险预算计算整手数量，让合格信号使用完整预算；没有合格信号时保持现金。");
   }
   if (automaticRunCount > 0 && planSnapshotDays === 0) {
     nextActions.push("升级自动执行审计或检查线上版本，确保每次运行都保留计划金额快照，再判断计划生成和执行层谁在减少金额。");
   }
-  if (planSnapshotDays > 0 && automaticFilledBuyNotional <= 0) {
+  if (incompletePeriodFills === 0 && planSnapshotDays > 0 && automaticFilledBuyNotional <= 0) {
     nextActions.push("逐次对照计划快照与 skippedReasons、订单拒绝原因，先定位计划未落地的第一道硬约束，不直接放宽风控。");
-  } else if (planRealizationRatio !== null && planRealizationRatio < 0.5) {
+  } else if (incompletePeriodFills === 0 && planRealizationRatio !== null && planRealizationRatio < 0.5) {
     nextActions.push("把计划金额按运行阶段和可执行订单逐层核对，减少重复计划造成的虚高统计，并验证实际成交是否被单轮额度或现金缓冲截断。");
   }
   if (historyCoverage.status === "may-be-pruned") {
