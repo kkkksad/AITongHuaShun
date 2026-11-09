@@ -6,6 +6,8 @@
 
 ## 已实现
 
+- **策略历史输入恢复（2026-11-09）** —— 复盘生产Paper仍为0订单/0持仓，盘中持续降级，不能评价实测胜率。只读定位到AkShare 1.20.34两种个股历史接口均不接受timeout参数；改用SDK统一网络超时并固定该版本，保留前复权、队列和交易门槛。严格签名2项先失败后通过；本地116通过/真实SDK契约1项跳过，隔离Linux真实SDK全套117通过；独立1650服务端/319前端、TS/Vite通过。线上恢复结果和后续审计升级见[复盘执行记录](../plans/2026-11-09-paper-operation-review.md)。
+
 - **域名可信HTTPS与续期（2026-11-09）** —— 用户明确同意Let's Encrypt v1.8后，双域kairosq.cn/www.kairosq.cn已真实签发并替换IP自签证书，公开issuer YE2、有效至2027-02-07。两域无-k主页/健康200、匿名account401，认证开启/真实交易关闭；systemd续期timer enabled/active，每天检查两次并随机延迟。实际renew服务成功且因未到期跳过，不声称已验证未来到期签发；协议版本变化会停止等待审核。验证与发布见[HTTPS执行记录](../plans/2026-11-09-domain-https-activation.md)。
 
 - **API迟到认证响应（2026-11-05）** —— 内存generation隔离旧401、旧verify成功和旧logout清理，保护后来CSRF/过期通知，旧调用方仍收原返回/错误；当前401与原生abort保持。16项localhost原生HTTP/fetch/流式body、独立68项与3交错边界通过；不约束浏览器Set-Cookie或撤销服务端请求，完整检查/发布见夜间计划和决策0019。

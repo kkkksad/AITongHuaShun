@@ -11,6 +11,8 @@ cd akshare-bridge
 pip install -r requirements.txt
 ```
 
+AkShare 固定为已验证的 `1.20.34`。该版本个股历史函数不接收 `timeout`；桥接启动时通过 `ak.set_timeout` 设置统一网络连接/读取超时，默认8秒，可用 `AKSHARE_BRIDGE_HISTORY_PROVIDER_TIMEOUT` 调整。升级SDK时必须运行 `python -m pytest test_bridge.py test_research_cache.py test_sdk_contract.py -q`，其中真实SDK契约测试在隔离子进程内模拟HTTP传输，验证前复权和实际网络超时，不访问外部行情源。此值是单次网络连接/读取超时，不是整个多次请求函数的总耗时上限。
+
 ### 运行
 
 ```bash

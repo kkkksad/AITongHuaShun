@@ -105,6 +105,10 @@ if DISABLE_PROXY:
 
 import akshare as ak
 
+# Current AkShare history functions use the shared HTTP configuration rather
+# than accepting a per-function timeout. Set it once before any workers start.
+ak.set_timeout(HISTORY_PROVIDER_TIMEOUT_SEC)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [akshare-bridge] %(levelname)s %(message)s",
@@ -1651,7 +1655,6 @@ def fetch_stock_history_dataframe(
                 start_date=start_date,
                 end_date=end_date,
                 adjust="qfq",
-                timeout=HISTORY_PROVIDER_TIMEOUT_SEC,
             ),
         ),
         (
@@ -1661,7 +1664,6 @@ def fetch_stock_history_dataframe(
                 start_date=start_date,
                 end_date=end_date,
                 adjust="qfq",
-                timeout=HISTORY_PROVIDER_TIMEOUT_SEC,
             ),
         ),
     )

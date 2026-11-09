@@ -1583,6 +1583,41 @@ class TestQuoteCache:
         assert provider == "tencent-stock-history"
         assert tx.call_args.kwargs["symbol"] == "sh600519"
 
+    def test_stock_history_accepts_current_eastmoney_sdk_signature(self):
+        expected = pd.DataFrame({"日期": ["2026-11-09"], "收盘": [12.3]})
+
+        def eastmoney(symbol, period, start_date, end_date, adjust):
+            assert (symbol, period, start_date, end_date, adjust) == (
+                "000001", "daily", "20250101", "20261109", "qfq",
+            )
+            return expected
+
+        with patch("main.ak.stock_zh_a_hist", side_effect=eastmoney):
+            with patch("main.ak.stock_zh_a_hist_tx") as fallback:
+                frame, source = fetch_stock_history_dataframe(
+                    "000001", "20250101", "20261109",
+                )
+        assert frame is expected
+        assert source == "eastmoney-stock-history"
+        fallback.assert_not_called()
+
+    def test_stock_history_accepts_current_tencent_sdk_signature(self):
+        expected = pd.DataFrame({"date": ["2026-11-09"], "close": [12.3]})
+
+        def tencent(symbol, start_date, end_date, adjust):
+            assert (symbol, start_date, end_date, adjust) == (
+                "sh600036", "20250101", "20261109", "qfq",
+            )
+            return expected
+
+        with patch("main.ak.stock_zh_a_hist", side_effect=RuntimeError("offline")):
+            with patch("main.ak.stock_zh_a_hist_tx", side_effect=tencent):
+                frame, source = fetch_stock_history_dataframe(
+                    "600036", "20250101", "20261109",
+                )
+        assert frame is expected
+        assert source == "tencent-stock-history"
+
     def test_stock_history_does_not_call_unbounded_sina_fallback(self):
         with patch(
             "main.ak.stock_zh_a_hist",
