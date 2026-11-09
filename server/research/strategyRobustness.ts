@@ -8,12 +8,12 @@ import { BacktestEngine } from "../backtest/backtestEngine";
 import { builtInFactories } from "../optimizer";
 import type { StrategyFactory } from "../optimizer/types";
 import type {
-  HistoricalBar,
   HistoricalBarsResponse,
   HistoricalSeries,
 } from "./marketRegimeResearch";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
+import { validateStrategyHistory } from "./strategyHistoryEvidence";
 
 export type StrategyFamily =
   | "trend"
@@ -79,6 +79,7 @@ export interface StrategyRobustnessReport {
 }
 
 export interface BuildStrategyRobustnessInput {
+  now?: Date;
   bridgeUrl: string;
   bridgeToken?: string;
   marketDataProvider: string;
@@ -319,18 +320,13 @@ function median(values: number[]): number {
     : sorted[middle];
 }
 
-function sortedValidBars(series: HistoricalSeries): HistoricalBar[] {
-  return [...series.bars]
-    .filter((bar) => bar.date && bar.close > 0 && bar.high > 0 && bar.low > 0)
-    .sort((left, right) => left.date.localeCompare(right.date));
-}
-
 export function buildAlignedHistoricalSnapshots(
   seriesList: HistoricalSeries[],
   mode: TradingMode,
+  asOf = new Date(),
 ): MarketSnapshot[] {
-  const normalized = seriesList
-    .map((series) => ({ series, bars: sortedValidBars(series) }))
+  const normalized = validateStrategyHistory(seriesList, { asOf }).series
+    .map((series) => ({ series, bars: series.bars }))
     .filter((item) => item.bars.length > 0);
   if (normalized.length === 0) return [];
 
@@ -350,14 +346,15 @@ export function buildAlignedHistoricalSnapshots(
       const index = indexByDate.get(date)!;
       const bar = bars[index];
       const previousClose = bars[Math.max(0, index - 1)].close;
+      const volume = Math.round(bar.volume);
       return {
         symbol: series.symbol,
         name: series.name || series.symbol,
-        tradable: true,
+        tradable: volume > 0,
         price: bar.close,
         previousClose,
         changePercent: previousClose > 0 ? (bar.close / previousClose - 1) * 100 : 0,
-        volume: Math.max(0, Math.round(bar.volume)),
+        volume,
         amount: bar.amount ?? undefined,
         open: bar.open,
         high: bar.high,
@@ -538,7 +535,7 @@ function trimTrailingSlash(value: string): string {
 
 function baseReport(input: BuildStrategyRobustnessInput): StrategyRobustnessReport {
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: (input.now ?? new Date()).toISOString(),
     mode: input.mode,
     provider: input.marketDataProvider,
     sourceStatus: "degraded",
@@ -569,6 +566,7 @@ function baseReport(input: BuildStrategyRobustnessInput): StrategyRobustnessRepo
       "当前股票池来自今日流动性观察池，仍存在 point-in-time 股票池和生存者偏差。",
       "固定参数没有在本报告数据上重新优化；下一阶段仍需 purged walk-forward 和成本压力测试。",
       "结果只用于研究和 shadow 评估，不直接生成本地 paper 或真实订单。",
+      "只使用报告与行情快照较早时点已完成的日线；无效、重复、请求外或复权不符证据明确排除，零成交量日线只估值。",
     ],
   };
 }
@@ -578,7 +576,8 @@ export async function buildStrategyRobustnessReport(
 ): Promise<StrategyRobustnessReport> {
   const limit = Math.min(12, Math.max(2, Math.round(input.limit)));
   const days = Math.min(500, Math.max(360, Math.round(input.days)));
-  const normalized = { ...input, limit, days };
+  const now = input.now ?? new Date();
+  const normalized = { ...input, now, limit, days };
   const base = baseReport(normalized);
   if (input.marketDataProvider !== "akshare") {
     return {
@@ -586,6 +585,14 @@ export async function buildStrategyRobustnessReport(
       sourceStatus: "mock-disabled",
       warnings: ["当前未启用 AkShare，真实策略稳健性验证不可用且不会使用合成历史替代。"],
     };
+  }
+  const snapshotTime = Date.parse(input.snapshot.marketTime);
+  const cutoff = Math.min(now.getTime(), snapshotTime);
+  if (!Number.isFinite(cutoff)) {
+    return { ...base, warnings: ["历史证据校验缺少有效行情快照时间，不运行稳健性排名。"] };
+  }
+  if (snapshotTime > now.getTime() + 5_000) {
+    return { ...base, warnings: ["历史证据校验：行情快照时间明显晚于报告时点，不使用未来股票池。"] };
   }
 
   const universe = [...input.snapshot.quotes]
@@ -616,12 +623,21 @@ export async function buildStrategyRobustnessReport(
       cacheTtlMs: 10 * 60_000,
       fetchImpl: input.fetchImpl ?? fetch,
     });
+    if (history.provider !== "akshare") {
+      return { ...base, source: { ...base.source, requestedSymbols: universe.length },
+        warnings: ["历史证据校验：返回供应方不是AkShare，不运行真实历史稳健性排名。"] };
+    }
     const names = new Map(universe.map((quote) => [quote.symbol, quote.name]));
-    const validSeries = history.series
+    const checkedHistory = validateStrategyHistory(history.series, {
+      asOf: new Date(cutoff), requestedSymbols: new Set(universe.map((quote) => quote.symbol)), maxBars: days,
+    });
+    const validSeries = checkedHistory.series
       .filter((series) => series.bars.length >= MINIMUM_ALIGNED_DAYS)
       .map((series) => ({ ...series, name: names.get(series.symbol) ?? series.name }));
-    const snapshots = buildAlignedHistoricalSnapshots(validSeries, input.mode);
-    const warnings = [history.warning].filter((warning): warning is string => Boolean(warning));
+    const snapshots = buildAlignedHistoricalSnapshots(validSeries, input.mode, new Date(cutoff));
+    const warnings = [history.warning, ...checkedHistory.warnings]
+      .filter((warning): warning is string => Boolean(warning));
+    const historySource = [...new Set(validSeries.map((series) => series.source))].sort().join(" + ") || "unavailable";
     if (validSeries.length < universe.length) {
       warnings.push(`请求 ${universe.length} 只股票，仅 ${validSeries.length} 只达到 300 根有效日线。`);
     }
@@ -631,7 +647,7 @@ export async function buildStrategyRobustnessReport(
         ...base,
         source: {
           ...base.source,
-          historySource: history.source,
+          historySource,
           fetchedAt: history.fetchedAt || null,
           requestedSymbols: universe.length,
           historySymbols: validSeries.length,
@@ -647,7 +663,7 @@ export async function buildStrategyRobustnessReport(
       sourceStatus: warnings.length === 0 ? "live-read-only" : "degraded",
       source: {
         sampleType: "real-qfq-fixed-parameter-multi-window",
-        historySource: history.source,
+        historySource,
         fetchedAt: history.fetchedAt || null,
         adjustment: "qfq",
         requestedDays: days,
