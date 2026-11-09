@@ -14,6 +14,7 @@ import type {
 import type { ApiPerformanceSnapshot } from "../../shared/systemMonitoring";
 import type { PaperTradingPlanSizingDiagnostics } from "../../shared/paperTradingSizing";
 import type { PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
+import type { PaperCandidatePool } from "../../shared/paperCandidatePool";
 import { ApiRequestError } from "./apiError";
 
 export interface HealthSnapshot {
@@ -705,6 +706,7 @@ export interface PaperTradingPlan {
   adaptiveRouting: AdaptiveStrategyRouting | null;
   qualitySummary: PaperTradingPlanQualitySummary;
   operations: PaperTradingOperation[];
+  candidatePool?: PaperCandidatePool;
   guardrails: string[];
 }
 

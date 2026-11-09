@@ -14,6 +14,7 @@ import {
 import { PAPER_EXECUTION_STRATEGY_CHOICES } from "../../shared/trading";
 import type { PipelineStage } from "../types";
 import { ResearchQueryState } from "./ResearchQueryState";
+import { PaperCandidatePoolPanel } from "./PaperCandidatePoolPanel";
 import {
   adaptivePostureLabel,
   adaptiveRegimeLabel,
@@ -470,6 +471,7 @@ export default function LearningPipeline() {
               <small>{learningState?.dataMemory.providersSeen.join(" / ") || "等待采样"}</small>
             </article>
           </div>
+          <PaperCandidatePoolPanel pool={paperPlan?.candidatePool} />
           <div className="learning-run-list">
             {(learningState?.researchLoop.latestRuns ?? []).map((run) => (
               <article key={`${run.kind}-${run.recordedAt}`}>

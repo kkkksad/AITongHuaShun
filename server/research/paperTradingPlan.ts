@@ -36,6 +36,8 @@ import type {
 } from "./marketRegimeResearch";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 import { hasSufficientCash } from "../broker/executionCosts";
+import type { PaperCandidatePool } from "../../shared/paperCandidatePool";
+import { buildPaperCandidatePool } from "./paperCandidatePool";
 
 export type PaperTradingOperationAction =
   | "observe"
@@ -153,6 +155,7 @@ export interface PaperTradingPlan {
   adaptiveRouting: AdaptiveStrategyRouting | null;
   qualitySummary: PaperTradingPlanQualitySummary;
   operations: PaperTradingOperation[];
+  candidatePool?: PaperCandidatePool;
   guardrails: string[];
 }
 
@@ -1487,6 +1490,10 @@ export function buildPaperTradingPlan(input: {
       ...operation,
       tier: operation.tier ?? candidateTier(operation.action),
     })),
+    candidatePool: buildPaperCandidatePool({
+      candidates: input.candidates.candidates, qualityStocks: input.qualityStocks.stocks,
+      positions: input.positions, operations, consideredSymbols: candidatePool.map((row) => row.symbol),
+    }),
     guardrails: [
       "本计划不代表真实收益，也不构成投资建议。",
       "同花顺或中信账户不得通过网页登录态、密码、Cookie 或明文 Token 接入本平台。",
