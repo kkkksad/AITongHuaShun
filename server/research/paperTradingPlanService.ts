@@ -86,24 +86,25 @@ export function buildPreferredHistoricalStocks(input: {
       symbol: position.symbol,
       name: position.name,
     }));
-  const candidates = input.candidates.candidates
-    .filter((candidate) => candidate.action === "paper-buy" || candidate.action === "watch")
-    .map((candidate) => ({ symbol: candidate.symbol, name: candidate.name }));
-  const qualityStocks = input.qualityStocks.stocks
-    .filter((stock) => stock.action === "focus" || stock.action === "watch")
-    .map((stock) => ({ symbol: stock.symbol, name: stock.name }));
-  const interleavedResearchPool: Array<{ symbol: string; name: string }> = [];
-  const scannerLength = Math.max(candidates.length, qualityStocks.length);
-  for (let index = 0; index < scannerLength; index += 1) {
-    if (candidates[index]) interleavedResearchPool.push(candidates[index]);
-    if (qualityStocks[index]) interleavedResearchPool.push(qualityStocks[index]);
-  }
-  const ordered = [...positions, ...interleavedResearchPool];
+  const interleave = (candidateAction: "paper-buy" | "watch", qualityAction: "focus" | "watch") => {
+    const candidates = input.candidates.candidates.filter((candidate) => candidate.action === candidateAction);
+    const qualityStocks = input.qualityStocks.stocks.filter((stock) => stock.action === qualityAction);
+    const stocks: Array<{ symbol: string; name: string }> = [];
+    for (let index = 0; index < Math.max(candidates.length, qualityStocks.length); index += 1) {
+      if (candidates[index]) stocks.push({ symbol: candidates[index].symbol, name: candidates[index].name });
+      if (qualityStocks[index]) stocks.push({ symbol: qualityStocks[index].symbol, name: qualityStocks[index].name });
+    }
+    return stocks;
+  };
+  // Observation scores cannot evict a position or an actionable research candidate.
+  const ordered = [...positions, ...interleave("paper-buy", "focus"), ...interleave("watch", "watch")];
+  const seen = new Set<string>();
   return ordered
-    .filter((stock, index, items) =>
-      /^\d{6}$/.test(stock.symbol) &&
-      items.findIndex((candidate) => candidate.symbol === stock.symbol) === index,
-    )
+    .filter((stock) => {
+      if (!/^\d{6}$/.test(stock.symbol) || seen.has(stock.symbol)) return false;
+      seen.add(stock.symbol);
+      return true;
+    })
     .slice(0, Math.max(1, Math.min(input.limit, 12)));
 }
 

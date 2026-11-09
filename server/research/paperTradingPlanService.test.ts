@@ -13,6 +13,47 @@ import {
 } from "./paperTradingPlanService";
 
 describe("buildPreferredHistoricalStocks", () => {
+  it("reserves bounded slots for actionable candidates before higher ranked observation rows", () => {
+    const candidates = { candidates: [
+      { symbol: "600010", name: "观察甲", action: "watch" },
+      { symbol: "600011", name: "观察乙", action: "watch" },
+      { symbol: "600012", name: "买入候选", action: "paper-buy" },
+    ] } as unknown as DailyCandidateReport;
+    const qualityStocks = { stocks: [
+      { symbol: "601000", name: "优质观察", action: "watch" },
+      { symbol: "601288", name: "优质关注", action: "focus" },
+    ] } as unknown as DailyQualityStockReport;
+
+    expect(buildPreferredHistoricalStocks({
+      positions: [{ symbol: "601398", name: "持仓" }], candidates, qualityStocks, limit: 3,
+    }).map((stock) => stock.symbol)).toEqual(["601398", "600012", "601288"]);
+  });
+
+  it("deduplicates across stages and fills remaining capacity from both watch scanners", () => {
+    const candidates = { candidates: [
+      { symbol: "600010", name: "候选观察", action: "watch" },
+      { symbol: "600012", name: "重复观察", action: "watch" },
+      { symbol: "600012", name: "优先买入名称", action: "paper-buy" },
+      { symbol: "601398", name: "重复持仓", action: "paper-buy" },
+      { symbol: "CASH", name: "非法标的", action: "paper-buy" },
+    ] } as unknown as DailyCandidateReport;
+    const qualityStocks = { stocks: [
+      { symbol: "601000", name: "优质观察", action: "watch" },
+      { symbol: "601288", name: "优质关注", action: "focus" },
+      { symbol: "600012", name: "跨扫描重复", action: "focus" },
+    ] } as unknown as DailyQualityStockReport;
+
+    expect(buildPreferredHistoricalStocks({
+      positions: [{ symbol: "601398", name: "持仓" }], candidates, qualityStocks, limit: 5,
+    })).toEqual([
+      { symbol: "601398", name: "持仓" },
+      { symbol: "600012", name: "优先买入名称" },
+      { symbol: "601288", name: "优质关注" },
+      { symbol: "600010", name: "候选观察" },
+      { symbol: "601000", name: "优质观察" },
+    ]);
+  });
+
   it("prioritizes positions and actionable candidates for the bounded history pool", () => {
     const positions = [{
       symbol: "601398",
