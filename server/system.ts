@@ -96,7 +96,7 @@ export function createTradingSystem(
   const clock = now ?? (() => new Date());
   const market = createMarket(config, clock);
   const store: TradingStore = createStore(config, clock);
-  const risk = new RiskEngine(limits);
+  const risk = new RiskEngine(limits, undefined, clock);
   const broker = new PaperBroker(market, store, risk, {
     mode: config.MARKET_MODE,
     commissionRate: config.COMMISSION_RATE,

@@ -361,6 +361,8 @@ export interface EnhancedRiskLimits extends RiskLimits {
 
 /** 风控运行时状态 */
 export interface RiskState {
+  /** Beijing date of the current daily peak; absent only in legacy external snapshots. */
+  tradingDate?: string;
   circuitState: CircuitState;
   consecutiveLosses: number;
   dailyDrawdown: number;

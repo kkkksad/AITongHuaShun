@@ -40,6 +40,7 @@
 
 - [0027：核心研究先于辅助来源启动](0027-core-research-before-auxiliary.md)
 - [0028：Paper完整持仓周期保存净成交结果](0028-paper-position-cycle-net-results.md)
+- [0029：风险时钟与权益观察独立于交易计数](0029-risk-clock-and-equity-observation.md)
 
 ## 新建格式
 

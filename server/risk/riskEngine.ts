@@ -38,7 +38,7 @@ function toEnhanced(limits: RiskLimits | EnhancedRiskLimits): EnhancedRiskLimits
     maxDailyLoss: enhanced.maxDailyLoss,
     lotSize: enhanced.lotSize,
     realTradingEnabled: enhanced.realTradingEnabled,
-    circuitBreaker: enhanced.circuitBreaker ?? { ...DEFAULT_CIRCUIT_BREAKER },
+    circuitBreaker: { ...(enhanced.circuitBreaker ?? DEFAULT_CIRCUIT_BREAKER) },
     dynamicPositionScaling: enhanced.dynamicPositionScaling ?? false,
     maxDrawdownReductionFactor: enhanced.maxDrawdownReductionFactor ?? 0.25,
   };
@@ -52,6 +52,7 @@ export class RiskEngine {
   constructor(
     limits: RiskLimits | EnhancedRiskLimits,
     onCircuitBreaker?: CircuitBreakerCallback,
+    private readonly clock: () => Date = () => new Date(),
   ) {
     this.limits = toEnhanced(limits);
     this.state = this.initialState();
@@ -61,7 +62,7 @@ export class RiskEngine {
   // ── 公开 API ──────────────────────────────────────────────
 
   getLimits(): EnhancedRiskLimits {
-    return { ...this.limits };
+    return { ...this.limits, circuitBreaker: { ...this.limits.circuitBreaker } };
   }
 
   getState(): Readonly<RiskState> {
@@ -70,7 +71,9 @@ export class RiskEngine {
 
   /** 设置日内初始权益（应在交易日开始时调用） */
   setInitialEquity(equity: number): void {
-    if (equity > 0) {
+    if (Number.isFinite(equity) && equity > 0) {
+      this.syncTradingDay();
+      if (this.state.peakDailyEquity > 0) return;
       this.state.peakDailyEquity = equity;
     }
   }
@@ -127,21 +130,17 @@ export class RiskEngine {
 
   /** 记录一次交易结果（盈利/亏损），用于更新熔断器状态 */
   recordTradeResult(profit: number, accountEquity: number): void {
-    const now = new Date().toISOString();
+    if (!Number.isFinite(profit) || !Number.isFinite(accountEquity) || accountEquity < 0) {
+      throw new Error("Risk trade evidence must contain finite profit and nonnegative equity.");
+    }
+    this.syncTradingDay();
+    const now = this.clock().toISOString();
+    this.refreshCircuit(now);
     this.state.tradeCount++;
     this.state.lastTradeTime = now;
     this.state.lastEvaluationTime = now;
 
-    // 更新日内峰值权益
-    if (accountEquity > this.state.peakDailyEquity) {
-      this.state.peakDailyEquity = accountEquity;
-    }
-
-    // 计算日内回撤（基于峰值权益）
-    this.state.dailyDrawdown =
-      this.state.peakDailyEquity > 0
-        ? Math.max(0, 1 - accountEquity / this.state.peakDailyEquity)
-        : 0;
+    this.updateEquity(accountEquity);
 
     if (profit < 0) {
       this.state.lossCount++;
@@ -150,6 +149,21 @@ export class RiskEngine {
       this.state.consecutiveLosses = 0;
     }
 
+    this.evaluateCircuit(now);
+  }
+
+  /** Mark-to-market observations never increment the complete-trade counters. */
+  observeEquity(equity: number, evidencedOpeningEquity?: number): void {
+    if (!Number.isFinite(equity) || equity < 0) return;
+    this.syncTradingDay();
+    const now = this.clock().toISOString();
+    this.refreshCircuit(now);
+    if (this.state.peakDailyEquity === 0 && evidencedOpeningEquity !== undefined &&
+        Number.isFinite(evidencedOpeningEquity) && evidencedOpeningEquity > 0) {
+      this.state.peakDailyEquity = evidencedOpeningEquity;
+    }
+    this.updateEquity(equity);
+    this.state.lastEvaluationTime = now;
     this.evaluateCircuit(now);
   }
 
@@ -172,6 +186,8 @@ export class RiskEngine {
       reservedSellQuantity = 0,
       mode,
     } = input;
+
+    this.syncTradingDay();
 
     // ── 熔断器检查（最高优先级） ──
     const circuitCheck = this.checkCircuitBreaker();
@@ -277,7 +293,7 @@ export class RiskEngine {
     }
 
     // 熔断器警告仍允许交易
-    if (circuitCheck.code === "RISK_WARNING") {
+    if (circuitCheck.code === "RISK_WARNING" || circuitCheck.code === "CIRCUIT_RECOVERING") {
       return circuitCheck;
     }
 
@@ -292,6 +308,7 @@ export class RiskEngine {
 
   private initialState(): RiskState {
     return {
+      tradingDate: this.tradingDate(),
       circuitState: "normal",
       consecutiveLosses: 0,
       dailyDrawdown: 0,
@@ -306,6 +323,7 @@ export class RiskEngine {
   }
 
   private checkCircuitBreaker(): RiskDecision {
+    this.refreshCircuit(this.clock().toISOString());
     const { circuitState } = this.state;
 
     if (circuitState === "tripped") {
@@ -313,7 +331,7 @@ export class RiskEngine {
         ? new Date(this.state.trippedAt)
         : new Date(0);
       const elapsedMinutes =
-        (Date.now() - trippedAt.getTime()) / (1000 * 60);
+        (this.clock().getTime() - trippedAt.getTime()) / (1000 * 60);
 
       if (elapsedMinutes < this.limits.circuitBreaker.cooldownMinutes) {
         const remaining = Math.ceil(
@@ -325,7 +343,7 @@ export class RiskEngine {
         );
       }
 
-      // 冷却期满但仍在观察期：允许交易但保持 warning
+      // 冷却期满但仍在观察期：允许交易，保留原触发时间。
       if (
         elapsedMinutes <
         this.limits.circuitBreaker.cooldownMinutes +
@@ -337,12 +355,6 @@ export class RiskEngine {
           message: "熔断器恢复观察中，请谨慎交易",
         };
       }
-
-      // 完全恢复
-      this.state.circuitState = "normal";
-      this.state.trippedAt = null;
-      this.state.warningAt = null;
-      this.state.consecutiveLosses = 0;
     }
 
     if (circuitState === "warning") {
@@ -359,6 +371,9 @@ export class RiskEngine {
   private evaluateCircuit(now: string): void {
     const { circuitBreaker } = this.limits;
     const previousState = this.state.circuitState;
+    // Keep the original trip time through cooldown/recovery. New observations
+    // and a profitable fill must not extend or prematurely clear that latch.
+    if (previousState === "tripped") return;
 
     // 检查是否触发熔断
     if (
@@ -369,33 +384,31 @@ export class RiskEngine {
       this.state.trippedAt = now;
 
       // 🔔 熔断触发 → 发送 critical 告警
-      if (previousState !== "tripped") {
-        this.notifyCircuitBreaker(
-          "risk_circuit_breaker",
-          "critical",
-          "熔断器触发",
-          `连续亏损 ${this.state.consecutiveLosses} 次，日内回撤 ${(this.state.dailyDrawdown * 100).toFixed(2)}%，熔断器已触发`,
-          {
-            consecutiveLosses: this.state.consecutiveLosses,
-            dailyDrawdown: this.state.dailyDrawdown,
-            maxConsecutiveLosses: circuitBreaker.maxConsecutiveLosses,
-            maxDailyDrawdown: circuitBreaker.maxDailyDrawdown,
-            cooldownMinutes: circuitBreaker.cooldownMinutes,
-            trippedAt: now,
-          },
-        );
-      }
+      this.notifyCircuitBreaker(
+        "risk_circuit_breaker",
+        "critical",
+        "熔断器触发",
+        `连续亏损 ${this.state.consecutiveLosses} 次，日内回撤 ${(this.state.dailyDrawdown * 100).toFixed(2)}%，熔断器已触发`,
+        {
+          consecutiveLosses: this.state.consecutiveLosses,
+          dailyDrawdown: this.state.dailyDrawdown,
+          maxConsecutiveLosses: circuitBreaker.maxConsecutiveLosses,
+          maxDailyDrawdown: circuitBreaker.maxDailyDrawdown,
+          cooldownMinutes: circuitBreaker.cooldownMinutes,
+          trippedAt: now,
+        },
+      );
       return;
     }
 
     // 检查是否触发预警（连续亏损接近阈值 60%）
     if (
       this.state.consecutiveLosses >=
-      Math.floor(circuitBreaker.maxConsecutiveLosses * 0.6)
+      Math.max(1, Math.floor(circuitBreaker.maxConsecutiveLosses * 0.6))
     ) {
       const wasAlreadyWarning = previousState === "warning";
       this.state.circuitState = "warning";
-      this.state.warningAt = now;
+      if (!wasAlreadyWarning) this.state.warningAt = now;
 
       // 🔔 首次进入预警 → 发送 warn 告警
       if (!wasAlreadyWarning) {
@@ -420,7 +433,7 @@ export class RiskEngine {
     ) {
       const wasAlreadyWarning = previousState === "warning";
       this.state.circuitState = "warning";
-      this.state.warningAt = now;
+      if (!wasAlreadyWarning) this.state.warningAt = now;
 
       // 🔔 首次进入预警 → 发送 warn 告警
       if (!wasAlreadyWarning) {
@@ -438,7 +451,44 @@ export class RiskEngine {
       return;
     }
 
-    // 状态恢复正常（从 warning/tripped 恢复后由外部调用 resetCircuit）
+    if (previousState === "warning") {
+      this.state.circuitState = "normal";
+      this.state.warningAt = null;
+    }
+  }
+
+  private tradingDate(): string {
+    return new Date(this.clock().getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
+  private syncTradingDay(): void {
+    const tradingDate = this.tradingDate();
+    if (this.state.tradingDate === tradingDate) return;
+    this.state.tradingDate = tradingDate;
+    this.state.peakDailyEquity = 0;
+    this.state.dailyDrawdown = 0;
+    // A multi-day losing streak remains meaningful for T+1 positions.
+    if (this.state.circuitState === "warning" && this.state.consecutiveLosses <
+        Math.max(1, Math.floor(this.limits.circuitBreaker.maxConsecutiveLosses * 0.6))) {
+      this.state.circuitState = "normal";
+      this.state.warningAt = null;
+    }
+  }
+
+  private updateEquity(equity: number): void {
+    this.state.peakDailyEquity = Math.max(this.state.peakDailyEquity, equity);
+    this.state.dailyDrawdown = this.state.peakDailyEquity > 0
+      ? Math.max(0, 1 - equity / this.state.peakDailyEquity) : 0;
+  }
+
+  private refreshCircuit(now: string): void {
+    if (this.state.circuitState !== "tripped" || this.state.trippedAt === null) return;
+    const elapsed = (Date.parse(now) - Date.parse(this.state.trippedAt)) / 60_000;
+    if (elapsed < this.limits.circuitBreaker.cooldownMinutes + this.limits.circuitBreaker.recoveryMinutes) return;
+    this.state.circuitState = "normal";
+    this.state.trippedAt = null;
+    this.state.warningAt = null;
+    this.state.consecutiveLosses = 0;
   }
 
   /** 根据日内回撤动态计算当前仓位权重上限 */
