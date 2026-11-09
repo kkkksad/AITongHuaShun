@@ -38,6 +38,9 @@
 
 - [0026：发布时复用相同运行内容的已验证镜像](0026-reuse-identical-runtime-images.md)
 
+- [0027：核心研究先于辅助来源启动](0027-core-research-before-auxiliary.md)
+- [0028：Paper完整持仓周期保存净成交结果](0028-paper-position-cycle-net-results.md)
+
 ## 新建格式
 
 文件名使用 `NNNN-short-title.md`。

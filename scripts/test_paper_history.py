@@ -75,6 +75,30 @@ class PaperHistoryTests(unittest.TestCase):
         self.archive(NOW + dt.timedelta(minutes=5))
         self.assertEqual(self.query("SELECT COUNT(*) FROM account_samples"), [(2,)])
 
+    def test_internal_cycle_evidence_does_not_change_archive_shape_or_expand_allowlist(self):
+        self.input["paperFillLedger"] = dict(lastSequence=1, results=[dict(
+            sequence=1, symbol="000001", evidence="complete", netPnl=-10,
+            openingOrderId="PO-open", closingOrderId="PO-close", boughtQuantity=100,
+            soldQuantity=100, buyNotional=1000, buyFees=5, sellNotional=1000,
+            sellFees=5, openedAt="2026-11-08T02:00:00.000Z",
+            closedAt="2026-11-09T02:00:00.000Z", token="DO_NOT_ARCHIVE")])
+        self.input["positions"] = [dict(symbol="000001", name="test", quantity=100,
+            averagePrice=10, realizedPnl=0, paperCycle=dict(openingOrderId="PO-next",
+            openedAt="2026-11-09T02:01:00.000Z", boughtQuantity=100, soldQuantity=0,
+            buyNotional=1000, buyFees=5, sellNotional=0, sellFees=0,
+            token="DO_NOT_ARCHIVE"))]
+        self.write()
+        before = self.source.read_bytes()
+        self.archive()
+        positions = json.loads(self.query("SELECT positions_json FROM account_samples")[0][0])
+        self.assertEqual(positions[0]["quantity"], 100)
+        self.assertNotIn("paperCycle", positions[0])
+        self.assertEqual(self.query("SELECT COUNT(*) FROM orders"), [(1,)])
+        self.assertEqual(self.source.read_bytes(), before)
+        with closing(sqlite3.connect(self.database)) as conn:
+            dump = "\n".join(conn.iterdump())
+        self.assertNotIn("DO_NOT_ARCHIVE", dump)
+
     def test_pending_to_filled_updates_one_order_and_preserves_fee(self):
         self.archive()
         self.input["orders"][0].update(status="filled", filledPrice=10.01,

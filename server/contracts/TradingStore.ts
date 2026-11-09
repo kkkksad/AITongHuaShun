@@ -11,6 +11,7 @@ import type {
   RiskLimits,
   TradingMode,
 } from "../../shared/trading";
+import type { PaperFillLedger } from "../store/paperPositionCycles";
 
 /**
  * 交易数据持久化契约 —— 所有存储后端（内存、PostgreSQL、SQLite）
@@ -109,6 +110,9 @@ export interface TradingStore {
 
   /** 订单列表（最近优先）。 */
   listOrders(limit?: number): OrderRecord[];
+
+  /** Complete position-cycle net results, oldest first, independent of order pruning. */
+  getPaperFillLedger(): PaperFillLedger;
 
   // ── 审计 ──
 

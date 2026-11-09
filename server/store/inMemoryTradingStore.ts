@@ -14,6 +14,8 @@ import type {
 import type { TradingStore } from "../contracts/TradingStore";
 import { hasSufficientCash } from "../broker/executionCosts";
 import { calculateTradingDayPerformance } from "./tradingDayPerformance";
+import { advancePaperPositionCycle, appendPaperCycleResult, copyPaperFillLedger, emptyPaperFillLedger,
+  type OpenPaperPositionCycle, type PaperFillLedger } from "./paperPositionCycles";
 
 interface MutablePosition {
   symbol: string;
@@ -23,6 +25,7 @@ interface MutablePosition {
   t1LockedDate?: string;
   averagePrice: number;
   realizedPnl: number;
+  paperCycle?: OpenPaperPositionCycle;
 }
 
 const seededPositions: MutablePosition[] = [
@@ -88,6 +91,7 @@ export class InMemoryTradingStore implements TradingStore {
   private readonly auditEvents: AuditEvent[] = [];
   private orderSequence = 0;
   private auditSequence = 0;
+  private paperFillLedger: PaperFillLedger = emptyPaperFillLedger();
   private lastTradeDateTime?: number;
   private lastTradeDate = "";
 
@@ -195,6 +199,7 @@ export class InMemoryTradingStore implements TradingStore {
     this.auditEvents.length = 0;
     this.orderSequence = 0;
     this.auditSequence = 0;
+    this.paperFillLedger = emptyPaperFillLedger();
     this.appendAudit("system", "account.reset", "已开始新的纯现金 Paper 模拟", {
       startingCash: input.startingCash,
       strategyProfile: input.strategyProfile,
@@ -429,6 +434,10 @@ export class InMemoryTradingStore implements TradingStore {
       return this.rejectOrder(order, "可用资金不足", "INSUFFICIENT_CASH");
     }
 
+    const filledAt = this.now().toISOString();
+    const cycle = advancePaperPositionCycle({ order, previousQuantity: current?.quantity ?? 0,
+      previousCycle: current?.paperCycle, notional, commission, filledAt });
+
     if (wasPending && order.side === "buy" && order.limitPrice !== undefined) {
       this.blockedCash -= order.limitPrice * order.quantity;
     }
@@ -446,6 +455,7 @@ export class InMemoryTradingStore implements TradingStore {
         quantity: nextQuantity,
         averagePrice: (previousCost + notional) / nextQuantity,
         realizedPnl: current?.realizedPnl ?? 0,
+        ...(cycle.openCycle ? { paperCycle: cycle.openCycle } : {}),
       }, currentLocked + order.quantity, tradeDate));
       this.cash = Math.max(0, this.cash - (notional + commission));
     } else if (current) {
@@ -466,17 +476,19 @@ export class InMemoryTradingStore implements TradingStore {
           quantity: nextQuantity,
           averagePrice: current.averagePrice,
           realizedPnl: current.realizedPnl + realizedPnl,
+          ...(cycle.openCycle ? { paperCycle: cycle.openCycle } : {}),
         }, nextLocked, tradeDate));
       }
     }
 
     order.status = "filled";
-    order.filledAt = this.now().toISOString();
+    order.filledAt = filledAt;
     order.filledPrice = fillPrice;
     order.filledQuantity = order.quantity;
     order.notional = notional;
     order.commission = commission;
     order.updatedAt = this.now().toISOString();
+    if (cycle.closedCycle) appendPaperCycleResult(this.paperFillLedger, cycle.closedCycle);
     this.appendAudit("order", "order.filled", wasPending ? "限价单已成交" : "模拟订单已成交", {
       orderId: order.id,
       fillPrice,
@@ -488,6 +500,10 @@ export class InMemoryTradingStore implements TradingStore {
 
   listOrders(limit = 100): OrderRecord[] {
     return this.orders.slice(0, limit).map((order) => ({ ...order }));
+  }
+
+  getPaperFillLedger(): PaperFillLedger {
+    return copyPaperFillLedger(this.paperFillLedger);
   }
 
   listAudit(limit = 200): AuditEvent[] {

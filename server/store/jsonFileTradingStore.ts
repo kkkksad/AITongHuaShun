@@ -17,6 +17,8 @@ import type {
 import type { TradingStore } from "../contracts/TradingStore";
 import { hasSufficientCash } from "../broker/executionCosts";
 import { calculateTradingDayPerformance } from "./tradingDayPerformance";
+import { advancePaperPositionCycle, appendPaperCycleResult, copyPaperFillLedger, emptyPaperFillLedger,
+  validateOpenPaperCycle, validatePaperFillLedger, type OpenPaperPositionCycle, type PaperFillLedger } from "./paperPositionCycles";
 
 interface MutablePosition {
   symbol: string;
@@ -26,6 +28,7 @@ interface MutablePosition {
   t1LockedDate?: string;
   averagePrice: number;
   realizedPnl: number;
+  paperCycle?: OpenPaperPositionCycle;
 }
 
 interface PersistedState {
@@ -44,6 +47,7 @@ interface PersistedState {
   auditEvents: AuditEvent[];
   orderSequence: number;
   auditSequence: number;
+  paperFillLedger?: PaperFillLedger;
 }
 
 interface JsonFileTradingStoreOptions {
@@ -132,6 +136,7 @@ export class JsonFileTradingStore implements TradingStore {
   private auditEvents: AuditEvent[] = [];
   private orderSequence = 0;
   private auditSequence = 0;
+  private paperFillLedger: PaperFillLedger = emptyPaperFillLedger();
 
   constructor(
     dataDir: string,
@@ -218,6 +223,7 @@ export class JsonFileTradingStore implements TradingStore {
     this.auditEvents = [];
     this.orderSequence = 0;
     this.auditSequence = 0;
+    this.paperFillLedger = emptyPaperFillLedger();
     this.accountEpoch = randomUUID();
     this.appendAudit("system", "account.reset", "已开始新的纯现金 Paper 模拟", {
       startingCash: input.startingCash,
@@ -244,6 +250,7 @@ export class JsonFileTradingStore implements TradingStore {
 
   getPositions(snapshot: MarketSnapshot): PositionSnapshot[] {
     const quoteMap = new Map(snapshot.quotes.map((quote) => [quote.symbol, quote]));
+    const tradeDate = getChinaTradeDate(this.now());
     const raw = [...this.positions.values()].map((position) => {
       const quote = quoteMap.get(position.symbol);
       const currentPrice = quote && Number.isFinite(quote.price) && quote.price > 0
@@ -255,8 +262,8 @@ export class JsonFileTradingStore implements TradingStore {
         symbol: position.symbol,
         name: position.name,
         quantity: position.quantity,
-        availableQuantity: position.quantity - getT1LockedQuantity(position),
-        t1LockedQuantity: getT1LockedQuantity(position),
+        availableQuantity: position.quantity - getT1LockedQuantity(position, tradeDate),
+        t1LockedQuantity: getT1LockedQuantity(position, tradeDate),
         averagePrice: position.averagePrice,
         currentPrice,
         marketValue,
@@ -460,6 +467,11 @@ export class JsonFileTradingStore implements TradingStore {
       return this.rejectOrder(stored, "可用资金不足", "INSUFFICIENT_CASH");
     }
 
+    const filledAt = this.now().toISOString();
+    const tradeDate = getChinaTradeDate(new Date(filledAt));
+    const cycle = advancePaperPositionCycle({ order: stored, previousQuantity: current?.quantity ?? 0,
+      previousCycle: current?.paperCycle, notional, commission, filledAt });
+
     if (wasPending) {
       this.releaseBuyLimitCash(stored);
     }
@@ -467,7 +479,7 @@ export class JsonFileTradingStore implements TradingStore {
     if (stored.side === "buy") {
       const previousQuantity = current?.quantity ?? 0;
       const previousCost = previousQuantity * (current?.averagePrice ?? 0);
-      const currentLocked = current ? getT1LockedQuantity(current) : 0;
+      const currentLocked = current ? getT1LockedQuantity(current, tradeDate) : 0;
       const nextQuantity = previousQuantity + stored.quantity;
 
       this.positions.set(stored.symbol, withT1Lock({
@@ -476,10 +488,11 @@ export class JsonFileTradingStore implements TradingStore {
         quantity: nextQuantity,
         averagePrice: (previousCost + notional) / nextQuantity,
         realizedPnl: current?.realizedPnl ?? 0,
-      }, currentLocked + stored.quantity));
+        ...(cycle.openCycle ? { paperCycle: cycle.openCycle } : {}),
+      }, currentLocked + stored.quantity, tradeDate));
       this.cash = Math.max(0, this.cash - (notional + commission));
     } else if (current) {
-      const currentLocked = getT1LockedQuantity(current);
+      const currentLocked = getT1LockedQuantity(current, tradeDate);
       const realizedPnl =
         (fillPrice - current.averagePrice) * stored.quantity - commission;
       const nextQuantity = current.quantity - stored.quantity;
@@ -496,17 +509,19 @@ export class JsonFileTradingStore implements TradingStore {
           quantity: nextQuantity,
           averagePrice: current.averagePrice,
           realizedPnl: current.realizedPnl + realizedPnl,
-        }, nextLocked));
+          ...(cycle.openCycle ? { paperCycle: cycle.openCycle } : {}),
+        }, nextLocked, tradeDate));
       }
     }
 
     stored.status = "filled";
-    stored.filledAt = this.now().toISOString();
+    stored.filledAt = filledAt;
     stored.filledPrice = fillPrice;
     stored.filledQuantity = stored.quantity;
     stored.notional = notional;
     stored.commission = commission;
     stored.updatedAt = this.now().toISOString();
+    if (cycle.closedCycle) appendPaperCycleResult(this.paperFillLedger, cycle.closedCycle);
     this.appendAudit(
       "order",
       "order.filled",
@@ -519,6 +534,10 @@ export class JsonFileTradingStore implements TradingStore {
 
   listOrders(limit = 100): OrderRecord[] {
     return this.orders.slice(0, limit).map((order) => ({ ...order }));
+  }
+
+  getPaperFillLedger(): PaperFillLedger {
+    return copyPaperFillLedger(this.paperFillLedger);
   }
 
   listAudit(limit = 200): AuditEvent[] {
@@ -572,6 +591,12 @@ export class JsonFileTradingStore implements TradingStore {
     if (state.version !== 1) {
       throw new Error(`Unsupported persisted state version: ${state.version}`);
     }
+    if (state.paperFillLedger !== undefined) validatePaperFillLedger(state.paperFillLedger);
+    for (const position of state.positions) {
+      if (position.paperCycle !== undefined) validateOpenPaperCycle(position.paperCycle, position.quantity);
+    }
+    this.paperFillLedger = state.paperFillLedger === undefined
+      ? emptyPaperFillLedger() : copyPaperFillLedger(state.paperFillLedger);
     if (state.accountEpoch !== undefined) {
       if (typeof state.accountEpoch !== "string" ||
           !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(state.accountEpoch)) {
@@ -629,6 +654,7 @@ export class JsonFileTradingStore implements TradingStore {
       auditEvents: this.auditEvents,
       orderSequence: this.orderSequence,
       auditSequence: this.auditSequence,
+      paperFillLedger: this.paperFillLedger,
     };
     const temporaryPath = `${this.filePath}.tmp`;
     fs.writeFileSync(temporaryPath, JSON.stringify(state, null, 2), "utf-8");
