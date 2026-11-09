@@ -4,6 +4,8 @@
 
 ## 环境
 
+历史缓存单个调用取消/超时不会取消共享读取或提前释放历史槽，其他调用仍可复用完成结果；原HTTP六秒批次先返回部分结果的行为保持。显式clear不代表底层网络线程已终止，不能用于扩大调度容量，见[0048](../decisions/0048-history-shared-task-cancellation.md)。
+
 研究满载时，新增计算返回503 RESEARCH_BUSY，来源读取可返回明确容量降级；已有同key读取继续复用，任务完成或超时后后续刷新可恢复。不要通过循环立即重试或清缓存扩大并发；当前Node研究HTTP预算64，Python历史2工作槽/24队列单独保持，见[0044](../decisions/0044-bounded-research-admission.md)。
 
 - Node.js 20 或更新版本。

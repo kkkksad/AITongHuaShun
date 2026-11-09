@@ -315,7 +315,9 @@ class ResearchHistoryCache(Generic[HistoricalSeries]):
                 stale_ttl_sec=stale_ttl_sec,
             )
 
-        return await task
+        # A caller owns only its wait. Cancelling it must not cancel shared
+        # provider work or release the limiter while an executor thread runs.
+        return await asyncio.shield(task)
 
     def _get_or_start_in_flight(
         self,

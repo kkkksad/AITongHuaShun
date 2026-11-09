@@ -18,7 +18,7 @@ server/store/jsonFileTradingStore.ts与inMemoryTradingStore.ts固定账户PAPER-
 - [x] 新测试旧版九项未拒绝而失败、一项正常控制通过；修复后合法PAPER-CN-01重新载入使用不同startingCash仍保留原资金、挂单、序号/控制与epoch，既有无epoch合法账本迁移通过。
 - [x] 在server/store/jsonFileTradingStore.ts版本检查后增加严格accountId比较，失败抛固定错误，不输出不受信任身份内容，不提供自动改名或宽松回退。
 - [x] 目标Store/原子/epoch/执行边界四文件63项、完整145服务端文件2173项、55前端文件366项与TypeScript/Vite通过。生产私有副本兼容与实际Linux镜像验证待发布后执行。
-- [x] 0046与状态/架构/安全边界、主计划已同步；`fe755a82f1b2a69121f26c9faccd55ca7db17f09`独立提交部署，UTC22:52核验622文件/三健康/可信HTTPS/原账户/检查点/归档世代和上一d398609材料。GitHub推送返回连接中断，远端实际SHA另行核对。
+- [x] 0046与状态/架构/安全边界、主计划已同步；`fe755a82f1b2a69121f26c9faccd55ca7db17f09`独立提交部署，UTC22:52核验622文件/三健康/可信HTTPS/原账户/检查点/归档世代和上一d398609材料。GitHub初次连接中断，UTC22:59随9743f73正常同步。
 
 ## 发布验证
 

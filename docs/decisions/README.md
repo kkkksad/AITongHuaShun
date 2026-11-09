@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0048：历史共享读取与调用方取消隔离](0048-history-shared-task-cancellation.md)
+
 - [0047：多市场Paper独立资金与主账本迁移](0047-multi-market-paper-ledger-migration.md)
 
 - [0046：单账户Paper账本必须匹配存储身份](0046-single-account-paper-ledger-binding.md)

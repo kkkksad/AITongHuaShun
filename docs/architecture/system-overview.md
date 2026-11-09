@@ -1,5 +1,7 @@
 # 系统架构
 
+历史缓存冷读通过asyncio.shield共享Task，单个等待者取消/超时只退出本次等待，原读取及调度预算保持至完成，失败可重试；来源时间/缓存TTL不变。主HTTP批次原本不主动取消子任务，显式clear和底层线程取消仍按原行为，精确边界见[0048](../decisions/0048-history-shared-task-cancellation.md)。
+
 多市场独立资金、事务主账本迁移和期货准入的目标方案统一见[多市场Paper账本](multi-market-paper-ledger.md)与[0047](../decisions/0047-multi-market-paper-ledger-migration.md)；当前仍是单A股JSON主账本，SQLite只读归档，期货仅研究，不能把目标设计当成已实现撮合。
 
 JSON交易Store仍只承载PAPER-CN-01；载入时先严格核对持久账户身份，再恢复资金/订单或迁移世代。身份不符不改写原文件、不自动创建账户，见[0046](../decisions/0046-single-account-paper-ledger-binding.md)。这不等于支持多账户，期货资金/撮合仍待独立实现。
