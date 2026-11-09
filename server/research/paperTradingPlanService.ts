@@ -272,6 +272,10 @@ async function buildPaperResearchContext(input: {
           ),
         }),
       ]);
+      // Reserve bridge capacity for the decision-critical history first.
+      // Optional history can otherwise occupy both workers while the core is
+      // still discovering sectors, delaying the stock/sector requests behind it.
+      const [leaderboard, marketRegimeResearch] = await coreResearch;
       const auxiliaryTimeoutMs = resolveAuxiliaryResearchTimeoutMs(
         input.config.MARKET_DATA_TIMEOUT_MS,
       );
@@ -292,8 +296,8 @@ async function buildPaperResearchContext(input: {
         days: 500,
         timeoutMs: auxiliaryTimeoutMs,
       };
-      // Auxiliary sources start beside the core research and cannot hold the
-      // Paper plan hostage when the bridge is slow or partially unavailable.
+      // Start optional sources after the core result (including its bounded
+      // fallback). Each keeps its independent deadline and degraded evidence.
       const auxiliaryResearch = Promise.all([
         withResearchDeadline({
           task: buildRealResearchDataFeed(realResearchInput),
@@ -314,8 +318,7 @@ async function buildPaperResearchContext(input: {
           ),
         }),
       ]);
-      const [[leaderboard, marketRegimeResearch], [realResearchDataFeed, externalMarketImpact]] =
-        await Promise.all([coreResearch, auxiliaryResearch]);
+      const [realResearchDataFeed, externalMarketImpact] = await auxiliaryResearch;
       return {
         leaderboard,
         marketRegimeResearch,
