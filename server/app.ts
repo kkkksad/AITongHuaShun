@@ -1229,6 +1229,7 @@ export async function buildTradingApp(
       orders: system.broker.getOrders(10_000),
       auditEvents: system.store.listAudit(10_000),
       maxDailyAutoOrders: options.config.PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS,
+      maxAutoOrdersPerRun: options.config.PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN,
     });
   });
 

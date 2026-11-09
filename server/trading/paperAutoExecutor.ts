@@ -42,6 +42,7 @@ import {
   type IntradayExecutionPolicy,
 } from "./intradayExecutionPolicy";
 import { getPaperStrategyProfilePolicy } from "./paperStrategyProfile";
+import { getOrderFillTime } from "./orderFillTime";
 
 export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
 export type PaperAutoExecutionActivityMode =
@@ -763,7 +764,7 @@ export class PaperAutoExecutor {
     const tradingDate = getChinaTradeDate(now);
     const currentSession = getAshareSession(now);
     const todaySubmittedOrders = this.countSubmittedOrders(tradingDate);
-    const todayFilledOrders = this.countFilledOrders(tradingDate);
+    const todayFilledOrders = this.countFilledOrders(tradingDate, now);
     const phaseDailyOrderLimit = getPhaseCumulativeOrderLimit(
       this.options.maxDailyOrders,
       currentPolicy.phase,
@@ -977,7 +978,7 @@ export class PaperAutoExecutor {
           phase: initialPolicy.phase,
           remainingTargetOrders: Math.max(
             0,
-            this.options.targetDailyOrders - this.countFilledOrders(tradingDate),
+            this.options.targetDailyOrders - this.countFilledOrders(tradingDate, started),
           ),
         }),
         activityMode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
@@ -1490,13 +1491,15 @@ export class PaperAutoExecutor {
       .length;
   }
 
-  private countFilledOrders(tradingDate: string): number {
-    const prefix = `kairos-auto-paper:${tradingDate}:`;
+  private countFilledOrders(tradingDate: string, asOf: Date): number {
     return this.options.system.store
       .listOrders(10_000)
-      .filter((order) =>
-        order.clientOrderId?.startsWith(prefix) && order.status === "filled",
-      )
+      .filter((order) => {
+        const time = getOrderFillTime(order);
+        return order.clientOrderId?.startsWith("kairos-auto-paper:") === true &&
+          time !== null && Date.parse(time) <= asOf.getTime() &&
+          getChinaDateKey(new Date(time)) === tradingDate;
+      })
       .length;
   }
 

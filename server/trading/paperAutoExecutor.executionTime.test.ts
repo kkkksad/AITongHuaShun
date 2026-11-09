@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { MarketSnapshot } from "../../shared/trading";
+import type { MarketSnapshot, OrderRecord } from "../../shared/trading";
 import { routeAdaptiveStrategies } from "../research/adaptiveStrategyRouter";
 import { buildDailyCandidates } from "../research/dailyCandidates";
 import { buildDailyQualityStocks } from "../research/dailyQualityStocks";
@@ -161,6 +161,80 @@ function createExecutionFixture(input: {
   });
   return { executor, system, plan, notifier, submitOrder, orderReads, findByClientOrderId, marketRegimeResearch, snapshot };
 }
+
+describe("automatic activity counts by fill time", () => {
+  const start = "2026-08-21T14:00:00+08:00";
+  const fill = (overrides: Partial<OrderRecord> = {}): OrderRecord => ({
+    id: "carried-fill", symbol: "600001", side: "buy", type: "limit", quantity: 100,
+    status: "filled", requestedPrice: 10, filledPrice: 10, filledQuantity: 100,
+    notional: 1000, commission: 5, createdAt: "2026-08-20T02:00:00Z",
+    updatedAt: "2026-08-21T05:00:00Z", filledAt: "2026-08-21T05:00:00Z",
+    clientOrderId: "kairos-auto-paper:2026-08-20:600001:paper-buy-plan:100", ...overrides,
+  });
+
+  it.each([true, false])("credits a carried automatic fill without using today's submission quota, explicit=%s", (explicit) => {
+    const fixture = createExecutionFixture({ startedAt: start });
+    fixture.orderReads.mockReturnValue([fill(explicit ? {} : { filledAt: undefined })]);
+    const status = fixture.executor.getStatus();
+    expect(status).toMatchObject({ todaySubmittedOrders: 0, todayFilledOrders: 1,
+      activityTarget: { remainingOrders: 1 } });
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+  });
+
+  it("does not count an automatic order submitted today but filled another day", () => {
+    const fixture = createExecutionFixture({ startedAt: start });
+    fixture.orderReads.mockReturnValue([fill({
+      clientOrderId: "kairos-auto-paper:2026-08-21:600001:paper-buy-plan:100",
+      createdAt: "2026-08-21T02:00:00Z", filledAt: "2026-08-24T02:00:00Z",
+    })]);
+    expect(fixture.executor.getStatus()).toMatchObject({ todaySubmittedOrders: 1,
+      todayFilledOrders: 0, activityTarget: { remainingOrders: 2 } });
+  });
+
+  it.each(["broken", "2026-08-21T06:01:00Z"])("does not credit an invalid or future fill %s", (filledAt) => {
+    const fixture = createExecutionFixture({ startedAt: start });
+    fixture.orderReads.mockReturnValue([fill({
+      clientOrderId: "kairos-auto-paper:2026-08-21:600001:paper-buy-plan:100", filledAt,
+    })]);
+    expect(fixture.executor.getStatus().todayFilledOrders).toBe(0);
+  });
+
+  it("keeps manual and unfilled orders out of the automatic activity target", () => {
+    const fixture = createExecutionFixture({ startedAt: start });
+    fixture.orderReads.mockReturnValue([
+      fill({ id: "manual", clientOrderId: undefined }),
+      fill({ id: "pending", status: "accepted" }),
+    ]);
+    expect(fixture.executor.getStatus().todayFilledOrders).toBe(0);
+  });
+
+  it("uses Beijing midnight and prefers fill time to later updates", () => {
+    const fixture = createExecutionFixture({ startedAt: start });
+    fixture.orderReads.mockReturnValue([
+      fill({ id: "before", filledAt: "2026-08-20T15:59:59.999Z" }),
+      fill({ id: "after", filledAt: "2026-08-20T16:00:00Z", updatedAt: "2026-08-24T02:00:00Z" }),
+    ]);
+    expect(fixture.executor.getStatus().todayFilledOrders).toBe(1);
+  });
+
+  it("keeps the submission cap binding when the fill target is still unmet", async () => {
+    const fixture = createExecutionFixture({ startedAt: start, maxDailyOrders: 4 });
+    fixture.orderReads.mockReturnValue([
+      fill(),
+      ...Array.from({ length: 4 }, (_, index) => fill({
+        id: `today-${index}`, status: "accepted", filledAt: undefined,
+        clientOrderId: `kairos-auto-paper:2026-08-21:60000${index}:paper-buy-plan:100`,
+        createdAt: "2026-08-21T02:00:00Z", filledQuantity: 0, notional: 0, commission: 0,
+      })),
+    ]);
+    expect(fixture.executor.getStatus()).toMatchObject({ todaySubmittedOrders: 4,
+      todayFilledOrders: 1, phaseRemainingOrders: 0, activityTarget: { remainingOrders: 1 } });
+    const result = await fixture.executor.runOnce("manual");
+    expect(result.submittedOrders).toEqual([]);
+    expect(result.skippedOperations.some((item) => item.reason === "daily auto paper order cap reached")).toBe(true);
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+  });
+});
 
 describe("automatic execution quote freshness before creating orders", () => {
   const startedAt = "2026-08-21T14:00:00+08:00";

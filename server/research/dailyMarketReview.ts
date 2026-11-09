@@ -159,6 +159,7 @@ interface DailyMarketReviewInput {
   orders: OrderRecord[];
   auditEvents: AuditEvent[];
   maxDailyAutoOrders?: number;
+  maxAutoOrdersPerRun?: number;
   now?: Date;
 }
 
@@ -514,7 +515,7 @@ function buildEntryReview(input: {
 
 function fallbackReason(order: OrderRecord): string {
   if (order.rejectionReason?.includes("资金不足")) {
-    return "自动 paper 买单因资金不足被风控拒绝；该订单暴露了同批计划未累计预留现金的问题。";
+    return "该 paper 买单因资金不足被风控拒绝；单凭拒单记录无法确认是预算、价格变化、挂单占用还是其他原因。";
   }
   if (order.clientOrderId?.startsWith("kairos-auto-paper:")) {
     return "该订单由 KAIROS 自动 paper 计划提交，但历史版本未持久化逐笔策略理由，不能事后补写不存在的依据。";
@@ -753,7 +754,7 @@ export function buildDailyMarketReview(
   }
 
   if (rejected.some((order) => order.rejectionReason?.includes("资金不足"))) {
-    issues.push("出现资金不足拒绝，说明同批买单曾重复使用原始现金预算。");
+    issues.push("出现资金不足拒单，需要结合当时可用现金、挂单占用、价格和费用核对，不能仅凭拒单推断代码根因。");
   }
   if (openingBuyAttempts >= 2) {
     issues.push(`开盘 5 分钟内连续尝试 ${openingBuyAttempts} 笔买单，建仓节奏过于集中。`);
@@ -796,10 +797,10 @@ export function buildDailyMarketReview(
 
   const nextActions = [
     "继续按成交额、滑点和手续费累计预留现金，资金不足时不创建 paper 订单。",
-    "维持每轮最多 1 笔、每天最多 4 笔的自动执行节奏。",
+    `当前配置：单轮最多 ${input.maxAutoOrdersPerRun ?? 2} 笔、每日最多 ${maxDailyAutoOrders} 笔；阶段额度与其余准入规则仍生效。`,
   ];
   if (entryReview.status === "runtime-gap") {
-    nextActions.push("下一个交易日开盘前确认 4173、8787、8800 三服务健康，并在盘中保留有界心跳审计。");
+    nextActions.push("下一个交易日开盘前确认网站、交易API和行情桥接三服务健康，并在盘中保留有界心跳审计。");
   }
   if (openingBuyAttempts >= 2) {
     nextActions.push("将开盘集中建仓改为分批确认，观察首个价格区间后再增加下一笔 paper 仓位。");

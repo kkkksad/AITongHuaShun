@@ -133,6 +133,22 @@ describe("buildDailyMarketReview", () => {
     auditEvents: [], now: new Date("2026-07-14T08:00:00.000Z"),
   });
 
+  it("reports the configured execution frequency instead of a historical fixed recommendation", () => {
+    const report = buildDailyMarketReview({
+      snapshot, provider: "akshare", account, positions, orders: [], auditEvents: [],
+      now: new Date("2026-07-14T08:00:00Z"), maxAutoOrdersPerRun: 3, maxDailyAutoOrders: 7,
+    });
+    expect(report.strategyReview.nextActions.join(" ")).toContain("单轮最多 3 笔、每日最多 7 笔");
+    expect(report.strategyReview.nextActions.join(" ")).not.toContain("每天最多 4 笔");
+  });
+
+  it("does not infer duplicate cash budgeting from a single cash rejection", () => {
+    const report = reviewOrders([orders[1]]);
+    const claims = [...report.strategyReview.issues, ...report.trades.items.map((item) => item.reason)].join(" ");
+    expect(claims).toContain("资金不足");
+    expect(claims).not.toMatch(/重复使用原始现金|同批计划未累计预留/);
+  });
+
   it.each([true, false])("counts an earlier submission filled today, explicit fill time=%s", (explicit) => {
     const fill = {
       ...orders[0], createdAt: "2026-07-13T02:00:00.000Z",

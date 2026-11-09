@@ -39,7 +39,28 @@ export function getOrderFillTime(order: OrderRecord): string | null {
 - [x] FIFO按真实成交时刻排序，卖出闭合归属成交日；不以未来买入配早先卖出，未匹配卖出数量明确提示。页面明确FIFO片段单位、净盈亏及与完整周期不同，新增展示报告解释。
 - [x] 保留成交时间坏记录或同股同毫秒顺序不明时，相关股票不参与FIFO、其他股票继续；成交金额仍按确认日期。实际成交时间上限取报告now与周期末较早者，避免未来成交入样。
 - [x] 完整126服务端文件1965项通过；最终周度目标20项、前端复盘静态/交互8项及TS/Vite通过。前端完整343项沿用A，本轮只做受影响页面目标验证。决策0034与产品说明同步。
-- [ ] B独立提交推送部署，复核原账户/归档世代/检查点及上一健康发布留存。
+- [x] `d71a2545b0cb67e13a1c41830b8f6a474e4cfaa2`独立提交部署，UTC19:10核验559文件/三健康/健康200与匿名401、可信HTTPS和原账户/检查点保持。归档196运行摘要/46样本/integrity ok、世代不变，上一A版558文件/三镜像/导出完整性通过。
+- [ ] B的GitHub推送因直连443不可达/重置、既有临时通道重置尚未成功；提交本地及服务器均保留，继续正常重试，不能写成已同步。
+
+## C：执行活跃目标日期与真实配置说明
+
+文件：`server/trading/paperAutoExecutor.ts`、已有`paperAutoExecutor.executionTime.test.ts`；`server/research/dailyMarketReview.ts`及测试；`server/app.ts`与新增`server/app.dailyReviewPolicy.test.ts`。
+
+- [x] 新增8项Executor、2项复盘和1项HTTP回归，旧版10失败/1通过；覆盖跨日、坏时间、同日未来、旧字段、北京时间零点、手动/未成交排除及日硬上限。
+- [x] countFilledOrders接受明确asOf参数，getStatus传now、研究探针入口传started，复用getOrderFillTime按实际日期和不晚于asOf计数。countSubmittedOrders完全保持现状。
+
+```ts
+const time = getOrderFillTime(order);
+return order.clientOrderId?.startsWith("kairos-auto-paper:") === true &&
+  time !== null && Date.parse(time) <= asOf.getTime() &&
+  getChinaDateKey(new Date(time)) === tradingDate;
+```
+
+- [x] 真实Executor/Broker夹具同时提供历史委托当日成交及当日4笔提交已满，目标仍缺1但不调用Broker下单，保留日硬上限原因。
+- [x] 日复盘新增maxAutoOrdersPerRun输入，HTTP透传当前配置；三单/七单真实注入接口先失败再通过，纯函数缺输入为2/4。生产只读核对实际2/10、目标6、60秒、validation-probe、零比例预留及真实执行关闭。
+- [x] 单笔资金不足拒单不再被推断为必然重复预算，修正逐笔原因和问题项；去掉开发固定端口建议，按网站/API/桥接描述。
+- [x] 完整127服务端文件1976项、目标三文件58项及TS/Vite通过，专题决策/产品说明同步。C无前端/共享字段变更，沿用A完整343项及B最后页面8项，不重复声称新跑。
+- [ ] C独立提交推送部署，核验原账户/HTTPS/检查点/归档/上一发布留存。
 
 ## 执行记录
 
@@ -52,3 +73,5 @@ B先20项通过后运行完整服务端检查；同毫秒歧义按整股历史�
 新增展示性能说明后，旧前端重试测试把经济说明中的“胜率暂不可用”误认为API失败，初次8项中1失败。改为明确断言“上周 Paper 复盘暂不可用”请求错误消失，保留取回金额/调用次数和缓存失败断言；最终8项通过。首次并行两个Vitest进程曾有HMR端口占用提示，最终分开运行通过，不修改服务或跳过测试。
 
 后续独立排查：执行器成交目标仍按委托ID日期；日复盘建议仍有历史固定单轮/每日笔数文案；周度价格/数量兼容回退是否会使缺成交字段记录进入盈亏尚未验证，应以缺证据夹具复现后再决定，不能宣称已发生生产损益错误。
+
+上项前两条已由C修复、目标三文件58项通过，完整检查和发布尚待完成；周度缺执行字段回退仍待复现。
