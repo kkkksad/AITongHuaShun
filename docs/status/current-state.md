@@ -2,7 +2,9 @@
 
 **核对日期：** 2026-11-10（北京时间）
 
-研究并发与缓存复用已通过完整143服务端文件2161项、55前端文件366项及TS/Vite，待独立发布。七项旧版业务回归全部失败，现缓存不淘汰在途、clear仍保留活动预算，TTL失败可重试；Node研究HTTP最多64实际请求，命中复用、超时释放，不新增队列/线程或挤占指定行情通道。目标五文件59项包含64个实际AbortSignal超时和真实认证503/no-store，见[模块24](../plans/2026-11-10-bounded-research-admission.md)与[0044](../decisions/0044-bounded-research-admission.md)。
+指定股票换手率修复已通过完整144服务端文件2163项、55前端文件366项、Linux桥接166项与TS/Vite；12项新Python业务回归旧版全失败。腾讯第38字段按百分数传递，量额、来源时间与既有扫描阈值保持；健康与过热评分各自恢复证据输入，不代表保证成交。独立发布与线上核验继续中，见[模块25](../plans/2026-11-10-requested-quote-turnover.md)与[0045](../decisions/0045-requested-quote-turnover-percent.md)。
+
+研究并发与缓存复用`10efcc2`已独立部署，UTC22:27核验616文件/三健康/HTTPS/原账户/检查点/归档世代及上一eb299fa材料；网络恢复后UTC22:29正常推送成功。完整143服务端文件2161项、55前端文件366项及TS/Vite通过，实际Linux生产镜像隔离五文件59项通过。七项旧版业务回归全部失败，现缓存不淘汰在途、clear仍保留活动预算，TTL失败可重试；Node研究HTTP最多64实际请求，命中复用、超时释放，不新增队列/线程或挤占指定行情通道，见[模块24](../plans/2026-11-10-bounded-research-admission.md)与[0044](../decisions/0044-bounded-research-admission.md)。
 
 异步Paper控制边界`eb299fa`已推送部署，UTC22:16核验612文件/三健康/HTTPS/原账户/检查点/归档世代与上一8bbf662材料，实际生产镜像无网络/无生产挂载五文件68项通过。完整142服务端文件2150项、55前端文件366项及TS/Vite通过。初始执行器28项旧版26失败、服务4项全失败；现策略/档位切换、暂停再恢复及内部重置使旧轮失效，研究和通知后/逐笔检查，stop生命周期独立保护；JSON失败回滚修订，正常双笔及已成交保留验证通过。既有HTTP执行中重置409保护保持，见[模块23](../plans/2026-11-10-paper-execution-control-boundary.md)与[0043](../decisions/0043-paper-execution-control-revision.md)。
 

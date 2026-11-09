@@ -24,7 +24,7 @@
 - [x] 覆盖成功/异常释放、clear不清活动计数、同key缓存命中和凭据分区；TTL求值抛错后同key可重新计算。保留原TTL/旧响应失效规则。
 - [x] 新HTTP回归认证401且不进入builder，已认证满载503/no-store且无账户/订单变化；源读取容量不足通过既有降级说明展示。
 - [x] 目标与完整服务端/前端、TS/Vite、空白检查通过；独立提交推送部署及生产核验见下一项。
-- [ ] 生产只读核验SHA/健康/HTTPS/匿名保护/原账户/风险检查点/归档世代/上一发布；生产镜像无网络/无生产挂载下目标测试，不对生产接口施压。
+- [x] 生产只读核验SHA/健康/HTTPS/匿名保护/原账户/风险检查点/归档世代/上一发布；生产镜像无网络/无生产挂载下目标测试，不对生产接口施压。
 
 目标命令：`node node_modules/vitest/vitest.mjs run --dir server server/research/researchResultCache.test.ts server/research/bridgeRequest.test.ts server/app.researchCapacity.test.ts --environment node --maxWorkers=1 --minWorkers=1`。初始容量断言预期失败，修复后通过。完整检查沿用主计划，Vitest不并行运行。
 
@@ -39,3 +39,5 @@
 最终Cache10项、Bridge19项、HTTP1项与既有排行榜18/调度11项合计59项通过；包含64个AbortSignal实际超时、满槽不创建第65个timer、全部释放后恢复，以及clear后旧成功/失败不覆盖新结果。最初HTTP夹具选中了自带200降级的排行榜接口，改为没有该fallback的实际计划接口验证503；排行榜原降级合同保持。TS/Vite通过，完整回归继续中。
 
 完整143服务端文件2161项、55前端文件366项、TS/Vite及空白检查通过。UTC22:22休市只读采样4核、可用2546343936字节、同盘剩6668300288字节；三个服务低负载。没有压力测试生产或清理镜像，也不把共享层Docker统计相加当可释放空间。
+
+`10efcc270cd77bee33c6a77daf8eef4b93c1d60e`已独立部署，UTC22:27核验616文件/三健康/HTTPS/匿名保护、原20000账户/检查点/归档世代保持；上一eb299fa的612文件/三镜像及私有导出保护通过。SQLite209运行/85样本、integrity ok、分钟摘要published。实际Linux生产镜像无网络/无生产挂载五文件59项通过，没有生产施压或订单。GitHub直连及临时SSH通道初次失败，UTC22:29同origin正常推送成功，分支已同步10efcc2。

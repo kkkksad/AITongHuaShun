@@ -193,6 +193,62 @@ class TestRequestedQuoteRouting:
         import main
         assert main._parse_tencent_number(number) == 0
 
+class TestTencentTurnover:
+    @staticmethod
+    def response(turnover):
+        fields = [""] * 88
+        for index, value in {
+            1: "真实格式夹具", 3: "10", 4: "9.9", 5: "9.95", 6: "123456",
+            30: "20261109161500", 32: "1.01", 33: "10.1", 34: "9.9",
+            37: "12345", 38: turnover, 43: "2.02",
+        }.items():
+            fields[index] = value
+        response = MagicMock()
+        response.content = f'v_sz000001="{"~".join(fields)}";'.encode("gbk")
+        response.raise_for_status.return_value = None
+        session = MagicMock()
+        session.get.return_value = response
+        return session
+
+    @pytest.mark.parametrize("turnover", ["0.62", "3.25", "18.50"])
+    def test_turnover_is_preserved_in_percent_units_by_tencent_decoder(self, turnover):
+        import main
+        with patch("main.requests.Session", return_value=self.response(turnover)):
+            frame = main.fetch_tencent_a_share_dataframe(("000001",), "腾讯字段夹具")
+        assert frame.iloc[0]["换手率"] == float(turnover)
+        assert frame.iloc[0]["成交量"] == 12345600
+        assert frame.iloc[0]["成交额"] == 123450000
+        assert frame.iloc[0]["更新时间"] == "20261109161500"
+
+    @pytest.mark.parametrize("turnover", ["0.62", "3.25", "18.50"])
+    def test_turnover_reaches_requested_http_through_the_real_quote_parser(self, turnover):
+        import main
+        main.requested_stock_cache.clear()
+        try:
+            with patch("main.requests.Session", return_value=self.response(turnover)):
+                response = client.get("/api/market/quotes?symbols=000001")
+            assert response.status_code == 200
+            payload = response.json()
+            quote = payload["quotes"][0]
+            assert quote["turnover"] == float(turnover)
+            assert quote["tradable"] is True
+            assert quote["updatedAt"] == "2026-11-09T08:15:00.000Z"
+            assert payload["source"] == "tencent-quote-text"
+        finally:
+            main.requested_stock_cache.clear()
+
+    @pytest.mark.parametrize("turnover", ["", "--", "NaN", "inf", "-1", "0"])
+    def test_invalid_or_zero_turnover_keeps_the_existing_optional_evidence_semantics(self, turnover):
+        import main
+        with patch("main.requests.Session", return_value=self.response(turnover)):
+            frame = main.fetch_tencent_a_share_dataframe(("000001",), "腾讯字段夹具")
+        assert frame.iloc[0]["换手率"] == 0
+        parser = QuoteCache()
+        parser._parse_dataframe(frame)
+        assert parser._data["000001"].turnover is None
+        assert parser._data["000001"].price == 10
+
+
 class TestHealthEndpoint:
     def test_health_returns_ok(self):
         response = client.get("/health")

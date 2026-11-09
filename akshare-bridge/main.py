@@ -1024,6 +1024,7 @@ def fetch_tencent_a_share_dataframe(symbols: tuple[str, ...], source: str):
             "涨跌幅": _parse_tencent_number(fields[32]),
             "成交量": int(max(0, _parse_tencent_number(fields[6]) * 100)),
             "成交额": _parse_tencent_number(fields[37]) * 10_000,
+            "换手率": max(0, _parse_tencent_number(fields[38])),
             "振幅": _parse_tencent_number(fields[43]),
             "更新时间": fields[30],
         })

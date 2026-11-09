@@ -117,6 +117,8 @@ shared/
 
 ## 依赖方向
 
+腾讯指定股票快照第38字段按百分数映射到既有turnover，3.25就是3.25%；无效/负值沿用可选缺失语义，量/额单位和来源时间保持。两个扫描器直接消费现有规则，不改变阈值，见[0045](../decisions/0045-requested-quote-turnover-percent.md)。
+
 ResearchResultCache在途任务不被容量淘汰，生产实例每个最多8个封装Promise；桥接HTTP有独立Node进程级64个实际读取预算，缓存命中共享，clear不释放仍在途任务。满载新任务不排队、明确降级或503，指定行情通道独立，见[0044](../decisions/0044-bounded-research-admission.md)。
 
 Paper异步研究/通知绑定Store进程内执行控制修订；成功的暂停状态、策略/档位变化及重置递增，JSON写盘失败回滚，正常成交不递增。服务在研究完成后、执行器在通知后及逐笔提交前重查，stop另有生命周期失效，见[0043](../decisions/0043-paper-execution-control-revision.md)。这不替代Broker最终风控或多市场隔离。
@@ -227,7 +229,7 @@ AkShare 原生调用使用单工作线程串行化，避免其 JavaScript 运行
 
 网站长期运行证据按[0040](../decisions/0040-paper-history-bounded-read-model.md)读取一分钟后台生成的当前世代七日JSON摘要；API只读挂载子目录、严格限大小和时刻/总数，查询不启动数据库或策略。会话缺失保持未知、过期明确，重置与认证切换清除旧查询；不把归档计数作为交易权限或收益证据。
 
-合成策略排行榜由`strategyLeaderboardService`统一服务API与Paper研究：按TradingSystem实例隔离，以provider、参数及完整有序快照序列化的SHA256区分输入，结果完成后30秒内复用，保留原生成/快照时间。最多保留8个键，失败移除；沿用最早插入淘汰，可淘汰在途项，因此不限制为8个并发计算。缓存只含只读排行榜，账户、现金、订单与最终Paper计划仍实时重建；行情质量年龄可能随原报告短时复用，不能把命中当成重新评估。
+合成策略排行榜由`strategyLeaderboardService`统一服务API与Paper研究：按TradingSystem实例隔离，以provider、参数及完整有序快照序列化的SHA256区分输入，结果完成后30秒内复用，保留原生成/快照时间。每实例最多8个在途封装计算，容量只淘汰已完成条目，clear不释放未完成预算；失败移除，TTL求值失败可重试，见[0044](../decisions/0044-bounded-research-admission.md)。缓存只含只读排行榜，账户、现金、订单与最终Paper计划仍实时重建；行情质量年龄可能随原报告短时复用，不能把命中当成重新评估。
 
 网格参数搜索每约8ms在trial边界使用Node setImmediate放行宏任务，失败组合也遵循同一调度。参数组合、种子、回测顺序、评分和排名不变；计算总量与单trial同步耗时不变。这样研究期间可处理计时器、REST与WebSocket事件；不能把该机制解释成并行回测或总计算时间缩短。
 

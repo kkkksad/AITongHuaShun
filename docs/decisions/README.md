@@ -56,6 +56,7 @@
 - [0042：计划买单按统一执行成本和费用后权益选择整手](0042-paper-plan-post-cost-sizing.md)
 - [0043：异步Paper计划绑定账户控制修订](0043-paper-execution-control-revision.md)
 - [0044：研究缓存复用与实际读取预算分别有界](0044-bounded-research-admission.md)
+- [0045：指定股票快照保留腾讯来源换手率](0045-requested-quote-turnover-percent.md)
 
 ## 新建格式
 
