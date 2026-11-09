@@ -44,6 +44,9 @@
 - [0030：主Paper风险按成交序列消费并保存检查点](0030-paper-risk-consumption-and-recovery.md)
 - [0031：JSON账本单次变更统一提交与失败回退](0031-json-ledger-atomic-mutations.md)
 - [0032：留存上一健康发布的源码和镜像材料](0032-retain-previous-healthy-release-assets.md)
+- [0033：API运行镜像与前端静态产物分离](0033-separate-api-runtime-from-web-assets.md)
+- [0034：Paper成交活动与委托提交分别按自身时间统计](0034-paper-fill-activity-time.md)
+- [0035：发布前分别检查应用与Docker存储可用空间](0035-production-deployment-disk-preflight.md)
 
 ## 新建格式
 

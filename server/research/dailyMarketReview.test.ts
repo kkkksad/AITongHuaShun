@@ -133,6 +133,22 @@ describe("buildDailyMarketReview", () => {
     auditEvents: [], now: new Date("2026-07-14T08:00:00.000Z"),
   });
 
+  it.each([
+    [{ strategy: " KAIROS趋势健康 ", strategyKey: "kairosTrendHealth" }, "KAIROS趋势健康"],
+    [{ strategy: " ", strategyKey: " kairosTrendHealth " }, "kairosTrendHealth"],
+  ] as const)("retains stored strategy after audit pruning: %j", (metadata, expected) => {
+    const report = reviewOrders([{ ...orders[0], ...metadata }]);
+    expect(report.trades.items[0]).toMatchObject({ strategy: expected, reasonSource: "historical-fallback" });
+  });
+
+  it("prefers the stored strategy while preserving the audit's separate decision reason", () => {
+    const report = buildDailyMarketReview({ snapshot, provider: "akshare", account, positions,
+      orders: [{ ...orders[0], strategy: "KAIROS趋势健康" }], auditEvents,
+      now: new Date("2026-07-14T08:00:00Z") });
+    expect(report.trades.items[0]).toMatchObject({ strategy: "KAIROS趋势健康",
+      reason: "流动性充足；波动受控", reasonSource: "decision-audit" });
+  });
+
   it("reports the configured execution frequency instead of a historical fixed recommendation", () => {
     const report = buildDailyMarketReview({
       snapshot, provider: "akshare", account, positions, orders: [], auditEvents: [],

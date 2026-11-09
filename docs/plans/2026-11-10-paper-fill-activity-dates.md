@@ -81,6 +81,25 @@ const complete = Number.isSafeInteger(order.filledQuantity) && order.filledQuant
 - [x] 目标三文件41项通过，保留原20项断言；完整128服务端文件1997项、TS/Vite和diff检查通过。无前端或共享字段变化，前端完整343项及页面8项沿用A/B。
 - [x] D `5112c11cad5da724e4a4d88e6c55edeeb2ccff6b`正常推送并独立部署，UTC19:33核验561文件/三健康/可信HTTPS/200与401、原20000元账户/检查点保持，归档198运行/50样本/integrity ok及世代保持；上一C版560文件/三镜像/私有导出通过。本期不存在生产订单，不声称发生实际盈亏错误。
 
+## E：订单策略归因在审计裁剪后仍可读取
+
+文件：`server/research/weeklyPaperReview.ts`、新建`weeklyPaperReview.strategyProvenance.test.ts`；`dailyMarketReview.ts`及现有测试，产品说明和0034。
+
+- [x] 最初12项新周/日案例旧版8失败/4通过；最终扩为15项，覆盖无审计、冲突、部分字段、旧字段、clientOrderId回退、不同未知名称分组、跨周入场归因和同键名称补齐。日策略优先订单名称、其次订单键、最后审计，缺理由仍明确历史回退。
+- [x] 周度优先订单策略键/名称；订单键存在但无名称时，仅审计键相同才补名称；只有名称时仅审计名称相同才补键，否则以unattributed:名称独立分组，不混合不同未知键策略。旧单保留审计/ruleChecks兼容。
+
+```ts
+const key = nonempty(order.strategyKey);
+const name = nonempty(order.strategy);
+if (key) return { strategyKey: key, strategyName: name ?? (audit.strategyKey === key ? audit.strategyName : null) };
+if (name) return { strategyKey: audit.strategyName === name ? audit.strategyKey : null, strategyName: name };
+return audit;
+```
+
+- [x] 不将当前选择策略回填旧单，不以归因补造交易理由/规则；FIFO收益归对应买入策略，成交分布归每笔自身策略。追加未知名称分组测试最初仅因断言了无关中文排序失败，改为精确集合、保留每组笔数/分离断言，最终通过。
+- [x] 最终五文件81项、完整129服务端文件2012项与TS/Vite通过。无前端/共享结构变化，前端343项及页面8项沿用A/B。
+- [ ] E独立提交、正常推送、部署并核验原账户、HTTPS/健康、归档/检查点及上一版本留存。
+
 ## 执行记录
 
 当前已确认三个只读入口仍使用createdAt归属成交；日收益重建已采用filledAt/updatedAt，本模块不重写其资金算法。生产当前零订单，不据此断言曾实际漏记成交；修复依靠受控订单案例。

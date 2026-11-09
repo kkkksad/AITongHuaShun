@@ -683,7 +683,9 @@ export function buildDailyMarketReview(
       rejectionReason: order.rejectionReason ?? null,
       createdAt: order.createdAt,
       filledAt: fillTimes.get(order) ?? null,
-      strategy: decision?.strategy ?? "历史 paper 计划",
+      strategy: (typeof order.strategy === "string" ? order.strategy.trim() : "") ||
+        (typeof order.strategyKey === "string" ? order.strategyKey.trim() : "") ||
+        (typeof decision?.strategy === "string" ? decision.strategy.trim() : "") || "历史 paper 计划",
       reason: decision?.reason ?? fallbackReason(order),
       reasonSource: decision?.reason ? "decision-audit" : "historical-fallback",
       ruleChecks,

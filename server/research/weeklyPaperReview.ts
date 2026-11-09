@@ -399,28 +399,28 @@ function isAutomaticOrder(order: OrderRecord): boolean {
   return order.clientOrderId?.startsWith("kairos-auto-paper:") === true;
 }
 
+function nonempty(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function decisionContextFromAudit(audit: AuditEvent | undefined): DecisionContext {
   const data = audit?.data;
   const explicitKey = data?.strategyKey;
   const explicitName = data?.strategy;
-  let strategyKey = typeof explicitKey === "string" && explicitKey.length > 0
-    ? explicitKey
-    : null;
+  let strategyKey = nonempty(explicitKey);
   if (!strategyKey && Array.isArray(data?.ruleChecks)) {
     for (const rule of data.ruleChecks) {
       if (typeof rule !== "string") continue;
       const match = /^strategy-route: pass \(([^)]+)\)$/.exec(rule);
       if (match?.[1]) {
-        strategyKey = match[1];
+        strategyKey = nonempty(match[1]);
         break;
       }
     }
   }
   return {
     strategyKey,
-    strategyName: typeof explicitName === "string" && explicitName.length > 0
-      ? explicitName
-      : null,
+    strategyName: nonempty(explicitName),
   };
 }
 
@@ -442,11 +442,21 @@ function decisionForOrder(
   order: OrderRecord,
   decisions: Map<string, DecisionContext>,
 ): DecisionContext {
-  return decisions.get(order.id) ??
+  const audit = decisions.get(order.id) ??
     (order.clientOrderId ? decisions.get(order.clientOrderId) : undefined) ?? {
       strategyKey: null,
       strategyName: null,
     };
+  const strategyKey = nonempty(order.strategyKey);
+  const strategyName = nonempty(order.strategy);
+  if (strategyKey) {
+    return { strategyKey, strategyName: strategyName ??
+      (audit.strategyKey === strategyKey ? audit.strategyName : null) };
+  }
+  if (strategyName) {
+    return { strategyKey: audit.strategyName === strategyName ? audit.strategyKey : null, strategyName };
+  }
+  return audit;
 }
 
 function blockerCode(reason: string): WeeklyPaperBlockerCode {
@@ -574,7 +584,7 @@ function buildClosedTrades(
 }
 
 function strategyMapKey(context: DecisionContext): string {
-  return context.strategyKey ?? "unknown";
+  return context.strategyKey ?? (context.strategyName ? `unattributed:${context.strategyName}` : "unknown");
 }
 
 function strategyName(context: DecisionContext): string {
@@ -762,6 +772,9 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
       winRate: null,
       realizedPnl: 0,
     };
+    if (context.strategyName && current.strategyName === current.strategyKey) {
+      current.strategyName = context.strategyName;
+    }
     strategyStats.set(key, current);
     return current;
   };
