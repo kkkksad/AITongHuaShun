@@ -564,6 +564,7 @@ export interface PaperTradingOperation {
   reason: string;
   ruleChecks: string[];
   strategyKey?: string;
+  tier?: "observation" | "pending-confirmation" | "executable" | "holding" | "holding-exit";
 }
 
 export interface PaperTradingPlanQualitySummary {

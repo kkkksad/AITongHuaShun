@@ -49,6 +49,13 @@ export type PaperTradingActivityMode =
   | "qualified-probe"
   | "validation-probe";
 
+export type PaperTradingCandidateTier =
+  | "observation"
+  | "pending-confirmation"
+  | "executable"
+  | "holding"
+  | "holding-exit";
+
 export interface PaperTradingOperation {
   timestamp: string;
   symbol: string;
@@ -61,6 +68,8 @@ export interface PaperTradingOperation {
   reason: string;
   ruleChecks: string[];
   strategyKey?: string;
+  /** Explain why a candidate is waiting, executable, or being held/exited. */
+  tier?: PaperTradingCandidateTier;
 }
 
 export interface PaperTradingPlanQualitySummary {
@@ -145,6 +154,14 @@ export interface PaperTradingPlan {
   qualitySummary: PaperTradingPlanQualitySummary;
   operations: PaperTradingOperation[];
   guardrails: string[];
+}
+
+function candidateTier(action: PaperTradingOperationAction): PaperTradingCandidateTier {
+  if (action === "paper-buy-plan") return "executable";
+  if (action === "paper-sell-plan") return "holding-exit";
+  if (action === "hold") return "holding";
+  if (action === "blocked") return "pending-confirmation";
+  return "observation";
 }
 
 function getChinaTradeDate(value = new Date()): string {
@@ -1466,7 +1483,10 @@ export function buildPaperTradingPlan(input: {
       minimumCommission: input.minimumCommission,
       strategyCoverage,
     }),
-    operations,
+    operations: operations.map((operation) => ({
+      ...operation,
+      tier: operation.tier ?? candidateTier(operation.action),
+    })),
     guardrails: [
       "本计划不代表真实收益，也不构成投资建议。",
       "同花顺或中信账户不得通过网页登录态、密码、Cookie 或明文 Token 接入本平台。",

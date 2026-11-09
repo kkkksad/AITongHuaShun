@@ -785,7 +785,19 @@ export default function LearningPipeline() {
                 <BarChart3 size={15} />
                 <div>
                   <strong>
-                    {operation.symbol} {operation.name} · {operation.action}
+                    {operation.symbol} {operation.name} · {({
+                      observation: "观察区",
+                      "pending-confirmation": "待确认区",
+                      executable: "可执行区",
+                      holding: "持仓区",
+                      "holding-exit": "待退出区",
+                    } as Record<string, string>)[operation.tier ?? ({
+                      "paper-buy-plan": "executable",
+                      "paper-sell-plan": "holding-exit",
+                      hold: "holding",
+                      blocked: "pending-confirmation",
+                      observe: "observation",
+                    } as Record<string, string>)[operation.action]]}
                   </strong>
                   <span>
                     {operation.strategy} · {operation.quantity} 股 · ¥{operation.estimatedNotional.toLocaleString("zh-CN")}

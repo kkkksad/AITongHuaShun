@@ -72,4 +72,10 @@ describe("paper strategy coverage mode", () => {
     const result = plan({ emptyPool: true });
     expect(result.qualitySummary.strategyCoverage.coverageMode).toBe("none");
   });
+
+  it("assigns an explicit candidate tier to every plan operation", () => {
+    const result = plan({});
+    expect(result.operations.every((operation) => operation.tier)).toBe(true);
+    expect(result.operations.find((operation) => operation.action === "paper-buy-plan")?.tier).toBe("executable");
+  });
 });

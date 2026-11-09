@@ -59,6 +59,8 @@ FastAPI + AkShare :8800
 
 AkShare Paper订单按单票来源`updatedAt`执行120秒年龄和5秒未来偏差门槛；陈旧个股只进入等待/观察，其他新鲜个股不被连坐。Mock与历史回放不使用墙钟年龄检查，详细边界见[决策0023](../decisions/0023-paper-quote-source-age-gate.md)。
 
+Paper计划操作附带候选分区：观察、待确认、可执行、持仓和待退出。该字段用于解释和页面排序，不授予成交权限；Broker仍是最终风险和撮合边界，见[决策0024](../decisions/0024-paper-candidate-tiers.md)。
+
 `server/monitoring/requestTelemetry.ts` 在每个 Fastify 应用实例内按路由模板聚合最近耗时。它最多保留 64 条路由、每路由 128 个样本，路由满时淘汰最久未更新项；只统计方法、路由模板、状态、耗时和时间，不保存查询值、请求/响应正文或凭据。`/api/system/performance` 把该窗口与当前内存行情质量和 WebSocket 状态组合，不触发外部请求。
 
 `server/broker/eastmoney/` 还包含未装配到主服务的东方财富公开行情原型。其行情提供者只读且拒绝 `live`；同目录的券商适配器仅模拟连接生命周期，所有纸面订单继续委托 `PaperBroker + RiskEngine`，不包含外部订单请求。`server/broker/tonghuashun/` 提供同花顺模拟盘纸面适配器骨架，同样只允许 `paper` 或 `sandbox`，用于后续接入同花顺模拟账户前验证连接、行情注入、风控和模拟订单事件。
