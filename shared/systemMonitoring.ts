@@ -44,6 +44,7 @@ export interface ApiPerformanceRuntime {
   marketDataProvider: string;
   realTradingEnabled: boolean;
   websocketConnections: number;
+  processResources?: ProcessResourceSnapshot;
   marketQuality: {
     state: "healthy" | "degraded" | "unusable";
     overall: number;
@@ -52,6 +53,26 @@ export interface ApiPerformanceRuntime {
     requestedSymbols: number;
     issueCount: number;
   };
+}
+
+export interface ProcessResourceSnapshot {
+  scope: "api-process";
+  observedAt: string;
+  memory: {
+    rssBytes: number;
+    heapUsedBytes: number;
+    heapTotalBytes: number;
+    externalBytes: number;
+    arrayBuffersBytes: number;
+  };
+  interval: {
+    startedAt: string;
+    endedAt: string;
+    durationMs: number;
+    cpuPercentOfOneCore: number;
+    eventLoopUtilization: number | null;
+    eventLoopDelayP95Ms: number | null;
+  } | null;
 }
 
 export interface ApiPerformanceSnapshot extends RequestTelemetrySnapshot {

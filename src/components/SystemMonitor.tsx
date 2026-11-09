@@ -16,6 +16,7 @@ import type {
 } from "../../shared/systemMonitoring";
 import { fetchApiPerformance } from "../lib/tradingApi";
 import { ResearchQueryState } from "./ResearchQueryState";
+import { ProcessResourcesPanel } from "./ProcessResourcesPanel";
 
 interface SystemMonitorContentProps {
   isFetching: boolean;
@@ -172,6 +173,8 @@ export function SystemMonitorContent({
           <small>{report.totals.inFlight} 个 API 请求在途</small>
         </div>
       </div>
+
+      <ProcessResourcesPanel resources={report.runtime.processResources} />
 
       {report.recommendations.length > 0 && (
         <div

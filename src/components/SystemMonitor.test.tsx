@@ -120,4 +120,28 @@ describe("SystemMonitor", () => {
     expect(source).toContain("staleTime: 10_000");
     expect(source).toContain("<ResearchQueryState");
   });
+  it("keeps old API responses explicit about missing process measurements", () => {
+    const html = renderToStaticMarkup(<SystemMonitorContent isFetching={false} onRefresh={() => {}} report={makeSnapshot()} />);
+    expect(html).toContain("进程资源未接入");
+    expect(html).not.toContain("CPU 0.0%");
+  });
+  it("shows memory and a warming interval without inventing CPU or delay evidence", () => {
+    const snapshot = makeSnapshot();
+    snapshot.runtime.processResources = { scope: "api-process", observedAt: "2026-11-09T20:00:00.000Z",
+      memory: { rssBytes: 134217728, heapUsedBytes: 33554432, heapTotalBytes: 67108864, externalBytes: 8388608, arrayBuffersBytes: 4194304 }, interval: null };
+    const html = renderToStaticMarkup(<SystemMonitorContent isFetching={false} onRefresh={() => {}} report={snapshot} />);
+    expect(html).toContain("128.0 MiB"); expect(html).toContain("32.0 / 64.0 MiB");
+    expect(html).toContain("等待至少一秒的统计区间");
+    expect(html).not.toContain("CPU 0.0%");
+  });
+  it("labels one-core CPU above 100%, loop evidence and window separately from server capacity", () => {
+    const snapshot = makeSnapshot();
+    snapshot.runtime.processResources = { scope: "api-process", observedAt: "2026-11-09T20:00:00.000Z",
+      memory: { rssBytes: 134217728, heapUsedBytes: 33554432, heapTotalBytes: 67108864, externalBytes: 8388608, arrayBuffersBytes: 4194304 },
+      interval: { startedAt: "2026-11-09T19:59:45.000Z", endedAt: "2026-11-09T20:00:00.000Z", durationMs: 15000,
+        cpuPercentOfOneCore: 150, eventLoopUtilization: 0.25, eventLoopDelayP95Ms: null } };
+    const html = renderToStaticMarkup(<SystemMonitorContent isFetching={false} onRefresh={() => {}} report={snapshot} />);
+    expect(html).toContain("150.0%"); expect(html).toContain("25.0%"); expect(html).toContain("单核 100%");
+    expect(html).toContain("暂无延迟样本"); expect(html).toContain("15.0 秒"); expect(html).toContain("仅 API 进程");
+  });
 });

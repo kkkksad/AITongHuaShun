@@ -524,6 +524,16 @@
   gap: 16px;
 }
 
+.system-process-resources {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.system-process-resources > .empty-copy {
+  margin: 0;
+}
+
 .system-monitor-header,
 .system-monitor-header-actions,
 .system-monitor-state,

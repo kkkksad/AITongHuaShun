@@ -51,6 +51,7 @@ import { computeDataQuality } from "./market/dataQuality";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
 import { readPaperHistoryArchive } from "./research/paperHistoryArchive";
+import { ProcessResourceMonitor } from "./monitoring/processResources";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
 import { buildCrossMarketStrategyContext } from "./research/crossMarketStrategyContext";
 import { buildCryptoMarketResearch } from "./research/cryptoMarketResearch";
@@ -311,6 +312,7 @@ export async function buildTradingApp(
   const hub = new WebSocketHub();
   const researchStore = new InMemoryResearchStore();
   const requestTelemetry = new RequestTelemetry();
+  const processResources = new ProcessResourceMonitor();
   const requestStartTimes = new WeakMap<object, number>();
   const telemetryRequests = new WeakSet<object>();
   const authConfig = options.config.AUTH_ENABLED
@@ -655,6 +657,7 @@ export async function buildTradingApp(
         marketDataProvider: system.marketDataProvider,
         realTradingEnabled: options.config.REAL_TRADING_ENABLED,
         websocketConnections: hub.connectionCount,
+        processResources: processResources.snapshot(),
         marketQuality: {
           state: quality.qualityState,
           overall: quality.score.overall,
@@ -1845,6 +1848,7 @@ export async function buildTradingApp(
   // ── Lifecycle ───────────────────────────────────────────
 
   app.addHook("onClose", async () => {
+    processResources.close();
     sessions?.clear();
     externalMarketFeatureCapture?.stop();
     paperAutoExecutor.stop();
