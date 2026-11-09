@@ -13,6 +13,7 @@ AkShare A股实时行情桥接微服务
 import asyncio
 import hashlib
 import logging
+import math
 import os
 import re
 import time
@@ -26,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import requests
 from pydantic import BaseModel, Field
+from requested_quote_cache import RequestedQuoteCache
 
 from research_cache import (
     BoundedTTLCache,
@@ -123,6 +125,9 @@ AKSHARE_EXECUTOR = ThreadPoolExecutor(
 )
 # Crypto fallbacks use plain public JSON and must not block serialized AkShare work.
 EXTERNAL_JSON_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="external-json")
+# Each requested cache admits one batch; two workers serve stocks and indices
+# independently of slow full-market/history AkShare operations.
+QUOTE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="requested-quote")
 
 
 # ── 数据模型 ──────────────────────────────────────────────
@@ -146,6 +151,8 @@ class MarketQuote(BaseModel):
 
 class QuotesResponse(BaseModel):
     quotes: list[MarketQuote]
+    source: str | None = None
+    warning: str | None = None
 
 
 class StockSearchItem(BaseModel):
@@ -705,10 +712,8 @@ class QuoteCache:
         return results
 
     async def search(self, query: str, limit: int) -> list[StockSearchItem]:
-        if self._data and self._needs_refresh():
+        if self._needs_refresh():
             self._schedule_refresh()
-        elif not self._data:
-            await self.refresh()
         return rank_stock_matches(list(self._data.values()), query, limit)
 
     @property
@@ -949,7 +954,7 @@ def _tencent_symbol(symbol: str) -> str:
 def _parse_tencent_number(value: object, default: float = 0.0) -> float:
     try:
         parsed = float(str(value).strip())
-        return parsed if pd.notna(parsed) else default
+        return parsed if math.isfinite(parsed) else default
     except (TypeError, ValueError):
         return default
 
@@ -981,17 +986,20 @@ def fetch_tencent_a_share_dataframe(symbols: tuple[str, ...], source: str):
     }
     session = requests.Session()
     session.trust_env = False
-    response = session.get(
-        TENCENT_QUOTE_URL.format(symbols=",".join(requested)),
-        headers={
-            "Accept": "text/plain, */*",
-            "Referer": "https://gu.qq.com/",
-            "User-Agent": "Mozilla/5.0",
-        },
-        timeout=8,
-    )
-    response.raise_for_status()
-    payload = response.content.decode("gbk", errors="replace")
+    try:
+        response = session.get(
+            TENCENT_QUOTE_URL.format(symbols=",".join(requested)),
+            headers={
+                "Accept": "text/plain, */*",
+                "Referer": "https://gu.qq.com/",
+                "User-Agent": "Mozilla/5.0",
+            },
+            timeout=8,
+        )
+        response.raise_for_status()
+        payload = response.content.decode("gbk", errors="replace")
+    finally:
+        session.close()
     rows: list[dict[str, object]] = []
 
     for match in re.finditer(r'v_([a-z]+\d{6})="([^"]*)";', payload):
@@ -1032,6 +1040,27 @@ def fetch_tencent_a_share_spot_dataframe():
 def fetch_tencent_a_share_index_dataframe():
     index_symbols = tuple(metadata[0] for metadata in A_SHARE_INDEX_WATCHLIST.values())
     return fetch_tencent_a_share_dataframe(index_symbols, "腾讯指数行情")
+
+
+async def fetch_requested_quotes(symbols: tuple[str, ...], *, indices: bool = False):
+    provider_symbols = tuple(A_SHARE_INDEX_WATCHLIST[s][0] for s in symbols) if indices else symbols
+    loop = asyncio.get_running_loop()
+    frame = await loop.run_in_executor(
+        QUOTE_EXECUTOR, fetch_tencent_a_share_dataframe, provider_symbols, "腾讯指定行情",
+    )
+    parser = IndexCache() if indices else QuoteCache()
+    parser._parse_dataframe(frame)
+    result = {s: q for s, q in parser._data.items() if s in symbols}
+    for quote in result.values():
+        quote.tradable = not indices and bool(quote.updatedAt) and quote.volume > 0
+    return result
+
+
+requested_stock_cache = RequestedQuoteCache(fetch_requested_quotes, ttl_seconds=CACHE_TTL_SEC)
+requested_index_cache = RequestedQuoteCache(
+    lambda symbols: fetch_requested_quotes(symbols, indices=True), ttl_seconds=CACHE_TTL_SEC,
+    max_entries=32, max_batch=32,
+)
 
 
 def fetch_a_share_index_history_dataframe(
@@ -2537,18 +2566,8 @@ async def build_history_response(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """启动时预热缓存。"""
-    logger.info("AkShare 行情桥接服务启动，预热行情缓存...")
-    try:
-        await cache.refresh()
-        logger.info("初始行情加载完成，共 %d 只标的", cache.count)
-    except Exception as e:
-        logger.error("初始行情加载失败: %s", e)
-    try:
-        await index_cache.refresh()
-        logger.info("初始指数行情加载完成，共 %d 个指数", index_cache.count)
-    except Exception as e:
-        logger.error("初始指数行情加载失败: %s", e)
+    """Discovery warms on demand; service readiness does not wait for upstreams."""
+    logger.info("AkShare 行情桥接服务启动；指定行情独立读取，全市场搜索按需加载")
     yield
     logger.info("服务关闭")
 
@@ -2612,6 +2631,11 @@ async def health():
         else round(index_cache_age, 1),
         "lastStockError": cache.last_error,
         "lastIndexError": index_cache.last_error,
+        "requestedQuotes": {
+            "source": "tencent-quote-text",
+            "stocks": requested_stock_cache.stats(),
+            "indices": requested_index_cache.stats(),
+        },
         "researchCache": {
             "entries": research_cache_stats["entries"],
             "maxEntries": research_cache_stats["max_entries"],
@@ -2658,13 +2682,21 @@ async def get_quotes(
     if len(symbol_list) > 100:
         raise HTTPException(status_code=400, detail="单次最多查询 100 只标的")
 
+    if any(re.fullmatch(r"\d{6}", s) is None for s in symbol_list):
+        raise HTTPException(status_code=400, detail="symbols 必须是 6 位 A 股代码")
+
     try:
-        quotes = await cache.get_quotes(symbol_list)
+        quotes_by_symbol = await requested_stock_cache.get(tuple(symbol_list))
+        quotes = list(quotes_by_symbol.values())
     except Exception as e:
         logger.error("获取行情失败: %s", e)
         raise HTTPException(status_code=502, detail=f"行情数据获取失败: {e}")
 
-    return QuotesResponse(quotes=quotes)
+    return QuotesResponse(
+        quotes=quotes, source="tencent-quote-text",
+        warning=f"指定行情尚未完整：请求 {len(set(symbol_list))} 只，取得 {len(quotes)} 只。"
+        if len(quotes) < len(set(symbol_list)) else None,
+    )
 
 
 @app.get("/api/market/indices", response_model=QuotesResponse)
@@ -2682,13 +2714,22 @@ async def get_indices(
     if len(symbol_list) > 50:
         raise HTTPException(status_code=400, detail="单次最多查询 50 个指数")
 
+    symbol_list = [normalize_index_symbol(s) for s in symbol_list]
+    if any(s not in A_SHARE_INDEX_WATCHLIST for s in symbol_list):
+        raise HTTPException(status_code=400, detail="symbols 必须来自受控 A 股指数观察池")
+
     try:
-        quotes = await index_cache.get_indices(symbol_list)
+        quotes_by_symbol = await requested_index_cache.get(tuple(symbol_list))
+        quotes = list(quotes_by_symbol.values())
     except Exception as e:
         logger.error("获取指数行情失败: %s", e)
         raise HTTPException(status_code=502, detail=f"指数行情数据获取失败: {e}")
 
-    return QuotesResponse(quotes=quotes)
+    return QuotesResponse(
+        quotes=quotes, source="tencent-quote-text",
+        warning=f"指定指数行情尚未完整：请求 {len(set(symbol_list))} 个，取得 {len(quotes)} 个。"
+        if len(quotes) < len(set(symbol_list)) else None,
+    )
 
 
 @app.get("/api/market/index-history", response_model=HistoricalBarsResponse)
@@ -2751,6 +2792,8 @@ async def search_stocks(
         source="a-share-spot-cache",
         fetchedAt=fetched_at,
         items=items,
+        warning="全市场名称搜索缓存预热中，请稍后重试；指定代码行情独立读取。"
+        if not items and cache.count == 0 else None,
     )
 
 

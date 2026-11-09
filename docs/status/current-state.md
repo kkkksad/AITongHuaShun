@@ -2,11 +2,15 @@
 
 **核对日期：** 2026-11-10（北京时间）
 
-报价时间语义修复已通过Linux Python132项、完整131服务端文件2050项、目标80项与TS/Vite，待发布：Python与HTTP均不再以抓取/接纳时间补齐未知来源时间，观察价格保留且不可交易，其他有时间标的独立处理。初始Python15项旧版13失败、HTTP7项旧版6失败；下一步指定观察池独立快通道，见[0037](../decisions/0037-quote-source-time-is-not-fetch-time.md)与[模块17](../plans/2026-11-10-quote-time-and-requested-polling.md)。
+指定行情独立通道已通过完整Linux Python154项，待发布：股票/指数各一在途、独立两线程，逐标的有界正负TTL/LRU、取消/超时不重复提交；按实际腾讯来源时间返回，零量只观察。全市场名称搜索按需后台预热，启动不等待上游，健康接口有计数。原6项接口回归全失败、冷搜索先超时，新增缓存9项及历史双槽占满等最终通过；见[0038](../decisions/0038-requested-quotes-independent-of-discovery-and-history.md)与[模块17](../plans/2026-11-10-quote-time-and-requested-polling.md)。
+
+模块17A `e47a909`已推送部署、UTC20:15核验572文件/三健康/HTTPS/原账户/检查点/归档201运行59样本与世代及上一A版材料。
+
+报价时间语义修复已通过Linux Python132项、完整131服务端文件2050项、目标80项与TS/Vite：Python与HTTP均不再以抓取/接纳时间补齐未知来源时间，观察价格保留且不可交易，其他有时间标的独立处理。初始Python15项旧版13失败、HTTP7项旧版6失败；下一步指定观察池独立快通道，见[0037](../decisions/0037-quote-source-time-is-not-fetch-time.md)与[模块17](../plans/2026-11-10-quote-time-and-requested-polling.md)。
 
 UTC20:10已通过`git ls-remote`实际核对GitHub分支指向`8ab26f4`，上一项同步缺口已经恢复。
 
-真实策略历史证据入口`8ab26f4`已部署，UTC20:02核验569文件/三健康/HTTPS/原账户/检查点、归档200运行56样本与世代及上一E版材料；GitHub网络重置待继续同步。完整130服务端文件2043项、目标37项与TS/Vite通过：报告/快照时间上限、完整日线、请求股票/实际来源/qfq、量价和重复校验均先于300日门槛；零量只估值，17固定策略/三窗口/费用保持。最初24项旧版21失败，最终31项，见[决策0036](../decisions/0036-real-strategy-history-evidence-boundary.md)和[模块16](../plans/2026-11-10-real-strategy-history-evidence.md)。
+真实策略历史证据入口`8ab26f4`已部署，UTC20:02核验569文件/三健康/HTTPS/原账户/检查点、归档200运行56样本与世代及上一E版材料；UTC20:10已核对GitHub同步。完整130服务端文件2043项、目标37项与TS/Vite通过：报告/快照时间上限、完整日线、请求股票/实际来源/qfq、量价和重复校验均先于300日门槛；零量只估值，17固定策略/三窗口/费用保持。最初24项旧版21失败，最终31项，见[决策0036](../decisions/0036-real-strategy-history-evidence-boundary.md)和[模块16](../plans/2026-11-10-real-strategy-history-evidence.md)。
 
 订单持久策略归因`246ebf5`已推送部署、UTC19:49核验565文件/三健康/HTTPS/原账户/检查点和归档世代及上一C1版材料。完整129服务端文件2012项、目标81项及TS/Vite通过：日/周优先订单策略、旧单兼容审计，部分字段仅身份匹配时补齐，不同未知键名称独立分组；跨周FIFO归买入策略，理由不由名称补造。最初12项新增旧版8失败，最终15项，见[模块15E](../plans/2026-11-10-paper-fill-activity-dates.md)。
 

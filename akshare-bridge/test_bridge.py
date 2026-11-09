@@ -87,6 +87,112 @@ def clear_history_cache_between_tests():
     research_cache.clear()
 
 
+class TestRequestedQuoteRouting:
+    @staticmethod
+    def frame(symbol):
+        return pd.DataFrame([{
+            "代码": symbol, "名称": "指定报价", "最新价": 100,
+            "昨收": 99, "涨跌幅": 1, "成交量": 1000,
+            "更新时间": "20261109161440",
+        }])
+
+    @pytest.mark.parametrize("symbols", ["600519", "600519,600519", "600519,300750"])
+    def test_stock_request_uses_bounded_tencent_read_without_full_market(self, symbols):
+        import main
+        requested = getattr(main, "requested_stock_cache", None)
+        if requested is not None:
+            requested.clear()
+        with patch("main.cache.get_quotes", new=AsyncMock(return_value=[])) as broad:
+            with patch("main.fetch_tencent_a_share_dataframe", return_value=self.frame("sh600519")) as direct:
+                response = client.get(f"/api/market/quotes?symbols={symbols}")
+        assert response.status_code == 200
+        assert [q["symbol"] for q in response.json()["quotes"]] == ["600519"]
+        assert response.json()["quotes"][0]["updatedAt"] == "2026-11-09T08:14:40.000Z"
+        assert response.json()["source"] == "tencent-quote-text"
+        assert bool(response.json()["warning"]) is ("300750" in symbols)
+        assert direct.call_count == 1
+        assert direct.call_args.args[0] == tuple(dict.fromkeys(symbols.split(",")))
+        broad.assert_not_called()
+
+    def test_index_request_has_independent_namespace_and_source_time(self):
+        import main
+        requested = getattr(main, "requested_index_cache", None)
+        if requested is not None:
+            requested.clear()
+        with patch("main.index_cache.get_indices", new=AsyncMock(return_value=[])) as broad:
+            with patch("main.fetch_tencent_a_share_dataframe", return_value=self.frame("sh000001")) as direct:
+                response = client.get("/api/market/indices?symbols=SH000001")
+        assert response.status_code == 200
+        quote = response.json()["quotes"][0]
+        assert quote["symbol"] == "SH000001"
+        assert quote["tradable"] is False
+        assert quote["updatedAt"] == "2026-11-09T08:14:40.000Z"
+        assert direct.call_args.args[0] == ("sh000001",)
+        broad.assert_not_called()
+
+    @pytest.mark.parametrize("path", ["quotes?symbols=600519,bad", "indices?symbols=600519"])
+    def test_invalid_or_uncontrolled_symbols_are_rejected_before_read(self, path):
+        with patch("main.cache.get_quotes", new=AsyncMock(return_value=[])):
+            with patch("main.index_cache.get_indices", new=AsyncMock(return_value=[])):
+                with patch("main.fetch_tencent_a_share_dataframe") as fetch:
+                    response = client.get("/api/market/" + path)
+        assert response.status_code == 400
+        fetch.assert_not_called()
+
+    def test_history_workers_cannot_block_requested_quote_worker(self):
+        import main
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        async def scenario():
+            gate = threading.Event()
+            started = threading.Barrier(3)
+            def history_work():
+                started.wait(timeout=2)
+                gate.wait(timeout=2)
+            pool = ThreadPoolExecutor(max_workers=2)
+            loop = asyncio.get_running_loop()
+            work = [loop.run_in_executor(pool, history_work) for _ in range(2)]
+            try:
+                await asyncio.to_thread(started.wait, 2)
+                with patch("main.fetch_tencent_a_share_dataframe", return_value=self.frame("sh600519")):
+                    quotes = await asyncio.wait_for(main.fetch_requested_quotes(("600519",)), timeout=0.5)
+                assert quotes["600519"].price == 100
+                assert not gate.is_set()
+            finally:
+                gate.set()
+                await asyncio.gather(*work)
+                pool.shutdown()
+        asyncio.run(scenario())
+
+    def test_readiness_does_not_wait_for_full_market_sources(self):
+        import main
+        async def scenario():
+            with patch("main.cache.refresh", new=AsyncMock()) as stock:
+                with patch("main.index_cache.refresh", new=AsyncMock()) as index:
+                    async with main.lifespan(main.app):
+                        assert (await main.health())["status"] == "ok"
+                    stock.assert_not_called()
+                    index.assert_not_called()
+        asyncio.run(scenario())
+
+    def test_zero_volume_quote_stays_read_only_and_unrequested_quotes_are_dropped(self):
+        import main
+        frame = pd.DataFrame([
+            {"代码": "sh600519", "最新价": 100, "昨收": 99, "成交量": 0, "更新时间": "20261109161440"},
+            {"代码": "sz300750", "最新价": 50, "昨收": 49, "成交量": 1000, "更新时间": "20261109161440"},
+        ])
+        with patch("main.fetch_tencent_a_share_dataframe", return_value=frame):
+            quotes = asyncio.run(main.fetch_requested_quotes(("600519",)))
+        assert set(quotes) == {"600519"}
+        assert quotes["600519"].price == 100
+        assert quotes["600519"].tradable is False
+
+    @pytest.mark.parametrize("number", [float("inf"), float("-inf"), float("nan")])
+    def test_non_finite_provider_numbers_do_not_poison_the_whole_batch(self, number):
+        import main
+        assert main._parse_tencent_number(number) == 0
+
 class TestHealthEndpoint:
     def test_health_returns_ok(self):
         response = client.get("/health")
@@ -139,6 +245,28 @@ class TestQuotesEndpoint:
 
 
 class TestStockSearchEndpoint:
+    def test_cold_discovery_returns_promptly_and_shares_background_warmup(self):
+        async def scenario():
+            local_cache = QuoteCache()
+            gate = asyncio.Event()
+            async def slow_refresh():
+                await gate.wait()
+                local_cache._data["600519"] = self.quote("600519", "贵州茅台")
+            with patch.object(local_cache, "refresh", new=AsyncMock(side_effect=slow_refresh)) as refresh:
+                try:
+                    assert await asyncio.wait_for(local_cache.search("茅台", 8), timeout=0.05) == []
+                    await asyncio.sleep(0)
+                    assert await local_cache.search("茅台", 8) == []
+                    assert refresh.call_count == 1
+                    gate.set()
+                    await local_cache._refresh_task
+                    assert (await local_cache.search("茅台", 8))[0].symbol == "600519"
+                finally:
+                    gate.set()
+                    if local_cache._refresh_task is not None:
+                        await local_cache._refresh_task
+        asyncio.run(scenario())
+
     @staticmethod
     def quote(symbol: str, name: str) -> MarketQuote:
         return MarketQuote(

@@ -16,7 +16,7 @@ RUN pip install \
     -r requirements.txt
 
 # 复制运行时源码。main.py 的研究缓存与历史调度器依赖独立模块。
-COPY main.py research_cache.py ./
+COPY main.py research_cache.py requested_quote_cache.py ./
 
 # 暴露端口
 EXPOSE 8800
