@@ -577,7 +577,7 @@ export default function LearningPipeline() {
               </ul>
             </div>
           )}
-          <p className="empty-copy">委托按提交日统计，成交和费用按实际成交日统计；以下为复盘日委托与成交的合并记录，状态以当前记录为准，时间均为北京时间。旧成交记录以最后更新时间兼容。</p>
+          <p className="empty-copy">委托按提交日统计，成交和费用按实际成交日统计，均截至报告生成时刻；以下为复盘日委托与成交的合并记录，状态以当前记录为准，时间均为北京时间。旧成交记录以最后更新时间兼容。</p>
           <div className="learning-run-list">
             {(dailyReview?.trades.items ?? []).map((trade) => (
               <article key={trade.orderId}>
@@ -594,6 +594,9 @@ export default function LearningPipeline() {
                     委托：{reviewOrderTime(trade.createdAt)}
                     {trade.status === "filled" && ` · 成交：${reviewOrderTime(trade.filledAt)}`}
                   </span>
+                  {trade.status === "filled" && trade.fillIncludedInReview === false && (
+                    <span>该成交记录未计入本日统计，请核对成交日期与报告时刻。</span>
+                  )}
                 </div>
               </article>
             ))}

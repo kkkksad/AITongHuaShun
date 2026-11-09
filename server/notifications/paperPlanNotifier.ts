@@ -142,6 +142,7 @@ export interface PaperPlanExecutionSummary {
   executedOrders: PaperPlanExecutedOrder[];
   unfilledOrders: PaperPlanUnfilledOrder[];
   unresolvedFillTimes?: number;
+  excludedFutureFills?: number;
 }
 
 export interface PaperPlanExecutedOrder {
@@ -301,19 +302,28 @@ export function summarizePaperOrders(
   orders: OrderRecord[],
   tradingDate: string,
   auditEvents: AuditEvent[] = [],
+  asOf: Date = new Date(),
 ): PaperPlanExecutionSummary {
-  const today = orders.filter((order) => chinaDate(order.createdAt) === tradingDate);
+  const cutoff = asOf.getTime();
+  if (!Number.isFinite(cutoff)) throw new Error("Invalid notification report clock");
+  const observed = (value: string) => Number.isFinite(Date.parse(value)) && Date.parse(value) <= cutoff;
+  const today = orders.filter((order) => observed(order.createdAt) && chinaDate(order.createdAt) === tradingDate);
   const filled = orders.filter((order) => {
     const time = getOrderFillTime(order);
-    return time !== null && chinaDate(time) === tradingDate;
+    return time !== null && observed(time) && !(Date.parse(order.createdAt) > cutoff) && chinaDate(time) === tradingDate;
   });
+  const excludedFutureFills = orders.filter((order) => {
+    const time = getOrderFillTime(order);
+    return time !== null && Date.parse(time) > cutoff && chinaDate(time) === tradingDate;
+  }).length;
   const unresolvedFillTimes = orders.filter(
-    (order) => order.status === "filled" && getOrderFillTime(order) === null,
+    (order) => order.status === "filled" && getOrderFillTime(order) === null && !(Date.parse(order.createdAt) > cutoff),
   ).length;
   const roundMoney = (value: number) => Number(value.toFixed(2));
   const decisionByOrderId = new Map(
     auditEvents
       .filter((event) => (
+        observed(event.timestamp) &&
         event.action === "paper-auto-execution.decision" &&
         typeof event.data?.orderId === "string"
       ))
@@ -345,6 +355,7 @@ export function summarizePaperOrders(
 
   return {
     ...(unresolvedFillTimes > 0 ? { unresolvedFillTimes } : {}),
+    ...(excludedFutureFills > 0 ? { excludedFutureFills } : {}),
     filledOrders: filled.length,
     rejectedOrders: today.filter((order) => order.status === "rejected").length,
     pendingOrders: today.filter((order) => (
@@ -680,9 +691,13 @@ function marketHtml(context: PaperPlanNotificationContext): string {
 }
 
 function fillTimeWarningHtml(execution: PaperPlanExecutionSummary): string {
-  return (execution.unresolvedFillTimes ?? 0) > 0
+  const unknown = (execution.unresolvedFillTimes ?? 0) > 0
     ? `<p>${execution.unresolvedFillTimes} 笔保留成交记录的时间无法确认，未计入本日成交统计；不能据此确认零成交。</p>`
     : "";
+  const future = (execution.excludedFutureFills ?? 0) > 0
+    ? `<p>${execution.excludedFutureFills} 笔保留成交记录晚于报告时刻，未计入本日成交统计。</p>`
+    : "";
+  return unknown + future;
 }
 
 export function formatPaperPlanMessage(

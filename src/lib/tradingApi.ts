@@ -942,6 +942,7 @@ export interface DailyMarketReview {
       rejectionReason: string | null;
       createdAt: string;
       filledAt?: string | null;
+      fillIncludedInReview?: boolean;
       strategy: string;
       reason: string;
       reasonSource: "decision-audit" | "historical-fallback";

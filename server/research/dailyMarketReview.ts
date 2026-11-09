@@ -55,6 +55,7 @@ export interface DailyMarketReviewTrade {
   rejectionReason: string | null;
   createdAt: string;
   filledAt: string | null;
+  fillIncludedInReview: boolean;
   strategy: string;
   reason: string;
   reasonSource: "decision-audit" | "historical-fallback";
@@ -589,12 +590,16 @@ export function buildDailyMarketReview(
   input: DailyMarketReviewInput,
 ): DailyMarketReview {
   const now = input.now ?? new Date();
+  const cutoff = now.getTime();
+  if (!Number.isFinite(cutoff)) throw new Error("Invalid daily report clock");
+  const observed = (value: string) => Number.isFinite(Date.parse(value)) && Date.parse(value) <= cutoff;
+  const auditEvents = input.auditEvents.filter((event) => observed(event.timestamp));
   const { tradingDate, dateBasis } = resolveReviewTradingDate(now);
   const snapshotTimestamp = Date.parse(input.snapshot.marketTime);
   const snapshotTradingDate = Number.isFinite(snapshotTimestamp)
     ? getChinaDateKey(new Date(snapshotTimestamp))
     : null;
-  const marketEvidenceStatus = snapshotTradingDate === null
+  const marketEvidenceStatus = snapshotTradingDate === null || snapshotTimestamp > cutoff
     ? "unknown"
     : snapshotTradingDate === tradingDate
       ? "matched"
@@ -604,9 +609,9 @@ export function buildDailyMarketReview(
     ? observedMarketAssessment
     : {
       tone: "insufficient-data",
-      summary: snapshotTradingDate
-        ? `行情快照日期 ${snapshotTradingDate} 与复盘日期 ${tradingDate} 不一致，不使用旧快照代替当日行情。`
-        : `行情快照时间无法解析，不使用该快照代替 ${tradingDate} 行情。`,
+      summary: marketEvidenceStatus === "unknown"
+        ? `行情快照时间无法确认或晚于报告时刻，不使用该快照代替 ${tradingDate} 行情。`
+        : `行情快照日期 ${snapshotTradingDate} 与复盘日期 ${tradingDate} 不一致，不使用旧快照代替当日行情。`,
       breadth: {
         total: 0,
         advancers: 0,
@@ -624,15 +629,16 @@ export function buildDailyMarketReview(
   } = marketAssessment.breadth;
   const quoteMap = new Map(input.snapshot.quotes.map((quote) => [quote.symbol, quote]));
   const positionMap = new Map(input.positions.map((position) => [position.symbol, position]));
-  const decisions = decisionAuditMap(input.auditEvents);
+  const decisions = decisionAuditMap(auditEvents);
   const dailyOrders = input.orders
-    .filter((order) => Number.isFinite(Date.parse(order.createdAt)) &&
+    .filter((order) => observed(order.createdAt) &&
       getChinaDateKey(new Date(order.createdAt)) === tradingDate)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const fillTimes = new Map(input.orders.map((order) => [order, getOrderFillTime(order)]));
   const filled = input.orders.filter((order) => {
     const time = fillTimes.get(order);
-    return time !== null && time !== undefined && getChinaDateKey(new Date(time)) === tradingDate;
+    return time !== null && time !== undefined && Date.parse(time) <= cutoff &&
+      !(Date.parse(order.createdAt) > cutoff) && getChinaDateKey(new Date(time)) === tradingDate;
   });
   const dailySubmissionSet = new Set(dailyOrders);
   const dailyFillSet = new Set(filled);
@@ -644,8 +650,12 @@ export function buildDailyMarketReview(
     .filter((order) => dailySubmissionSet.has(order) || dailyFillSet.has(order))
     .sort((left, right) => activityTime(left) - activityTime(right));
   const unresolvedFillTimes = input.orders.filter(
-    (order) => order.status === "filled" && fillTimes.get(order) === null,
+    (order) => order.status === "filled" && fillTimes.get(order) === null && !(Date.parse(order.createdAt) > cutoff),
   ).length;
+  const futureFills = input.orders.filter((order) => {
+    const time = fillTimes.get(order);
+    return time != null && Date.parse(time) > cutoff;
+  });
   const calculatedReviewDayPerformance = calculateReviewDayPerformance({
     account: input.account,
     positions: input.positions,
@@ -653,7 +663,8 @@ export function buildDailyMarketReview(
     tradingDate,
     quoteMap,
   });
-  const reviewDayPerformance = marketEvidenceStatus === "matched"
+  const accountEvidenceInCutoff = observed(input.account.updatedAt) && futureFills.length === 0;
+  const reviewDayPerformance = marketEvidenceStatus === "matched" && accountEvidenceInCutoff
     ? calculatedReviewDayPerformance
     : {
       dailyPnl: null,
@@ -683,6 +694,7 @@ export function buildDailyMarketReview(
       rejectionReason: order.rejectionReason ?? null,
       createdAt: order.createdAt,
       filledAt: fillTimes.get(order) ?? null,
+      fillIncludedInReview: dailyFillSet.has(order),
       strategy: (typeof order.strategy === "string" ? order.strategy.trim() : "") ||
         (typeof order.strategyKey === "string" ? order.strategyKey.trim() : "") ||
         (typeof decision?.strategy === "string" ? decision.strategy.trim() : "") || "历史 paper 计划",
@@ -701,7 +713,7 @@ export function buildDailyMarketReview(
     account: input.account,
     dailyOrders,
     dailyFills: filled,
-    auditEvents: input.auditEvents,
+    auditEvents,
   });
   const cashRatio = input.account.equity > 0
     ? input.account.cash / input.account.equity
@@ -754,6 +766,9 @@ export function buildDailyMarketReview(
   if (unresolvedFillTimes > 0) {
     issues.push(`${unresolvedFillTimes} 笔保留成交记录的时间无法确认，未计入本日成交统计；不能据此确认零成交。`);
   }
+  if (futureFills.length > 0) {
+    issues.push(`${futureFills.length} 笔保留成交记录晚于报告时刻，未计入本日成交与入场结论；当前账本不能用于回放该时刻的资金。`);
+  }
 
   if (rejected.some((order) => order.rejectionReason?.includes("资金不足"))) {
     issues.push("出现资金不足拒单，需要结合当时可用现金、挂单占用、价格和费用核对，不能仅凭拒单推断代码根因。");
@@ -769,7 +784,9 @@ export function buildDailyMarketReview(
   if (reviewDayPerformance.performanceBasis === "unavailable") {
     issues.push(marketEvidenceStatus !== "matched"
       ? `行情快照未覆盖复盘日 ${tradingDate}，无法重建当日盘面与盯市收益；旧快照和累计收益均未用于替代。`
-      : `缺少 ${reviewDayPerformance.missingPreviousCloseSymbols.join("、")} 的昨收，无法重建复盘日盯市收益；累计收益未被冒充为当日收益。`);
+      : !accountEvidenceInCutoff
+        ? "资金或成交证据晚于报告时刻或时间无法确认，当日盯市收益不可用；未将当前资金倒推为历史资金。"
+        : `缺少 ${reviewDayPerformance.missingPreviousCloseSymbols.join("、")} 的昨收，无法重建复盘日盯市收益；累计收益未被冒充为当日收益。`);
   }
   if (missingDecisionReasons > 0) {
     issues.push(`${missingDecisionReasons} 笔历史订单缺少逐笔策略理由，旧记录只能复核成交事实。`);

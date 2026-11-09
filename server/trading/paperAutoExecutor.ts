@@ -909,6 +909,7 @@ export class PaperAutoExecutor {
           this.options.system.broker.getOrders(10_000),
           plan.tradingDate,
           this.options.system.store.listAudit(10_000),
+          this.now(),
         );
         await this.options.planNotifier?.notify(plan, {
           account,
@@ -1061,6 +1062,7 @@ export class PaperAutoExecutor {
           this.options.system.broker.getOrders(10_000),
           plan.tradingDate,
           this.options.system.store.listAudit(10_000),
+          this.now(),
         ),
         policy,
         executionEnabled: this.options.enabled,
@@ -1180,6 +1182,7 @@ export class PaperAutoExecutor {
                 this.options.system.broker.getOrders(10_000),
                 plan.tradingDate,
                 this.options.system.store.listAudit(10_000),
+                this.now(),
               ),
               marketContext: {
                 ...notificationContext.marketContext,
