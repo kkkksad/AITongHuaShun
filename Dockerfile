@@ -30,8 +30,8 @@ RUN find /usr/share/nginx/html -type d -exec chmod 0755 {} + \
 FROM node:20-alpine AS production
 WORKDIR /app
 
-# Copy built artifacts and dependencies
-COPY --from=builder /app/dist ./dist
+# The API serves REST/WebSocket only. Keep frontend assets in the web image so
+# a UI-only change does not replace the API runtime and discard its sessions.
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/shared ./shared
 COPY --from=builder /app/scripts ./scripts
@@ -43,7 +43,7 @@ ENV NODE_ENV=production
 ENV API_HOST=0.0.0.0
 ENV API_PORT=3001
 
-EXPOSE 3001 4173
+EXPOSE 3001
 
 # Default command: start the trading API server
 CMD ["./node_modules/.bin/tsx", "server/index.ts"]

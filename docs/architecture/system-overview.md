@@ -24,6 +24,8 @@ JSON公开状态变更按[决策0031](../decisions/0031-json-ledger-atomic-mutat
 
 部署源码与镜像材料按[决策0032](../decisions/0032-retain-previous-healthy-release-assets.md)留存：健康运行标签匹配后打包源码、绑定镜像ID/运行指纹，健康发布后原子切换上一槽位；失败不改旧指针，正常只保留一份上一材料。runtime与私有配置不进源码归档，资金仍由原账本保留；新发布器不执行宿主全局prune，不把同盘源码留存当数据库灾备。
 
+API运行镜像只携带server/shared/scripts及现有依赖，dist仅进入Nginx web；完整TS/Vite仍在builder验证。纯前端产物变化可复用API运行指纹以保留会话与内存缓存，服务配置变化仍由Compose处理，见[决策0033](../decisions/0033-separate-api-runtime-from-web-assets.md)。
+
 `RiskPanel`只在挂载并取得账户/限额时，使用`paper-risk-state`独立查询读取`/api/risk/state`；15秒轮询、10秒stale、透传AbortSignal，未进入全局bootstrap，也不触发研究或执行。账户重置清除该缓存，认证继续使用App全业务查询取消/清除边界。实际风险日期和最近评估、未知账本/证据、失败旧快照明确展示；日停止线仅使用当前北京日期的`tradingDayPerformance`，不从累计盈亏回退。冷却恢复仍由服务端判断，浏览器不计算订单许可。
 
 WebSocket每次认证握手除市场/账户/持仓外还发送`orders.snapshot`最近50笔，等同浏览器bootstrap的显式订单读取上限。初始化/刷新按[决策0016](../decisions/0016-bootstrap-realtime-read-windows.md)合并本轮已收到的更新，首读失败保留未落地事件；旧生命周期/socket不能回写。缺完整订单快照时兼容增量有界缓冲，溢出仅补读一次并诚实显示失败，不提供服务端绝对全序保证。

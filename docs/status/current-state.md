@@ -2,7 +2,9 @@
 
 **核对日期：** 2026-11-10（北京时间）
 
-上一发布留存工具实现、Linux46项验证通过待独立安装：健康源码/镜像匹配后留存，成功原子切换、失败保留旧份、同版不轮换，源码排除私有.env与runtime；宿主全局prune从新发布器移除。首次安装仍由旧发布器运行，不能宣称已生成previous，后续发布再核验。详见[决策0032](../decisions/0032-retain-previous-healthy-release-assets.md)和[服务器计划](../plans/2026-11-10-server-release-retention.md)。
+API/web产物分离已通过真实隔离四镜像构建待发布：仅CSS变化时API运行指纹相同、web不同；无dist的API健康/认证/账户/风险和认证配置工具通过，未挂载生产资料或改变production标签。镜像减少346025字节，主要收益为减少无关API重启，不能解释为同量内存或独占磁盘节省。见[决策0033](../decisions/0033-separate-api-runtime-from-web-assets.md)与[模块12](../plans/2026-11-10-server-release-retention.md)。
+
+上一发布留存工具`7e4b1c1`已独立安装、UTC18:30核验553文件/三健康/HTTPS/匿名保护及原账户，三个容器保持。Linux46项验证通过：健康源码/镜像匹配后留存，成功原子切换、失败保留旧份、同版不轮换，源码排除私有.env与runtime；宿主全局prune从新发布器移除。首次安装仍由旧发布器运行，不能宣称已生成previous，后续发布再核验。详见[决策0032](../decisions/0032-retain-previous-healthy-release-assets.md)和[服务器计划](../plans/2026-11-10-server-release-retention.md)。
 
 只读风控页`2857f18`已于UTC18:10发布核验：读取实际熔断/检查点，日停止线改用当日基线、累计结果另列；缺状态、旧日期、超过2分钟无评估、读取失败均明确提示，展示含费完整周期和缺证据数。18项新页面行为与API/账户重置缓存回归通过，完整51前端文件343项、TS/Vite通过；隔离Chrome三宽度/四状态无页面横溢、表格独立滚动及刷新通过。线上549文件/三健康/HTTPS/匿名保护、原账户及检查点和归档世代保持，未触发生产订单或风险重置。见[模块14](../plans/2026-11-10-risk-panel-actual-state.md)。
 

@@ -18,4 +18,14 @@ describe("production web image permissions", () => {
     expect(dockerfile).toContain("find /usr/share/nginx/html -type d -exec chmod 0755");
     expect(dockerfile).toContain("find /usr/share/nginx/html -type f -exec chmod 0644");
   });
+
+  it("keeps frontend assets out of the API runtime image", () => {
+    const dockerfile = readFileSync(resolve(process.cwd(), "Dockerfile"), "utf8");
+    const production = dockerfile.slice(dockerfile.indexOf("FROM node:20-alpine AS production"));
+    expect(production).not.toContain("COPY --from=builder /app/dist ./dist");
+    expect(production).toContain("COPY --from=builder /app/server ./server");
+    expect(production).toContain("COPY --from=builder /app/shared ./shared");
+    expect(production).not.toContain("EXPOSE 3001 4173");
+    expect(production).toContain("EXPOSE 3001");
+  });
 });
