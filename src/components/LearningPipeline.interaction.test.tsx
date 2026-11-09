@@ -103,7 +103,7 @@ describe("weekly review interaction", () => {
     await act(async () => { refresh!.click(); });
     await act(() => vi.advanceTimersByTimeAsync(10));
     expect(weeklyText()).toContain("100,000");
-    expect(weeklyText()).not.toContain("暂不可用");
+    expect(weeklyText()).not.toContain("上周 Paper 复盘暂不可用");
     expect(fetchWeeklyPaperReview).toHaveBeenCalledTimes(2);
   });
 

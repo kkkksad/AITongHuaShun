@@ -183,7 +183,7 @@ export default function LearningPipeline() {
       description: "已成交订单与扣费后闭合样本。",
       status: weeklyPaperReview?.sample.filledOrderCount ? "running" : "pending",
       detail: weeklyPaperReview
-        ? `${weeklyPeriodLabel}成交 ${weeklyPaperReview.sample.filledOrderCount} 笔 / 闭合 ${weeklyPaperReview.performance.closedTrades} 笔`
+        ? `${weeklyPeriodLabel}成交 ${weeklyPaperReview.sample.filledOrderCount} 笔 / 闭合片段 ${weeklyPaperReview.performance.closedTrades} 个`
         : weeklyPaperReviewQuery.isError ? "复盘暂不可用" : "等待成交复盘",
     },
     {
@@ -325,26 +325,27 @@ export default function LearningPipeline() {
                   <small>占初始资金 {(weeklyPaperReview.capital.maxOrderCapitalRatio * 100).toFixed(1)}%</small>
                 </article>
                 <article>
-                  <span>闭合胜率</span>
+                  <span>FIFO 片段胜率</span>
                   <strong>
                     {weeklyPaperReview.performance.winRate === null
                       ? "样本不足"
                       : `${(weeklyPaperReview.performance.winRate * 100).toFixed(1)}%`}
                   </strong>
                   <small>
-                    闭合 {weeklyPaperReview.performance.closedTrades} 笔 · 仅已成交 FIFO
+                    闭合片段 {weeklyPaperReview.performance.closedTrades} 个 · 仅已成交 FIFO
                   </small>
                 </article>
               </div>
               <div className="learning-plan-summary">
                 <strong>{weeklyPaperReview.diagnosis.summary}</strong>
                 <p>{weeklyPaperReview.capital.summary}</p>
+                <p>{weeklyPaperReview.performance.summary}</p>
                 <span>
                   资金约束 {weeklySizingConstraintLabels[weeklyPaperReview.capital.sizingConstraint] ?? weeklyPaperReview.capital.sizingConstraint} ·
                   上限占比 {(weeklyPaperReview.capital.maxOrderCapitalRatio * 100).toFixed(1)}% ·
                   当前仓位 {(weeklyPaperReview.capital.currentDeployedRatio * 100).toFixed(1)}% ·
                   当前现金 {(weeklyPaperReview.capital.currentCashRatio * 100).toFixed(1)}% ·
-                  已闭合盈亏 {weeklyPaperReview.performance.realizedPnl >= 0 ? "+" : ""}
+                  FIFO 已匹配盈亏 {weeklyPaperReview.performance.realizedPnl >= 0 ? "+" : ""}
                   ¥{weeklyPaperReview.performance.realizedPnl.toFixed(2)} ·
                   手续费 ¥{weeklyPaperReview.performance.commission.toFixed(2)} ·
                   计划落地率 {weeklyPlanRealizationRatio === null
@@ -413,7 +414,7 @@ export default function LearningPipeline() {
                           <strong>{strategy.strategyName}</strong>
                           <span>
                             成交 {strategy.filledOrders} 笔 · 金额 ¥{strategy.filledNotional.toLocaleString("zh-CN")} ·
-                            闭合 {strategy.closedTrades} 笔 · 胜率 {strategy.winRate === null
+                            闭合片段 {strategy.closedTrades} 个 · 片段胜率 {strategy.winRate === null
                               ? "样本不足"
                               : `${(strategy.winRate * 100).toFixed(1)}%`} ·
                             盈亏 {strategy.realizedPnl >= 0 ? "+" : ""}

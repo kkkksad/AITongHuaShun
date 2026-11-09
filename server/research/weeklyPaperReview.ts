@@ -5,6 +5,7 @@ import type {
   PositionSnapshot,
 } from "../../shared/trading";
 import { isAshareTradingDate } from "../trading/ashareTradingCalendar";
+import { getOrderFillTime } from "../trading/orderFillTime";
 
 export type WeeklyPaperReviewEvidence =
   | "sufficient"
@@ -179,6 +180,11 @@ interface ClosedTrade {
   date: string;
 }
 
+interface TimedFill {
+  order: OrderRecord;
+  time: string;
+}
+
 interface DailyPlanSnapshot {
   timestamp: string;
   buyNotional: number;
@@ -308,6 +314,7 @@ function estimatedOrderNotional(order: OrderRecord): number {
 }
 
 function isInPeriod(order: OrderRecord, startDate: string, endDate: string): boolean {
+  if (!Number.isFinite(Date.parse(order.createdAt))) return false;
   const date = chinaDate(order.createdAt);
   return date >= startDate && date <= endDate;
 }
@@ -475,19 +482,46 @@ function addBlocker(
   blockers.set(code, current);
 }
 
+function resolveTimedFills(allOrders: OrderRecord[], cutoff: number) {
+  const timed: TimedFill[] = [];
+  const uncertainSymbols = new Set<string>();
+  const ambiguousSymbols = new Set<string>();
+  const seen = new Set<string>();
+  let unresolvedFillTimes = 0;
+  for (const order of allOrders) {
+    if (order.status !== "filled") continue;
+    const time = getOrderFillTime(order);
+    if (time === null) {
+      unresolvedFillTimes += 1;
+      uncertainSymbols.add(order.symbol);
+      continue;
+    }
+    if (Date.parse(time) > cutoff) continue;
+    const key = `${order.symbol}:${time}`;
+    if (seen.has(key)) {
+      ambiguousSymbols.add(order.symbol);
+      uncertainSymbols.add(order.symbol);
+    }
+    seen.add(key);
+    timed.push({ order, time });
+  }
+  timed.sort((left, right) => Date.parse(left.time) - Date.parse(right.time));
+  return { timed, uncertainSymbols, ambiguousSymbols, unresolvedFillTimes };
+}
+
 function buildClosedTrades(
-  allOrders: OrderRecord[],
+  fills: TimedFill[],
+  uncertainSymbols: Set<string>,
   startDate: string,
   endDate: string,
   decisions: Map<string, DecisionContext>,
-): ClosedTrade[] {
+): { trades: ClosedTrade[]; unmatchedSellQuantity: number } {
   const lotsBySymbol = new Map<string, OpenLot[]>();
   const closed: ClosedTrade[] = [];
-  const sorted = [...allOrders]
-    .filter((order) => order.status === "filled" && filledQuantity(order) > 0)
-    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  let unmatchedSellQuantity = 0;
 
-  for (const order of sorted) {
+  for (const { order, time } of fills) {
+    if (uncertainSymbols.has(order.symbol) || filledQuantity(order) <= 0) continue;
     const quantity = filledQuantity(order);
     const price = filledPrice(order);
     if (price <= 0) continue;
@@ -512,7 +546,7 @@ function buildClosedTrades(
       const sellFee = orderFee * matchedQuantity / quantity;
       const pnl = (price - lot.unitPrice) * matchedQuantity -
         lot.feePerShare * matchedQuantity - sellFee;
-      const date = chinaDate(order.createdAt);
+      const date = chinaDate(time);
       if (date >= startDate && date <= endDate) {
         closed.push({ strategy: lot.decision, pnl, date });
       }
@@ -520,10 +554,14 @@ function buildClosedTrades(
       lot.quantity -= matchedQuantity;
       if (lot.quantity <= 0) lots.shift();
     }
+    const sellDate = chinaDate(time);
+    if (remaining > 0 && sellDate >= startDate && sellDate <= endDate) {
+      unmatchedSellQuantity += remaining;
+    }
     if (lots.length === 0) lotsBySymbol.delete(order.symbol);
   }
 
-  return closed;
+  return { trades: closed, unmatchedSellQuantity };
 }
 
 function strategyMapKey(context: DecisionContext): string {
@@ -549,6 +587,9 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
   const periodOrders = input.orders
     .filter((order) => isInPeriod(order, startDate, endDate))
     .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  const cutoff = Math.min(now.getTime(), Date.parse(`${endDate}T23:59:59.999+08:00`));
+  const fillEvidence = resolveTimedFills(input.orders, cutoff);
+  const fillTimes = new Map(fillEvidence.timed.map(({ order, time }) => [order, time]));
   const decisions = buildDecisionMap(input.auditEvents);
   const periodAudits = input.auditEvents.filter((audit) => {
     const date = chinaDate(audit.timestamp);
@@ -572,7 +613,12 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
     ...[...dailyPlanSnapshots.values()].map((snapshot) => snapshot.buyNotional),
   );
 
-  const filled = periodOrders.filter((order) => order.status === "filled");
+  const filled = fillEvidence.timed
+    .filter(({ time }) => {
+      const date = chinaDate(time);
+      return date >= startDate && date <= endDate;
+    })
+    .map(({ order }) => order);
   const rejected = periodOrders.filter((order) => order.status === "rejected");
   const cancelled = periodOrders.filter((order) => order.status === "cancelled");
   const pending = periodOrders.filter((order) => order.status === "pending" || order.status === "accepted");
@@ -638,7 +684,7 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
                 : "sample-or-signal";
   const dailyBuyNotionals = new Map<string, number>();
   for (const order of filledBuys) {
-    const date = chinaDate(order.createdAt);
+    const date = chinaDate(fillTimes.get(order)!);
     dailyBuyNotionals.set(date, (dailyBuyNotionals.get(date) ?? 0) + filledNotional(order));
   }
   const maxDailyBuyNotional = Math.max(0, ...dailyBuyNotionals.values());
@@ -670,7 +716,10 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
     ? "该复盘周期没有可解析的自动计划金额快照。"
     : `已记录 ${planSnapshotDays} 天自动计划，日峰值计划买入额最高 ${maxDailyPlannedBuyNotional.toFixed(2)} 元，累计计划买入 ${plannedBuyNotional.toFixed(2)} 元，占初始资金 ${(plannedBuyCapitalRatio * 100).toFixed(1)}%；自动 Paper 买入成交 ${automaticFilledBuyNotional.toFixed(2)} 元，计划落地率 ${planRealizationRatio === null ? "暂无" : `${(planRealizationRatio * 100).toFixed(1)}%`}。`;
 
-  const closedTrades = buildClosedTrades(input.orders, startDate, endDate, decisions);
+  const closedEvidence = buildClosedTrades(
+    fillEvidence.timed, fillEvidence.uncertainSymbols, startDate, endDate, decisions,
+  );
+  const closedTrades = closedEvidence.trades;
   const winningTrades = closedTrades.filter((trade) => trade.pnl > 0);
   const losingTrades = closedTrades.filter((trade) => trade.pnl < 0);
   const grossProfit = winningTrades.reduce((sum, trade) => sum + trade.pnl, 0);
@@ -679,8 +728,8 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
   const winRate = closedTrades.length > 0 ? winningTrades.length / closedTrades.length : null;
   const commission = filled.reduce((sum, order) => sum + Math.max(0, order.commission || 0), 0);
   const performanceSummary = closedTrades.length === 0
-    ? `${periodLabel}没有买卖闭合样本，胜率暂不可用；未用未实现收益或合成回测结果替代。`
-    : `${periodLabel}闭合 ${closedTrades.length} 笔，胜率 ${(winRate! * 100).toFixed(1)}%，已闭合盈亏 ${realizedPnl.toFixed(2)} 元。`;
+    ? `${periodLabel}暂无可核验的FIFO闭合片段，胜率暂不可用；未用未实现收益或合成回测结果替代。`
+    : `${periodLabel}已匹配 ${closedTrades.length} 个 FIFO 闭合片段，片段胜率 ${(winRate! * 100).toFixed(1)}%，已匹配盈亏 ${realizedPnl.toFixed(2)} 元；不是完整持仓周期胜率。`;
 
   const strategyStats = new Map<string, WeeklyPaperReview["strategyBreakdown"][number]>();
   const ensureStrategy = (context: DecisionContext) => {
@@ -729,7 +778,7 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
 
   const daily = tradingDays.map((date) => {
     const orders = periodOrders.filter((order) => chinaDate(order.createdAt) === date);
-    const dayFilled = orders.filter((order) => order.status === "filled");
+    const dayFilled = filled.filter((order) => chinaDate(fillTimes.get(order)!) === date);
     const dayPlan = dailyPlanSnapshots.get(date);
     const dayBuyNotional = dayFilled
       .filter((order) => order.side === "buy")
@@ -795,21 +844,37 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
     }))
     .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code));
 
-  const orderDays = [...new Set(periodOrders.map((order) => chinaDate(order.createdAt)))].sort();
-  const daysWithFills = new Set(filled.map((order) => chinaDate(order.createdAt))).size;
+  const orderDays = [...new Set([
+    ...periodOrders.map((order) => chinaDate(order.createdAt)),
+    ...filled.map((order) => chinaDate(fillTimes.get(order)!)),
+  ])].sort();
+  const daysWithFills = new Set(filled.map((order) => chinaDate(fillTimes.get(order)!))).size;
   const activeDays = orderDays.length;
-  const evidence: WeeklyPaperReviewEvidence = periodOrders.length === 0
+  const hasActivity = periodOrders.length > 0 || filled.length > 0;
+  const evidence: WeeklyPaperReviewEvidence = !hasActivity
     ? "unavailable"
-    : filled.length === 0 || closedTrades.length === 0
+    : filled.length === 0 || closedTrades.length === 0 ||
+      fillEvidence.uncertainSymbols.size > 0 || closedEvidence.unmatchedSellQuantity > 0
       ? "limited"
       : "sufficient";
   const findings: string[] = [];
+  if (fillEvidence.unresolvedFillTimes > 0) {
+    findings.push(`${fillEvidence.unresolvedFillTimes} 笔保留成交记录的时间无法确认，未归属本期成交；相关股票不参与FIFO，不能据此确认零成交。`);
+  }
+  if (fillEvidence.ambiguousSymbols.size > 0) {
+    findings.push(`${fillEvidence.ambiguousSymbols.size} 只股票同毫秒成交先后无法确认，不参与FIFO；成交数量和金额仍按可确认日期统计。`);
+  }
+  if (closedEvidence.unmatchedSellQuantity > 0) {
+    findings.push(`${closedEvidence.unmatchedSellQuantity} 股卖出缺少此前买入记录，未纳入FIFO盈亏和胜率。`);
+  }
   if (historyCoverage.status === "may-be-pruned") {
     findings.push(`${historyCoverage.summary}因此没有订单记录时，不能确认是否真的零交易。`);
-  } else if (periodOrders.length === 0) {
+  } else if (!hasActivity && fillEvidence.unresolvedFillTimes === 0) {
     findings.push(`${periodLabel}没有本地 Paper 订单记录，无法评价成交金额或胜率。`);
   } else if (filled.length === 0) {
-    findings.push(`${periodLabel}提交 ${periodOrders.length} 笔，但没有成交；先看阻塞原因，不把零成交解释为策略失败。`);
+    findings.push(fillEvidence.unresolvedFillTimes > 0
+      ? `${periodLabel}提交 ${periodOrders.length} 笔，当前没有可确认属于本期的成交；保留记录存在时间缺口，不能确认零成交。`
+      : `${periodLabel}提交 ${periodOrders.length} 笔，但没有成交；先看阻塞原因，不把零成交解释为策略失败。`);
   }
   if (automaticRunCount > 0 && planSnapshotDays === 0) {
     findings.push(`${periodLabel}有 ${automaticRunCount} 次自动运行审计，但没有计划金额快照；当前无法区分没有计划、计划被过滤还是旧版本未留痕。`);
@@ -829,7 +894,7 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
     findings.push(`${periodLabel}平均单笔成交 ${averageFilledOrderNotional.toFixed(2)} 元，占初始资金 ${(averageOrderCapitalRatio * 100).toFixed(1)}%，存在试探仓偏小问题。`);
   }
   if (closedTrades.length > 0 && winRate! < 0.5) {
-    findings.push(`已闭合交易胜率 ${(winRate! * 100).toFixed(1)}%，低于 50%；需要按策略和市场状态降权复核。`);
+    findings.push(`已匹配FIFO片段胜率 ${(winRate! * 100).toFixed(1)}%，低于 50%；需要按策略和市场状态降权复核。`);
   }
   if (strategyBreakdown.filter((stat) => stat.filledOrders > 0).length <= 1 && filled.length >= 2) {
     findings.push("成交集中在单一策略或旧记录缺少策略键，策略轮换证据不足。");
@@ -856,7 +921,7 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
     nextActions.unshift("将交易历史留存设置为覆盖完整复盘窗口，或持久化周度汇总；留存期外的空记录不能作为零交易证据。");
   }
   if (closedTrades.length > 0 && winRate! < 0.5) {
-    nextActions.push("把已闭合胜率、盈亏和回撤按策略键拆开，连续亏损策略只降权或观察，不直接换成更激进仓位。");
+    nextActions.push("把FIFO片段胜率、盈亏和回撤按策略键拆开，连续亏损策略只降权或观察，不直接换成更激进仓位。");
   } else if (closedTrades.length === 0) {
     nextActions.push("继续积累买卖闭合样本后再评价胜率；当前只能评价成交和执行质量。");
   }
@@ -940,14 +1005,14 @@ export function buildWeeklyPaperReview(input: WeeklyPaperReviewInput): WeeklyPap
       findings,
       nextActions,
       summary: evidence === "unavailable"
-        ? `${periodLabel}没有 Paper 成交样本，先修复运行覆盖和候选阻塞，再评价策略。`
+        ? `${periodLabel}暂无可确认归属本期的 Paper 成交样本，先复核记录完整性、运行覆盖和候选阻塞，再评价策略。`
         : evidence === "limited"
           ? `${periodLabel}样本不足以证明策略胜率，当前重点是提高可解释的执行覆盖和资金分配质量。`
-          : `${periodLabel}完成 ${filled.length} 笔成交和 ${closedTrades.length} 笔闭合复盘，按策略、资金和阻塞原因继续迭代。`,
+          : `${periodLabel}完成 ${filled.length} 笔成交和 ${closedTrades.length} 个FIFO闭合片段复盘，按策略、资金和阻塞原因继续迭代。`,
     },
     guardrails: [
       "只统计本地 Paper 订单和审计，不连接真实券商。",
-      "胜率只按已成交且买卖闭合的 FIFO 样本计算；没有闭合样本时返回不可用。",
+      "胜率只按已成交且可核验的 FIFO 匹配片段计算，不是完整持仓周期胜率；缺入场或时间顺序证据时不猜测。",
       "资金使用率是成交与当前账户状态的诊断指标，不是收益保证或目标成交保证。",
       `每日自动订单硬上限仍为 ${Math.min(10, Math.max(1, Math.floor(input.maxDailyAutoOrders ?? 10)))} 笔。`,
       "不绕过现金、手续费、仓位、T+1、熔断或数据质量检查来增加交易次数。",
