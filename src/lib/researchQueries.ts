@@ -6,12 +6,14 @@ import {
   fetchRealResearchDataFeed,
   fetchStrategyLeaderboard,
   fetchWeeklyPaperReview,
+  fetchPaperHistoryArchive,
   type WeeklyPaperReviewWindow,
 } from "./tradingApi";
 
 export function isAccountResearchQuery({ queryKey }: Pick<Query, "queryKey">): boolean {
   return queryKey[0] === "paper-trading-plan" ||
     queryKey[0] === "paper-risk-state" ||
+    queryKey[0] === "paper-history-archive" ||
     queryKey[0] === "daily-market-review" ||
     queryKey[0] === "weekly-paper-review";
 }
@@ -65,6 +67,15 @@ export function dailyMarketReviewQueryOptions() {
     refetchInterval: 60_000,
     staleTime: 45_000,
     placeholderData: (previousData) => previousData,
+  });
+}
+
+export function paperHistoryArchiveQueryOptions() {
+  return queryOptions({
+    queryKey: ["paper-history-archive"] as const,
+    queryFn: ({ signal }) => fetchPaperHistoryArchive(signal),
+    refetchInterval: 60_000,
+    staleTime: 45_000,
   });
 }
 

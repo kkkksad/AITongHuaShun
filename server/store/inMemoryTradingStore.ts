@@ -80,6 +80,7 @@ function withT1Lock(
 }
 
 export class InMemoryTradingStore implements TradingStore {
+  getAccountEpoch(): null { return null; }
   private readonly accountId = "PAPER-CN-01";
   private startingEquity: number;
   private strategyProfile: PaperStrategyProfile = "balanced";

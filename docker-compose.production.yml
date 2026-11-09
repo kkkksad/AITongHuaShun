@@ -74,6 +74,7 @@ services:
       DATA_DIR: /app/data
       RESEARCH_DATA_DIR: /app/data/research
       EXTERNAL_MARKET_FEATURE_FILE: /app/data/research/external-market-features.json
+      PAPER_HISTORY_READ_MODEL_FILE: /app/paper-history/current.json
       REAL_TRADING_ENABLED: "false"
       PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN: ${PAPER_AUTO_EXECUTION_MAX_ORDERS_PER_RUN:-2}
       PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS: ${PAPER_AUTO_EXECUTION_MAX_DAILY_ORDERS:-10}
@@ -84,6 +85,7 @@ services:
     volumes:
       - ./runtime/data:/app/data
       - ./runtime/logs:/app/logs
+      - ./runtime/archive/read-model:/app/paper-history:ro
     depends_on:
       akshare-bridge:
         condition: service_healthy

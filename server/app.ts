@@ -50,6 +50,7 @@ import { WxPusherClient } from "./notifications/wxPusherClient";
 import { computeDataQuality } from "./market/dataQuality";
 import { buildDailyCandidates } from "./research/dailyCandidates";
 import { buildDailyMarketReview } from "./research/dailyMarketReview";
+import { readPaperHistoryArchive } from "./research/paperHistoryArchive";
 import { buildDailyQualityStocks } from "./research/dailyQualityStocks";
 import { buildCrossMarketStrategyContext } from "./research/crossMarketStrategyContext";
 import { buildCryptoMarketResearch } from "./research/cryptoMarketResearch";
@@ -1210,6 +1211,19 @@ export async function buildTradingApp(
       researchStore,
     });
     return plan;
+  });
+
+  app.get("/api/research/paper-history", {
+    schema: { tags: ["研究"], summary: "读取当前Paper账户的长期运行归档摘要" },
+  }, async () => {
+    const accountEpoch = system.store.getAccountEpoch();
+    const report = await readPaperHistoryArchive({
+      file: options.config.PAPER_HISTORY_READ_MODEL_FILE,
+      accountId: system.broker.getAccount().accountId,
+      accountEpoch,
+      now: options.clock?.(),
+    });
+    return accountEpoch === system.store.getAccountEpoch() ? report : { state: "waiting-for-account", data: null };
   });
 
   app.get("/api/research/daily-review", {

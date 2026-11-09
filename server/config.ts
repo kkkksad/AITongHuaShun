@@ -45,6 +45,7 @@ const envSchema = z.object({
     .default("600519,000858,300750,601318,000001,600036,002594,688981"),
   AKSHARE_BRIDGE_URL: z.string().url().default("http://127.0.0.1:8800"),
   AKSHARE_BRIDGE_TOKEN: z.string().default(""),
+  PAPER_HISTORY_READ_MODEL_FILE: z.string().max(1024).default(""),
   TRADING_STARTING_CASH: z.coerce.number().positive().default(1_000_000),
   TRADING_SEED_PORTFOLIO: z
     .enum(["true", "false"])

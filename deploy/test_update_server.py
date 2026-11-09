@@ -150,6 +150,31 @@ class DeploymentFlowTests(unittest.TestCase):
         self.assertEqual(active["kairos-web:production"]["Id"], "old-kairos-web")
         self.assertEqual(active["kairos-api:production"]["Id"], "new-kairos-api")
 
+    def test_prepares_private_archive_read_model_directory_before_activation(self):
+        result, _ = self.run_deployment()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        folder = self.root / 'runtime/archive/read-model'
+        self.assertTrue(folder.is_dir())
+        self.assertEqual(folder.stat().st_mode & 0o777, 0o700)
+
+    def test_refuses_symlink_archive_directory_before_changing_source_or_services(self):
+        outside = self.base / 'outside-archive'; outside.mkdir()
+        (self.root / 'runtime/archive').symlink_to(outside, target_is_directory=True)
+        result, state = self.run_deployment()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.root / 'old-source.txt').read_text(), 'old source')
+        self.assertEqual(state['events'], [])
+        self.assertFalse((outside / 'read-model').exists())
+
+    def test_refuses_symlink_read_model_directory_without_writing_outside(self):
+        outside = self.base / 'outside-read-model'; outside.mkdir()
+        (self.root / 'runtime/archive').mkdir()
+        (self.root / 'runtime/archive/read-model').symlink_to(outside, target_is_directory=True)
+        result, state = self.run_deployment()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.root / 'old-source.txt').read_text(), 'old source')
+        self.assertEqual(state['events'], [])
+
     def test_capacity_failure_stops_before_archive_extraction_backup_or_container_changes(self):
         (self.root / "deploy/deployment_capacity.py").write_text("raise SystemExit(75)\n")
         result, state = self.run_deployment()

@@ -1,6 +1,6 @@
 # Paper长期历史归档
 
-本模块是[决策0025](../decisions/0025-read-only-sqlite-paper-history.md)中的只读观察副本。安装后的数据从原JSON账本读取；数据库不参与下单、风控和实时权益计算。后台长期库查询尚未接入页面，不把它描述为已替换交易主账本。
+本模块是[决策0025](../decisions/0025-read-only-sqlite-paper-history.md)中的只读观察副本。安装后的数据从原JSON账本读取；数据库不参与下单、风控和实时权益计算。按[0040](../decisions/0040-paper-history-bounded-read-model.md)，网站通过当前账户世代的有界摘要读取近七日运行证据，仍不替代交易主账本。
 
 ## 安装与权限
 
@@ -51,3 +51,15 @@ node node_modules/vitest/vitest.mjs run --dir server --environment node server/s
 ```
 
 Python测试只用标准库，无需AkShare或pytest；覆盖重复采样、成交更新、世代隔离、源文件不变、保留期限、原子失败、库容量、损坏输入/库和备份恢复。
+
+## 网站只读摘要
+
+采集后原子发布`runtime/archive/read-model/current.json`，包含当前账户世代最近七个北京时间日期的运行/盘中/未知会话计数、已记录提交尝试及字段覆盖、白名单阻塞/研究问题与最多20条最新运行。SQL只读事务最多20000条，输出最多128KiB；超限或失败保留旧摘要，采集数据库继续成功，`status.json.readModelStatus`为`unavailable`。
+
+生产Compose将上述子目录只读挂载到`/app/paper-history`，环境`PAPER_HISTORY_READ_MODEL_FILE=/app/paper-history/current.json`；开发环境该配置默认空串，不启动文件接入。发布器预先创建0700目录并检查归属/链接。首次安装新Compose时若正在运行旧发布器，应先由ubuntu部署用户核对并创建该目录，避免Docker自动创建root所有的目录；不要改账户或数据库内容。
+
+认证GET `/api/research/paper-history`仅读取摘要，不触发SQL、采集、行情、策略或执行。摘要未来/损坏/超大时不可用，超过三分钟显示过期；账户世代不符时隐藏旧数据、等待下次采集。后台状态为published只代表原子发布完成，不代表策略有效或交易成功。
+
+研究页的“Paper运行证据”分别展示盘中、会话未知和提交字段覆盖。旧库条目没有session时保持未知；已持久化的无变化轮次可能合并，运行条数不是调度次数。规则次数可能重复涉及同一候选，不是拒单数；没有盘中证据不能推断策略无信号。摘要不提供收益/胜率、完整历史回放或数据库下载。
+
+完整离线命令为`python -m unittest discover -s scripts -p 'test_paper_history*.py'`；Linux另覆盖符号链接拒绝。生产发布后检查`status.json.readModelStatus`、摘要生成时间及当前账户世代一致性；不要输出凭据或原始账本。

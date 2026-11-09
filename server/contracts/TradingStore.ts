@@ -24,6 +24,8 @@ import type { PaperRiskCheckpoint } from "../risk/paperRiskCheckpoint";
  * - 方法按领域分组：账户、持仓、订单、审计。
  */
 export interface TradingStore {
+  /** Persistent reset identity for matching a read-only archive, absent in memory-only research. */
+  getAccountEpoch(): string | null;
   // ── 账户生命周期 ──
 
   /** 是否处于暂停交易状态。 */

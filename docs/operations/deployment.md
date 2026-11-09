@@ -14,6 +14,8 @@
 
 当前会话存储在单个 Fastify 进程内。服务重启会让全部用户重新登录；不得横向扩成多个后端副本。多实例部署前必须把会话替换为 Redis 等共享、可撤销存储，并重新验证限流与 CSRF 边界。
 
+长期归档网页仅只读挂载`runtime/archive/read-model`，不向API挂载SQLite或备份。首次采用该Compose挂载前须由部署用户在发布锁内准备0700目录，检查runtime/archive/read-model各层无符号链接且属该用户，避免Docker创建root所有的目录；后续由发布器自动准备。范围和故障语义见[归档手册](paper-history.md)及[决策0040](../decisions/0040-paper-history-bounded-read-model.md)。
+
 ## 初始化部署环境
 
 安装依赖后生成部署凭据：

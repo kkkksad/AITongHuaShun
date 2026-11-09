@@ -134,6 +134,20 @@ else
   echo "Installed release has no capacity helper; using legacy deployment path."
 fi
 
+prepare_archive_read_model_runtime() {
+  local path
+  for path in "${ROOT}/runtime" "${ROOT}/runtime/archive" "${ROOT}/runtime/archive/read-model"; do
+    if [[ -e "${path}" || -L "${path}" ]]; then
+      [[ -d "${path}" && ! -L "${path}" && -O "${path}" ]] || {
+        echo "Archive read-model path must be owned by the deployment user and cannot be a link." >&2
+        exit 78
+      }
+    fi
+  done
+  install -d -m 0700 "${ROOT}/runtime/archive" "${ROOT}/runtime/archive/read-model"
+}
+
+prepare_archive_read_model_runtime
 prepare_acme_runtime
 
 previous_commit="$(git rev-parse HEAD 2>/dev/null || true)"

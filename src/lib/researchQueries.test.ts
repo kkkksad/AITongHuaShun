@@ -21,9 +21,11 @@ describe("research query options", () => {
       lastEvaluationTime: "2026-11-10T01:00:00.000Z",
     });
     client.setQueryData(["market-data-quality"], { quality: 99 });
+    client.setQueryData(["paper-history-archive"], { previousEpoch: true });
     await resetAccountResearchQueries(client);
     expect(client.getQueryData(paperRiskStateQueryOptions().queryKey)).toBeUndefined();
     expect(client.getQueryData(["market-data-quality"])).toEqual({ quality: 99 });
+    expect(client.getQueryData(["paper-history-archive"])).toBeUndefined();
     client.clear();
   });
   it("matches account-dependent research across every weekly period and parameter variant", () => {
@@ -34,6 +36,7 @@ describe("research query options", () => {
       weeklyPaperReviewQueryOptions("previous").queryKey,
       ["weekly-paper-review", "archived", { limit: 20 }],
       paperRiskStateQueryOptions().queryKey,
+      ["paper-history-archive"],
     ]) {
       expect(isAccountResearchQuery({ queryKey })).toBe(true);
     }

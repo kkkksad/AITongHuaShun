@@ -122,6 +122,7 @@ function withT1Lock(
  * 当前实现面向本地单进程模拟交易，不提供多进程锁、事务或合规级审计。
  */
 export class JsonFileTradingStore implements TradingStore {
+  getAccountEpoch(): string { return this.accountEpoch; }
   private readonly filePath: string;
   private readonly accountId = "PAPER-CN-01";
   private accountEpoch: string = randomUUID();

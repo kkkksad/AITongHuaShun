@@ -7,6 +7,7 @@ import {
   fetchCrossMarketStrategyContext,
   fetchDailyCandidates,
   fetchDailyMarketReview,
+  fetchPaperHistoryArchive,
   fetchDailyQualityStocks,
   fetchExternalMarketImpact,
   fetchLearningState,
@@ -43,6 +44,15 @@ function jsonResponse(payload: unknown, status = 200): Response {
 }
 
 describe("session-aware trading API", () => {
+  it("reads the archive with the session and cancellation signal without a mutation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ state: "disabled", data: null }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+    await expect(fetchPaperHistoryArchive(controller.signal)).resolves.toEqual({ state: "disabled", data: null });
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/api\/research\/paper-history$/),
+      expect.objectContaining({ credentials: "include", signal: controller.signal }));
+    expect(fetchMock.mock.calls[0][1]?.method ?? "GET").toBe("GET");
+  });
   beforeEach(() => {
     notifyAuthExpired();
     window.localStorage.clear();

@@ -4942,6 +4942,14 @@ select:focus-visible {
   overflow: auto;
 }
 
+.paper-history-archive { min-width: 0; }
+.paper-history-archive > p { overflow-wrap: anywhere; }
+.paper-history-table-wrapper { max-height: 330px; overflow: auto; }
+.paper-history-table-wrapper table { width: 100%; min-width: 620px; border-collapse: collapse; }
+.paper-history-table-wrapper caption { padding-block: 10px; text-align: left; color: var(--text-secondary); }
+.paper-history-table-wrapper th,
+.paper-history-table-wrapper td { padding: 10px 12px; border-bottom: 1px solid var(--border-default); text-align: left; font-size: 13px; white-space: nowrap; }
+
 .robustness-table {
   min-width: 1320px;
 }

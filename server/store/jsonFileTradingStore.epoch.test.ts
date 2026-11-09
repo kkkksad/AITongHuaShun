@@ -20,6 +20,7 @@ describe("persistent Paper account epoch", () => {
   it("persists one UUID across restarts and non-reset changes", () => {
     const { directory, store, read } = setup();
     const epoch = read().accountEpoch;
+    expect(store.getAccountEpoch()).toBe(epoch);
     expect(epoch).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     store.setPaused(true);
     store.setStrategyProfile("growth");
@@ -34,6 +35,7 @@ describe("persistent Paper account epoch", () => {
     for (let index = 0; index < 2; index += 1) {
       store.resetAccount({ startingCash: 20_000, strategyProfile: "balanced" });
       epochs.push(read().accountEpoch);
+      expect(store.getAccountEpoch()).toBe(epochs[epochs.length - 1]);
     }
     expect(new Set(epochs).size).toBe(3);
   });

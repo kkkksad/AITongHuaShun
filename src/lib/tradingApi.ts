@@ -1985,6 +1985,10 @@ export function fetchPaperTradingPlan(signal?: AbortSignal): Promise<PaperTradin
   });
 }
 
+export function fetchPaperHistoryArchive(signal?: AbortSignal): Promise<import("../../shared/paperHistory").PaperHistoryArchiveReport> {
+  return authApiRequest("/api/research/paper-history", { signal });
+}
+
 export function fetchDailyMarketReview(signal?: AbortSignal): Promise<DailyMarketReview> {
   return authApiRequest<DailyMarketReview>("/api/research/daily-review", { signal });
 }

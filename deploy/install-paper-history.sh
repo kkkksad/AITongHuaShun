@@ -8,7 +8,7 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 id ubuntu >/dev/null
-for file in scripts/paper_history.py deploy/kairos-paper-history.service deploy/kairos-paper-history.timer; do
+for file in scripts/paper_history.py scripts/paper_history_contract.py scripts/paper_history_read_model.py deploy/kairos-paper-history.service deploy/kairos-paper-history.timer; do
   [[ -s "${ROOT}/${file}" ]] || { echo "Missing archive release source." >&2; exit 1; }
 done
 [[ -d "${ROOT}/runtime" && ! -L "${ROOT}/runtime" ]] || { echo "Invalid runtime directory." >&2; exit 1; }

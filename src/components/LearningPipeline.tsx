@@ -15,6 +15,7 @@ import { PAPER_EXECUTION_STRATEGY_CHOICES } from "../../shared/trading";
 import type { PipelineStage } from "../types";
 import { ResearchQueryState } from "./ResearchQueryState";
 import { PaperCandidatePoolPanel } from "./PaperCandidatePoolPanel";
+import { PaperHistoryArchivePanel } from "./PaperHistoryArchivePanel";
 import {
   adaptivePostureLabel,
   adaptiveRegimeLabel,
@@ -502,6 +503,7 @@ export default function LearningPipeline() {
           </div>
         </section>
 
+        <PaperHistoryArchivePanel />
         <section className="panel learning-memory-panel" data-module-section="daily-review" id="learning-daily-review" tabIndex={-1}>
           <div className="panel-header">
             <div>

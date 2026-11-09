@@ -12,24 +12,11 @@ from pathlib import Path
 import re
 import sqlite3
 import uuid
+from paper_history_contract import ISSUES, BLOCKERS, RUN_ENUMS
 
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_DATABASE_PAGES = 65536  # 256 MiB at 4096 bytes/page; backups/WAL are additional.
 TERMINAL = {"filled", "rejected", "cancelled"}
-ISSUES = {"provider-contract", "provider-timeout", "history-warming", "history-queue-full",
-          "sector-history-insufficient", "stock-history-insufficient", "provider-warning"}
-BLOCKERS = {"T+1", "strategy-profile", "adaptive-new-position", "strategy-route", "lot-size",
-            "cash-check", "cash-reservation", "plan-sizing", "defensive-score",
-            "same-day-reentry", "round-trip-fee-ratio", "entry-persistence"}
-RUN_ENUMS = {
-    "trigger": {"timer", "manual", "startup"},
-    "sourceStatus": {"live-read-only", "degraded", "mock-disabled"},
-    "planQuality": {"actionable", "watch-only", "blocked", "not-run"},
-    "activityMode": {"observe", "qualified-probe", "validation-probe"},
-    "phase": {"opening", "morning-confirmation", "afternoon-confirmation", "closing-risk-review", "closed"},
-    "regime": {"trend-up-low-volatility", "trend-up-high-volatility", "range-low-volatility",
-               "range-high-volatility", "risk-off-recovery", "risk-off", "unclear"},
-}
 SCHEMA = """
 CREATE TABLE account_epochs (
  account_id TEXT NOT NULL, epoch TEXT NOT NULL, first_seen TEXT NOT NULL,
@@ -303,6 +290,15 @@ def main():
             return 0
         result = archive_once(args.source, args.database)
         backup_database(args.database, force=args.backup)
+        try:
+            from paper_history_read_model import publish_read_model
+            identity = _read_source(args.source)
+            publish_read_model(args.database, identity["account"], identity["epoch"])
+            result["readModelStatus"] = "published"
+        except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError, sqlite3.Error):
+            # The database commit is already durable. Keep its success independent
+            # of the website projection; an old projection ages into stale state.
+            result["readModelStatus"] = "unavailable"
         result["lastSuccessAt"] = _now(None)
         temporary = args.database.parent / "status.json.tmp"
         temporary.write_text(_json(result) + "\n", encoding="utf8")
