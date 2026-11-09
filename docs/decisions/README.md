@@ -26,6 +26,8 @@
 
 - [0020：Paper验证策略费用有效整手下限](0020-paper-probe-fee-efficient-lot-floor.md)
 
+- [0021：Paper日亏损使用独立交易日权益基线](0021-paper-trading-day-risk-baseline.md)
+
 ## 新建格式
 
 文件名使用 `NNNN-short-title.md`。

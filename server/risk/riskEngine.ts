@@ -233,7 +233,13 @@ export class RiskEngine {
     }
 
     // ── 每日亏损检查 ──
-    if (account.dailyPnlPercent <= -this.limits.maxDailyLoss) {
+    const dayPerformance = account.tradingDayPerformance;
+    if (dayPerformance && dayPerformance.pnlPercent === null && request.side === "buy") {
+      return this.reject("DAILY_BASELINE_UNAVAILABLE", "当日权益基线数据不足，暂不新增仓位");
+    }
+    // Legacy external snapshots remain compatible; both built-in stores supply the daily ledger.
+    const dailyLoss = dayPerformance ? dayPerformance.pnlPercent : account.dailyPnlPercent;
+    if (dailyLoss !== null && dailyLoss <= -this.limits.maxDailyLoss) {
       return this.reject("DAILY_LOSS_LIMIT", "账户已触发每日亏损停止线");
     }
 

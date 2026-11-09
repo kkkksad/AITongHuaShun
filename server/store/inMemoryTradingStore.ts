@@ -13,6 +13,7 @@ import type {
 } from "../../shared/trading";
 import type { TradingStore } from "../contracts/TradingStore";
 import { hasSufficientCash } from "../broker/executionCosts";
+import { calculateTradingDayPerformance } from "./tradingDayPerformance";
 
 interface MutablePosition {
   symbol: string;
@@ -270,8 +271,13 @@ export class InMemoryTradingStore implements TradingStore {
     const equity = this.cash + marketValue;
     const dailyPnl = equity - this.startingEquity;
     const baseline = Math.max(1, equity - dailyPnl);
+    const tradingDayPerformance = calculateTradingDayPerformance({
+      now: this.now(), cash: this.cash, equity, startingEquity: this.startingEquity,
+      positions, orders: this.orders, auditEvents: this.auditEvents, snapshot,
+    });
     const exposureRatio = equity === 0 ? 0 : marketValue / equity;
-    const lossRatio = dailyPnl >= 0 ? 0 : Math.abs(dailyPnl / baseline) / limits.maxDailyLoss;
+    const dayPnlPercent = tradingDayPerformance.pnlPercent ?? 0;
+    const lossRatio = dayPnlPercent >= 0 ? 0 : Math.abs(dayPnlPercent) / limits.maxDailyLoss;
 
     return {
       accountId: this.accountId,
@@ -283,6 +289,7 @@ export class InMemoryTradingStore implements TradingStore {
       realizedPnl,
       dailyPnl,
       dailyPnlPercent: dailyPnl / baseline,
+      tradingDayPerformance,
       riskUtilization: Math.min(1, Math.max(exposureRatio, lossRatio)),
       paused: this.paused,
       startingEquity: this.startingEquity,

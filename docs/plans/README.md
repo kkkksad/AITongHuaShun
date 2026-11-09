@@ -47,6 +47,8 @@ YYYY-MM-DD-short-task-name.md
 
 ## 进行中计划
 
+- [交易可靠性、策略覆盖与多市场独立资金计划（实施中，截止北京时间11月10日08:00）](2026-11-09-trading-reliability-and-multi-market-plan.md)
+
 - [真实数据与策略研究闭环](2026-07-11-real-data-strategy-research-loop.md)
 - [每日优质股与同花顺模拟盘升级清单](2026-07-11-daily-quality-stock-and-ths-simulation-upgrade.md)
 - [两天策略与系统优化冲刺](2026-07-11-two-day-strategy-system-sprint.md)

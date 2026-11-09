@@ -264,6 +264,15 @@ export interface PositionSnapshot {
   weight: number;
 }
 
+export interface TradingDayPerformance {
+  /** Beijing date; independent of the account-reset cumulative PnL. */
+  date: string;
+  openingEquity: number | null;
+  pnl: number | null;
+  pnlPercent: number | null;
+  baselineSource: "account-start" | "previous-close" | "unavailable";
+}
+
 export interface AccountSnapshot {
   accountId: string;
   mode: TradingMode;
@@ -275,6 +284,8 @@ export interface AccountSnapshot {
   /** Legacy names: these values are measured from the latest paper-account reset. */
   dailyPnl: number;
   dailyPnlPercent: number;
+  /** Actual daily ledger; null values mean the opening baseline cannot be established. */
+  tradingDayPerformance?: TradingDayPerformance;
   riskUtilization: number;
   paused: boolean;
   startingEquity?: number;
