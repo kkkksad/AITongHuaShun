@@ -110,6 +110,8 @@ Docker 构建上下文必须排除 `.env`、`.env.*` 与 `runtime/`，包括服�
 
 ## GitHub 自动部署
 
+安装容量工具后的发布，在持有部署锁后先只读检查应用与Docker实际存储目录各至少4GiB可用；空间不足、目录不可读或工具损坏会在解压、备份、替换源码和镜像构建前停止，保留现有服务。两个目录同盘时不相加，4GiB不是构建峰值保证，不自动清理镜像或构建缓存。可单独运行`python3 deploy/deployment_capacity.py --root /opt/kairos`取得JSON；首次安装须发布前从受限临时副本检查，后续自动执行。详见[决策0035](../docs/decisions/0035-production-deployment-disk-preflight.md)。
+
 `.github/workflows/deploy-production.yml` 只监听生产分支 `main`。推送后先运行 Node、Python、生产构建和 Compose 校验，再把已验证提交通过受限 SSH 会话的 stdin 上传到服务器，并调用 `deploy/update-server.sh`。服务器不需要直接读取 GitHub 私有仓库，也不开放通用 scp/sftp。上传归档会先解压到提交专属的临时目录，并校验 Compose、镜像构建和部署入口等必需文件；只有完整归档通过校验后才会备份和替换当前源码。部署脚本串行执行；构建失败不会替换运行容器，启动后健康检查失败会尝试恢复上一组镜像和上一份源码。
 
 服务器的部署公钥必须使用强制命令，示例：

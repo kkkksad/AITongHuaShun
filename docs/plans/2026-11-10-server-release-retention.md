@@ -38,7 +38,20 @@
 
 ## C：有界资源治理
 
-- [ ] 先只读列出应用拥有的镜像/槽位，保护运行、当前、上一健康和在途镜像；无法证明归属的历史dangling/cache不自动删除。
+- [x] UTC19:29只读核对6个KAIROS标签/4个唯一受保护镜像、一个上一槽位及31个dangling镜像；dangling带kairos-quant项目/service标签，但可能包含生产OCI索引引用的运行内容，不能仅凭无标签认定可删。未删除任何镜像或构建缓存。
+- [x] C1：新增`deploy/deployment_capacity.py`及单元测试，在源码解压/备份/替换、构建与容器变化前，检查应用目录和Docker实际存储目录可用空间均至少4GiB。相同文件系统不相加；低空间或无法读取明确拒绝发布并保留当前服务。
+
+```python
+MIN_FREE_BYTES = 4 * 1024 ** 3
+for name, path in (("application", root), ("docker", docker_root)):
+    free = shutil.disk_usage(path).free
+    if free < MIN_FREE_BYTES:
+        raise ValueError(f"Insufficient deployment space on {name}")
+```
+
+- [x] 新增9项单元覆盖4GiB边界、两个不同目录任一个不足、同盘不求和、Docker路径错误/不可读；发布Linux替身新增5项验证容量工具失败/损坏/符号链接不替换源码、不构建、不变化容器，以及旧目标兼容。旧发布器运行新5项全部失败，新版完整Linux60项通过，Bash语法和4项静态契约通过。
+- [x] 发布器持有锁、核对环境后先运行当前安装检查；UTC19:35从stdin私有副本只读执行同一实现，应用与Docker各6962847744字节、同盘不累加。首次安装仍旧发布器，后续自动生效；阈值是操作下限而非峰值保证。
+- [ ] C1 Linux测试、Bash语法、发布静态契约通过后独立提交推送部署；核验健康、HTTPS、账户/检查点/归档及留存，更新决策0035和生产手册。
 - [ ] 若当前资源需要回收，再选择应用独立构建缓存或受控ID清理方案，先dry-run后执行；不能为了CPU占用新增常驻服务。
 
 ## 验证记录

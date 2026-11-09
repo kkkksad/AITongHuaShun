@@ -150,6 +150,50 @@ class DeploymentFlowTests(unittest.TestCase):
         self.assertEqual(active["kairos-web:production"]["Id"], "old-kairos-web")
         self.assertEqual(active["kairos-api:production"]["Id"], "new-kairos-api")
 
+    def test_capacity_failure_stops_before_archive_extraction_backup_or_container_changes(self):
+        (self.root / "deploy/deployment_capacity.py").write_text("raise SystemExit(75)\n")
+        result, state = self.run_deployment()
+        self.assertEqual(result.returncode, 75, result.stderr)
+        self.assertEqual((self.root / "old-source.txt").read_text(), "old source")
+        self.assertEqual((self.root / "docker-compose.production.yml").read_text(), "old-compose")
+        self.assertFalse((self.control / ("kairos-source-staging-" + COMMIT)).exists())
+        self.assertFalse((self.control / ("kairos-source-backup-" + COMMIT + ".tar.gz")).exists())
+        self.assertEqual(state["events"], [])
+        self.assertEqual(state["containers"], {key: "old-" + key for key in ("akshare-bridge", "backend", "web")})
+
+    def test_installed_capacity_helper_checks_an_older_target_without_the_helper(self):
+        (self.root / "deploy/deployment_capacity.py").write_text("print('capacity-check-was-run')\n")
+        result, _ = self.run_deployment("metadata-only")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("capacity-check-was-run", result.stdout)
+        self.assertFalse((self.root / "deploy/deployment_capacity.py").exists())
+
+    def test_installed_capacity_helper_error_does_not_silently_use_legacy_path(self):
+        (self.root / "deploy/deployment_capacity.py").write_text("raise RuntimeError('unreadable capacity')\n")
+        result, state = self.run_deployment()
+        self.assertEqual(result.returncode, 75)
+        self.assertNotIn("legacy deployment path", result.stdout)
+        self.assertEqual(state["events"], [])
+        self.assertEqual((self.root / "old-source.txt").read_text(), "old source")
+
+    def test_empty_capacity_helper_is_an_error_instead_of_a_legacy_bypass(self):
+        (self.root / "deploy/deployment_capacity.py").write_text("")
+        result, state = self.run_deployment()
+        self.assertEqual(result.returncode, 78)
+        self.assertIn("unsafe or empty", result.stderr)
+        self.assertEqual(state["events"], [])
+        self.assertEqual((self.root / "old-source.txt").read_text(), "old source")
+
+    def test_symlink_capacity_helper_is_not_executed(self):
+        target = self.control / "unexpected-tool.py"
+        target.write_text("raise RuntimeError('must not execute')\n")
+        (self.root / "deploy/deployment_capacity.py").symlink_to(target)
+        result, state = self.run_deployment()
+        self.assertEqual(result.returncode, 78)
+        self.assertIn("unsafe or empty", result.stderr)
+        self.assertEqual(state["events"], [])
+        self.assertEqual((self.root / "old-source.txt").read_text(), "old source")
+
     def test_failed_build_restores_source_before_restarting_old_images(self):
         self.assert_failed_flow("build")
 

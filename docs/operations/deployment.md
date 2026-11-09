@@ -101,6 +101,8 @@ quant.example.com {
 
 启用0032后留存上一健康源码与三镜像至受限槽位，核验与导出步骤统一见[生产手册](../../deploy/README.md)。首次安装不代表已有previous，须随后正常发布才生成。私有.env、账户、证书和日志不进入源码归档；同盘留存不是灾备。宿主全局prune已从新发布器移除，当前没有一键免构建恢复或自动构建缓存清理。
 
+发布前按[决策0035](../decisions/0035-production-deployment-disk-preflight.md)分别检查应用和Docker实际存储目录至少4GiB可用，任一不足或不可读均在解压/备份/构建前停止；同盘不累加，不据此承诺峰值空间足够。只读JSON检查和首次安装方式见生产手册。
+
 同机SQLite长期复盘库通过独立systemd任务安装，配置、资源上限、诊断和在线备份统一见[Paper历史归档](paper-history.md)。数据库不暴露公网端口，不替代下述JSON交易账本。
 
 - 持久化 paper 状态时使用受限目录挂载和 `STORE_BACKEND=json`；JSON 仍只适合单进程模拟，不是生产数据库。

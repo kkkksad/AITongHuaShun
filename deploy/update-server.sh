@@ -122,6 +122,18 @@ prepare_acme_runtime() {
   done
 }
 
+# Use the currently installed helper before staging, source backup, image builds,
+# or container changes. An older target archive need not contain this helper.
+if [[ -e "${ROOT}/deploy/deployment_capacity.py" || -L "${ROOT}/deploy/deployment_capacity.py" ]]; then
+  [[ -f "${ROOT}/deploy/deployment_capacity.py" && ! -L "${ROOT}/deploy/deployment_capacity.py" && -s "${ROOT}/deploy/deployment_capacity.py" ]] || {
+    echo "Installed deployment capacity helper is unsafe or empty; current source is preserved." >&2
+    exit 78
+  }
+  python3 "${ROOT}/deploy/deployment_capacity.py" --root "${ROOT}" || exit 75
+else
+  echo "Installed release has no capacity helper; using legacy deployment path."
+fi
+
 prepare_acme_runtime
 
 previous_commit="$(git rev-parse HEAD 2>/dev/null || true)"
