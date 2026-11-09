@@ -285,7 +285,16 @@ function candidatePlanQuantity(
   minimumCommission: number,
 ): number {
   const budgetRatio = validationBudgetRatio(candidate);
-  const budgetedOrderLimit = maxSingleOrderNotional * budgetRatio;
+  const minimumQuantity = isValidationBudgetStrategy(candidate.strategyKey)
+    ? minimumFeeEfficientQuantity(candidate.price, lotSize, minimumCommission)
+    : 0;
+  // The percentage is a target inside an already risk-scaled final cap. For
+  // small paper accounts, a second shrink can make every valid lot impossible.
+  // Admit only the smallest fee-efficient lot when it still fits that cap.
+  const budgetedOrderLimit = Math.min(
+    maxSingleOrderNotional,
+    Math.max(maxSingleOrderNotional * budgetRatio, minimumQuantity * candidate.price),
+  );
   const candidateOrderQuantity = candidateQuantity(
     candidate,
     cash,
@@ -297,11 +306,6 @@ function candidatePlanQuantity(
   if (!isValidationBudgetStrategy(candidate.strategyKey)) {
     return candidateOrderQuantity;
   }
-  const minimumQuantity = minimumFeeEfficientQuantity(
-    candidate.price,
-    lotSize,
-    minimumCommission,
-  );
   return candidateOrderQuantity >= minimumQuantity
     ? candidateOrderQuantity
     : 0;
@@ -313,7 +317,7 @@ function validationBudgetRuleCheck(candidate: {
   strategyScore: number;
 }): string | null {
   if (!isValidationBudgetStrategy(candidate.strategyKey)) return null;
-  return `validation-budget: ${(validationBudgetRatio(candidate) * 100).toFixed(0)}% of capped order`;
+  return `validation-budget: target ${(validationBudgetRatio(candidate) * 100).toFixed(0)}% of capped order; fee-efficient minimum lot within final cap`;
 }
 
 function assessEntryPersistence(input: {
@@ -1186,6 +1190,11 @@ export function buildPaperTradingPlan(input: {
     }
 
     if (quantity < input.lotSize) {
+      const minimumLotNotional = candidate.price * input.lotSize;
+      const cashCannotCoverLot = !hasSufficientCash(
+        remainingPlannedCash,
+        minimumLotNotional + estimatedCommission(minimumLotNotional, input.commissionRate, input.minimumCommission),
+      );
       operations.push({
         timestamp: now,
         symbol: candidate.symbol,
@@ -1195,11 +1204,14 @@ export function buildPaperTradingPlan(input: {
         quantity: 0,
         price: candidate.price,
         estimatedNotional: 0,
-        reason: "当前批次剩余可用资金不足，已计入前序计划和预计手续费，不再创建模拟订单。",
+        reason: cashCannotCoverLot
+          ? "当前批次剩余可用资金不足，已计入前序计划和预计手续费，不再创建模拟订单。"
+          : "现金可覆盖一手，但当前单笔上限、策略预算或费用效率不足以形成合格整手买单。",
         ruleChecks: [
           "lot-size: blocked",
-          "cash-check: blocked",
-          "cash-reservation: blocked",
+          ...(cashCannotCoverLot
+            ? ["cash-check: blocked", "cash-reservation: blocked"]
+            : ["plan-sizing: blocked"]),
           `remaining-planned-cash: ${remainingPlannedCash.toFixed(2)}`,
           "paper-only",
         ],

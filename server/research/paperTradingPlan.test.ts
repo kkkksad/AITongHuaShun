@@ -468,6 +468,39 @@ function validationRouting(
 }
 
 describe("buildPaperTradingPlan entry discipline", () => {
+  it.each(["kairosQualifiedProbe", "kairosValidationBasket"] as const)(
+    "uses a fee-efficient lot within the final cap for %s instead of shrinking it twice",
+    (strategyKey) => {
+      const plan = buildEntryDisciplinePlan({
+        stockRegime: "healthy-trend", price: 11.89, accountCash: 20_000,
+        maxSingleOrderNotional: 1_250, candidateScore: 80,
+        adaptiveRouting: validationRouting(strategyKey), activityTargetActive: true,
+        activityMode: strategyKey === "kairosQualifiedProbe" ? "qualified-probe" : "validation-probe",
+      });
+      expect(plan.operations.find((item) => item.action === "paper-buy-plan"))
+        .toMatchObject({ quantity: 100, estimatedNotional: 1_189 });
+      expect(plan.qualitySummary.plannedCashRequired).toBe(1_194);
+    },
+  );
+
+  it.each([
+    [1_188.99, 20_000, 11.89],
+    [1_250, 1_193.99, 11.89],
+    [1_250, 20_000, 7.39],
+    [1_250, 20_000, 8.61],
+  ])("retains cash, lot and fee limits with cap=%s cash=%s price=%s", (cap, cash, price) => {
+    const plan = buildEntryDisciplinePlan({
+      stockRegime: "healthy-trend", price, accountCash: cash, accountEquity: 20_000,
+      maxSingleOrderNotional: cap, candidateScore: 80,
+      adaptiveRouting: validationRouting("kairosValidationBasket"),
+      activityTargetActive: true, activityMode: "validation-probe",
+    });
+    expect(plan.operations.some((item) => item.action === "paper-buy-plan")).toBe(false);
+    if (cash === 20_000) {
+      expect(plan.operations.map((item) => item.reason).join(" ")).not.toContain("剩余可用资金不足");
+    }
+  });
+
   it.each(["trend-deterioration", "unclear", "insufficient-data", "missing"] as const)(
     "blocks new positions when historical persistence is %s",
     (stockRegime) => {

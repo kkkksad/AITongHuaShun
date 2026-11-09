@@ -24,6 +24,8 @@
 
 - [0018：Service Worker只缓存公开静态资源](0018-service-worker-static-cache-boundary.md)
 
+- [0020：Paper验证策略费用有效整手下限](0020-paper-probe-fee-efficient-lot-floor.md)
+
 ## 新建格式
 
 文件名使用 `NNNN-short-title.md`。
