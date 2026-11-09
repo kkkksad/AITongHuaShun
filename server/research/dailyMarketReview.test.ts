@@ -128,6 +128,74 @@ const auditEvents: AuditEvent[] = [{
 }];
 
 describe("buildDailyMarketReview", () => {
+  const reviewOrders = (activity: OrderRecord[]) => buildDailyMarketReview({
+    snapshot, provider: "akshare", account, positions, orders: activity,
+    auditEvents: [], now: new Date("2026-07-14T08:00:00.000Z"),
+  });
+
+  it.each([true, false])("counts an earlier submission filled today, explicit fill time=%s", (explicit) => {
+    const fill = {
+      ...orders[0], createdAt: "2026-07-13T02:00:00.000Z",
+      updatedAt: "2026-07-14T02:00:00.000Z",
+      ...(explicit ? { filledAt: "2026-07-14T10:00:00+08:00" } : {}),
+    };
+    const report = reviewOrders([fill]);
+    expect(report.trades).toMatchObject({ submitted: 0, filled: 1, filledBuys: 1,
+      filledBuyNotional: 848, commission: 5 });
+    expect(report.entryReview.status).toBe("entered");
+    expect(report.trades.items).toHaveLength(1);
+    expect(report.trades.items[0]).toMatchObject({
+      orderId: fill.id, createdAt: fill.createdAt, filledAt: "2026-07-14T02:00:00.000Z",
+    });
+  });
+
+  it("keeps a submission today separate from its fill on a later day", () => {
+    const report = reviewOrders([{
+      ...orders[0], filledAt: "2026-07-15T02:00:00.000Z",
+      updatedAt: "2026-07-15T02:00:00.000Z",
+    }]);
+    expect(report.trades).toMatchObject({ submitted: 1, filled: 0, filledBuys: 0,
+      filledBuyNotional: 0, commission: 0 });
+    expect(report.entryReview.status).not.toBe("entered");
+    expect(report.trades.items).toHaveLength(1);
+    expect(report.trades.items[0].filledAt).toBe("2026-07-15T02:00:00.000Z");
+  });
+
+  it("prefers filledAt over a later update and deduplicates same-day activity", () => {
+    const report = reviewOrders([{
+      ...orders[0], filledAt: "2026-07-14T02:00:00.000Z",
+      updatedAt: "2026-07-15T02:00:00.000Z",
+    }]);
+    expect(report.trades).toMatchObject({ submitted: 1, filled: 1, commission: 5 });
+    expect(report.trades.items).toHaveLength(1);
+  });
+
+  it("does not invent a fill date when the explicit timestamp is invalid", () => {
+    const report = reviewOrders([{ ...orders[0], filledAt: "unparseable" }]);
+    expect(report.trades).toMatchObject({ submitted: 1, filled: 0, commission: 0 });
+    expect(report.entryReview.status).not.toBe("entered");
+    expect(report.trades.items[0].filledAt).toBeNull();
+    expect(report.strategyReview.issues.join(" ")).toContain("1 笔保留成交记录的时间无法确认");
+  });
+
+  it("uses the Beijing date at midnight instead of UTC or submission day", () => {
+    const report = reviewOrders([
+      { ...orders[0], id: "before", createdAt: "2026-07-13T02:00:00.000Z", filledAt: "2026-07-13T15:59:59.999Z" },
+      { ...orders[0], id: "after", createdAt: "2026-07-13T02:00:00.000Z", filledAt: "2026-07-13T16:00:00.000Z" },
+    ]);
+    expect(report.trades.filled).toBe(1);
+    expect(report.trades.items.map((item) => item.orderId)).toEqual(["after"]);
+  });
+
+  it("sorts combined submission and fill activity by actual time", () => {
+    const report = reviewOrders([
+      { ...orders[0], id: "later-fill", createdAt: "2026-07-13T02:00:00Z", filledAt: "2026-07-14T11:00:00+08:00" },
+      { ...orders[0], id: "early-fill", createdAt: "2026-07-14T02:30:00Z", filledAt: "2026-07-14T02:30:00Z" },
+      { ...orders[1], id: "middle-reject", createdAt: "2026-07-14T02:45:00Z" },
+    ]);
+    expect(report.trades.items.map((item) => item.orderId)).toEqual(["early-fill", "middle-reject", "later-fill"]);
+  });
+
   it("does not require restoring an arbitrary cash percentage", () => {
     const report = buildDailyMarketReview({
       snapshot,

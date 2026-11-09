@@ -8,6 +8,7 @@ import type {
 } from "../../shared/trading";
 import { getPaperStrategyProfilePolicy } from "../trading/paperStrategyProfile";
 import { describeResearchInputDiagnostics } from "./researchInputDiagnostics";
+import { getOrderFillTime } from "../trading/orderFillTime";
 import {
   getAshareTradingDateStatus,
   getChinaDateKey,
@@ -53,6 +54,7 @@ export interface DailyMarketReviewTrade {
   commission: number;
   rejectionReason: string | null;
   createdAt: string;
+  filledAt: string | null;
   strategy: string;
   reason: string;
   reasonSource: "decision-audit" | "historical-fallback";
@@ -364,10 +366,11 @@ function buildEntryReview(input: {
   marketTone: DailyMarketTone;
   account: AccountSnapshot;
   dailyOrders: OrderRecord[];
+  dailyFills: OrderRecord[];
   auditEvents: AuditEvent[];
 }): DailyEntryReview {
-  const filledBuys = input.dailyOrders.filter(
-    (order) => order.side === "buy" && order.status === "filled",
+  const filledBuys = input.dailyFills.filter(
+    (order) => order.side === "buy",
   );
   const cashRejected = input.dailyOrders.some((order) => (
     order.side === "buy" &&
@@ -425,7 +428,7 @@ function buildEntryReview(input: {
     };
   }
 
-  if (input.dailyOrders.length === 0 && !hasIntradayCoverage) {
+  if (input.dailyOrders.length === 0 && input.dailyFills.length === 0 && !hasIntradayCoverage) {
     const recordedSessions = [...new Set(dailyAudits.flatMap((event) => {
       const session = event.data?.session;
       return typeof session === "string" ? [session] : [];
@@ -622,8 +625,26 @@ export function buildDailyMarketReview(
   const positionMap = new Map(input.positions.map((position) => [position.symbol, position]));
   const decisions = decisionAuditMap(input.auditEvents);
   const dailyOrders = input.orders
-    .filter((order) => getChinaDateKey(new Date(order.createdAt)) === tradingDate)
+    .filter((order) => Number.isFinite(Date.parse(order.createdAt)) &&
+      getChinaDateKey(new Date(order.createdAt)) === tradingDate)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const fillTimes = new Map(input.orders.map((order) => [order, getOrderFillTime(order)]));
+  const filled = input.orders.filter((order) => {
+    const time = fillTimes.get(order);
+    return time !== null && time !== undefined && getChinaDateKey(new Date(time)) === tradingDate;
+  });
+  const dailySubmissionSet = new Set(dailyOrders);
+  const dailyFillSet = new Set(filled);
+  const dailyFillIds = new Set(filled.map((order) => order.id));
+  const activityTime = (order: OrderRecord) => Date.parse(
+    dailyFillSet.has(order) ? fillTimes.get(order)! : order.createdAt,
+  );
+  const dailyActivity = input.orders
+    .filter((order) => dailySubmissionSet.has(order) || dailyFillSet.has(order))
+    .sort((left, right) => activityTime(left) - activityTime(right));
+  const unresolvedFillTimes = input.orders.filter(
+    (order) => order.status === "filled" && fillTimes.get(order) === null,
+  ).length;
   const calculatedReviewDayPerformance = calculateReviewDayPerformance({
     account: input.account,
     positions: input.positions,
@@ -641,7 +662,7 @@ export function buildDailyMarketReview(
       missingPreviousCloseSymbols: [],
     };
 
-  const tradeItems: DailyMarketReviewTrade[] = dailyOrders.map((order) => {
+  const tradeItems: DailyMarketReviewTrade[] = dailyActivity.map((order) => {
     const decision = decisions.get(order.id);
     const ruleChecks = Array.isArray(decision?.ruleChecks)
       ? decision.ruleChecks.filter((rule): rule is string => typeof rule === "string")
@@ -660,6 +681,7 @@ export function buildDailyMarketReview(
       commission: order.commission,
       rejectionReason: order.rejectionReason ?? null,
       createdAt: order.createdAt,
+      filledAt: fillTimes.get(order) ?? null,
       strategy: decision?.strategy ?? "历史 paper 计划",
       reason: decision?.reason ?? fallbackReason(order),
       reasonSource: decision?.reason ? "decision-audit" : "historical-fallback",
@@ -667,7 +689,6 @@ export function buildDailyMarketReview(
     };
   });
 
-  const filled = dailyOrders.filter((order) => order.status === "filled");
   const rejected = dailyOrders.filter((order) => order.status === "rejected");
   const filledBuys = filled.filter((order) => order.side === "buy");
   const filledSells = filled.filter((order) => order.side === "sell");
@@ -676,6 +697,7 @@ export function buildDailyMarketReview(
     marketTone: tone,
     account: input.account,
     dailyOrders,
+    dailyFills: filled,
     auditEvents: input.auditEvents,
   });
   const cashRatio = input.account.equity > 0
@@ -705,6 +727,7 @@ export function buildDailyMarketReview(
   for (const trade of tradeItems) {
     if (
       trade.status !== "filled" ||
+      !dailyFillIds.has(trade.orderId) ||
       trade.side !== "sell" ||
       trade.strategy !== "市场状态减仓"
     ) {
@@ -724,6 +747,10 @@ export function buildDailyMarketReview(
     "A 股一手、T+1 和风险引擎在订单提交时仍然生效。",
     `当前使用${strategyProfile.label}档位：${strategyProfile.summary}`,
   ];
+
+  if (unresolvedFillTimes > 0) {
+    issues.push(`${unresolvedFillTimes} 笔保留成交记录的时间无法确认，未计入本日成交统计；不能据此确认零成交。`);
+  }
 
   if (rejected.some((order) => order.rejectionReason?.includes("资金不足"))) {
     issues.push("出现资金不足拒绝，说明同批买单曾重复使用原始现金预算。");

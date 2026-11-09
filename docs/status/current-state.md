@@ -2,7 +2,9 @@
 
 **核对日期：** 2026-11-10（北京时间）
 
-API/web产物分离已通过真实隔离四镜像构建待发布：仅CSS变化时API运行指纹相同、web不同；无dist的API健康/认证/账户/风险和认证配置工具通过，未挂载生产资料或改变production标签。镜像减少346025字节，主要收益为减少无关API重启，不能解释为同量内存或独占磁盘节省。见[决策0033](../decisions/0033-separate-api-runtime-from-web-assets.md)与[模块12](../plans/2026-11-10-server-release-retention.md)。
+日复盘与通知成交日期修复已通过完整125服务端文件1953项、51前端文件343项及TS/Vite，待独立发布。委托按创建日、成交/费用/入场证据按实际成交日，兼容旧更新时间；明细并集保留两个时间，坏时间明确缺口。12项初始业务回归旧版11失败，目标三文件70项通过；周度FIFO和执行器成交目标日期另待处理，未改硬上限/资金/执行。见[决策0034](../decisions/0034-paper-fill-activity-time.md)与[模块15](../plans/2026-11-10-paper-fill-activity-dates.md)。
+
+API/web产物分离`90724d5`已独立发布、UTC18:42核验554文件/三健康/HTTPS/匿名保护及原账户/检查点/归档世代。隔离四镜像仅CSS变化时API运行指纹相同、web不同，无dist的API与认证工具通过；镜像减少346025字节，主要收益为减少无关API重启，不能解释为同量内存或独占磁盘节省。上一健康源码553文件独立匹配A提交、三镜像完整性及私有导出通过，实际留存已生效，未演练生产回滚。见[决策0033](../decisions/0033-separate-api-runtime-from-web-assets.md)与[模块12](../plans/2026-11-10-server-release-retention.md)。
 
 上一发布留存工具`7e4b1c1`已独立安装、UTC18:30核验553文件/三健康/HTTPS/匿名保护及原账户，三个容器保持。Linux46项验证通过：健康源码/镜像匹配后留存，成功原子切换、失败保留旧份、同版不轮换，源码排除私有.env与runtime；宿主全局prune从新发布器移除。首次安装仍由旧发布器运行，不能宣称已生成previous，后续发布再核验。详见[决策0032](../decisions/0032-retain-previous-healthy-release-assets.md)和[服务器计划](../plans/2026-11-10-server-release-retention.md)。
 

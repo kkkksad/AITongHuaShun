@@ -16,6 +16,48 @@ import {
   type PaperPlanNotificationContext,
 } from "./paperPlanNotifier";
 
+describe("paper notification fill dates", () => {
+  const order = (overrides: Partial<OrderRecord> = {}): OrderRecord => ({
+    id: "carry-fill", symbol: "600010", side: "buy", type: "limit", quantity: 100,
+    status: "filled", requestedPrice: 10, filledPrice: 10, filledQuantity: 100,
+    notional: 1000, commission: 5, createdAt: "2026-07-16T02:00:00.000Z",
+    updatedAt: "2026-07-17T02:00:00.000Z", ...overrides,
+  });
+
+  it.each([true, false])("counts carried fills on their fill date, explicit=%s", (explicit) => {
+    const record = order(explicit ? { filledAt: "2026-07-17T02:00:00.000Z" } : {});
+    const result = summarizePaperOrders([record], "2026-07-17");
+    expect(result).toMatchObject({ filledOrders: 1, buyNotional: 1000, commission: 5 });
+    expect(result.executedOrders.map((item) => item.orderId)).toEqual([record.id]);
+    expect(summarizePaperOrders([record], "2026-07-16").filledOrders).toBe(0);
+  });
+
+  it("does not assign a next-day fill to its submission date", () => {
+    const result = summarizePaperOrders([order({
+      createdAt: "2026-07-17T02:00:00.000Z", filledAt: "2026-07-20T02:00:00.000Z",
+    })], "2026-07-17");
+    expect(result).toMatchObject({ filledOrders: 0, buyNotional: 0, commission: 0 });
+    expect(result.executedOrders).toEqual([]);
+  });
+
+  it("uses explicit fill time across later metadata updates and Beijing midnight", () => {
+    const result = summarizePaperOrders([
+      order({ id: "before", filledAt: "2026-07-16T15:59:59.999Z" }),
+      order({ id: "after", filledAt: "2026-07-16T16:00:00.000Z", updatedAt: "2026-07-20T02:00:00Z" }),
+    ], "2026-07-17");
+    expect(result.filledOrders).toBe(1);
+    expect(result.executedOrders.map((item) => item.orderId)).toEqual(["after"]);
+  });
+
+  it("reports invalid fill-time evidence without assigning it to a day", () => {
+    const result = summarizePaperOrders([order({
+      createdAt: "2026-07-17T02:00:00.000Z", filledAt: "broken",
+    })], "2026-07-17");
+    expect(result).toMatchObject({ filledOrders: 0, commission: 0, unresolvedFillTimes: 1 });
+    expect(result.executedOrders).toEqual([]);
+  });
+});
+
 function createPlan(
   action: PaperTradingPlan["operations"][number]["action"] = "paper-buy-plan",
 ): PaperTradingPlan {
@@ -668,6 +710,19 @@ describe("PaperPlanNotifier", () => {
 
     expect(message.content).toContain("本轮预算、金额上限、整手或费用效率约束（1 次）");
     expect(message.content).not.toContain("plan-sizing-constrained");
+  });
+
+  it("does not present unknown fill dates as verified zero trading", () => {
+    const plan = createPlan("observe");
+    const input = context(plan);
+    input.executionSummary = {
+      ...input.executionSummary, filledOrders: 0, executedOrders: [],
+      unresolvedFillTimes: 2,
+    };
+    const message = formatPaperPlanMessage(plan, input);
+    expect(message.content).toContain("2 笔保留成交记录的时间无法确认");
+    expect(message.content).toContain("不能据此确认零成交");
+    expect(message.content).not.toContain("<p>今日暂无 Paper 成交。</p>");
   });
 
   it("sends an observation briefing without inventing trades", async () => {

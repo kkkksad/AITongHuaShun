@@ -22,6 +22,7 @@ import {
   getChinaMinutes,
 } from "../trading/ashareTradingCalendar";
 import type { WxPusherMessage } from "./wxPusherClient";
+import { getOrderFillTime } from "../trading/orderFillTime";
 
 export interface PaperPlanMessageSender {
   send(message: WxPusherMessage): Promise<unknown>;
@@ -140,6 +141,7 @@ export interface PaperPlanExecutionSummary {
   commission: number;
   executedOrders: PaperPlanExecutedOrder[];
   unfilledOrders: PaperPlanUnfilledOrder[];
+  unresolvedFillTimes?: number;
 }
 
 export interface PaperPlanExecutedOrder {
@@ -301,7 +303,13 @@ export function summarizePaperOrders(
   auditEvents: AuditEvent[] = [],
 ): PaperPlanExecutionSummary {
   const today = orders.filter((order) => chinaDate(order.createdAt) === tradingDate);
-  const filled = today.filter((order) => order.status === "filled");
+  const filled = orders.filter((order) => {
+    const time = getOrderFillTime(order);
+    return time !== null && chinaDate(time) === tradingDate;
+  });
+  const unresolvedFillTimes = orders.filter(
+    (order) => order.status === "filled" && getOrderFillTime(order) === null,
+  ).length;
   const roundMoney = (value: number) => Number(value.toFixed(2));
   const decisionByOrderId = new Map(
     auditEvents
@@ -336,6 +344,7 @@ export function summarizePaperOrders(
   };
 
   return {
+    ...(unresolvedFillTimes > 0 ? { unresolvedFillTimes } : {}),
     filledOrders: filled.length,
     rejectedOrders: today.filter((order) => order.status === "rejected").length,
     pendingOrders: today.filter((order) => (
@@ -670,6 +679,12 @@ function marketHtml(context: PaperPlanNotificationContext): string {
   ].join("");
 }
 
+function fillTimeWarningHtml(execution: PaperPlanExecutionSummary): string {
+  return (execution.unresolvedFillTimes ?? 0) > 0
+    ? `<p>${execution.unresolvedFillTimes} 笔保留成交记录的时间无法确认，未计入本日成交统计；不能据此确认零成交。</p>`
+    : "";
+}
+
 export function formatPaperPlanMessage(
   plan: PaperTradingPlan,
   context: PaperPlanNotificationContext,
@@ -700,7 +715,9 @@ export function formatPaperPlanMessage(
     : "<p>本轮没有满足条件的买卖动作；不为了凑成交放宽策略和风控。</p>";
   const executedHtml = execution.executedOrders.length > 0
     ? `<ol>${execution.executedOrders.slice(0, 5).map((order) => `<li>${formatExecuted(order)}</li>`).join("")}</ol>${execution.executedOrders.length > 5 ? `<p>另有 ${execution.executedOrders.length - 5} 笔成交，请在订单历史查看。</p>` : ""}`
-    : "<p>今日暂无 Paper 成交。</p>";
+    : (execution.unresolvedFillTimes ?? 0) > 0
+      ? "<p>可确认日期的记录中，今日暂无 Paper 成交。</p>"
+      : "<p>今日暂无 Paper 成交。</p>";
   const unfilledHtml = execution.unfilledOrders.length > 0
     ? `<p>${execution.unfilledOrders.slice(0, 4).map((order) => formatUnfilled(order)).join("<br />")}</p>`
     : "";
@@ -735,6 +752,8 @@ export function formatPaperPlanMessage(
       "<h3>今日成交与拒单</h3>",
       executedHtml,
       `<p>成交 ${execution.filledOrders} 笔 · 拒单 ${execution.rejectedOrders} 笔 · 待处理 ${execution.pendingOrders} 笔 · 买入 ${formatMoney(execution.buyNotional)} · 卖出 ${formatMoney(execution.sellNotional)} · 手续费 ${formatMoney(execution.commission)}</p>`,
+      "<p>成交和费用按实际成交日统计，旧成交记录以最后更新时间兼容；拒单、待处理和撤单按委托创建日统计。</p>",
+      fillTimeWarningHtml(execution),
       ...(unfilledHtml ? [unfilledHtml] : []),
       "<h3>市场与风险</h3>",
       marketHtml(context),
@@ -796,6 +815,7 @@ function formatOrderEventMessage(
       holdingsHtml(context),
       "<h3>今日累计</h3>",
       `<p>成交 ${context.executionSummary.filledOrders} 笔 · 拒单 ${context.executionSummary.rejectedOrders} 笔 · 买入 ${formatMoney(context.executionSummary.buyNotional)} · 卖出 ${formatMoney(context.executionSummary.sellNotional)} · 手续费 ${formatMoney(context.executionSummary.commission)}</p>`,
+      fillTimeWarningHtml(context.executionSummary),
       "<p>该回执不会触发新订单、修改策略或绕过任何 Paper 风控。</p>",
       "</div>",
     ].join(""),

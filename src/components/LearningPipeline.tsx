@@ -75,6 +75,17 @@ function adaptiveStrategyLabel(key: string): string {
   return option?.label ?? internalStrategyLabels[key] ?? key;
 }
 
+const reviewTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+});
+
+function reviewOrderTime(value: string | null | undefined): string {
+  return value && Number.isFinite(Date.parse(value))
+    ? reviewTimeFormatter.format(new Date(value))
+    : "未提供或无法确认";
+}
+
 export default function LearningPipeline() {
   const [weeklyPeriod, setWeeklyPeriod] = useState<WeeklyPaperReviewWindow>("previous");
 
@@ -541,7 +552,7 @@ export default function LearningPipeline() {
               <span>资金使用</span>
               <strong>{((dailyReview?.account.capitalDeployedPercent ?? 0) * 100).toFixed(1)}%</strong>
               <small>
-                成交 {dailyReview?.trades.filled ?? 0} / 拒绝 {dailyReview?.trades.rejected ?? 0}
+                委托 {dailyReview?.trades.submitted ?? 0} / 成交 {dailyReview?.trades.filled ?? 0} / 拒绝 {dailyReview?.trades.rejected ?? 0}
               </small>
             </article>
           </div>
@@ -565,6 +576,7 @@ export default function LearningPipeline() {
               </ul>
             </div>
           )}
+          <p className="empty-copy">委托按提交日统计，成交和费用按实际成交日统计；以下为复盘日委托与成交的合并记录，状态以当前记录为准，时间均为北京时间。旧成交记录以最后更新时间兼容。</p>
           <div className="learning-run-list">
             {(dailyReview?.trades.items ?? []).map((trade) => (
               <article key={trade.orderId}>
@@ -577,6 +589,10 @@ export default function LearningPipeline() {
                     {trade.strategy} · {trade.quantity} 股 · ¥{trade.notional.toLocaleString("zh-CN")}
                   </span>
                   <span>{trade.reason}</span>
+                  <span>
+                    委托：{reviewOrderTime(trade.createdAt)}
+                    {trade.status === "filled" && ` · 成交：${reviewOrderTime(trade.filledAt)}`}
+                  </span>
                 </div>
               </article>
             ))}

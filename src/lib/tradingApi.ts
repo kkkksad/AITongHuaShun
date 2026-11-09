@@ -933,6 +933,7 @@ export interface DailyMarketReview {
       commission: number;
       rejectionReason: string | null;
       createdAt: string;
+      filledAt?: string | null;
       strategy: string;
       reason: string;
       reasonSource: "decision-audit" | "historical-fallback";
