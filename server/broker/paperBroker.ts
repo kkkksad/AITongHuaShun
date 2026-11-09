@@ -54,6 +54,16 @@ export class PaperBroker extends EventEmitter {
     super();
   }
 
+  /** Read-only preflight; the broker still checks again before ledger mutation. */
+  getQuoteFreshnessReason(quote: { updatedAt?: string }): string | null {
+    if (this.options.quoteMaxAgeMs === undefined) return null;
+    return quoteFreshnessReason(
+      quote,
+      (this.options.clock?.() ?? new Date()).getTime(),
+      this.options.quoteMaxAgeMs,
+    );
+  }
+
   submitOrder(request: OrderRequest, provenance?: OrderProvenance): OrderRecord {
     const duplicate = this.store.findByClientOrderId(request.clientOrderId);
     if (duplicate) {
@@ -64,11 +74,7 @@ export class PaperBroker extends EventEmitter {
 
     // Evaluate risk FIRST, before creating the order and blocking cash
     const snapshot = this.market.getSnapshot();
-    const quoteFreshness = quote && quoteFreshnessReason(
-      quote,
-      (this.options.clock?.() ?? new Date()).getTime(),
-      this.options.quoteMaxAgeMs,
-    );
+    const quoteFreshness = quote && this.getQuoteFreshnessReason(quote);
     if (quoteFreshness) {
       const order = this.store.createOrder(request, quote.price, quote.name, provenance);
       const rejected = this.store.rejectOrder(order, quoteFreshness, "STALE_MARKET_QUOTE");
@@ -285,11 +291,7 @@ export class PaperBroker extends EventEmitter {
       // Other pending orders are matched in existing order against actual fills.
       const account = this.getAccount(snapshot);
       const matchingQuote = snapshot.quotes.find((quote) => quote.symbol === order.symbol);
-      const matchingFreshness = matchingQuote && quoteFreshnessReason(
-        matchingQuote,
-        (this.options.clock?.() ?? new Date()).getTime(),
-        this.options.quoteMaxAgeMs,
-      );
+      const matchingFreshness = matchingQuote && this.getQuoteFreshnessReason(matchingQuote);
       if (matchingFreshness) return { ...order };
       const decision = this.risk.evaluate({
         request: { symbol: order.symbol, side: order.side, type: "market", quantity: order.quantity },
@@ -305,10 +307,8 @@ export class PaperBroker extends EventEmitter {
       if (!decision.allowed) return this.store.rejectOrder(order, decision.message, decision.code);
     }
 
-    const immediateFreshness = quoteFreshnessReason(
+    const immediateFreshness = this.getQuoteFreshnessReason(
       snapshot.quotes.find((quote) => quote.symbol === order.symbol) ?? { updatedAt: undefined },
-      (this.options.clock?.() ?? new Date()).getTime(),
-      this.options.quoteMaxAgeMs,
     );
     if (immediateFreshness) {
       return this.store.rejectOrder(order, immediateFreshness, "STALE_MARKET_QUOTE");

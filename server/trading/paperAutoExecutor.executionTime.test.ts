@@ -12,6 +12,7 @@ import { buildUnavailableStrategyLeaderboard } from "../research/strategyLeaderb
 import { createTradingSystem } from "../system";
 import { createTestConfig } from "../test/testConfig";
 import { PaperAutoExecutor } from "./paperAutoExecutor";
+import { PaperBroker } from "../broker/paperBroker";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -22,6 +23,9 @@ function createExecutionFixture(input: {
   afterFirstOrderAt?: string;
   tradeWindowOnly?: boolean;
   operationCount?: number;
+  quoteGuard?: boolean;
+  maxOrdersPerRun?: number;
+  maxDailyOrders?: number;
 }) {
   let now = new Date(input.startedAt);
   const config = createTestConfig({
@@ -33,6 +37,13 @@ function createExecutionFixture(input: {
     PAPER_AUTO_EXECUTION_ENABLED: true,
   });
   const system = createTradingSystem(config, () => now);
+  if (input.quoteGuard) {
+    system.broker = new PaperBroker(system.market, system.store, system.risk, {
+      mode: config.MARKET_MODE, commissionRate: config.COMMISSION_RATE,
+      minimumCommission: config.MIN_COMMISSION, slippageBps: config.SLIPPAGE_BPS,
+      limits: system.limits, quoteMaxAgeMs: 120_000, clock: () => now,
+    });
+  }
   system.store.setStrategyProfile("growth");
   const snapshot: MarketSnapshot = {
     mode: "paper",
@@ -136,9 +147,9 @@ function createExecutionFixture(input: {
     enabled: true,
     intervalMs: 60_000,
     tradeWindowOnly: input.tradeWindowOnly ?? true,
-    maxOrdersPerRun: 2,
-    maxDailyOrders: 4,
-    targetDailyOrders: 2,
+    maxOrdersPerRun: input.maxOrdersPerRun ?? 2,
+    maxDailyOrders: input.maxDailyOrders ?? 4,
+    targetDailyOrders: Math.min(2, input.maxDailyOrders ?? 4),
     clock: () => now,
     planNotifier: notifier,
     onOrder: () => {
@@ -148,8 +159,92 @@ function createExecutionFixture(input: {
       }
     },
   });
-  return { executor, system, plan, notifier, submitOrder, orderReads, findByClientOrderId, marketRegimeResearch };
+  return { executor, system, plan, notifier, submitOrder, orderReads, findByClientOrderId, marketRegimeResearch, snapshot };
 }
+
+describe("automatic execution quote freshness before creating orders", () => {
+  const startedAt = "2026-08-21T14:00:00+08:00";
+  const oldTime = "2026-08-21T13:57:59+08:00";
+
+  it("creates no rejected record when every trading quote is stale", async () => {
+    const fixture = createExecutionFixture({ startedAt, quoteGuard: true });
+    fixture.snapshot.quotes.forEach((quote) => { quote.updatedAt = oldTime; });
+    const run = await fixture.executor.runOnce();
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+    expect(fixture.system.broker.getOrders()).toHaveLength(0);
+    expect(fixture.system.broker.getAccount().cash).toBe(10_000);
+    expect(run.skippedOperations.some((operation) => operation.reason.includes("陈旧"))).toBe(true);
+  });
+
+  it("does not spend the only run slot on an old quote while a fresh candidate can trade", async () => {
+    const fixture = createExecutionFixture({ startedAt, quoteGuard: true, operationCount: 2, maxOrdersPerRun: 1 });
+    fixture.snapshot.quotes[0].updatedAt = oldTime;
+    const run = await fixture.executor.runOnce();
+    expect(run.submittedOrders).toEqual([expect.objectContaining({ symbol: "600002", status: "filled" })]);
+    expect(fixture.submitOrder).toHaveBeenCalledOnce();
+    expect(fixture.notifier.notify.mock.calls[0][1].executableOperations.map((operation: { symbol: string }) => operation.symbol)).toEqual(["600002"]);
+    expect(run.skippedOperations).toContainEqual(expect.objectContaining({ symbol: "600001", reason: expect.stringContaining("陈旧") }));
+  });
+
+  it.each(["", "invalid-time", "2026-08-21T14:00:06+08:00"])("skips invalid or future source time '%s' per symbol", async (timestamp) => {
+    const fixture = createExecutionFixture({ startedAt, quoteGuard: true, operationCount: 2, maxOrdersPerRun: 1 });
+    fixture.snapshot.quotes[0].updatedAt = timestamp;
+    const run = await fixture.executor.runOnce();
+    expect(run.submittedOrders).toEqual([expect.objectContaining({ symbol: "600002", status: "filled" })]);
+    expect(fixture.system.broker.getOrders()).toHaveLength(1);
+  });
+
+  it("skips an explicitly non-tradable quote without blocking another symbol", async () => {
+    const fixture = createExecutionFixture({ startedAt, quoteGuard: true, operationCount: 2, maxOrdersPerRun: 1 });
+    fixture.snapshot.quotes[0].tradable = false;
+    const run = await fixture.executor.runOnce();
+    expect(run.submittedOrders).toEqual([expect.objectContaining({ symbol: "600002", status: "filled" })]);
+    expect(fixture.system.broker.getOrders()).toHaveLength(1);
+  });
+
+  it("keeps the exact 120 second boundary executable", async () => {
+    const fixture = createExecutionFixture({ startedAt, quoteGuard: true });
+    fixture.snapshot.quotes[0].updatedAt = "2026-08-21T13:58:00+08:00";
+    const run = await fixture.executor.runOnce();
+    expect(run.submittedOrders).toEqual([expect.objectContaining({ status: "filled" })]);
+  });
+
+  it.each(["researchFinishedAt", "notificationFinishedAt"] as const)("rechecks age after %s without creating a rejected order", async (stage) => {
+    const fixture = createExecutionFixture({ startedAt, quoteGuard: true, [stage]: "2026-08-21T14:02:01+08:00" });
+    const run = await fixture.executor.runOnce();
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+    expect(fixture.system.broker.getOrders()).toHaveLength(0);
+    expect(run.skippedOperations.some((operation) => operation.reason.includes("陈旧"))).toBe(true);
+  });
+
+  it("preserves the first actual fill and skips a quote that expires before the second submission", async () => {
+    const fixture = createExecutionFixture({ startedAt, quoteGuard: true, operationCount: 2,
+      afterFirstOrderAt: "2026-08-21T14:02:01+08:00" });
+    const run = await fixture.executor.runOnce();
+    expect(fixture.submitOrder).toHaveBeenCalledOnce();
+    expect(run.submittedOrders).toEqual([expect.objectContaining({ symbol: "600001", status: "filled" })]);
+    expect(fixture.system.broker.getOrders()).toHaveLength(1);
+    expect(run.skippedOperations).toContainEqual(expect.objectContaining({ symbol: "600002", reason: expect.stringContaining("陈旧") }));
+  });
+
+  it("can execute the same intention after quote recovery without stale rejections using the daily cap", async () => {
+    const fixture = createExecutionFixture({ startedAt, quoteGuard: true, maxDailyOrders: 1 });
+    fixture.snapshot.quotes.forEach((quote) => { quote.updatedAt = oldTime; });
+    const first = await fixture.executor.runOnce();
+    expect(first.submittedOrders).toHaveLength(0);
+    fixture.snapshot.quotes.forEach((quote) => { quote.updatedAt = new Date(startedAt).toISOString(); });
+    const second = await fixture.executor.runOnce();
+    expect(second.submittedOrders).toEqual([expect.objectContaining({ status: "filled" })]);
+    expect(fixture.system.broker.getOrders()).toHaveLength(1);
+  });
+
+  it("keeps unguarded mock and historical timestamps compatible", async () => {
+    const fixture = createExecutionFixture({ startedAt });
+    fixture.snapshot.quotes.forEach((quote) => { quote.updatedAt = "2000-01-01T00:00:00Z"; });
+    const run = await fixture.executor.runOnce();
+    expect(run.submittedOrders).toEqual([expect.objectContaining({ status: "filled" })]);
+  });
+});
 
 describe("paper execution checks the actual submission time", () => {
   it("persists bounded historical evidence with a zero-order run", async () => {

@@ -378,10 +378,12 @@ export function shouldRunScheduledPaperAutoExecution(
 }
 
 export function hasUsableTradingQuote(
-  snapshot: { quotes: Array<{ tradable: boolean; price: number }> },
+  snapshot: { quotes: Array<{ tradable: boolean; price: number; updatedAt?: string }> },
+  freshnessReason?: (quote: { updatedAt?: string }) => string | null,
 ): boolean {
   return snapshot.quotes.some(
-    (quote) => quote.tradable && Number.isFinite(quote.price) && quote.price > 0,
+    (quote) => quote.tradable && Number.isFinite(quote.price) && quote.price > 0 &&
+      !freshnessReason?.(quote),
   );
 }
 
@@ -871,11 +873,18 @@ export class PaperAutoExecutor {
         return this.finalizeRun(trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
       }
 
-      if (!hasUsableTradingQuote(this.options.system.market.getSnapshot())) {
+      const initialSnapshot = this.options.system.market.getSnapshot();
+      if (!hasUsableTradingQuote(initialSnapshot, (quote) =>
+        this.options.system.broker.getQuoteFreshnessReason(quote))) {
+        const sourceTimeReason = initialSnapshot.quotes
+          .filter((quote) => quote.tradable && Number.isFinite(quote.price) && quote.price > 0)
+          .map((quote) => this.options.system.broker.getQuoteFreshnessReason(quote))
+          .find(Boolean);
         skippedOperations.push({
           symbol: "CASH",
           action: "observe",
-          reason: "当前没有可交易行情，保持 Paper 观望并等待行情源恢复。",
+          reason: "当前没有可交易行情，保持 Paper 观望并等待行情源恢复。" +
+            (sourceTimeReason ? ` ${sourceTimeReason}` : ""),
         });
         const account = this.options.system.broker.getAccount();
         const plan = buildUnavailablePaperPlan({
@@ -1103,6 +1112,11 @@ export class PaperAutoExecutor {
           executionTimeStopped = true;
           break;
         }
+        const currentQuoteReason = this.tradingQuoteReason(operation.symbol);
+        if (currentQuoteReason) {
+          skippedOperations.push(paperAutoExecutionSkip(operation, currentQuoteReason));
+          continue;
+        }
         const side = request.side;
         const order = this.options.system.broker.submitOrder(request, {
           strategy: operation.strategy,
@@ -1299,10 +1313,11 @@ export class PaperAutoExecutor {
       }
 
       const quote = this.options.system.market.getQuote(operation.symbol);
-      if (!quote || !Number.isFinite(quote.price) || quote.price <= 0) {
+      const quoteReason = this.tradingQuoteReason(operation.symbol, quote);
+      if (!quote || quoteReason) {
         skippedOperations.push(paperAutoExecutionSkip(
           operation,
-          "最新行情尚未就绪，未创建本地 paper 订单",
+          quoteReason ?? "最新行情尚未就绪，未创建本地 paper 订单",
         ));
         continue;
       }
@@ -1342,6 +1357,16 @@ export class PaperAutoExecutor {
     }
 
     return prepared;
+  }
+
+  private tradingQuoteReason(
+    symbol: string,
+    quote = this.options.system.market.getQuote(symbol),
+  ): string | null {
+    if (!quote || !Number.isFinite(quote.price) || quote.price <= 0 || quote.tradable === false) {
+      return "最新行情尚未就绪或不可交易，未创建本地 paper 订单";
+    }
+    return this.options.system.broker.getQuoteFreshnessReason(quote);
   }
 
   private finalizeRun(
