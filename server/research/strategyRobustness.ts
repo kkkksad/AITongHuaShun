@@ -35,6 +35,8 @@ export interface StrategyRobustnessEntry {
   strategyName: string;
   strategyFamily: StrategyFamily;
   fixedParams: Record<string, number>;
+  evaluatedSymbol: string;
+  evaluatedName: string;
   windows: number;
   profitableWindows: number;
   totalTrades: number;
@@ -43,6 +45,9 @@ export interface StrategyRobustnessEntry {
   averageMaxDrawdown: number;
   worstMaxDrawdown: number;
   averageWinRate: number;
+  closedMatches: number;
+  winningMatches: number;
+  closedMatchWinRate: number | null;
   averageSharpeRatio: number;
   averageProfitFactor: number | null;
   evidenceScore: number;
@@ -63,6 +68,8 @@ export interface StrategyRobustnessReport {
     requestedDays: number;
     requestedSymbols: number;
     historySymbols: number;
+    testedSymbols: number;
+    symbolWindowTests: number;
     alignedTradingDays: number;
     windowCount: 3;
   };
@@ -467,12 +474,19 @@ export async function evaluateFixedStrategyProfiles(
   const windows = splitChronologicalWindows(snapshots, WINDOW_COUNT);
   if (windows.length === 0) return [];
   const entries: Array<Omit<StrategyRobustnessEntry, "rank">> = [];
+  const symbols = [...new Set(snapshots.flatMap(s => s.quotes.map(q => q.symbol)))].sort().slice(0, 12);
 
-  for (const profile of profiles) {
+  const names = new Map(snapshots.flatMap(s => s.quotes.map(q => [q.symbol, q.name] as const)));
+  for (const { profile, symbol } of profiles.flatMap(profile => symbols.map(symbol => ({ profile, symbol })))) {
     const reports: BacktestMetrics[] = [];
     for (const window of windows) {
+      // Independent strategies cannot accidentally bind the first of many
+      // quotes, or borrow a different stock while this one is suspended.
+      const singleSymbolWindow = window.map(snapshot => ({
+        ...snapshot, quotes: snapshot.quotes.filter(q => q.symbol === symbol),
+      }));
       const strategy = await profile.factory.create(profile.fixedParams);
-      const report = new BacktestEngine(window, strategy, {
+      const report = new BacktestEngine(singleSymbolWindow, strategy, {
         initialCapital: 1_000_000,
         commissionRate: 0.0003,
         minimumCommission: 5,
@@ -481,6 +495,8 @@ export async function evaluateFixedStrategyProfiles(
         maxPositionWeight: 0.2,
       }).run();
       reports.push(report.metrics);
+      // Research must let health checks and unrelated API requests run.
+      await new Promise<void>(resolve => setImmediate(resolve));
     }
 
     const returns = reports.map((metrics) => metrics.totalReturn);
@@ -502,12 +518,19 @@ export async function evaluateFixedStrategyProfiles(
       averageWinRate: round(average(reports.map((metrics) => metrics.winRate))),
     };
     const evidence = assessStrategyEvidence(aggregate);
+    const winningMatches = reports.reduce((sum, metrics) => sum + metrics.winningTrades, 0);
+    const closedMatches = reports.reduce((sum, metrics) => sum + metrics.winningTrades + metrics.losingTrades, 0);
     entries.push({
       strategyKey: profile.strategyKey,
       strategyName: profile.factory.name,
       strategyFamily: profile.strategyFamily,
       fixedParams: { ...profile.fixedParams },
+      evaluatedSymbol: symbol,
+      evaluatedName: names.get(symbol) || symbol,
       ...aggregate,
+      closedMatches,
+      winningMatches,
+      closedMatchWinRate: closedMatches > 0 ? round(winningMatches / closedMatches) : null,
       averageSharpeRatio: round(average(sharpeRatios)),
       averageProfitFactor: profitFactors.length > 0
         ? round(average(profitFactors))
@@ -520,13 +543,17 @@ export async function evaluateFixedStrategyProfiles(
   const gateRank = { pass: 0, caution: 1, blocked: 2 } as const;
   return entries
     .sort((left, right) =>
+      left.evaluatedSymbol.localeCompare(right.evaluatedSymbol) ||
       gateRank[left.stabilityGate] - gateRank[right.stabilityGate] ||
       right.evidenceScore - left.evidenceScore ||
       right.profitableWindows - left.profitableWindows ||
       right.medianReturn - left.medianReturn ||
       left.worstMaxDrawdown - right.worstMaxDrawdown,
     )
-    .map((entry, index) => ({ rank: index + 1, ...entry }));
+    .map((entry, index, sorted) => ({
+      rank: index - sorted.findIndex(candidate => candidate.evaluatedSymbol === entry.evaluatedSymbol) + 1,
+      ...entry,
+    }));
 }
 
 function trimTrailingSlash(value: string): string {
@@ -547,6 +574,8 @@ function baseReport(input: BuildStrategyRobustnessInput): StrategyRobustnessRepo
       requestedDays: input.days,
       requestedSymbols: 0,
       historySymbols: 0,
+      testedSymbols: 0,
+      symbolWindowTests: 0,
       alignedTradingDays: 0,
       windowCount: WINDOW_COUNT,
     },
@@ -555,7 +584,7 @@ function baseReport(input: BuildStrategyRobustnessInput): StrategyRobustnessRepo
       nonOverlappingWindows: true,
       minimumAlignedTradingDays: MINIMUM_ALIGNED_DAYS,
       stabilityMeaning:
-        "固定参数在三个不重叠真实历史窗口分别回测；至少两窗盈利、六笔交易、中位收益为正且最差回撤不超过 15% 才通过。",
+        "每只股票以独立账户和策略在三个不重叠真实历史窗口回测、单股排名；至少两窗盈利、六笔成交、中位收益为正且最差回撤不超过15%才通过。闭合片段胜率按费用后已闭合总数计算，未平仓盈亏只进入权益收益，不进入胜率分母。",
       evidenceScoreMeaning:
         "证据分综合窗口完整性、交易样本、一致性和尾部风险，仅衡量当前验证充分度，不是盈利概率。",
     },
@@ -567,6 +596,7 @@ function baseReport(input: BuildStrategyRobustnessInput): StrategyRobustnessRepo
       "固定参数没有在本报告数据上重新优化；下一阶段仍需 purged walk-forward 和成本压力测试。",
       "结果只用于研究和 shadow 评估，不直接生成本地 paper 或真实订单。",
       "只使用报告与行情快照较早时点已完成的日线；无效、重复、请求外或复权不符证据明确排除，零成交量日线只估值。",
+      "逐股测试使用各自100万元研究账户，不是多股组合或当前生产资金的实现收益；不把闭合片段胜率称为整体成功率。",
     ],
   };
 }
@@ -669,6 +699,8 @@ export async function buildStrategyRobustnessReport(
         requestedDays: days,
         requestedSymbols: universe.length,
         historySymbols: validSeries.length,
+        testedSymbols: new Set(entries.map(entry => entry.evaluatedSymbol)).size,
+        symbolWindowTests: entries.reduce((sum, entry) => sum + entry.windows, 0),
         alignedTradingDays: snapshots.length,
         windowCount: WINDOW_COUNT,
       },

@@ -50,6 +50,7 @@
 - [0036：真实策略验证先核对历史时点、股票和复权证据](0036-real-strategy-history-evidence-boundary.md)
 - [0037：报价来源时间不得由抓取时间补齐](0037-quote-source-time-is-not-fetch-time.md)
 - [0038：指定行情独立于全市场发现与历史研究](0038-requested-quotes-independent-of-discovery-and-history.md)
+- [0039：稳健性证据逐股独立，胜率注明闭合分母](0039-strategy-evidence-is-per-symbol-and-closed-match.md)
 
 ## 新建格式
 

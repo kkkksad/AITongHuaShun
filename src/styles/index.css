@@ -4946,6 +4946,34 @@ select:focus-visible {
   min-width: 1320px;
 }
 
+.robustness-stock-selection {
+  flex-wrap: wrap;
+  min-width: 0;
+  margin-block: 12px;
+}
+
+.robustness-stock-selection select {
+  max-width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+}
+
+.robustness-stock-selection > span:last-child {
+  flex: 1 1 280px;
+  overflow-wrap: anywhere;
+}
+
+.robustness-closed-samples {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .viewport-deferred {
   min-width: 0;
 }

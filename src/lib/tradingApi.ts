@@ -168,6 +168,9 @@ export interface StrategyRobustnessEntry {
   strategyName: string;
   strategyFamily: StrategyRobustnessFamily;
   fixedParams: Record<string, number>;
+  /** Older reports may not identify the stock actually evaluated. */
+  evaluatedSymbol?: string;
+  evaluatedName?: string;
   windows: number;
   profitableWindows: number;
   totalTrades: number;
@@ -176,6 +179,9 @@ export interface StrategyRobustnessEntry {
   averageMaxDrawdown: number;
   worstMaxDrawdown: number;
   averageWinRate: number;
+  closedMatches?: number;
+  winningMatches?: number;
+  closedMatchWinRate?: number | null;
   averageSharpeRatio: number;
   averageProfitFactor: number | null;
   evidenceScore: number;
@@ -196,6 +202,8 @@ export interface StrategyRobustnessReport {
     requestedDays: number;
     requestedSymbols: number;
     historySymbols: number;
+    testedSymbols?: number;
+    symbolWindowTests?: number;
     alignedTradingDays: number;
     windowCount: 3;
   };

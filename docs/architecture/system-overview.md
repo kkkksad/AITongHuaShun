@@ -1,5 +1,7 @@
 # 系统架构
 
+真实策略稳健性求值以单股票/单窗口为独立研究单元，每次新建策略及内存回测账户；最多12只×17固定策略×3窗=612次，每窗后让出事件循环。响应逐股身份、单股排名、实际测试数和费用后闭合分母，前端选择股票展示；原平均窗口胜率字段仅兼容保留。入口时点/来源校验继续先于求值，见[0039](../decisions/0039-strategy-evidence-is-per-symbol-and-closed-match.md)。
+
 固定现金预留与分时总仓位比例默认已按 [决策0010](../decisions/0010-no-fixed-paper-cash-reserve.md) 取消；`cashReserveRatio` / `cashReserveFloor` 内置值为0，`capitalPacing` / `maxInvestedRatio` 兼容值为1。阶段累计订单笔数仍单独限制，不能将这些兼容字段重新解释成必须持有现金。
 
 限价挂单的现金冻结只属于买单；卖单通过Broker的同标的待卖数量预占检查限制持仓，不占用现金，也不能释放其他买单的冻结。InMemory与JSON保持该方向规则一致；JSON载入从待买单重建冻结，不信任旧缓存数值。

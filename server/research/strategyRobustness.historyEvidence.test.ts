@@ -114,7 +114,8 @@ describe("real strategy history evidence boundaries", () => {
     const result = await report([series(values), series(values, { symbol: "600011", source: "eastmoney-stock-history" })]);
     expect(result.source).toMatchObject({ historySymbols: 2, alignedTradingDays: 360,
       historySource: "eastmoney-stock-history + tencent-stock-history", windowCount: 3 });
-    expect(result.entries).toHaveLength(17);
+    expect(result.entries).toHaveLength(34);
+    expect(result.source).toMatchObject({ testedSymbols: 2, symbolWindowTests: 102 });
     expect(result.entries.every((entry) => entry.windows === 3)).toBe(true);
     expect(result.warnings).toEqual([]);
   });

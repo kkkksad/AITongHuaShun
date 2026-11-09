@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { AlertTriangle, Database, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   fetchStrategyRobustness,
@@ -31,6 +32,7 @@ function evidenceTone(score: number): "strong" | "medium" | "weak" {
 }
 
 export function StrategyRobustnessPanel() {
+  const [selectedSymbol, setSelectedSymbol] = useState("");
   const reportQuery = useQuery({
     queryKey: ["strategy-robustness", 12, 500],
     queryFn: ({ signal }) => fetchStrategyRobustness(12, 500, signal),
@@ -38,7 +40,12 @@ export function StrategyRobustnessPanel() {
     gcTime: 30 * 60_000,
   });
   const report = reportQuery.data;
-  const entries = report?.entries ?? [];
+  const allEntries = report?.entries ?? [];
+  const symbols = [...new Map(allEntries.filter(e => e.evaluatedSymbol).map(e => [e.evaluatedSymbol!, e.evaluatedName || e.evaluatedSymbol!])).entries()]
+    .sort(([left], [right]) => left.localeCompare(right));
+  const currentSymbol = symbols.some(([symbol]) => symbol === selectedSymbol) ? selectedSymbol : symbols[0]?.[0];
+  const entries = symbols.length > 0 ? allEntries.filter(e => e.evaluatedSymbol === currentSymbol) : allEntries;
+  const strategyCount = new Set(allEntries.map(e => e.strategyKey)).size;
   const passCount = entries.filter((entry) => entry.stabilityGate === "pass").length;
 
   return (
@@ -75,7 +82,7 @@ export function StrategyRobustnessPanel() {
             <article>
               <span>历史股票</span>
               <strong>{report.source.historySymbols}</strong>
-              <small>请求 {report.source.requestedSymbols} 只流动性标的</small>
+              <small>请求 {report.source.requestedSymbols} 只 · 实际逐股测试 {report.source.testedSymbols ?? "未提供"} 只</small>
             </article>
             <article>
               <span>共同交易日</span>
@@ -84,11 +91,11 @@ export function StrategyRobustnessPanel() {
             </article>
             <article>
               <span>固定策略</span>
-              <strong>{entries.length}</strong>
-              <small>每策略 {report.source.windowCount} 窗 · 合计 {entries.length * report.source.windowCount} 次验证</small>
+              <strong>{strategyCount}</strong>
+              <small>每股每策略 {report.source.windowCount} 窗 · 合计 {report.source.symbolWindowTests ?? "未提供"} 次单股窗口验证</small>
             </article>
             <article>
-              <span>稳健性通过</span>
+              <span>当前股票稳健性通过</span>
               <strong className={passCount > 0 ? "positive" : "negative"}>{passCount}</strong>
               <small>不在当前验证样本上重新调参</small>
             </article>
@@ -98,6 +105,18 @@ export function StrategyRobustnessPanel() {
             <ShieldCheck size={16} />
             <span>{report.methodology.stabilityMeaning} {report.methodology.evidenceScoreMeaning}</span>
           </div>
+
+          {symbols.length > 0 ? (
+            <label className="research-source-row robustness-stock-selection">
+              <span>验证股票</span>
+              <select aria-label="选择验证股票" value={currentSymbol} onChange={event => setSelectedSymbol(event.target.value)}>
+                {symbols.map(([symbol, name]) => <option key={symbol} value={symbol}>{name} · {symbol}</option>)}
+              </select>
+              <span>每股独立研究账户；未平仓盈亏不进入闭合片段胜率，权益收益包含期末估值。</span>
+            </label>
+          ) : allEntries.length > 0 ? (
+            <div className="research-alert">旧报告未提供逐股覆盖，不能把历史股票数当成实际测试股票数；刷新以读取新报告。</div>
+          ) : null}
 
           {report.warnings.map((warning) => (
             <div className="research-alert" key={warning}>
@@ -122,14 +141,14 @@ export function StrategyRobustnessPanel() {
                     <th>最差收益</th>
                     <th>平均回撤</th>
                     <th>最差回撤</th>
-                    <th>平均胜率</th>
+                    <th>闭合片段胜率</th>
                     <th>平均夏普</th>
                     <th>平均盈亏比</th>
                   </tr>
                 </thead>
                 <tbody>
                   {entries.map((entry) => (
-                    <tr key={entry.strategyKey}>
+                    <tr key={`${entry.evaluatedSymbol || "legacy"}:${entry.strategyKey}`}>
                       <td><span className={`rank-badge rank-${entry.rank}`}>{entry.rank}</span></td>
                       <td className="symbol-cell">
                         <strong>{entry.strategyName}</strong>
@@ -163,7 +182,11 @@ export function StrategyRobustnessPanel() {
                       </td>
                       <td>{formatPercent(-entry.averageMaxDrawdown)}</td>
                       <td className="negative">{formatPercent(-entry.worstMaxDrawdown)}</td>
-                      <td>{formatPercent(entry.averageWinRate)}</td>
+                      <td data-closed-match-rate>
+                        {entry.closedMatchWinRate != null && entry.closedMatches != null && entry.closedMatches > 0
+                          ? <>{(entry.closedMatchWinRate * 100).toFixed(2)}%<small className="robustness-closed-samples">盈利 {entry.winningMatches} / {entry.closedMatches}</small></>
+                          : <>—<small className="robustness-closed-samples">{entry.closedMatches === 0 ? "无闭合样本" : "未提供闭合分母"}</small></>}
+                      </td>
                       <td className={entry.averageSharpeRatio >= 0 ? "positive" : "negative"}>
                         {entry.averageSharpeRatio.toFixed(2)}
                       </td>

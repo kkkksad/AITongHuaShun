@@ -99,7 +99,8 @@ describe("evaluateFixedStrategyProfiles", () => {
       [movingAverage!],
     );
 
-    expect(entries).toHaveLength(1);
+    expect(entries).toHaveLength(2);
+    expect(entries.map(entry => entry.evaluatedSymbol)).toEqual(["600001", "600002"]);
     expect(entries[0]).toMatchObject({
       strategyKey: "movingAverageCross",
       windows: 3,
