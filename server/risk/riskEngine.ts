@@ -13,6 +13,7 @@ import type {
 } from "../../shared/trading";
 import type { AlertType } from "../notifications/types";
 import { hasSufficientCash } from "../broker/executionCosts";
+import { copyPaperRiskState, isRiskTimestamp, validatePaperRiskState } from "./paperRiskCheckpoint";
 
 /** 熔断器事件回调 — 用于集成告警通知 */
 export type CircuitBreakerCallback = (event: {
@@ -67,6 +68,39 @@ export class RiskEngine {
 
   getState(): Readonly<RiskState> {
     return { ...this.state };
+  }
+
+  restoreState(state: Readonly<RiskState>): void {
+    validatePaperRiskState(state);
+    this.state = copyPaperRiskState(state);
+  }
+
+  setLedgerStatus(status: NonNullable<RiskState["ledgerStatus"]>): void {
+    this.state.ledgerStatus = status;
+  }
+
+  /** Fold committed cycles at their actual event times, then observe current equity separately. */
+  recordClosedCycleResult(profit: number | null, closedAt: string): void {
+    if ((profit !== null && !Number.isFinite(profit)) || !isRiskTimestamp(closedAt) ||
+        Date.parse(closedAt) > this.clock().getTime() + 5_000) {
+      throw new Error("Invalid committed Paper risk cycle evidence.");
+    }
+    this.syncTradingDay(new Date(Date.parse(closedAt) + 8 * 60 * 60 * 1000).toISOString().slice(0, 10));
+    this.refreshCircuit(closedAt);
+    if (profit === null) {
+      this.state.unknownCycleCount = (this.state.unknownCycleCount ?? 0) + 1;
+    } else {
+      this.state.tradeCount++;
+      this.state.lastTradeTime = closedAt;
+      if (profit < 0) {
+        this.state.lossCount++;
+        this.state.consecutiveLosses++;
+      } else {
+        this.state.consecutiveLosses = 0;
+      }
+    }
+    this.state.lastEvaluationTime = closedAt;
+    this.evaluateCircuit(closedAt);
   }
 
   /** 设置日内初始权益（应在交易日开始时调用） */
@@ -126,6 +160,7 @@ export class RiskEngine {
   /** 重置熔断器状态（手动恢复） */
   resetCircuit(): void {
     this.state = this.initialState();
+    this.state.baselineResetDate = this.state.tradingDate;
   }
 
   /** 记录一次交易结果（盈利/亏损），用于更新熔断器状态 */
@@ -134,6 +169,7 @@ export class RiskEngine {
       throw new Error("Risk trade evidence must contain finite profit and nonnegative equity.");
     }
     this.syncTradingDay();
+
     const now = this.clock().toISOString();
     this.refreshCircuit(now);
     this.state.tradeCount++;
@@ -158,7 +194,8 @@ export class RiskEngine {
     this.syncTradingDay();
     const now = this.clock().toISOString();
     this.refreshCircuit(now);
-    if (this.state.peakDailyEquity === 0 && evidencedOpeningEquity !== undefined &&
+    if (this.state.peakDailyEquity === 0 && this.state.baselineResetDate !== this.state.tradingDate &&
+        evidencedOpeningEquity !== undefined &&
         Number.isFinite(evidencedOpeningEquity) && evidencedOpeningEquity > 0) {
       this.state.peakDailyEquity = evidencedOpeningEquity;
     }
@@ -188,6 +225,11 @@ export class RiskEngine {
     } = input;
 
     this.syncTradingDay();
+
+    if (this.state.ledgerStatus && this.state.ledgerStatus !== "ready") {
+      return this.reject("RISK_LEDGER_UNAVAILABLE", this.state.ledgerStatus === "history-gap"
+        ? "完整成交风险记录存在缺口，请复核后手动重置风控" : "风险检查点暂不可用，停止新增执行");
+    }
 
     // ── 熔断器检查（最高优先级） ──
     const circuitCheck = this.checkCircuitBreaker();
@@ -309,6 +351,9 @@ export class RiskEngine {
   private initialState(): RiskState {
     return {
       tradingDate: this.tradingDate(),
+      unknownCycleCount: 0,
+      ledgerStatus: "ready",
+      baselineResetDate: null,
       circuitState: "normal",
       consecutiveLosses: 0,
       dailyDrawdown: 0,
@@ -461,10 +506,10 @@ export class RiskEngine {
     return new Date(this.clock().getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
   }
 
-  private syncTradingDay(): void {
-    const tradingDate = this.tradingDate();
+  private syncTradingDay(tradingDate = this.tradingDate()): void {
     if (this.state.tradingDate === tradingDate) return;
     this.state.tradingDate = tradingDate;
+    this.state.baselineResetDate = null;
     this.state.peakDailyEquity = 0;
     this.state.dailyDrawdown = 0;
     // A multi-day losing streak remains meaningful for T+1 positions.

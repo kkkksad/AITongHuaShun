@@ -363,6 +363,11 @@ export interface EnhancedRiskLimits extends RiskLimits {
 export interface RiskState {
   /** Beijing date of the current daily peak; absent only in legacy external snapshots. */
   tradingDate?: string;
+  /** Known net cycles exclude legacy cycles whose entry costs are unknown. */
+  unknownCycleCount?: number;
+  ledgerStatus?: "ready" | "history-gap" | "checkpoint-unavailable";
+  /** Explicit risk reset ignores the old opening peak for this Beijing date. */
+  baselineResetDate?: string | null;
   circuitState: CircuitState;
   consecutiveLosses: number;
   dailyDrawdown: number;

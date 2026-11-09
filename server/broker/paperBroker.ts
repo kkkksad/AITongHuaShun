@@ -15,6 +15,7 @@ import type { MarketDataProvider } from "../contracts/MarketDataProvider";
 import type { TradingStore } from "../contracts/TradingStore";
 import type { RiskEngine } from "../risk/riskEngine";
 import { executionCosts, hasSufficientCash, limitBuyBudget } from "./executionCosts";
+import { PaperRiskCheckpointError, PaperRiskTracker } from "../risk/paperRiskTracker";
 
 interface PaperBrokerOptions {
   mode: TradingMode;
@@ -25,6 +26,8 @@ interface PaperBrokerOptions {
   /** Wall-clock source age guard; undefined for deterministic mock/history providers. */
   quoteMaxAgeMs?: number;
   clock?: () => Date;
+  /** Main paper runtime opts in; historical engines keep their explicitly configured semantics. */
+  riskTracking?: boolean;
 }
 
 const MAX_FUTURE_QUOTE_SKEW_MS = 5_000;
@@ -45,6 +48,7 @@ export function quoteFreshnessReason(
 }
 
 export class PaperBroker extends EventEmitter {
+  private readonly riskTracker?: PaperRiskTracker;
   constructor(
     private readonly market: MarketDataProvider,
     private readonly store: TradingStore,
@@ -52,6 +56,13 @@ export class PaperBroker extends EventEmitter {
     private readonly options: PaperBrokerOptions,
   ) {
     super();
+    if (options.riskTracking) {
+      this.riskTracker = new PaperRiskTracker(risk, store, options.clock ?? (() => new Date()),
+        (quote) => this.getQuoteFreshnessReason(quote));
+      const snapshot = market.getSnapshot();
+      try { this.riskTracker.synchronize(this.getAccount(snapshot), snapshot, true); }
+      catch (error) { if (!(error instanceof PaperRiskCheckpointError)) throw error; }
+    }
   }
 
   /** Read-only preflight; the broker still checks again before ledger mutation. */
@@ -82,6 +93,7 @@ export class PaperBroker extends EventEmitter {
       return rejected;
     }
     const account = this.getAccount(snapshot);
+    this.riskTracker?.synchronize(account, snapshot, true);
     const position = this.getPositions(snapshot).find(
       (candidate) => candidate.symbol === request.symbol,
     );
@@ -192,13 +204,33 @@ export class PaperBroker extends EventEmitter {
     this.store.resetAccount(input);
     this.risk.resetCircuit();
     const account = this.getAccount();
+    try { this.riskTracker?.reset(account, this.market.getSnapshot()); }
+    catch (error) { if (!(error instanceof PaperRiskCheckpointError)) throw error; }
     const positions = this.getPositions();
     this.emit("account.updated", account);
     return { account, positions, orders: [] };
   }
 
+  resetRiskCircuit(): Readonly<import("../../shared/trading").RiskState> {
+    const snapshot = this.market.getSnapshot();
+    const ledger = this.store.getPaperFillLedger();
+    this.store.appendAudit("risk", "risk.circuit.reset.requested", "用户请求重置风控并建立新的成交消费起点", {
+      previousConsumedCycle: this.store.getPaperRiskCheckpoint()?.lastConsumedCycle ?? 0,
+      newConsumedCycle: ledger.lastSequence, previousLedgerStatus: this.risk.getState().ledgerStatus,
+    });
+    if (this.riskTracker) this.riskTracker.reset(this.getAccount(snapshot), snapshot);
+    else this.risk.resetCircuit();
+    return this.risk.getState();
+  }
+
   markToMarket(snapshot = this.market.getSnapshot()): AccountSnapshot {
     const account = this.getAccount(snapshot);
+    try { this.riskTracker?.synchronize(account, snapshot); }
+    catch (error) {
+      if (!(error instanceof PaperRiskCheckpointError)) throw error;
+      this.emit("account.updated", account);
+      return account;
+    }
 
     // Check pending limit orders for fill
     const pendingOrders = this.store.getPendingOrders();
@@ -272,6 +304,11 @@ export class PaperBroker extends EventEmitter {
     // Tick matching rechecks after synchronous store/risk callbacks before any mutation.
     // Direct submissions retain their existing risk check and order lifecycle.
     if (deferWhenPaused && this.store.isPaused()) return { ...order };
+    try { this.riskTracker?.synchronize(this.getAccount(snapshot), snapshot, true); }
+    catch (error) {
+      if (deferWhenPaused && error instanceof PaperRiskCheckpointError) return { ...order };
+      throw error;
+    }
     const costs = executionCosts(order, marketPrice, this.options);
     let otherBuyBudgets = 0;
     for (const pending of this.store.getPendingOrders()) {
@@ -327,11 +364,18 @@ export class PaperBroker extends EventEmitter {
       if (!decision.allowed) return this.store.rejectOrder(order, decision.message, decision.code);
     }
 
-    return this.store.fillOrder(
+    const result = this.store.fillOrder(
       order,
       name,
       costs.fillPrice,
       costs.commission,
     );
+    if (result.status === "filled") {
+      // The fill is already committed. A checkpoint failure blocks subsequent
+      // execution, but the caller must still receive the truthful fill result.
+      try { this.riskTracker?.synchronize(this.getAccount(snapshot), snapshot, true); }
+      catch (error) { if (!(error instanceof PaperRiskCheckpointError)) throw error; }
+    }
+    return result;
   }
 }

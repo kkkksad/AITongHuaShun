@@ -41,6 +41,8 @@
 - [0027：核心研究先于辅助来源启动](0027-core-research-before-auxiliary.md)
 - [0028：Paper完整持仓周期保存净成交结果](0028-paper-position-cycle-net-results.md)
 - [0029：风险时钟与权益观察独立于交易计数](0029-risk-clock-and-equity-observation.md)
+- [0030：主Paper风险按成交序列消费并保存检查点](0030-paper-risk-consumption-and-recovery.md)
+- [0031：JSON账本单次变更统一提交与失败回退](0031-json-ledger-atomic-mutations.md)
 
 ## 新建格式
 

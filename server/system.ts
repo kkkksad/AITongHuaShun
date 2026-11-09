@@ -105,6 +105,7 @@ export function createTradingSystem(
     limits,
     quoteMaxAgeMs: config.MARKET_DATA_PROVIDER === "akshare" ? 120_000 : undefined,
     clock,
+    riskTracking: true,
   });
 
   return {

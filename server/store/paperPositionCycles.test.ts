@@ -189,6 +189,29 @@ describe.each(["memory", "json"] as const)("paper position cycles: %s", (backend
 });
 
 describe("JSON cycle persistence", () => {
+  it("does not retain or later promote a fill whose atomic file replacement failed", () => {
+    const f = fixture("json"); f.fill("buy", 200); f.nextDay();
+    const order = f.store.createOrder({ symbol: "600001", side: "sell", type: "market", quantity: 200 }, 10);
+    const file = path.join(f.directory!, "paper-trading-state.json");
+    const diskBefore = fs.readFileSync(file, "utf8");
+    const cashBefore = f.store.getCash();
+    const positionsBefore = f.broker.getPositions();
+    const auditBefore = f.store.listAudit();
+    const ledgerBefore = f.store.getPaperFillLedger();
+    fs.mkdirSync(`${file}.tmp`);
+    expect(() => f.store.fillOrder(order, "600001", 10, 5)).toThrow();
+    expect(fs.readFileSync(file, "utf8")).toBe(diskBefore);
+    expect(f.store.getCash()).toBe(cashBefore);
+    expect(f.broker.getPositions()).toEqual(positionsBefore);
+    expect(f.store.listAudit()).toEqual(auditBefore);
+    expect(f.store.getPaperFillLedger()).toEqual(ledgerBefore);
+    expect(f.store.findOrderById(order.id)?.status).toBe("accepted");
+    fs.rmdirSync(`${file}.tmp`);
+    f.store.setPaused(true);
+    f.reload();
+    expect(f.store.findOrderById(order.id)?.status).toBe("accepted");
+    expect(f.store.getPaperFillLedger()).toEqual(ledgerBefore);
+  });
   it("bounds results while keeping a durable monotonic sequence", () => {
     const f = fixture("json"); f.fill("buy"); f.nextDay(); f.fill("sell");
     const file = path.join(f.directory!, "paper-trading-state.json");

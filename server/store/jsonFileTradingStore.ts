@@ -17,6 +17,7 @@ import type {
 import type { TradingStore } from "../contracts/TradingStore";
 import { hasSufficientCash } from "../broker/executionCosts";
 import { calculateTradingDayPerformance } from "./tradingDayPerformance";
+import { copyPaperRiskCheckpoint, validatePaperRiskCheckpoint, type PaperRiskCheckpoint } from "../risk/paperRiskCheckpoint";
 import { advancePaperPositionCycle, appendPaperCycleResult, copyPaperFillLedger, emptyPaperFillLedger,
   validateOpenPaperCycle, validatePaperFillLedger, type OpenPaperPositionCycle, type PaperFillLedger } from "./paperPositionCycles";
 
@@ -48,6 +49,7 @@ interface PersistedState {
   orderSequence: number;
   auditSequence: number;
   paperFillLedger?: PaperFillLedger;
+  paperRiskCheckpoint?: PaperRiskCheckpoint;
 }
 
 interface JsonFileTradingStoreOptions {
@@ -137,6 +139,9 @@ export class JsonFileTradingStore implements TradingStore {
   private orderSequence = 0;
   private auditSequence = 0;
   private paperFillLedger: PaperFillLedger = emptyPaperFillLedger();
+  private paperRiskCheckpoint?: PaperRiskCheckpoint;
+  private mutationDepth = 0;
+  private flushRequested = false;
 
   constructor(
     dataDir: string,
@@ -166,13 +171,15 @@ export class JsonFileTradingStore implements TradingStore {
   }
 
   setPaused(paused: boolean): void {
-    this.paused = paused;
-    this.appendAudit(
-      "system",
-      paused ? "trading.paused" : "trading.resumed",
-      paused ? "模拟交易已暂停" : "模拟交易已恢复",
-    );
-    this.flush();
+    return this.mutate(() => {
+      this.paused = paused;
+      this.appendAudit(
+        "system",
+        paused ? "trading.paused" : "trading.resumed",
+        paused ? "模拟交易已暂停" : "模拟交易已恢复",
+      );
+      this.flush();
+    });
   }
 
   getCash(): number {
@@ -184,11 +191,13 @@ export class JsonFileTradingStore implements TradingStore {
   }
 
   setStrategyProfile(profile: PaperStrategyProfile): void {
-    this.strategyProfile = profile;
-    this.appendAudit("system", "account.strategy-profile.updated", "Paper 策略档位已更新", {
-      strategyProfile: profile,
+    return this.mutate(() => {
+      this.strategyProfile = profile;
+      this.appendAudit("system", "account.strategy-profile.updated", "Paper 策略档位已更新", {
+        strategyProfile: profile,
+      });
+      this.flush();
     });
-    this.flush();
   }
 
   getExecutionStrategy(): PaperExecutionStrategy {
@@ -196,11 +205,13 @@ export class JsonFileTradingStore implements TradingStore {
   }
 
   setExecutionStrategy(strategy: PaperExecutionStrategy): void {
-    this.executionStrategy = strategy;
-    this.appendAudit("system", "account.execution-strategy.updated", "Paper 执行策略已更新", {
-      executionStrategy: strategy,
+    return this.mutate(() => {
+      this.executionStrategy = strategy;
+      this.appendAudit("system", "account.execution-strategy.updated", "Paper 执行策略已更新", {
+        executionStrategy: strategy,
+      });
+      this.flush();
     });
-    this.flush();
   }
 
   resetAccount(input: {
@@ -208,30 +219,33 @@ export class JsonFileTradingStore implements TradingStore {
     strategyProfile: PaperStrategyProfile;
     executionStrategy?: PaperExecutionStrategy;
   }): void {
-    if (!Number.isFinite(input.startingCash) || input.startingCash <= 0) {
-      throw new Error("Paper account starting cash must be positive.");
-    }
-    const executionStrategy = input.executionStrategy ?? "auto";
-    this.startingEquity = input.startingCash;
-    this.strategyProfile = input.strategyProfile;
-    this.executionStrategy = executionStrategy;
-    this.cash = input.startingCash;
-    this.blockedCash = 0;
-    this.paused = false;
-    this.positions.clear();
-    this.orders = [];
-    this.auditEvents = [];
-    this.orderSequence = 0;
-    this.auditSequence = 0;
-    this.paperFillLedger = emptyPaperFillLedger();
-    this.accountEpoch = randomUUID();
-    this.appendAudit("system", "account.reset", "已开始新的纯现金 Paper 模拟", {
-      startingCash: input.startingCash,
-      strategyProfile: input.strategyProfile,
-      executionStrategy,
-      previousStateDeleted: true,
+    return this.mutate(() => {
+      if (!Number.isFinite(input.startingCash) || input.startingCash <= 0) {
+        throw new Error("Paper account starting cash must be positive.");
+      }
+      const executionStrategy = input.executionStrategy ?? "auto";
+      this.startingEquity = input.startingCash;
+      this.strategyProfile = input.strategyProfile;
+      this.executionStrategy = executionStrategy;
+      this.cash = input.startingCash;
+      this.blockedCash = 0;
+      this.paused = false;
+      this.positions.clear();
+      this.orders = [];
+      this.auditEvents = [];
+      this.orderSequence = 0;
+      this.auditSequence = 0;
+      this.paperFillLedger = emptyPaperFillLedger();
+      this.paperRiskCheckpoint = undefined;
+      this.accountEpoch = randomUUID();
+      this.appendAudit("system", "account.reset", "已开始新的纯现金 Paper 模拟", {
+        startingCash: input.startingCash,
+        strategyProfile: input.strategyProfile,
+        executionStrategy,
+        previousStateDeleted: true,
+      });
+      this.flush();
     });
-    this.flush();
   }
 
   getAvailableCash(): number {
@@ -355,77 +369,83 @@ export class JsonFileTradingStore implements TradingStore {
     name?: string,
     provenance?: OrderProvenance,
   ): OrderRecord {
-    this.orderSequence += 1;
-    const timestamp = this.now();
-    const now = timestamp.toISOString();
-    const isLimitOrder = request.type === "limit";
-    const order: OrderRecord = {
-      ...request,
-      ...(name ? { name } : {}),
-      ...(provenance?.strategy ? { strategy: provenance.strategy } : {}),
-      ...(provenance?.strategyKey ? { strategyKey: provenance.strategyKey } : {}),
-      id: `PO-${timestamp.getTime()}-${String(this.orderSequence).padStart(4, "0")}`,
-      status: isLimitOrder ? "pending" : "accepted",
-      requestedPrice,
-      filledQuantity: 0,
-      notional: 0,
-      commission: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
+    return this.mutate(() => {
+      this.orderSequence += 1;
+      const timestamp = this.now();
+      const now = timestamp.toISOString();
+      const isLimitOrder = request.type === "limit";
+      const order: OrderRecord = {
+        ...request,
+        ...(name ? { name } : {}),
+        ...(provenance?.strategy ? { strategy: provenance.strategy } : {}),
+        ...(provenance?.strategyKey ? { strategyKey: provenance.strategyKey } : {}),
+        id: `PO-${timestamp.getTime()}-${String(this.orderSequence).padStart(4, "0")}`,
+        status: isLimitOrder ? "pending" : "accepted",
+        requestedPrice,
+        filledQuantity: 0,
+        notional: 0,
+        commission: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
 
-    this.orders.unshift(order);
-    if (
-      isLimitOrder &&
-      request.side === "buy" &&
-      request.limitPrice !== undefined
-    ) {
-      this.blockedCash += request.limitPrice * request.quantity;
-    }
+      this.orders.unshift(order);
+      if (
+        isLimitOrder &&
+        request.side === "buy" &&
+        request.limitPrice !== undefined
+      ) {
+        this.blockedCash += request.limitPrice * request.quantity;
+      }
 
-    this.appendAudit(
-      "order",
-      "order.accepted",
-      isLimitOrder ? "限价单已挂单" : "模拟订单已接收",
-      {
-        orderId: order.id,
-        symbol: order.symbol,
-        side: order.side,
-        type: order.type,
-        quantity: order.quantity,
-        limitPrice: order.limitPrice,
-      },
-    );
-    this.flush();
-    return { ...order };
+      this.appendAudit(
+        "order",
+        "order.accepted",
+        isLimitOrder ? "限价单已挂单" : "模拟订单已接收",
+        {
+          orderId: order.id,
+          symbol: order.symbol,
+          side: order.side,
+          type: order.type,
+          quantity: order.quantity,
+          limitPrice: order.limitPrice,
+        },
+      );
+      this.flush();
+      return { ...order };
+    });
   }
 
   rejectOrder(order: OrderRecord, reason: string, code: string): OrderRecord {
-    const stored = this.requireStoredOrder(order.id);
-    if (stored.status !== "pending" && stored.status !== "accepted") return { ...stored };
-    stored.status = "rejected";
-    stored.rejectionReason = reason;
-    stored.updatedAt = this.now().toISOString();
-    this.releaseBuyLimitCash(stored);
-    this.appendAudit("risk", code, reason, { orderId: stored.id });
-    this.flush();
-    return { ...stored };
+    return this.mutate(() => {
+      const stored = this.requireStoredOrder(order.id);
+      if (stored.status !== "pending" && stored.status !== "accepted") return { ...stored };
+      stored.status = "rejected";
+      stored.rejectionReason = reason;
+      stored.updatedAt = this.now().toISOString();
+      this.releaseBuyLimitCash(stored);
+      this.appendAudit("risk", code, reason, { orderId: stored.id });
+      this.flush();
+      return { ...stored };
+    });
   }
 
   cancelOrder(order: OrderRecord): OrderRecord {
-    const stored = this.requireStoredOrder(order.id);
-    if (stored.status !== "pending") {
-      throw new Error(`只能撤销挂单状态的订单，当前状态：${stored.status}`);
-    }
+    return this.mutate(() => {
+      const stored = this.requireStoredOrder(order.id);
+      if (stored.status !== "pending") {
+        throw new Error(`只能撤销挂单状态的订单，当前状态：${stored.status}`);
+      }
 
-    stored.status = "cancelled";
-    stored.updatedAt = this.now().toISOString();
-    this.releaseBuyLimitCash(stored);
-    this.appendAudit("order", "order.cancelled", "限价单已撤销", {
-      orderId: stored.id,
+      stored.status = "cancelled";
+      stored.updatedAt = this.now().toISOString();
+      this.releaseBuyLimitCash(stored);
+      this.appendAudit("order", "order.cancelled", "限价单已撤销", {
+        orderId: stored.id,
+      });
+      this.flush();
+      return { ...stored };
     });
-    this.flush();
-    return { ...stored };
   }
 
   checkLimitOrderFill(
@@ -450,6 +470,17 @@ export class JsonFileTradingStore implements TradingStore {
   }
 
   fillOrder(
+    order: OrderRecord,
+    name: string,
+    fillPrice: number,
+    commission: number,
+  ): OrderRecord {
+    return this.mutate(() => {
+      return this.applyFill(order, name, fillPrice, commission);
+    });
+  }
+
+  private applyFill(
     order: OrderRecord,
     name: string,
     fillPrice: number,
@@ -528,7 +559,6 @@ export class JsonFileTradingStore implements TradingStore {
       wasPending ? "限价单已成交" : "模拟订单已成交",
       { orderId: stored.id, fillPrice, commission, notional },
     );
-    this.flush();
     return { ...stored };
   }
 
@@ -538,6 +568,19 @@ export class JsonFileTradingStore implements TradingStore {
 
   getPaperFillLedger(): PaperFillLedger {
     return copyPaperFillLedger(this.paperFillLedger);
+  }
+
+  getPaperRiskCheckpoint(): PaperRiskCheckpoint | undefined {
+    return this.paperRiskCheckpoint && copyPaperRiskCheckpoint(this.paperRiskCheckpoint);
+  }
+
+  setPaperRiskCheckpoint(checkpoint: PaperRiskCheckpoint): void {
+    return this.mutate(() => {
+      validatePaperRiskCheckpoint(checkpoint, this.paperFillLedger.lastSequence);
+      const previous = this.paperRiskCheckpoint;
+      this.paperRiskCheckpoint = copyPaperRiskCheckpoint(checkpoint);
+      try { this.flush(); } catch (error) { this.paperRiskCheckpoint = previous; throw error; }
+    });
   }
 
   listAudit(limit = 200): AuditEvent[] {
@@ -550,17 +593,19 @@ export class JsonFileTradingStore implements TradingStore {
     message: string,
     data?: Record<string, unknown>,
   ): void {
-    this.auditSequence += 1;
-    const timestamp = this.now();
-    this.auditEvents.unshift({
-      id: `AE-${timestamp.getTime()}-${String(this.auditSequence).padStart(4, "0")}`,
-      category,
-      action,
-      message,
-      timestamp: timestamp.toISOString(),
-      data,
+    return this.mutate(() => {
+      this.auditSequence += 1;
+      const timestamp = this.now();
+      this.auditEvents.unshift({
+        id: `AE-${timestamp.getTime()}-${String(this.auditSequence).padStart(4, "0")}`,
+        category,
+        action,
+        message,
+        timestamp: timestamp.toISOString(),
+        data,
+      });
+      this.flush();
     });
-    this.flush();
   }
 
   private initializeFresh(startingCash: number, seed: boolean): void {
@@ -597,6 +642,10 @@ export class JsonFileTradingStore implements TradingStore {
     }
     this.paperFillLedger = state.paperFillLedger === undefined
       ? emptyPaperFillLedger() : copyPaperFillLedger(state.paperFillLedger);
+    if (state.paperRiskCheckpoint !== undefined) {
+      validatePaperRiskCheckpoint(state.paperRiskCheckpoint, this.paperFillLedger.lastSequence);
+      this.paperRiskCheckpoint = copyPaperRiskCheckpoint(state.paperRiskCheckpoint);
+    }
     if (state.accountEpoch !== undefined) {
       if (typeof state.accountEpoch !== "string" ||
           !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(state.accountEpoch)) {
@@ -637,9 +686,8 @@ export class JsonFileTradingStore implements TradingStore {
     }
   }
 
-  private flush(): void {
-    this.pruneExpiredHistory();
-    const state: PersistedState = {
+  private persistedState(): PersistedState {
+    return {
       version: 1,
       accountId: this.accountId,
       accountEpoch: this.accountEpoch,
@@ -655,7 +703,54 @@ export class JsonFileTradingStore implements TradingStore {
       orderSequence: this.orderSequence,
       auditSequence: this.auditSequence,
       paperFillLedger: this.paperFillLedger,
+      paperRiskCheckpoint: this.paperRiskCheckpoint,
     };
+  }
+
+  /** Batch nested audit writes into one replacement; failed mutations restore the prior ledger. */
+  private mutate<T>(change: () => T): T {
+    if (this.mutationDepth > 0) return change();
+    const previous = this.persistedState();
+    previous.positions = previous.positions.map((position) => ({ ...position,
+      ...(position.paperCycle ? { paperCycle: { ...position.paperCycle } } : {}) }));
+    previous.orders = previous.orders.map((order) => ({ ...order }));
+    previous.auditEvents = previous.auditEvents.slice();
+    previous.paperFillLedger = copyPaperFillLedger(this.paperFillLedger);
+    previous.paperRiskCheckpoint = this.paperRiskCheckpoint && copyPaperRiskCheckpoint(this.paperRiskCheckpoint);
+    this.mutationDepth = 1;
+    this.flushRequested = false;
+    try {
+      const result = change();
+      this.mutationDepth = 0;
+      if (this.flushRequested) this.flush();
+      this.flushRequested = false;
+      return result;
+    } catch (error) {
+      this.mutationDepth = 0;
+      this.flushRequested = false;
+      this.accountEpoch = previous.accountEpoch!;
+      this.startingEquity = previous.startingEquity;
+      this.strategyProfile = previous.strategyProfile ?? "balanced";
+      this.executionStrategy = previous.executionStrategy ?? "auto";
+      this.cash = previous.cash;
+      this.blockedCash = previous.blockedCash;
+      this.paused = previous.paused;
+      this.positions.clear();
+      for (const position of previous.positions) this.positions.set(position.symbol, position);
+      this.orders = previous.orders;
+      this.auditEvents = previous.auditEvents;
+      this.orderSequence = previous.orderSequence;
+      this.auditSequence = previous.auditSequence;
+      this.paperFillLedger = previous.paperFillLedger!;
+      this.paperRiskCheckpoint = previous.paperRiskCheckpoint;
+      throw error;
+    }
+  }
+
+  private flush(): void {
+    if (this.mutationDepth > 0) { this.flushRequested = true; return; }
+    this.pruneExpiredHistory();
+    const state = this.persistedState();
     const temporaryPath = `${this.filePath}.tmp`;
     fs.writeFileSync(temporaryPath, JSON.stringify(state, null, 2), "utf-8");
     fs.renameSync(temporaryPath, this.filePath);

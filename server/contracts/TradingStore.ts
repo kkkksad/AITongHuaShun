@@ -12,6 +12,7 @@ import type {
   TradingMode,
 } from "../../shared/trading";
 import type { PaperFillLedger } from "../store/paperPositionCycles";
+import type { PaperRiskCheckpoint } from "../risk/paperRiskCheckpoint";
 
 /**
  * 交易数据持久化契约 —— 所有存储后端（内存、PostgreSQL、SQLite）
@@ -113,6 +114,9 @@ export interface TradingStore {
 
   /** Complete position-cycle net results, oldest first, independent of order pruning. */
   getPaperFillLedger(): PaperFillLedger;
+
+  getPaperRiskCheckpoint(): PaperRiskCheckpoint | undefined;
+  setPaperRiskCheckpoint(checkpoint: PaperRiskCheckpoint): void;
 
   // ── 审计 ──
 

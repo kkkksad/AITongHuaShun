@@ -27,6 +27,7 @@ import {
   type AuthConfig,
 } from "./auth";
 import type { ServerConfig } from "./config";
+import { PaperRiskCheckpointError } from "./risk/paperRiskTracker";
 import {
   createMetricsCollector,
   resolveHttpMetricRoute,
@@ -558,6 +559,9 @@ export async function buildTradingApp(
   // ── Error handler ───────────────────────────────────────
 
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof PaperRiskCheckpointError) {
+      return reply.status(503).send({ error: "RISK_CHECKPOINT_UNAVAILABLE", message: error.message });
+    }
     if (error instanceof ZodError) {
       return reply.status(400).send({
         error: "INVALID_REQUEST",
@@ -1439,7 +1443,7 @@ export async function buildTradingApp(
       },
     },
   }, async () => {
-    system.risk.resetCircuit();
+    system.broker.resetRiskCircuit();
     return {
       circuitState: system.risk.getState().circuitState,
       message: "熔断器已重置",

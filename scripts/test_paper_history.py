@@ -87,6 +87,11 @@ class PaperHistoryTests(unittest.TestCase):
             openedAt="2026-11-09T02:01:00.000Z", boughtQuantity=100, soldQuantity=0,
             buyNotional=1000, buyFees=5, sellNotional=0, sellFees=0,
             token="DO_NOT_ARCHIVE"))]
+        self.input["paperRiskCheckpoint"] = dict(version=1, lastConsumedCycle=1,
+            savedAt="2026-11-09T14:00:00.000Z", state=dict(tradingDate="2026-11-09",
+            circuitState="normal", consecutiveLosses=1, dailyDrawdown=0.01,
+            peakDailyEquity=20000, tradeCount=1, lossCount=1, unknownCycleCount=0,
+            ledgerStatus="ready", token="DO_NOT_ARCHIVE"))
         self.write()
         before = self.source.read_bytes()
         self.archive()

@@ -353,6 +353,14 @@ VS Code 会：
 
 若 4173、8787 或 8800 端口已被占用，请先停止已有进程。服务使用固定端口，避免浏览器或代理连接到错误实例。
 
+## Paper风险与单进程账本恢复
+
+主`createTradingSystem`启用完整成交周期风险跟踪；独立Broker/历史Backtest保留显式配置边界。`GET /api/risk/state`只读，返回北京时间峰值日期、回撤、已知/缺证据周期数及`ledgerStatus`。`history-gap`须复核后显式风险重置，`checkpoint-unavailable`会停止后续执行并在新观察/提交时重试保存；已经提交的成交不因后续检查点故障被伪装成失败。
+
+`POST /api/risk/reset`只重建风险状态和消费起点，不重置资金、订单、持仓或账户世代；需现有登录/CSRF保护，不能作为自动修复历史缺口的手段。风险检查点随JSON账本保存；没有有效且新鲜的全部持仓报价时，不把成本价回退估值作为风险观察。状态/成交立即保存，普通小幅峰值在下一次满足幅度或30秒间隔的观察时保存；没有独立定时器或逐tick持久承诺。详见[决策0030](../decisions/0030-paper-risk-consumption-and-recovery.md)。
+
+JSON公开变更合并嵌套审计为一次原子文件替换，失败还原本次操作前的完整内存状态，防止以后写入带入失败订单。该保证面向单进程，不提供多进程锁、数据库隔离或断电fsync保证；SQLite仍是只读复盘副本，不能拿它替代执行主账本。详见[决策0031](../decisions/0031-json-ledger-atomic-mutations.md)。
+
 ## 质量检查
 
 2026-11-05 起 Paper 固定现金预留默认值为 `PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO=0`。内置档位/路由不再额外抬高现金比例，分时总仓位比例不再机械留钱；阶段订单笔数预算仍保留。旧部署必须把未提交的服务器环境配置改为0并重建后端，单改源码默认值不会覆盖旧环境变量。详见 [决策0010](../decisions/0010-no-fixed-paper-cash-reserve.md)。

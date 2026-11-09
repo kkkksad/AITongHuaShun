@@ -16,9 +16,11 @@ Paper暂停保留已有挂单及预占，行情估值/account事件和主动撤�
 
 账户累计`realizedPnl`按[决策0015](../decisions/0015-account-net-realized-pnl.md)从总现金、剩余持仓成交成本和初始权益派生，已付买卖费用即时计入，清仓/重开/历史裁剪不丢累计净结果；挂单预算不是费用。持仓级字段与研究FIFO定义独立保留，不能求当前持仓已实现之和代替账户累计。
 
-完整持仓周期净结果按[决策0028](../decisions/0028-paper-position-cycle-net-results.md)独立保存实际买卖现金流，仅完全清仓时新增一次样本；旧持仓入场证据缺失明确为null，最近512项不随订单历史剪裁。当前仅完成证据层，主风险消费/检查点仍待后续接线。JSON T+1统一使用注入时钟的北京时间日期。
+完整持仓周期净结果按[决策0028](../decisions/0028-paper-position-cycle-net-results.md)独立保存实际买卖现金流，仅完全清仓时新增一次样本；旧持仓入场证据缺失明确为null，最近512项不随订单历史剪裁。JSON T+1统一使用注入时钟的北京时间日期。
 
-RiskEngine按[决策0029](../decisions/0029-risk-clock-and-equity-observation.md)将注入时钟与权益观察独立于交易计数，北京时间换日只重置每日峰值/回撤，保留多日亏损序列；冷却和恢复期保留原触发时间。该Engine接口尚待Broker和持久检查点统一接入，不能宣称生产已观察盘中回撤。
+RiskEngine按[决策0029](../decisions/0029-risk-clock-and-equity-observation.md)将注入时钟与权益观察独立于交易计数，北京时间换日只重置每日峰值/回撤，保留多日亏损序列；冷却和恢复期保留原触发时间。主system按[决策0030](../decisions/0030-paper-risk-consumption-and-recovery.md)显式启用Broker风险Tracker，持久保存状态与已消费闭合序列，可靠权益观察/成交后更新；普通GET不改风险。保存失败阻断后续执行，完整结果已提交则如实返回；未来/缺口证据须显式复核重置。该接线尚未扩展到独立历史Backtest的增强风险参数。
+
+JSON公开状态变更按[决策0031](../decisions/0031-json-ledger-atomic-mutations.md)合并嵌套审计保存为一次原子文件替换，失败恢复资金、仓位、订单、序列、世代及检查点，后续保存不能带入失败操作；依然仅支持单进程，不提供数据库多实例隔离或逐tick持久化。
 
 WebSocket每次认证握手除市场/账户/持仓外还发送`orders.snapshot`最近50笔，等同浏览器bootstrap的显式订单读取上限。初始化/刷新按[决策0016](../decisions/0016-bootstrap-realtime-read-windows.md)合并本轮已收到的更新，首读失败保留未落地事件；旧生命周期/socket不能回写。缺完整订单快照时兼容增量有界缓冲，溢出仅补读一次并诚实显示失败，不提供服务端绝对全序保证。
 

@@ -14,6 +14,7 @@ import type {
 import type { TradingStore } from "../contracts/TradingStore";
 import { hasSufficientCash } from "../broker/executionCosts";
 import { calculateTradingDayPerformance } from "./tradingDayPerformance";
+import { copyPaperRiskCheckpoint, validatePaperRiskCheckpoint, type PaperRiskCheckpoint } from "../risk/paperRiskCheckpoint";
 import { advancePaperPositionCycle, appendPaperCycleResult, copyPaperFillLedger, emptyPaperFillLedger,
   type OpenPaperPositionCycle, type PaperFillLedger } from "./paperPositionCycles";
 
@@ -92,6 +93,7 @@ export class InMemoryTradingStore implements TradingStore {
   private orderSequence = 0;
   private auditSequence = 0;
   private paperFillLedger: PaperFillLedger = emptyPaperFillLedger();
+  private paperRiskCheckpoint?: PaperRiskCheckpoint;
   private lastTradeDateTime?: number;
   private lastTradeDate = "";
 
@@ -200,6 +202,7 @@ export class InMemoryTradingStore implements TradingStore {
     this.orderSequence = 0;
     this.auditSequence = 0;
     this.paperFillLedger = emptyPaperFillLedger();
+    this.paperRiskCheckpoint = undefined;
     this.appendAudit("system", "account.reset", "已开始新的纯现金 Paper 模拟", {
       startingCash: input.startingCash,
       strategyProfile: input.strategyProfile,
@@ -504,6 +507,15 @@ export class InMemoryTradingStore implements TradingStore {
 
   getPaperFillLedger(): PaperFillLedger {
     return copyPaperFillLedger(this.paperFillLedger);
+  }
+
+  getPaperRiskCheckpoint(): PaperRiskCheckpoint | undefined {
+    return this.paperRiskCheckpoint && copyPaperRiskCheckpoint(this.paperRiskCheckpoint);
+  }
+
+  setPaperRiskCheckpoint(checkpoint: PaperRiskCheckpoint): void {
+    validatePaperRiskCheckpoint(checkpoint, this.paperFillLedger.lastSequence);
+    this.paperRiskCheckpoint = copyPaperRiskCheckpoint(checkpoint);
   }
 
   listAudit(limit = 200): AuditEvent[] {
