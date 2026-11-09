@@ -207,7 +207,8 @@ function resolveReviewTradingDate(now: Date): {
 function calculateReviewDayPerformance(input: {
   account: AccountSnapshot;
   positions: PositionSnapshot[];
-  dailyOrders: OrderRecord[];
+  orders: OrderRecord[];
+  tradingDate: string;
   quoteMap: Map<string, MarketSnapshot["quotes"][number]>;
 }): {
   dailyPnl: number | null;
@@ -216,40 +217,66 @@ function calculateReviewDayPerformance(input: {
   openingEquity: number | null;
   missingPreviousCloseSymbols: string[];
 } {
-  let openingCash = input.account.cash;
+  const dailyPerformance = input.account.tradingDayPerformance?.date === input.tradingDate
+    ? input.account.tradingDayPerformance
+    : undefined;
+  if (dailyPerformance && dailyPerformance.baselineSource !== "unavailable" &&
+      dailyPerformance.pnl !== null && dailyPerformance.pnlPercent !== null &&
+      dailyPerformance.openingEquity !== null) {
+    return {
+      dailyPnl: round(dailyPerformance.pnl),
+      dailyPnlPercent: round(dailyPerformance.pnlPercent, 4),
+      performanceBasis: "mark-to-market",
+      openingEquity: round(dailyPerformance.openingEquity),
+      missingPreviousCloseSymbols: [],
+    };
+  }
+  const unavailable = (missingPreviousCloseSymbols: string[] = []) => ({
+    dailyPnl: null, dailyPnlPercent: null, performanceBasis: "unavailable" as const,
+    openingEquity: null, missingPreviousCloseSymbols,
+  });
+  // Available cash excludes pending principal and estimated fees. Reservations
+  // do not reduce equity; reconstruct from the total ledger cash instead.
+  let openingCash = input.account.equity - input.account.marketValue;
   const openingQuantities = new Map(
     input.positions.map((position) => [position.symbol, position.quantity]),
   );
 
-  for (const order of input.dailyOrders) {
+  for (const order of input.orders) {
     if (order.status !== "filled") continue;
-    const quantity = order.filledQuantity || order.quantity;
+    const filledTimestamp = Date.parse(order.filledAt ?? order.updatedAt);
+    if (!Number.isFinite(filledTimestamp)) return unavailable();
+    if (getChinaDateKey(new Date(filledTimestamp)) !== input.tradingDate) continue;
+    const quantity = order.filledQuantity;
+    if (!Number.isInteger(quantity) || quantity <= 0 ||
+        !Number.isFinite(order.notional) || order.notional < 0 ||
+        !Number.isFinite(order.commission) || order.commission < 0) return unavailable();
     const currentQuantity = openingQuantities.get(order.symbol) ?? 0;
     if (order.side === "buy") {
       openingCash += order.notional + order.commission;
-      openingQuantities.set(order.symbol, Math.max(0, currentQuantity - quantity));
+      openingQuantities.set(order.symbol, currentQuantity - quantity);
     } else {
       openingCash -= order.notional - order.commission;
       openingQuantities.set(order.symbol, currentQuantity + quantity);
     }
   }
 
+  if ([...openingQuantities.values()].some((quantity) => !Number.isInteger(quantity) || quantity < 0)) {
+    return unavailable();
+  }
+
   const missingPreviousCloseSymbols = [...openingQuantities.entries()]
     .filter(([, quantity]) => quantity > 0)
     .filter(([symbol]) => {
       const quote = input.quoteMap.get(symbol);
-      return !quote || !Number.isFinite(quote.previousClose) || quote.previousClose <= 0;
+      return !quote || !Number.isFinite(quote.previousClose) || quote.previousClose <= 0 ||
+        !Number.isFinite(Date.parse(quote.updatedAt)) ||
+        getChinaDateKey(new Date(quote.updatedAt)) !== input.tradingDate;
     })
     .map(([symbol]) => symbol)
     .sort();
-  if (missingPreviousCloseSymbols.length > 0) {
-    return {
-      dailyPnl: null,
-      dailyPnlPercent: null,
-      performanceBasis: "unavailable",
-      openingEquity: null,
-      missingPreviousCloseSymbols,
-    };
+  if (missingPreviousCloseSymbols.length > 0 || dailyPerformance) {
+    return unavailable(missingPreviousCloseSymbols);
   }
 
   const openingMarketValue = [...openingQuantities.entries()].reduce(
@@ -258,6 +285,9 @@ function calculateReviewDayPerformance(input: {
     0,
   );
   const openingEquity = openingCash + openingMarketValue;
+  if (!Number.isFinite(openingEquity) || openingEquity <= 0 || !Number.isFinite(input.account.equity)) {
+    return unavailable();
+  }
   const dailyPnl = input.account.equity - openingEquity;
   return {
     dailyPnl: round(dailyPnl),
@@ -597,7 +627,8 @@ export function buildDailyMarketReview(
   const calculatedReviewDayPerformance = calculateReviewDayPerformance({
     account: input.account,
     positions: input.positions,
-    dailyOrders,
+    orders: input.orders,
+    tradingDate,
     quoteMap,
   });
   const reviewDayPerformance = marketEvidenceStatus === "matched"
