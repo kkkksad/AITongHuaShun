@@ -10,6 +10,8 @@
 
 当前成功后会删除临时rollback标签和源码备份，部署过程回退不等于持久备份。回部署已知旧SHA使用保存的旧版本归档，仍需完整核验；没有在生产主动演练失败回退。Linux离线流程验证可运行`python3 -m unittest discover -s deploy -p 'test_*.py'`，所有破坏性路径只作用于临时fixture目录。
 
+镜像复用后，发布器还检查保留的Nginx代理：后端容器更换或挂载配置哈希变化时，仅重建仍被保留的web，使上游地址和单文件挂载刷新。没有依赖变化则保持容器；代理刷新失败同样恢复旧源码/Compose和镜像。首次安装这项修复仍由旧发布器运行，下一次后端发布再核验真实刷新。
+
 ```bash
 sudo bash deploy/bootstrap-ubuntu.sh 124.221.165.45
 cp deploy/production.env.example .env.production

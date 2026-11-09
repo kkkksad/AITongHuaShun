@@ -2,6 +2,7 @@
 
 No production paths, Docker daemon, network requests or real rollback are used.
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -14,7 +15,7 @@ import unittest
 COMMIT = "b" * 40
 REPOSITORY = Path(__file__).resolve().parent.parent
 FAKE_DOCKER = r'''#!/usr/bin/env python3
-import json,os,pathlib,sys
+import hashlib,json,os,pathlib,sys
 statefile=pathlib.Path(os.environ['FAKE_STATE'])
 s=json.loads(statefile.read_text());a=sys.argv[1:];code=0;output=''
 def record(kind,**values): s['events'].append(dict(kind=kind,**values))
@@ -31,22 +32,33 @@ elif a[:2]==['image','rm']:
  s['tags'].pop(a[2],None)
 elif a[:2]==['image','prune']: pass
 elif a[:1]==['inspect']: output='healthy'
+elif a[:1]==['exec']: output=s['nginx_digest']+'  /etc/nginx/conf.d/default.conf'
 elif a[:1]==['compose']:
  args=a[a.index('-f')+2:];command=args[0]
  if command=='config': pass
  elif command=='build':
   for name in ['kairos-akshare-bridge','kairos-api','kairos-web']:
    old=s['tags'][name+':production'];new=dict(old,Id='new-'+name,Created='later')
-   if name=='kairos-api': new['RootFS']={'Type':'layers','Layers':['new-api-code']}
+   if name=='kairos-api' and os.environ.get('FAKE_FAIL')!='metadata-only': new['RootFS']={'Type':'layers','Layers':['new-api-code']}
    if os.environ.get('FAKE_FAIL')=='bridge-config-change' and name=='kairos-akshare-bridge': new['Config']={'Cmd':['changed-start']}
    if os.environ.get('FAKE_FAIL')=='fingerprint' and name=='kairos-web': new.pop('Config')
    s['tags'][name+':production']=new
   if os.environ.get('FAKE_FAIL')=='build': code=1
  elif command=='up':
   config=pathlib.Path(a[a.index('-f')+1]).read_text().strip()
-  record('up',config=config,tags={key:value['Id'] for key,value in s['tags'].items() if key.endswith(':production')})
+  record('up',config=config,args=args,tags={key:value['Id'] for key,value in s['tags'].items() if key.endswith(':production')})
   if os.environ.get('FAKE_FAIL')=='up' and config=='new-compose': code=1
- elif command=='ps': output='fake-container'
+  elif os.environ.get('FAKE_FAIL')=='proxy-refresh' and '--no-deps' in args and config=='new-compose': code=1
+  else:
+   services=['web'] if '--no-deps' in args else ['akshare-bridge','backend','web']
+   images=dict(zip(['akshare-bridge','backend','web'],['kairos-akshare-bridge','kairos-api','kairos-web']))
+   for service in services:
+    image=s['tags'][images[service]+':production']['Id']
+    if image!=s['container_images'].get(service) or '--force-recreate' in args:
+     s['containers'][service]='new-'+service+'-'+str(len(s['events']))
+     s['container_images'][service]=image
+     if service=='web': s['nginx_digest']=hashlib.sha256((pathlib.Path(a[a.index('-f')+1]).parent/'deploy/nginx.conf').read_bytes()).hexdigest()
+ elif command=='ps': output=s['containers'].get(args[-1],'')
  elif command=='logs': pass
  else: code=2
 else: code=2
@@ -65,6 +77,8 @@ class DeploymentFlowTests(unittest.TestCase):
         self.root = self.base / "production"
         self.control = self.base / "control"
         self.root.mkdir()
+        (self.root / "deploy").mkdir()
+        (self.root / "deploy/nginx.conf").write_text("proxy-config-v1")
         self.control.mkdir()
         (self.root / "runtime").mkdir()
         (self.root / "runtime" / "keep.json").write_text("protected runtime")
@@ -75,7 +89,10 @@ class DeploymentFlowTests(unittest.TestCase):
         tags = {name + ":production": dict(Id="old-" + name, Config={"Cmd": ["start"]},
             RootFS={"Type": "layers", "Layers": [name]}, Os="linux", Architecture="amd64")
             for name in ("kairos-akshare-bridge", "kairos-api", "kairos-web")}
-        self.statefile.write_text(json.dumps(dict(tags=tags, events=[])))
+        self.statefile.write_text(json.dumps(dict(tags=tags, events=[],
+            containers={key: "old-" + key for key in ("akshare-bridge", "backend", "web")},
+            container_images=dict(zip(("akshare-bridge", "backend", "web"), ("old-kairos-akshare-bridge", "old-kairos-api", "old-kairos-web"))),
+            nginx_digest=hashlib.sha256(b"proxy-config-v1").hexdigest())))
         binaries = self.control / "bin"
         binaries.mkdir()
         for name, source in (("docker", FAKE_DOCKER), ("curl", "#!/bin/sh\nexit 0\n"),
@@ -93,6 +110,7 @@ class DeploymentFlowTests(unittest.TestCase):
         for name in ("Dockerfile", "package.json"):
             (new / name).write_text("required release file")
         (new / "docker-compose.production.yml").write_text("new-compose")
+        (new / "deploy/nginx.conf").write_text("proxy-config-v1")
         (new / "deploy/update-server.sh").write_text(self.source)
         (new / "deploy/github-deploy-entrypoint.sh").write_text("required entrypoint")
         shutil.copyfile(REPOSITORY / "deploy/image_runtime_fingerprint.py", new / "deploy/image_runtime_fingerprint.py")
@@ -152,6 +170,31 @@ class DeploymentFlowTests(unittest.TestCase):
         (self.release / "deploy/image_runtime_fingerprint.py").write_text("print('invalid-fingerprint')\n")
         self.write_archive()
         self.assert_failed_flow("invalid-helper")
+
+    def test_backend_replacement_refreshes_retained_proxy_and_preserves_bridge(self):
+        result, state = self.run_deployment()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotEqual(state["containers"]["web"], "old-web")
+        self.assertEqual(state["containers"]["akshare-bridge"], "old-akshare-bridge")
+        refreshes = [event for event in state["events"] if event["kind"] == "up" and "--no-deps" in event["args"]]
+        self.assertEqual(len(refreshes), 1)
+
+    def test_metadata_only_release_preserves_all_containers(self):
+        result, state = self.run_deployment("metadata-only")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(state["containers"], {key: "old-" + key for key in ("akshare-bridge", "backend", "web")})
+
+    def test_mounted_proxy_configuration_change_refreshes_web(self):
+        (self.release / "deploy/nginx.conf").write_text("proxy-config-v2")
+        self.write_archive()
+        result, state = self.run_deployment("metadata-only")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotEqual(state["containers"]["web"], "old-web")
+        self.assertEqual(state["containers"]["backend"], "old-backend")
+        self.assertEqual(state["nginx_digest"], hashlib.sha256(b"proxy-config-v2").hexdigest())
+
+    def test_failed_proxy_refresh_restores_matching_old_release(self):
+        self.assert_failed_flow("proxy-refresh")
 
     def assert_failed_flow(self, failure):
         result, state = self.run_deployment(failure)

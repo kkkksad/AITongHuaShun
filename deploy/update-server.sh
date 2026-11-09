@@ -11,6 +11,9 @@ SOURCE_BACKUP="/tmp/kairos-source-backup-${COMMIT}.tar.gz"
 SOURCE_STAGING="/tmp/kairos-source-staging-${COMMIT}"
 SERVICES=(akshare-bridge backend web)
 IMAGES=(kairos-akshare-bridge kairos-api kairos-web)
+proxy_backend_before=""
+proxy_container_before=""
+proxy_config_changed=0
 
 if [[ ! "${COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "A full Git commit SHA is required." >&2
@@ -60,6 +63,35 @@ reuse_unchanged_images() {
   done
 }
 
+capture_proxy_state() {
+  local desired_config current_config
+  proxy_backend_before="$(compose ps -q backend)" || return 1
+  proxy_container_before="$(compose ps -q web)" || return 1
+  proxy_config_changed=0
+  if [[ -n "${proxy_container_before}" ]]; then
+    desired_config="$(sha256sum "${ROOT}/deploy/nginx.conf" | cut -d ' ' -f1)" || return 1
+    [[ "${desired_config}" =~ ^[0-9a-f]{64}$ ]] || return 1
+    current_config="$(docker exec "${proxy_container_before}" sha256sum /etc/nginx/conf.d/default.conf | cut -d ' ' -f1)" || current_config=""
+    if [[ "${desired_config}" != "${current_config}" ]]; then
+      proxy_config_changed=1
+    fi
+  fi
+}
+
+refresh_retained_proxy() {
+  local backend_after proxy_after
+  [[ -n "${proxy_container_before}" ]] || return 0
+  backend_after="$(compose ps -q backend)" || return 1
+  proxy_after="$(compose ps -q web)" || return 1
+  if [[ "${proxy_after}" == "${proxy_container_before}" &&
+        ( "${backend_after}" != "${proxy_backend_before}" || "${proxy_config_changed}" == 1 ) ]]; then
+    # Nginx resolves literal upstream names at startup. A recreated backend may
+    # get a different address, and a retained single-file bind keeps its old inode.
+    compose up -d --no-deps --force-recreate web || return 1
+    echo "Refreshed reverse proxy after upstream or mounted configuration changed."
+  fi
+}
+
 # The ACME webroot is a host bind mount. Create it as the deployment user
 # before Compose can silently create a root-owned directory for the container.
 prepare_acme_runtime() {
@@ -100,6 +132,7 @@ replace_source_from_archive() {
     Dockerfile \
     docker-compose.production.yml \
     package.json \
+    deploy/nginx.conf \
     deploy/github-deploy-entrypoint.sh \
     deploy/update-server.sh; do
     if [[ ! -s "${SOURCE_STAGING}/${required}" ]]; then
@@ -185,9 +218,23 @@ if ! reuse_unchanged_images; then
   exit 1
 fi
 
+if ! capture_proxy_state; then
+  restore_source
+  restore_images
+  echo "Could not verify reverse proxy state; rollback attempted." >&2
+  exit 1
+fi
+
 if ! compose up -d --remove-orphans; then
   restore_source
   restore_images
+  exit 1
+fi
+
+if ! refresh_retained_proxy; then
+  restore_source
+  restore_images
+  echo "Reverse proxy refresh failed; rollback attempted." >&2
   exit 1
 fi
 
