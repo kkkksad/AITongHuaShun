@@ -117,6 +117,8 @@ shared/
 
 ## 依赖方向
 
+Paper异步研究/通知绑定Store进程内执行控制修订；成功的暂停状态、策略/档位变化及重置递增，JSON写盘失败回滚，正常成交不递增。服务在研究完成后、执行器在通知后及逐笔提交前重查，stop另有生命周期失效，见[0043](../decisions/0043-paper-execution-control-revision.md)。这不替代Broker最终风控或多市场隔离。
+
 - Service Worker只拦截同源白名单静态资源/已知SPA壳；API、认证、账户、订单及未知/跨源请求完全透传，不读取旧版本缓存。v3激活先清旧kairos-*后claim，保留无关cache，见[决策0018](../decisions/0018-service-worker-static-cache-boundary.md)。
 - React 组件只能通过 `tradingApi` 和 `useTradingBackend` 访问服务端，不直接依赖存储或券商实现。
 - 导航焦点在无显式目标且main中已有被选中的ARIA tab焦点时交给页签管理，仍完成导航key/观察器清理；跨页/快速搜索/显式深链及过时lazy取消保持原定位。

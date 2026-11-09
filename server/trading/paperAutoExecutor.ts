@@ -43,6 +43,7 @@ import {
 } from "./intradayExecutionPolicy";
 import { getPaperStrategyProfilePolicy } from "./paperStrategyProfile";
 import { getOrderFillTime } from "./orderFillTime";
+import { assertPaperExecutionRevision, PaperExecutionContextChangedError } from "./paperExecutionContext";
 
 export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
 export type PaperAutoExecutionActivityMode =
@@ -722,6 +723,7 @@ export class PaperAutoExecutor {
   private startedAt: string | null = null;
   private lastRunAt: string | null = null;
   private running = false;
+  private executionLifecycle = 0;
   private sequence = 0;
   private lastPersistedRunSignature: string | null = null;
   private lastPersistedRunAt: number | null = null;
@@ -754,6 +756,7 @@ export class PaperAutoExecutor {
   }
 
   stop(): void {
+    this.executionLifecycle++;
     this.scheduler.stop();
   }
 
@@ -846,6 +849,12 @@ export class PaperAutoExecutor {
     }
 
     this.running = true;
+    const executionRevision = this.options.system.store.getExecutionRevision();
+    const executionLifecycle = this.executionLifecycle;
+    const assertExecutionContext = () => {
+      assertPaperExecutionRevision(this.options.system.store, executionRevision);
+      if (this.executionLifecycle !== executionLifecycle) throw new PaperExecutionContextChangedError();
+    };
     try {
       if (!this.options.enabled && !this.options.planNotifier) {
         skippedOperations.push({
@@ -984,6 +993,7 @@ export class PaperAutoExecutor {
         }),
         activityMode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
       });
+      assertExecutionContext();
       // Research can finish with a cached or unchanged snapshot from another
       // date. Stop before plan-date quotas, idempotency keys or notifications.
       if (plan.tradingDate !== tradingDate) {
@@ -1102,11 +1112,13 @@ export class PaperAutoExecutor {
         },
       };
       await this.options.planNotifier?.notify(plan, notificationContext);
+      assertExecutionContext();
 
       let executionTimeStopped = false;
       for (const { operation, request } of (
         this.options.enabled ? preparedOperations : []
       )) {
+        assertExecutionContext();
         // Notifications may wait on the network, and onOrder may change state
         // between synchronous submissions. Check the real clock for every order.
         const submissionTimeBlocker = executionTimeBlocker(this.now(), "逐笔提交前");
@@ -1220,11 +1232,12 @@ export class PaperAutoExecutor {
         buildPlanSnapshot(plan),
       );
     } catch (error) {
+      const contextChanged = error instanceof PaperExecutionContextChangedError;
       const detail = error instanceof Error ? error.message : String(error);
       skippedOperations.push({
         symbol: "SYSTEM",
         action: "observe",
-        reason: `paper auto execution input is temporarily unavailable: ${detail.slice(0, 240)}`,
+        reason: contextChanged ? detail : `paper auto execution input is temporarily unavailable: ${detail.slice(0, 240)}`,
       });
       return this.finalizeRun(
         trigger,
@@ -1232,7 +1245,7 @@ export class PaperAutoExecutor {
         tradingDate,
         session,
         initialPolicy,
-        "not-run",
+        contextChanged ? "watch-only" : "not-run",
         submittedOrders,
         skippedOperations,
       );

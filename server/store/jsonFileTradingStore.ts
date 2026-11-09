@@ -123,6 +123,8 @@ function withT1Lock(
  */
 export class JsonFileTradingStore implements TradingStore {
   getAccountEpoch(): string { return this.accountEpoch; }
+  getExecutionRevision(): number { return this.executionRevision; }
+  private executionRevision = 0;
   private readonly filePath: string;
   private readonly accountId = "PAPER-CN-01";
   private accountEpoch: string = randomUUID();
@@ -173,6 +175,7 @@ export class JsonFileTradingStore implements TradingStore {
 
   setPaused(paused: boolean): void {
     return this.mutate(() => {
+      if (this.paused !== paused) this.executionRevision++;
       this.paused = paused;
       this.appendAudit(
         "system",
@@ -193,6 +196,7 @@ export class JsonFileTradingStore implements TradingStore {
 
   setStrategyProfile(profile: PaperStrategyProfile): void {
     return this.mutate(() => {
+      if (this.strategyProfile !== profile) this.executionRevision++;
       this.strategyProfile = profile;
       this.appendAudit("system", "account.strategy-profile.updated", "Paper 策略档位已更新", {
         strategyProfile: profile,
@@ -207,6 +211,7 @@ export class JsonFileTradingStore implements TradingStore {
 
   setExecutionStrategy(strategy: PaperExecutionStrategy): void {
     return this.mutate(() => {
+      if (this.executionStrategy !== strategy) this.executionRevision++;
       this.executionStrategy = strategy;
       this.appendAudit("system", "account.execution-strategy.updated", "Paper 执行策略已更新", {
         executionStrategy: strategy,
@@ -225,6 +230,7 @@ export class JsonFileTradingStore implements TradingStore {
         throw new Error("Paper account starting cash must be positive.");
       }
       const executionStrategy = input.executionStrategy ?? "auto";
+      this.executionRevision++;
       this.startingEquity = input.startingCash;
       this.strategyProfile = input.strategyProfile;
       this.executionStrategy = executionStrategy;
@@ -711,6 +717,7 @@ export class JsonFileTradingStore implements TradingStore {
   /** Batch nested audit writes into one replacement; failed mutations restore the prior ledger. */
   private mutate<T>(change: () => T): T {
     if (this.mutationDepth > 0) return change();
+    const previousExecutionRevision = this.executionRevision;
     const previous = this.persistedState();
     previous.positions = previous.positions.map((position) => ({ ...position,
       ...(position.paperCycle ? { paperCycle: { ...position.paperCycle } } : {}) }));
@@ -727,6 +734,7 @@ export class JsonFileTradingStore implements TradingStore {
       this.flushRequested = false;
       return result;
     } catch (error) {
+      this.executionRevision = previousExecutionRevision;
       this.mutationDepth = 0;
       this.flushRequested = false;
       this.accountEpoch = previous.accountEpoch!;

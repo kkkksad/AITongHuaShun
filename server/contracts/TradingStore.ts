@@ -26,6 +26,8 @@ import type { PaperRiskCheckpoint } from "../risk/paperRiskCheckpoint";
 export interface TradingStore {
   /** Persistent reset identity for matching a read-only archive, absent in memory-only research. */
   getAccountEpoch(): string | null;
+  /** Process-local revision for successful account controls; ordinary fills do not advance it. */
+  getExecutionRevision(): number;
   // ── 账户生命周期 ──
 
   /** 是否处于暂停交易状态。 */

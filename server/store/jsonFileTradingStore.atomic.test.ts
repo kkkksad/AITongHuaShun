@@ -43,7 +43,7 @@ function prepare(kind: Mutation, f: ReturnType<typeof fixture>): () => unknown {
 }
 
 function observable(f: ReturnType<typeof fixture>) {
-  return { cash: f.store.getCash(), available: f.store.getAvailableCash(), paused: f.store.isPaused(),
+  return { revision: f.store.getExecutionRevision(), cash: f.store.getCash(), available: f.store.getAvailableCash(), paused: f.store.isPaused(),
     profile: f.store.getStrategyProfile(), strategy: f.store.getExecutionStrategy(),
     positions: f.store.getPositions(f.snapshot), orders: f.store.listOrders(), audit: f.store.listAudit(),
     cycles: f.store.getPaperFillLedger(), checkpoint: f.store.getPaperRiskCheckpoint?.() };

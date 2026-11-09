@@ -34,6 +34,7 @@ import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 import type { InMemoryResearchStore } from "./researchStore";
 import { ResearchResultCache } from "./researchResultCache";
 import { withResearchDeadline } from "./researchDeadline";
+import { assertPaperExecutionRevision } from "../trading/paperExecutionContext";
 
 const PAPER_RESEARCH_CACHE_TTL_MS = 30_000;
 const PAPER_DEGRADED_RESEARCH_CACHE_TTL_MS = 5_000;
@@ -340,6 +341,7 @@ export async function buildCurrentPaperTradingPlan(input: {
   activityTargetActive?: boolean;
   activityMode?: PaperTradingActivityMode;
 }): Promise<CurrentPaperTradingPlanResult> {
+  const executionRevision = input.system.store.getExecutionRevision();
   const snapshot = input.system.market.getSnapshot();
   const account = input.system.broker.getAccount(snapshot);
   const positions = input.system.broker.getPositions(snapshot);
@@ -373,6 +375,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     leaderboardBars: input.leaderboardBars ?? 120,
     criticalHistoryStockLimit,
   });
+  assertPaperExecutionRevision(input.system.store, executionRevision);
   const {
     leaderboard,
     marketRegimeResearch,

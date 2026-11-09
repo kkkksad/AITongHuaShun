@@ -46,6 +46,24 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it.each(["profile", "strategy-ABA", "pause-resume", "same-money-reset"])(
+    "discards read-only plans when %s changes while shared research is pending", async (change) => {
+      const request = input();
+      builders.core.mockImplementationOnce(async value => {
+        await Promise.resolve();
+        const broker = request.system.broker;
+        if (change === "profile") broker.setStrategyProfile("growth");
+        if (change === "strategy-ABA") { broker.setExecutionStrategy("rsi"); broker.setExecutionStrategy("auto"); }
+        if (change === "pause-resume") { broker.pause(); broker.resume(); }
+        if (change === "same-money-reset") broker.resetAccount({ startingCash: config.TRADING_STARTING_CASH, strategyProfile: "balanced" });
+        return buildUnavailableMarketRegimeResearch(value, "fixture");
+      });
+      await expect(buildCurrentPaperTradingPlan(request)).rejects.toMatchObject({ statusCode: 409 });
+      const next = await buildCurrentPaperTradingPlan(request);
+      expect(next.plan.strategyProfile.key).toBe(request.system.store.getStrategyProfile());
+      expect(request.system.broker.getOrders()).toEqual([]);
+    },
+  );
   it.each([0, 37, 500])("passes the configured %s bps cost model into the resulting plan", async (slippageBps) => {
     const costConfig = createTestConfig({ ...config, SLIPPAGE_BPS: slippageBps });
     const system = createTradingSystem(costConfig, () => date);

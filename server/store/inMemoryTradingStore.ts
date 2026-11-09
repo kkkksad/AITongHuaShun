@@ -81,6 +81,8 @@ function withT1Lock(
 
 export class InMemoryTradingStore implements TradingStore {
   getAccountEpoch(): null { return null; }
+  getExecutionRevision(): number { return this.executionRevision; }
+  private executionRevision = 0;
   private readonly accountId = "PAPER-CN-01";
   private startingEquity: number;
   private strategyProfile: PaperStrategyProfile = "balanced";
@@ -148,6 +150,7 @@ export class InMemoryTradingStore implements TradingStore {
   }
 
   setPaused(paused: boolean): void {
+    if (this.paused !== paused) this.executionRevision++;
     this.paused = paused;
     this.appendAudit(
       "system",
@@ -165,6 +168,7 @@ export class InMemoryTradingStore implements TradingStore {
   }
 
   setStrategyProfile(profile: PaperStrategyProfile): void {
+    if (this.strategyProfile !== profile) this.executionRevision++;
     this.strategyProfile = profile;
     this.appendAudit("system", "account.strategy-profile.updated", "Paper 策略档位已更新", {
       strategyProfile: profile,
@@ -176,6 +180,7 @@ export class InMemoryTradingStore implements TradingStore {
   }
 
   setExecutionStrategy(strategy: PaperExecutionStrategy): void {
+    if (this.executionStrategy !== strategy) this.executionRevision++;
     this.executionStrategy = strategy;
     this.appendAudit("system", "account.execution-strategy.updated", "Paper 执行策略已更新", {
       executionStrategy: strategy,
@@ -191,6 +196,7 @@ export class InMemoryTradingStore implements TradingStore {
       throw new Error("Paper account starting cash must be positive.");
     }
     const executionStrategy = input.executionStrategy ?? "auto";
+    this.executionRevision++;
     this.startingEquity = input.startingCash;
     this.strategyProfile = input.strategyProfile;
     this.executionStrategy = executionStrategy;
