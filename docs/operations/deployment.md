@@ -10,7 +10,7 @@
 - 防火墙只向公网开放 `80/443`；Fastify `3001` 不得直接发布，前端 `4173` 只绑定 `127.0.0.1`。
 - 继续保持 `MARKET_MODE=paper`、`REAL_TRADING_ENABLED=false`。
 
-域名证书必须是受信任的 CA 证书，并同时包含 `kairosq.cn` 与 `www.kairosq.cn`。生产反向代理应保留原始 `Host` 和 `X-Forwarded-Proto`，后端会在 `TRUST_PROXY=true` 时据此校验实际域名的 WebSocket 同源请求。当前服务器上的 IP 自签名证书不能用于域名入口；浏览器会在前端 JavaScript 加载前拒绝它，因此这类问题不是 React 代码或缓存可以单独解决的。
+域名证书必须是受信任的CA证书，并同时包含`kairosq.cn`与`www.kairosq.cn`；当前双域已完成Let's Encrypt签发和自动续期，验证见[状态页](../status/current-state.md)。生产反向代理应保留原始`Host`和`X-Forwarded-Proto`，后端会在`TRUST_PROXY=true`时据此校验实际域名的WebSocket同源请求。域名证书不适用于IP直连，不应通过跳过TLS校验使用生产站点。
 
 当前会话存储在单个 Fastify 进程内。服务重启会让全部用户重新登录；不得横向扩成多个后端副本。多实例部署前必须把会话替换为 Redis 等共享、可撤销存储，并重新验证限流与 CSRF 边界。
 
@@ -53,16 +53,15 @@ docker compose --profile prod ps
 
 ## HTTPS 反向代理
 
-Nginx 证书目录使用 `runtime/certs/kairos.crt` 与 `runtime/certs/kairos.key`。可在服务器上使用受信任 CA 签发的域名证书替换这两个文件，并确认私钥权限为 `600`、证书权限为 `644`，然后执行：
+Nginx证书路径为`runtime/certs/kairos.crt`与`runtime/certs/kairos.key`，当前由ACME工具经同一版本目录指针管理，私钥600、证书644。后续换证使用[域名证书与续期流程](../../deploy/README.md#域名证书与续期)，不手工覆盖受管理链接；工具验证后执行`nginx -t`和reload，无需仅为续期重启应用容器。单独核对配置可运行：
 
 ```bash
 docker compose --env-file .env.production -f docker-compose.production.yml exec -T web nginx -t
-docker compose --env-file .env.production -f docker-compose.production.yml up -d --force-recreate web
 ```
 
 换证书前确认 DNS 的 `@` 和 `www` A 记录都指向 `124.221.165.45`；换证书后分别检查 `https://kairosq.cn/healthz`、`https://www.kairosq.cn/healthz` 和浏览器证书 SAN。
 
-仓库提供普通部署用户执行的ACME容器工具，具体协议授权、双域签发、原子安装/回滚和续期步骤统一维护在[生产部署手册](../../deploy/README.md#域名证书与续期)。配置发布仅准备挑战路由，不代表已接受第三方协议或取得有效证书。
+普通部署用户执行ACME容器工具。配置发布仅准备挑战路由，不自动接受第三方协议；本实例已取得用户具体授权并完成首次签发，后续协议变更仍须审核。具体原子安装/回滚和续期步骤统一维护在[生产部署手册](../../deploy/README.md#域名证书与续期)。
 
 Caddy 示例：
 

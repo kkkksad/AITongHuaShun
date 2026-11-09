@@ -1,10 +1,12 @@
 # 当前状态
 
-**核对日期：** 2026-11-05
+**核对日期：** 2026-11-09
 
-夜间升级代码已于UTC23:45冻结：最后代码提交`d1abafb2c6b5b3911261d68ef9f9412e265580f7`，完整111服务端文件1650项、49前端文件319项、TypeScript与Vite构建通过。UTC23:47线上498个归档文件哈希/三个healthy/健康200/匿名业务401通过，Paper原账户与配置边界已复核；最终文档发布标识和GitHub同步结果见[夜间计划](../plans/2026-11-05-overnight-module-upgrades.md)及聊天终检。剩余证书授权、费用后仓位投影和浏览器cookie并发限制已明确记录。
+夜间升级代码已于UTC23:45冻结：最后代码提交`d1abafb2c6b5b3911261d68ef9f9412e265580f7`，完整111服务端文件1650项、49前端文件319项、TypeScript与Vite构建通过。UTC23:47线上498个归档文件哈希/三个healthy/健康200/匿名业务401通过，Paper原账户与配置边界已复核；最终文档发布标识和GitHub同步结果见[夜间计划](../plans/2026-11-05-overnight-module-upgrades.md)及聊天终检。费用后仓位投影和浏览器cookie并发限制仍保留；证书授权与上线已于11月9日完成，见下项。
 
 ## 已实现
+
+- **域名可信HTTPS与续期（2026-11-09）** —— 用户明确同意Let's Encrypt v1.8后，双域kairosq.cn/www.kairosq.cn已真实签发并替换IP自签证书，公开issuer YE2、有效至2027-02-07。两域无-k主页/健康200、匿名account401，认证开启/真实交易关闭；systemd续期timer enabled/active，每天检查两次并随机延迟。实际renew服务成功且因未到期跳过，不声称已验证未来到期签发；协议版本变化会停止等待审核。验证与发布见[HTTPS执行记录](../plans/2026-11-09-domain-https-activation.md)。
 
 - **API迟到认证响应（2026-11-05）** —— 内存generation隔离旧401、旧verify成功和旧logout清理，保护后来CSRF/过期通知，旧调用方仍收原返回/错误；当前401与原生abort保持。16项localhost原生HTTP/fetch/流式body、独立68项与3交错边界通过；不约束浏览器Set-Cookie或撤销服务端请求，完整检查/发布见夜间计划和决策0019。
 

@@ -52,7 +52,7 @@ curl -kfsS https://127.0.0.1/healthz
 curl -kfsS https://127.0.0.1/api/health
 ```
 
-当前 IP 入口使用带 IP SAN 的自签名证书，只适合作为域名接入前的过渡。绑定域名后必须替换为受信任证书。生产凭据只保存在权限为 600 的 `/opt/kairos/.env.production`，不得提交或复制到文档；部署后的运行状态与已知限制记录在 `docs/status/current-state.md`。
+生产入口使用`https://kairosq.cn`或`https://www.kairosq.cn`；2026-11-09已完成Let's Encrypt双域可信证书及自动续期。域名证书不覆盖IP直连地址；过渡期的自签证书已作为本地备份保留。生产凭据只保存在权限为600的`/opt/kairos/.env.production`，不得提交或复制到文档；证书当前状态和验证见[状态页](../status/current-state.md)。
 
 交易状态默认使用内存仓储。需要在本地重启后保留模拟账户时，可在 `.env.local` 设置：
 
