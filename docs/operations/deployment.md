@@ -95,6 +95,8 @@ quant.example.com {
 
 ## 备份与更新
 
+同机SQLite长期复盘库通过独立systemd任务安装，配置、资源上限、诊断和在线备份统一见[Paper历史归档](paper-history.md)。数据库不暴露公网端口，不替代下述JSON交易账本。
+
 - 持久化 paper 状态时使用受限目录挂载和 `STORE_BACKEND=json`；JSON 仍只适合单进程模拟，不是生产数据库。
 - 备份 `.env` 时按密钥材料处理，使用服务器密钥管理或加密备份，不复制到聊天、源码或前端环境变量。
 - 更新前运行 `npm test` 和 `npm run build`；更新后重新检查登录、登出、401、429、WebSocket 和 paper-only 边界。

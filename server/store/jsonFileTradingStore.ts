@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import type {
   AccountSnapshot,
   AuditEvent,
@@ -30,6 +31,8 @@ interface MutablePosition {
 interface PersistedState {
   version: 1;
   accountId: string;
+  /** Stable simulation generation; legacy version-1 files are upgraded on load. */
+  accountEpoch?: string;
   startingEquity: number;
   strategyProfile?: PaperStrategyProfile;
   executionStrategy?: PaperExecutionStrategy;
@@ -115,6 +118,7 @@ function withT1Lock(
 export class JsonFileTradingStore implements TradingStore {
   private readonly filePath: string;
   private readonly accountId = "PAPER-CN-01";
+  private accountEpoch: string = randomUUID();
   private readonly retentionMs: number;
   private readonly now: () => Date;
   private startingEquity: number;
@@ -214,6 +218,7 @@ export class JsonFileTradingStore implements TradingStore {
     this.auditEvents = [];
     this.orderSequence = 0;
     this.auditSequence = 0;
+    this.accountEpoch = randomUUID();
     this.appendAudit("system", "account.reset", "已开始新的纯现金 Paper 模拟", {
       startingCash: input.startingCash,
       strategyProfile: input.strategyProfile,
@@ -567,6 +572,13 @@ export class JsonFileTradingStore implements TradingStore {
     if (state.version !== 1) {
       throw new Error(`Unsupported persisted state version: ${state.version}`);
     }
+    if (state.accountEpoch !== undefined) {
+      if (typeof state.accountEpoch !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(state.accountEpoch)) {
+        throw new Error("Invalid persisted Paper account epoch.");
+      }
+      this.accountEpoch = state.accountEpoch;
+    }
 
     this.startingEquity = state.startingEquity;
     this.strategyProfile = state.strategyProfile ?? "balanced";
@@ -595,7 +607,7 @@ export class JsonFileTradingStore implements TradingStore {
     for (const position of state.positions) {
       this.positions.set(position.symbol, { ...position });
     }
-    if (prunedHistory) {
+    if (prunedHistory || state.accountEpoch === undefined) {
       this.flush();
     }
   }
@@ -605,6 +617,7 @@ export class JsonFileTradingStore implements TradingStore {
     const state: PersistedState = {
       version: 1,
       accountId: this.accountId,
+      accountEpoch: this.accountEpoch,
       startingEquity: this.startingEquity,
       strategyProfile: this.strategyProfile,
       executionStrategy: this.executionStrategy,

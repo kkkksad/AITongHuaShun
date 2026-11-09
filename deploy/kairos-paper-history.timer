@@ -1,0 +1,12 @@
+[Unit]
+Description=Collect bounded KAIROS Paper history every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=60s
+AccuracySec=5s
+Unit=kairos-paper-history.service
+
+[Install]
+WantedBy=timers.target
+

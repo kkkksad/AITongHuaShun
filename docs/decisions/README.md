@@ -34,6 +34,8 @@
 
 - [0024：Paper计划显式标记候选分区](0024-paper-candidate-tiers.md)
 
+- [0025：同机SQLite旁路保存Paper长期复盘证据](0025-read-only-sqlite-paper-history.md)
+
 ## 新建格式
 
 文件名使用 `NNNN-short-title.md`。

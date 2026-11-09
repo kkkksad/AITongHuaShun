@@ -12,6 +12,7 @@
 | 系统架构 | [architecture/system-overview.md](architecture/system-overview.md) | 模块如何划分，依赖方向是什么？ |
 | 本地开发 | [operations/development.md](operations/development.md) | 如何安装、运行、测试和排错？ |
 | 服务器部署 | [operations/deployment.md](operations/deployment.md) | 如何用 HTTPS 和强制会话保护部署单实例？ |
+| 长期复盘归档 | [operations/paper-history.md](operations/paper-history.md) | 如何运行同机SQLite采集、检查容量和核验备份？ |
 | 安全边界 | [safety/trading-boundaries.md](safety/trading-boundaries.md) | 数据和交易能力有哪些不可违反的约束？ |
 | 路线图 | [roadmap.md](roadmap.md) | 外部能力按什么顺序接入？ |
 | 生产与交易复盘 | [research/](research/) | 最近 Paper 运行、成交与阻塞原因有哪些可核实事实？ |

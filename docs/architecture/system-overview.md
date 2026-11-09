@@ -196,6 +196,8 @@ AkShare 原生调用使用单工作线程串行化，避免其 JavaScript 运行
 
 ## 关键质量属性
 
+长期Paper复盘采用[独立SQLite只读观察副本](../decisions/0025-read-only-sqlite-paper-history.md)：Python标准库任务每分钟读取JSON账本，使用持久账户世代隔离实验，订单365天、样本/运行摘要90天，受容量和进程资源限制。它不参与订单执行，不替代JSON主账本，也不保存任意原始审计data。安装与备份见[操作手册](../operations/paper-history.md)。
+
 合成策略排行榜由`strategyLeaderboardService`统一服务API与Paper研究：按TradingSystem实例隔离，以provider、参数及完整有序快照序列化的SHA256区分输入，结果完成后30秒内复用，保留原生成/快照时间。最多保留8个键，失败移除；沿用最早插入淘汰，可淘汰在途项，因此不限制为8个并发计算。缓存只含只读排行榜，账户、现金、订单与最终Paper计划仍实时重建；行情质量年龄可能随原报告短时复用，不能把命中当成重新评估。
 
 网格参数搜索每约8ms在trial边界使用Node setImmediate放行宏任务，失败组合也遵循同一调度。参数组合、种子、回测顺序、评分和排名不变；计算总量与单trial同步耗时不变。这样研究期间可处理计时器、REST与WebSocket事件；不能把该机制解释成并行回测或总计算时间缩短。

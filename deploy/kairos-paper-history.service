@@ -1,0 +1,28 @@
+[Unit]
+Description=KAIROS Paper history SQLite observer
+After=docker.service
+ConditionPathExists=/opt/kairos/runtime/data/paper-trading-state.json
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/kairos
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/kairos/scripts/paper_history.py --source /opt/kairos/runtime/data/paper-trading-state.json --database /opt/kairos/runtime/archive/paper-history.sqlite
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=25%
+MemoryMax=192M
+TimeoutStartSec=45
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/kairos/runtime/data
+ReadWritePaths=/opt/kairos/runtime/archive
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+
