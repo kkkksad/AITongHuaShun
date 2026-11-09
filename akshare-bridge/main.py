@@ -2658,6 +2658,13 @@ async def health():
             "accepted": history_scheduler_stats["accepted"],
             "completed": history_scheduler_stats["completed"],
             "rejected": history_scheduler_stats["rejected"],
+            "timing": {
+                "scope": "history-limiter", "window": "process-lifetime", "unit": "ms",
+                "lastQueueWaitMs": history_scheduler_stats["last_queue_wait_ms"],
+                "maxQueueWaitMs": history_scheduler_stats["max_queue_wait_ms"],
+                "lastWorkMs": history_scheduler_stats["last_work_ms"],
+                "maxWorkMs": history_scheduler_stats["max_work_ms"],
+            },
         },
         "proxyDisabled": DISABLE_PROXY,
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

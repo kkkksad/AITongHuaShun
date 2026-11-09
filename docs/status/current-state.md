@@ -2,7 +2,9 @@
 
 **核对日期：** 2026-11-10（北京时间）
 
-历史共享等待取消隔离已通过Linux完整171项、145服务端文件2173项、55前端文件366项及TS/Vite；新五项旧版均失败，真实executor确认取消调用会提前释放槽。现在单个调用退出不取消共享源/其他等待者，来源失败可重试；不宣称已证明REST断开触发该路径，显式clear语义保持。独立发布核验继续中，见[模块28](../plans/2026-11-10-history-caller-cancellation.md)与[0048](../decisions/0048-history-shared-task-cancellation.md)。
+历史阶段耗时诊断已通过Linux完整177项、145服务端文件2173项、55前端文件366项及TS/Vite；六项新增能力合同旧版缺字段/注入能力而失败，不把它们称为旧业务缺陷。现按单调时钟区分排队/工作最近与进程最大值，缺样本null、健康只读、原2/24预算保持。旧蓝图的固定预留与分时仓位比例标记已替代，原历史记录保持；独立发布核验继续中，见[模块29](../plans/2026-11-10-history-stage-timing.md)与[0049](../decisions/0049-history-queue-and-work-timing.md)。
+
+历史共享等待取消隔离2579d5b已推送部署，UTC23:07核验628文件/三健康/HTTPS/原账户/检查点/归档世代及上一9743f73材料，API/web容器保持。Linux实际桥接镜像隔离171项、145服务端文件2173项、55前端文件366项及TS/Vite通过；新五项旧版均失败。单个调用退出不取消共享源/其他等待者、来源失败可重试；不宣称已证明REST断开触发该路径，显式clear语义保持，见[模块28](../plans/2026-11-10-history-caller-cancellation.md)与[0048](../decisions/0048-history-shared-task-cancellation.md)。
 
 单账户账本身份`fe755a8`已部署，UTC22:52核验622文件/三健康/可信HTTPS/原账户/检查点/归档世代及上一d398609材料，UTC22:59正常同步。九类错账户旧版均未拒绝；修复后文件/目录保持，合法账户兼容。目标63项、完整145服务端文件2173项、55前端文件366项、TS/Vite及实际Linux镜像隔离63项/私有生产账本副本兼容通过，见[模块26](../plans/2026-11-10-paper-ledger-account-binding.md)与[0046](../decisions/0046-single-account-paper-ledger-binding.md)。
 

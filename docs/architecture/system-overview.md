@@ -1,5 +1,7 @@
 # 系统架构
 
+桥接historyScheduler.timing只读提供历史limiter最近/本进程最大排队和工作区间，单调毫秒、缺样本null。工作含fetcher内executor等待与SDK网络，排除后续normalize/HTTP/策略；无新任务或列表，原并发不变，见[0049](../decisions/0049-history-queue-and-work-timing.md)。
+
 历史缓存冷读通过asyncio.shield共享Task，单个等待者取消/超时只退出本次等待，原读取及调度预算保持至完成，失败可重试；来源时间/缓存TTL不变。主HTTP批次原本不主动取消子任务，显式clear和底层线程取消仍按原行为，精确边界见[0048](../decisions/0048-history-shared-task-cancellation.md)。
 
 多市场独立资金、事务主账本迁移和期货准入的目标方案统一见[多市场Paper账本](multi-market-paper-ledger.md)与[0047](../decisions/0047-multi-market-paper-ledger-migration.md)；当前仍是单A股JSON主账本，SQLite只读归档，期货仅研究，不能把目标设计当成已实现撮合。

@@ -250,6 +250,20 @@ class TestTencentTurnover:
 
 
 class TestHealthEndpoint:
+    def test_history_timing_is_public_read_only_unknown_before_a_sample(self):
+        from research_cache import HistoryFetchLimiter
+        limiter = HistoryFetchLimiter(max_active=1, max_pending=3)
+        with patch("main.history_scheduler", limiter):
+            data = client.get("/health").json()
+        scheduler = data["historyScheduler"]
+        assert scheduler["timing"] == {
+            "scope": "history-limiter", "window": "process-lifetime", "unit": "ms",
+            "lastQueueWaitMs": None, "maxQueueWaitMs": None,
+            "lastWorkMs": None, "maxWorkMs": None,
+        }
+        assert scheduler["active"] == scheduler["pending"] == scheduler["accepted"] == 0
+        assert scheduler["maxActive"] == 1 and scheduler["maxPending"] == 3
+
     def test_health_returns_ok(self):
         response = client.get("/health")
         assert response.status_code == 200

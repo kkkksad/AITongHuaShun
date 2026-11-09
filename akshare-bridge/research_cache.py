@@ -20,7 +20,8 @@ class HistoryQueueFullError(RuntimeError):
 class HistoryFetchLimiter:
     """Bound active and queued history work before it reaches AkShare."""
 
-    def __init__(self, *, max_active: int = 1, max_pending: int = 8):
+    def __init__(self, *, max_active: int = 1, max_pending: int = 8,
+                 now: Callable[[], float] = time.monotonic):
         if max_active < 1:
             raise ValueError("max_active must be positive")
         if max_pending < max_active:
@@ -34,6 +35,11 @@ class HistoryFetchLimiter:
         self._accepted = 0
         self._completed = 0
         self._rejected = 0
+        self._now = now
+        self._last_queue_wait_ms: float | None = None
+        self._max_queue_wait_ms: float | None = None
+        self._last_work_ms: float | None = None
+        self._max_work_ms: float | None = None
 
     async def run(
         self,
@@ -52,20 +58,26 @@ class HistoryFetchLimiter:
             raise HistoryQueueFullError("历史行情队列繁忙，请稍后重试")
 
         assert self._semaphore is not None
+        queued_at = self._now()
         self._admitted += 1
         self._accepted += 1
         try:
             async with self._semaphore:
+                started_at = self._now()
+                self._last_queue_wait_ms = round(max(0, started_at - queued_at) * 1000, 3)
+                self._max_queue_wait_ms = max(self._max_queue_wait_ms or 0, self._last_queue_wait_ms)
                 self._active += 1
                 try:
                     return await fetcher()
                 finally:
                     self._active -= 1
                     self._completed += 1
+                    self._last_work_ms = round(max(0, self._now() - started_at) * 1000, 3)
+                    self._max_work_ms = max(self._max_work_ms or 0, self._last_work_ms)
         finally:
             self._admitted -= 1
 
-    def stats(self) -> dict[str, int]:
+    def stats(self) -> dict[str, int | float | None]:
         return {
             "active": self._active,
             "pending": max(0, self._admitted - self._active),
@@ -74,6 +86,10 @@ class HistoryFetchLimiter:
             "accepted": self._accepted,
             "completed": self._completed,
             "rejected": self._rejected,
+            "last_queue_wait_ms": self._last_queue_wait_ms,
+            "max_queue_wait_ms": self._max_queue_wait_ms,
+            "last_work_ms": self._last_work_ms,
+            "max_work_ms": self._max_work_ms,
         }
 
 

@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0049：历史调度的排队与工作耗时](0049-history-queue-and-work-timing.md)
+
 - [0048：历史共享读取与调用方取消隔离](0048-history-shared-task-cancellation.md)
 
 - [0047：多市场Paper独立资金与主账本迁移](0047-multi-market-paper-ledger-migration.md)
