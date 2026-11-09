@@ -9,6 +9,7 @@ import type {
   PaperStrategyProfile,
   PositionSnapshot,
   RiskLimits,
+  RiskState,
   TradingMode,
 } from "../../shared/trading";
 import type { ApiPerformanceSnapshot } from "../../shared/systemMonitoring";
@@ -1881,6 +1882,10 @@ export function submitPaperOrder(order: OrderRequest): Promise<OrderSubmission> 
     method: "POST",
     body: JSON.stringify(order),
   });
+}
+
+export function fetchRiskState(signal?: AbortSignal): Promise<RiskState> {
+  return authApiRequest<RiskState>("/api/risk/state", { signal });
 }
 
 export function fetchStrategyLeaderboard(

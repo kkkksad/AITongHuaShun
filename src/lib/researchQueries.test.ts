@@ -1,15 +1,31 @@
+import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
+import { paperRiskStateQueryOptions } from "./riskQueries";
 import {
   dailyCandidatesQueryOptions,
   dailyMarketReviewQueryOptions,
   isAccountResearchQuery,
   paperTradingPlanQueryOptions,
+  resetAccountResearchQueries,
   realResearchNewsFeedQueryOptions,
   strategyLeaderboardQueryOptions,
   weeklyPaperReviewQueryOptions,
 } from "./researchQueries";
 
 describe("research query options", () => {
+  it("drops the old account risk snapshot on reset while retaining market-only data", async () => {
+    const client = new QueryClient();
+    client.setQueryData(paperRiskStateQueryOptions().queryKey, {
+      circuitState: "normal", tradeCount: 7, lossCount: 2, consecutiveLosses: 1, dailyDrawdown: 0,
+      peakDailyEquity: 20000, trippedAt: null, warningAt: null, lastTradeTime: "2026-11-10T01:00:00.000Z",
+      lastEvaluationTime: "2026-11-10T01:00:00.000Z",
+    });
+    client.setQueryData(["market-data-quality"], { quality: 99 });
+    await resetAccountResearchQueries(client);
+    expect(client.getQueryData(paperRiskStateQueryOptions().queryKey)).toBeUndefined();
+    expect(client.getQueryData(["market-data-quality"])).toEqual({ quality: 99 });
+    client.clear();
+  });
   it("matches account-dependent research across every weekly period and parameter variant", () => {
     for (const queryKey of [
       paperTradingPlanQueryOptions().queryKey,
@@ -17,6 +33,7 @@ describe("research query options", () => {
       weeklyPaperReviewQueryOptions("current").queryKey,
       weeklyPaperReviewQueryOptions("previous").queryKey,
       ["weekly-paper-review", "archived", { limit: 20 }],
+      paperRiskStateQueryOptions().queryKey,
     ]) {
       expect(isAccountResearchQuery({ queryKey })).toBe(true);
     }

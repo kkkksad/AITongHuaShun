@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AUTH_EXPIRED_EVENT,
   fetchApiPerformance,
+  fetchRiskState,
   fetchAuditEvents,
   fetchCrossMarketStrategyContext,
   fetchDailyCandidates,
@@ -56,6 +57,19 @@ describe("session-aware trading API", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+  });
+
+  it("reads risk with session cookies and the caller's cancellation signal without a mutation", async () => {
+    const signal = new AbortController().signal;
+    const response = { circuitState: "tripped", tradeCount: 7, ledgerStatus: "ready" };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(response));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await fetchRiskState(signal)).toEqual(response);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringMatching(/\/api\/risk\/state$/),
+      expect.objectContaining({ signal, credentials: "include" }));
+    expect(fetchMock.mock.calls[0][1].method).toBeUndefined();
+    expect(fetchMock.mock.calls[0][1].body).toBeUndefined();
   });
 
   it("uses cookies and sends the in-memory CSRF token for mutations", async () => {

@@ -11,6 +11,7 @@ import {
 
 export function isAccountResearchQuery({ queryKey }: Pick<Query, "queryKey">): boolean {
   return queryKey[0] === "paper-trading-plan" ||
+    queryKey[0] === "paper-risk-state" ||
     queryKey[0] === "daily-market-review" ||
     queryKey[0] === "weekly-paper-review";
 }

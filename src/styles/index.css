@@ -4090,6 +4090,19 @@ select:focus-visible {
   border: 1px solid #a7f3d0;
 }
 
+.risk-status-banner > svg { flex-shrink: 0; }
+.risk-status-banner > div { min-width: 0; }
+.risk-status-banner > div span { display: block; margin-top: 4px; line-height: 1.6; }
+.risk-observation-copy { display: flex; flex-wrap: wrap; gap: 6px 20px; color: var(--text-muted); font-size: 12px; }
+.risk-metric-value { display: block; font-size: 20px; margin-bottom: 10px; }
+.risk-panel .risk-metric-detail { line-height: 1.7; }
+.risk-limits-scroll { min-width: 0; overflow-x: auto; }
+
+@media (max-width: 600px) {
+  .risk-panel .risk-metrics-grid { grid-template-columns: minmax(0, 1fr); }
+  .risk-panel .risk-limits-table { min-width: 440px; }
+}
+
 .risk-status-banner.warn {
   background: var(--color-warning-bg);
   color: var(--color-warning);

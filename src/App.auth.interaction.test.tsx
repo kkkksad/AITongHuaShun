@@ -115,6 +115,7 @@ describe("App authentication query boundaries", () => {
     await settle();
   }
   const otherKeys = [
+    ["paper-risk-state"],
     ["daily-market-review"], ["weekly-paper-review", "current"], ["weekly-paper-review", "previous"],
     ["paper-auto-execution-status"], ["real-research-data-feed", "news", 40, 3], ["market-data-quality"],
   ];
