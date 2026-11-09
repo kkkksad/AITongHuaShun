@@ -117,6 +117,8 @@ shared/
 
 ## 依赖方向
 
+ResearchResultCache在途任务不被容量淘汰，生产实例每个最多8个封装Promise；桥接HTTP有独立Node进程级64个实际读取预算，缓存命中共享，clear不释放仍在途任务。满载新任务不排队、明确降级或503，指定行情通道独立，见[0044](../decisions/0044-bounded-research-admission.md)。
+
 Paper异步研究/通知绑定Store进程内执行控制修订；成功的暂停状态、策略/档位变化及重置递增，JSON写盘失败回滚，正常成交不递增。服务在研究完成后、执行器在通知后及逐笔提交前重查，stop另有生命周期失效，见[0043](../decisions/0043-paper-execution-control-revision.md)。这不替代Broker最终风控或多市场隔离。
 
 - Service Worker只拦截同源白名单静态资源/已知SPA壳；API、认证、账户、订单及未知/跨源请求完全透传，不读取旧版本缓存。v3激活先清旧kairos-*后claim，保留无关cache，见[决策0018](../decisions/0018-service-worker-static-cache-boundary.md)。

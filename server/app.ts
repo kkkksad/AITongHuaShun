@@ -65,6 +65,7 @@ import { buildHongKongMarketResearch } from "./research/hongKongMarketResearch";
 import { buildMarketRegimeResearch } from "./research/marketRegimeResearch";
 import { buildIpoSubscriptionResearch } from "./research/ipoSubscriptionResearch";
 import { buildCurrentPaperTradingPlan } from "./research/paperTradingPlanService";
+import { ResearchCapacityError } from "./research/researchCapacity";
 import { buildRealResearchDataFeed } from "./research/realResearchData";
 import { InMemoryResearchStore } from "./research/researchStore";
 import { buildStockTrendForecast } from "./research/stockTrendForecast";
@@ -562,6 +563,9 @@ export async function buildTradingApp(
   // ── Error handler ───────────────────────────────────────
 
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof ResearchCapacityError) {
+      return reply.status(503).send({ error: "RESEARCH_BUSY", message: error.message });
+    }
     if (error instanceof PaperRiskCheckpointError) {
       return reply.status(503).send({ error: "RISK_CHECKPOINT_UNAVAILABLE", message: error.message });
     }

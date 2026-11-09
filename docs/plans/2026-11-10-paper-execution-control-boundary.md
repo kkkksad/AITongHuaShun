@@ -23,7 +23,7 @@
 - [x] 最小修复Store与JSON原子回滚。用`const before = store.getExecutionRevision(); store.setPaused(true); store.setPaused(false); expect(store.getExecutionRevision()).toBeGreaterThan(before)`确认ABA被识别。
 - [x] 服务与执行器边界实现，运行目标回归；同值设置不取消，恢复后新轮次可运行；`stop()`后的在途任务不再提交。
 - [x] 运行完整服务端/前端、TS/Vite、空白检查；更新证据后独立提交、推送、部署另见下一项发布核验。
-- [ ] 生产只读验证SHA/HTTPS/健康/匿名保护、原20000账户/风险检查点/归档世代、上一发布留存；生产镜像隔离运行目标回归，不触发生产订单或通知。
+- [x] 生产只读验证SHA/HTTPS/健康/匿名保护、原20000账户/风险检查点/归档世代、上一发布留存；生产镜像隔离运行目标回归，不触发生产订单或通知。
 
 命令：`node node_modules/vitest/vitest.mjs run --dir server server/trading/paperAutoExecutor.controlBoundary.test.ts server/store/executionRevision.test.ts server/research/paperTradingPlanService.test.ts --environment node --maxWorkers=1 --minWorkers=1`。旧版预期控制变化案例失败，修复后全部通过。全套命令沿用主计划，显式`--dir server`/`--dir src`且串行Vitest。
 
@@ -40,3 +40,5 @@
 固定时钟后完整服务端142文件2150项通过，无生产测试操作。前端与最终发布核验继续中。
 
 完整55前端文件366项、TS/Vite与空白检查通过。此模块没有页面结构变化，不重复运行浏览器布局夹具；HTTP真实Fastify验证认证/no-store/409。独立提交推送部署后再记录生产事实。
+
+`eb299faaa32398237e4808838bb0a05522a39ffd`已正常推送部署，UTC22:16独立核验612文件/三健康/可信HTTPS/匿名业务401、原20000本金现金与growth/auto/未暂停/零持仓订单；风险游标0、保存时间保持。SQLite208运行/83样本/完整性ok/分钟摘要published、世代不变；上一8bbf662的606文件/三镜像与私有导出保护通过。实际Linux生产镜像无网络/无生产挂载/端口运行五文件68项全部通过，没有生产控制变更、重置、订单或测试通知。

@@ -4,6 +4,8 @@
 
 ## 环境
 
+研究满载时，新增计算返回503 RESEARCH_BUSY，来源读取可返回明确容量降级；已有同key读取继续复用，任务完成或超时后后续刷新可恢复。不要通过循环立即重试或清缓存扩大并发；当前Node研究HTTP预算64，Python历史2工作槽/24队列单独保持，见[0044](../decisions/0044-bounded-research-admission.md)。
+
 - Node.js 20 或更新版本。
 - npm。
 - Windows PowerShell 或兼容终端。

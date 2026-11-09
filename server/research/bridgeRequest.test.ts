@@ -14,6 +14,56 @@ function jsonResponse(payload: unknown, status = 200): Response {
 }
 
 describe("fetchBridgeJson", () => {
+  it.each([0, 60_000])("bounds actual requests at 64 even with TTL %s and recovers after settlement", async cacheTtlMs => {
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchImpl = vi.fn(() => new Promise<Response>(done => { resolvers.push(done); }));
+    const input = { url: "http://bridge/admission/0", timeoutMs: 10_000, cacheTtlMs, fetchImpl };
+    const requests = Array.from({ length: 65 }, (_, index) => fetchBridgeJson({ ...input, url: `http://bridge/admission/${index}` }));
+    const observed = Promise.allSettled(requests);
+    const started = fetchImpl.mock.calls.length;
+    resolvers.forEach((done, index) => done(jsonResponse({ index })));
+    const outcomes = await observed;
+    expect(started).toBe(64);
+    expect(outcomes.slice(0, 64).every(r => r.status === "fulfilled")).toBe(true);
+    expect(outcomes[64]).toMatchObject({ status: "rejected", reason: { code: "capacity" } });
+    fetchImpl.mockImplementation(async () => jsonResponse({ recovered: true }));
+    expect(await fetchBridgeJson({ ...input, url: "http://bridge/admission/64" })).toEqual({ recovered: true });
+  });
+
+  it("does not clear active network slots when its cache is cleared", async () => {
+    const resolvers: Array<(response: Response) => void> = [];
+    const fetchImpl = vi.fn(() => new Promise<Response>(done => { resolvers.push(done); }));
+    const input = { url: "http://bridge/clear-admission/0", timeoutMs: 10_000, cacheTtlMs: 60_000, fetchImpl };
+    const pending = Array.from({ length: 64 }, (_, index) => fetchBridgeJson({ ...input, url: `http://bridge/clear-admission/${index}` }));
+    clearBridgeRequestCache();
+    const denied = fetchBridgeJson({ ...input, url: "http://bridge/clear-admission/overflow" }).catch(error => error);
+    resolvers.forEach(done => done(jsonResponse({ ok: true })));
+    await Promise.all(pending);
+    expect(await denied).toMatchObject({ code: "capacity", status: null });
+    expect(fetchImpl).toHaveBeenCalledTimes(64);
+  });
+
+  it("releases all occupied slots on real aborts and creates no overflow timer", async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn((_url: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_done, reject) => init?.signal?.addEventListener("abort", () =>
+        reject(new DOMException("aborted", "AbortError")))));
+    const input = { url: "http://bridge/abort-admission/0", timeoutMs: 25, cacheTtlMs: 0, fetchImpl };
+    const requests = Array.from({ length: 65 }, (_, index) => fetchBridgeJson({ ...input, url: `http://bridge/abort-admission/${index}` }));
+    const observed = Promise.allSettled(requests);
+    expect(fetchImpl).toHaveBeenCalledTimes(64);
+    expect(vi.getTimerCount()).toBe(64);
+    await vi.advanceTimersByTimeAsync(25);
+    const outcomes = await observed;
+    expect(outcomes.slice(0, 64)).toEqual(Array.from({ length: 64 }, () => expect.objectContaining({
+      status: "rejected", reason: expect.objectContaining({ code: "timeout" }),
+    })));
+    expect(outcomes[64]).toMatchObject({ status: "rejected", reason: { code: "capacity" } });
+    expect(vi.getTimerCount()).toBe(0);
+    fetchImpl.mockImplementation(async () => jsonResponse({ recovered: true }));
+    expect(await fetchBridgeJson(input)).toEqual({ recovered: true });
+    expect(vi.getTimerCount()).toBe(0);
+  });
   afterEach(() => {
     clearBridgeRequestCache();
     vi.useRealTimers();
@@ -152,21 +202,24 @@ describe("fetchBridgeJson", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
-  it("preserves all 64 pending reads and bypasses caching for an overflow key", async () => {
+  it("preserves all 64 pending reads, reuses the first key, and declines an overflow key", async () => {
     const resolvers: Array<(response: Response) => void> = [];
     const fetchImpl = vi.fn().mockImplementation(() =>
       new Promise<Response>((resolve) => { resolvers.push(resolve); }));
     const input = { url: "http://bridge/busy/0", timeoutMs: 10_000, cacheTtlMs: 60_000, fetchImpl };
     const pending = Array.from({ length: 65 }, (_, index) =>
       fetchBridgeJson({ ...input, url: `http://bridge/busy/${index}` }));
+    const observed = Promise.allSettled(pending);
     const firstAgain = fetchBridgeJson(input);
-    expect(fetchImpl).toHaveBeenCalledTimes(65);
     resolvers.forEach((resolve, index) => resolve(jsonResponse({ index })));
-    const results = await Promise.all(pending);
-    expect(await firstAgain).toBe(results[0]);
+    const results = await observed;
+    expect(fetchImpl).toHaveBeenCalledTimes(64);
+    expect(results[0].status).toBe("fulfilled");
+    if (results[0].status === "fulfilled") expect(await firstAgain).toBe(results[0].value);
+    expect(results[64]).toMatchObject({ status: "rejected", reason: { code: "capacity" } });
     fetchImpl.mockImplementation(async () => jsonResponse({ overflow: true }));
     expect(await fetchBridgeJson({ ...input, url: "http://bridge/busy/64" })).toEqual({ overflow: true });
-    expect(fetchImpl).toHaveBeenCalledTimes(66);
+    expect(fetchImpl).toHaveBeenCalledTimes(65);
   });
 
   it("keeps cached reads isolated by bearer-token scope", async () => {

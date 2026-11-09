@@ -4,6 +4,7 @@ export type BridgeRequestErrorCode =
   | "http"
   | "invalid-json"
   | "network"
+  | "capacity"
   | "timeout";
 
 export class BridgeRequestError extends Error {
@@ -31,6 +32,8 @@ interface BridgeRequestCacheEntry {
 }
 
 const MAX_BRIDGE_REQUEST_CACHE_ENTRIES = 64;
+const MAX_ACTIVE_BRIDGE_REQUESTS = 64;
+let activeBridgeRequests = 0;
 const DEGRADED_BRIDGE_CACHE_TTL_MS = 5_000;
 const bridgeRequestCache = new Map<string, BridgeRequestCacheEntry>();
 const fetchScopeIds = new WeakMap<object, number>();
@@ -114,6 +117,10 @@ export function clearBridgeRequestCache(): void {
 async function fetchBridgeJsonUncached<T>(
   input: FetchBridgeJsonInput,
 ): Promise<T> {
+  if (activeBridgeRequests >= MAX_ACTIVE_BRIDGE_REQUESTS) {
+    throw new BridgeRequestError("行情桥读取已达到并发上限，请稍后刷新；已有请求继续运行。", "capacity");
+  }
+  activeBridgeRequests++;
   const timeoutMs = boundedTimeout(input.timeoutMs);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -159,6 +166,7 @@ async function fetchBridgeJsonUncached<T>(
       "network",
     );
   } finally {
+    activeBridgeRequests--;
     clearTimeout(timer);
   }
 }

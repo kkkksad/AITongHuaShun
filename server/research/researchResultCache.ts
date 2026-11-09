@@ -1,3 +1,5 @@
+import { ResearchCapacityError } from "./researchCapacity";
+
 type CacheEntry<T> = {
   promise: Promise<T>;
   value?: T;
@@ -19,6 +21,7 @@ export type ResearchResultCacheTtl<T> =
  */
 export class ResearchResultCache<T> {
   private readonly entries = new Map<string, CacheEntry<T>>();
+  private readonly activeEntries = new Set<CacheEntry<T>>();
   private readonly maxEntries: number;
   private readonly now: () => number;
 
@@ -39,10 +42,14 @@ export class ResearchResultCache<T> {
     }
     if (existing) this.entries.delete(key);
 
+    // Cache invalidation does not cancel work. Keep its admission slot until
+    // the original Promise settles, including work hidden by clear().
+    if (this.activeEntries.size >= this.maxEntries) return Promise.reject(new ResearchCapacityError());
+
     while (this.entries.size >= this.maxEntries) {
-      const oldestKey = this.entries.keys().next().value;
-      if (typeof oldestKey !== "string") break;
-      this.entries.delete(oldestKey);
+      const completed = [...this.entries].find(([, entry]) => entry.settled);
+      if (!completed) return Promise.reject(new ResearchCapacityError());
+      this.entries.delete(completed[0]);
     }
 
     const entry: CacheEntry<T> = {
@@ -51,17 +58,26 @@ export class ResearchResultCache<T> {
       settled: false,
     };
     this.entries.set(key, entry);
+    this.activeEntries.add(entry);
     entry.promise = entry.promise.then(
       (value) => {
-        if (this.entries.get(key) === entry) {
-          entry.value = value;
-          entry.settled = true;
-          const resolvedTtlMs = typeof ttlMs === "function" ? ttlMs(value) : ttlMs;
-          entry.expiresAt = this.now() + Math.max(0, resolvedTtlMs);
+        try {
+          if (this.entries.get(key) === entry) {
+            const resolvedTtlMs = typeof ttlMs === "function" ? ttlMs(value) : ttlMs;
+            entry.value = value;
+            entry.settled = true;
+            entry.expiresAt = this.now() + Math.max(0, resolvedTtlMs);
+          }
+          return value;
+        } catch (error) {
+          if (this.entries.get(key) === entry) this.entries.delete(key);
+          throw error;
+        } finally {
+          this.activeEntries.delete(entry);
         }
-        return value;
       },
       (error) => {
+        this.activeEntries.delete(entry);
         if (this.entries.get(key) === entry) this.entries.delete(key);
         throw error;
       },
