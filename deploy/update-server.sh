@@ -33,6 +33,33 @@ compose() {
   docker compose --env-file "${ENV_FILE}" -f "${COMPOSE_FILE}" "$@"
 }
 
+image_runtime_fingerprint() {
+  docker image inspect "${1}" | python3 "${ROOT}/deploy/image_runtime_fingerprint.py"
+}
+
+reuse_unchanged_images() {
+  local image old_fingerprint new_fingerprint
+  # Older release archives have no helper; preserve their standard activation
+  # path so that this deployment tool can still deploy a known older release.
+  if [[ ! -s "${ROOT}/deploy/image_runtime_fingerprint.py" ]]; then
+    echo "Target release has no runtime fingerprint helper; using standard activation."
+    return 0
+  fi
+  for image in "${IMAGES[@]}"; do
+    if docker image inspect "${image}:rollback" >/dev/null 2>&1; then
+      old_fingerprint="$(image_runtime_fingerprint "${image}:rollback")" || return 1
+      new_fingerprint="$(image_runtime_fingerprint "${image}:production")" || return 1
+      [[ "${old_fingerprint}" =~ ^[0-9a-f]{64}$ && "${new_fingerprint}" =~ ^[0-9a-f]{64}$ ]] || return 1
+      if [[ "${old_fingerprint}" == "${new_fingerprint}" ]]; then
+        # Build proof metadata can change an OCI index while its actual runtime
+        # is identical. Retain the verified old image and its proof in that case.
+        docker image tag "${image}:rollback" "${image}:production" || return 1
+        echo "Reusing unchanged runtime image: ${image}"
+      fi
+    fi
+  done
+}
+
 # The ACME webroot is a host bind mount. Create it as the deployment user
 # before Compose can silently create a root-owned directory for the container.
 prepare_acme_runtime() {
@@ -146,14 +173,21 @@ if ! compose config --quiet; then
 fi
 
 if ! compose build; then
-  restore_images
   restore_source
+  restore_images
+  exit 1
+fi
+
+if ! reuse_unchanged_images; then
+  restore_source
+  restore_images
+  echo "Image runtime verification failed; rollback attempted." >&2
   exit 1
 fi
 
 if ! compose up -d --remove-orphans; then
-  restore_images
   restore_source
+  restore_images
   exit 1
 fi
 
@@ -182,7 +216,7 @@ while (( SECONDS < deadline )); do
 done
 
 compose logs --tail=200 >&2 || true
-restore_images
 restore_source
+restore_images
 echo "Deployment health check failed; rollback attempted." >&2
 exit 1

@@ -95,6 +95,8 @@ quant.example.com {
 
 ## 备份与更新
 
+发布工具按运行内容复用相同镜像，保留未改动服务的内存缓存；失败先恢复旧源码/Compose，再启动旧镜像。比较字段、旧归档兼容和首次升级验证见[生产手册](../../deploy/README.md)与[决策0026](../decisions/0026-reuse-identical-runtime-images.md)。
+
 同机SQLite长期复盘库通过独立systemd任务安装，配置、资源上限、诊断和在线备份统一见[Paper历史归档](paper-history.md)。数据库不暴露公网端口，不替代下述JSON交易账本。
 
 - 持久化 paper 状态时使用受限目录挂载和 `STORE_BACKEND=json`；JSON 仍只适合单进程模拟，不是生产数据库。

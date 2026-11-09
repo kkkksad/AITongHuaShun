@@ -36,6 +36,8 @@
 
 - [0025：同机SQLite旁路保存Paper长期复盘证据](0025-read-only-sqlite-paper-history.md)
 
+- [0026：发布时复用相同运行内容的已验证镜像](0026-reuse-identical-runtime-images.md)
+
 ## 新建格式
 
 文件名使用 `NNNN-short-title.md`。

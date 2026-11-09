@@ -6,6 +6,10 @@
 
 ## 首次部署
 
+常规更新由`deploy/update-server.sh`完成归档核验、完整构建和健康检查。构建证明变化但运行内容相同的镜像复用上一已验证镜像，减少行情缓存被无关重启清空；服务环境/挂载/配置变化仍由Compose处理。程序层、环境、入口、健康和平台变化会正常启用新镜像，无法校验时恢复旧源码/配置后再启动旧镜像，见[决策0026](../docs/decisions/0026-reuse-identical-runtime-images.md)。
+
+当前成功后会删除临时rollback标签和源码备份，部署过程回退不等于持久备份。回部署已知旧SHA使用保存的旧版本归档，仍需完整核验；没有在生产主动演练失败回退。Linux离线流程验证可运行`python3 -m unittest discover -s deploy -p 'test_*.py'`，所有破坏性路径只作用于临时fixture目录。
+
 ```bash
 sudo bash deploy/bootstrap-ubuntu.sh 124.221.165.45
 cp deploy/production.env.example .env.production
