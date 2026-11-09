@@ -13,7 +13,7 @@ import type {
   TradingMode,
 } from "../../shared/trading";
 import type { ApiPerformanceSnapshot } from "../../shared/systemMonitoring";
-import type { PaperTradingPlanSizingDiagnostics } from "../../shared/paperTradingSizing";
+import type { PaperBuyExecutionProjection, PaperTradingPlanSizingDiagnostics } from "../../shared/paperTradingSizing";
 import type { PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
 import type { PaperCandidatePool } from "../../shared/paperCandidatePool";
 import { ApiRequestError } from "./apiError";
@@ -571,6 +571,7 @@ export interface PaperTradingOperation {
   quantity: number;
   price: number;
   estimatedNotional: number;
+  estimatedExecution?: PaperBuyExecutionProjection;
   reason: string;
   ruleChecks: string[];
   strategyKey?: string;

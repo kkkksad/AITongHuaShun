@@ -420,6 +420,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     maxSingleOrderNotional: input.system.risk.getEffectiveMaxOrderNotional(),
     commissionRate: input.config.COMMISSION_RATE,
     minimumCommission: input.config.MIN_COMMISSION,
+    slippageBps: input.config.SLIPPAGE_BPS,
     cashReserveRatio: input.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO,
     strategyProfile,
     executionStrategy,

@@ -1,5 +1,6 @@
 import { getPaperExecutionStrategyOption } from "../../shared/trading";
 import type {
+  PaperBuyExecutionProjection,
   PaperTradingPlanSizingConstraint,
   PaperTradingPlanSizingDiagnostics,
 } from "../../shared/paperTradingSizing";
@@ -35,7 +36,7 @@ import type {
   StockRegimeResult,
 } from "./marketRegimeResearch";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
-import { hasSufficientCash } from "../broker/executionCosts";
+import { executionCosts, hasSufficientCash } from "../broker/executionCosts";
 import type { PaperCandidatePool } from "../../shared/paperCandidatePool";
 import { buildPaperCandidatePool } from "./paperCandidatePool";
 
@@ -67,6 +68,8 @@ export interface PaperTradingOperation {
   quantity: number;
   price: number;
   estimatedNotional: number;
+  /** Reference price remains separate from a static market-fill cost projection. */
+  estimatedExecution?: PaperBuyExecutionProjection;
   reason: string;
   ruleChecks: string[];
   strategyKey?: string;
@@ -200,6 +203,18 @@ function filledAutoSellSymbols(
   );
 }
 
+interface BuyProjection {
+  slippageBps: number;
+  equity?: number;
+  maxPositionWeight?: number;
+}
+
+function projectedBuyCosts(price: number, quantity: number, commissionRate: number, minimumCommission: number, slippageBps: number) {
+  const costs = executionCosts({ symbol: "PAPER-PLAN", side: "buy", type: "market", quantity }, price,
+    { commissionRate, minimumCommission, slippageBps });
+  return quantity > 0 ? costs : { ...costs, notional: 0, commission: 0, cashDebit: 0 };
+}
+
 function candidateQuantity(
   candidate: { price: number },
   cash: number,
@@ -207,6 +222,7 @@ function candidateQuantity(
   lotSize: number,
   commissionRate: number,
   minimumCommission: number,
+  projection: BuyProjection,
 ): number {
   const price = Math.max(candidate.price, 1);
   const minimumFee = Number(minimumCommission.toFixed(2));
@@ -217,16 +233,28 @@ function candidateQuantity(
   const fitsBudget = (shares: number) => {
     const notional = shares * price;
     const commission = estimatedCommission(notional, commissionRate, minimumCommission);
-    return notional <= maxSingleOrderNotional && hasSufficientCash(cash, notional + commission);
+    const costs = projectedBuyCosts(candidate.price, shares, commissionRate, minimumCommission, projection.slippageBps);
+    const markedValue = shares * candidate.price;
+    const postCostEquity = (projection.equity ?? 0) - costs.cashDebit + markedValue;
+    const weightFits = projection.equity === undefined || projection.maxPositionWeight === undefined ||
+      postCostEquity > 0 && hasSufficientCash(postCostEquity * projection.maxPositionWeight, markedValue);
+    return notional <= maxSingleOrderNotional && hasSufficientCash(cash, notional + commission) &&
+      costs.notional <= maxSingleOrderNotional && hasSufficientCash(cash, costs.cashDebit) && weightFits;
   };
   // Division can lose an exact-fit lot to binary noise. The adjacent lot still
   // must satisfy the strict principal cap and the broker's cash comparison.
   if (fitsBudget(quantity + lotSize)) quantity += lotSize;
-  while (quantity >= lotSize) {
-    if (fitsBudget(quantity)) return quantity;
-    quantity -= lotSize;
+  if (quantity >= lotSize && fitsBudget(quantity)) return quantity;
+  // Static buy debit and weighted exposure are monotone in whole lots. Keep
+  // large research accounts bounded instead of decrementing every rejected lot.
+  let low = 0;
+  let high = Math.max(0, Math.floor(quantity / lotSize));
+  while (low < high) {
+    const middle = low + Math.ceil((high - low) / 2);
+    if (fitsBudget(middle * lotSize)) low = middle;
+    else high = middle - 1;
   }
-  return 0;
+  return low * lotSize;
 }
 
 function estimatedCommission(
@@ -303,6 +331,7 @@ function candidatePlanQuantity(
   lotSize: number,
   commissionRate: number,
   minimumCommission: number,
+  projection: BuyProjection,
 ): number {
   const budgetRatio = validationBudgetRatio(candidate);
   const minimumQuantity = isValidationBudgetStrategy(candidate.strategyKey)
@@ -322,6 +351,7 @@ function candidatePlanQuantity(
     lotSize,
     commissionRate,
     minimumCommission,
+    projection,
   );
   if (!isValidationBudgetStrategy(candidate.strategyKey)) {
     return candidateOrderQuantity;
@@ -518,18 +548,18 @@ function buildQualitySummary(input: {
   const actionCounts = countOperations(input.operations);
   const plannedBuyNotional = input.operations
     .filter((operation) => operation.action === "paper-buy-plan")
-    .reduce((sum, operation) => sum + operation.estimatedNotional, 0);
+    .reduce((sum, operation) => sum + (operation.estimatedExecution?.notional ?? operation.estimatedNotional), 0);
   const plannedSellNotional = input.operations
     .filter((operation) => operation.action === "paper-sell-plan")
     .reduce((sum, operation) => sum + operation.estimatedNotional, 0);
   const plannedBuyFees = input.operations
     .filter((operation) => operation.action === "paper-buy-plan")
     .reduce(
-      (sum, operation) => sum + estimatedCommission(
+      (sum, operation) => sum + (operation.estimatedExecution?.commission ?? estimatedCommission(
         operation.estimatedNotional,
         input.commissionRate,
         input.minimumCommission,
-      ),
+      )),
       0,
     );
   const plannedCashRequired = plannedBuyNotional + plannedBuyFees;
@@ -591,6 +621,7 @@ export function buildPaperTradingPlan(input: {
   maxSingleOrderNotional: number;
   commissionRate: number;
   minimumCommission: number;
+  slippageBps?: number;
   cashReserveRatio: number;
   strategyProfile?: PaperStrategyProfile;
   executionStrategy?: PaperExecutionStrategy;
@@ -641,6 +672,11 @@ export function buildPaperTradingPlan(input: {
     strategyScaledPositionCap,
     plannedCashBudget,
   );
+  const buyProjection: BuyProjection = {
+    slippageBps: input.slippageBps ?? 0,
+    equity: input.account.equity,
+    maxPositionWeight: input.maxPositionWeight * newPositionScale,
+  };
   const zeroSizingConstraint: PaperTradingPlanSizingConstraint | null =
     plannedCashBudget <= 0
       ? "planned-cash-budget"
@@ -965,6 +1001,7 @@ export function buildPaperTradingPlan(input: {
         input.lotSize,
         input.commissionRate,
         input.minimumCommission,
+        buyProjection,
       );
       const bQuantity = candidatePlanQuantity(
         b,
@@ -973,6 +1010,7 @@ export function buildPaperTradingPlan(input: {
         input.lotSize,
         input.commissionRate,
         input.minimumCommission,
+        buyProjection,
       );
       const aAffordable = aQuantity >= input.lotSize ? 1 : 0;
       const bAffordable = bQuantity >= input.lotSize ? 1 : 0;
@@ -1016,6 +1054,7 @@ export function buildPaperTradingPlan(input: {
       input.lotSize,
       input.commissionRate,
       input.minimumCommission,
+      buyProjection,
     );
     return quantity >= input.lotSize;
   }).length;
@@ -1108,6 +1147,7 @@ export function buildPaperTradingPlan(input: {
         input.lotSize,
         input.commissionRate,
         input.minimumCommission,
+        { slippageBps: buyProjection.slippageBps },
       ) >= input.lotSize,
     );
     operations.push({
@@ -1120,8 +1160,8 @@ export function buildPaperTradingPlan(input: {
       price: 1,
       estimatedNotional: 0,
       reason: accountCashCanCoverMinimumLot
-        ? "账户现金至少可覆盖一个候选的一手及预计手续费，但本轮预算、金额上限（含策略缩放）、整手或费用效率约束下无法形成满足金额要求的候选买单。"
-        : "当前可用现金不足以支付任一候选的一手及预计手续费，停止重复生成不可执行买单。",
+        ? "账户现金至少可覆盖一个候选的一手及预计滑点和手续费，但本轮预算、金额上限（含策略缩放）、费用后的单票仓位、整手或费用效率约束下无法形成满足金额要求的候选买单。"
+        : "当前可用现金不足以支付任一候选的一手及预计滑点和手续费，停止重复生成不可执行买单。",
       ruleChecks: accountCashCanCoverMinimumLot
         ? ["paper-only", "plan-sizing-constrained", "no-forced-trade"]
         : ["paper-only", "cash-constrained", "lot-size: not-affordable"],
@@ -1129,6 +1169,7 @@ export function buildPaperTradingPlan(input: {
   }
 
   let plannedNewPositions = 0;
+  let remainingPlannedEquity = input.account.equity;
   for (const rankedCandidate of routeAllowsBuying && affordableCandidateCount > 0
     ? candidatePool
     : []) {
@@ -1141,14 +1182,13 @@ export function buildPaperTradingPlan(input: {
       input.lotSize,
       input.commissionRate,
       input.minimumCommission,
+      { ...buyProjection, equity: remainingPlannedEquity },
     );
     const estimatedNotional = Number((quantity * candidate.price).toFixed(2));
-    const estimatedFee = estimatedCommission(
-      estimatedNotional,
-      input.commissionRate,
-      input.minimumCommission,
-    );
-    const estimatedCashRequired = estimatedNotional + estimatedFee;
+    const projectedCosts = projectedBuyCosts(candidate.price, quantity, input.commissionRate, input.minimumCommission, buyProjection.slippageBps);
+    const estimatedFee = projectedCosts.commission;
+    const estimatedCashRequired = projectedCosts.cashDebit;
+    const equityAfterFill = remainingPlannedEquity - estimatedCashRequired + quantity * candidate.price;
 
     if (existing) {
       if (operations.some((operation) => operation.symbol === candidate.symbol)) {
@@ -1210,10 +1250,9 @@ export function buildPaperTradingPlan(input: {
     }
 
     if (quantity < input.lotSize) {
-      const minimumLotNotional = candidate.price * input.lotSize;
       const cashCannotCoverLot = !hasSufficientCash(
         remainingPlannedCash,
-        minimumLotNotional + estimatedCommission(minimumLotNotional, input.commissionRate, input.minimumCommission),
+        projectedBuyCosts(candidate.price, input.lotSize, input.commissionRate, input.minimumCommission, buyProjection.slippageBps).cashDebit,
       );
       operations.push({
         timestamp: now,
@@ -1225,8 +1264,8 @@ export function buildPaperTradingPlan(input: {
         price: candidate.price,
         estimatedNotional: 0,
         reason: cashCannotCoverLot
-          ? "当前批次剩余可用资金不足，已计入前序计划和预计手续费，不再创建模拟订单。"
-          : "现金可覆盖一手，但当前单笔上限、策略预算或费用效率不足以形成合格整手买单。",
+          ? "当前批次剩余可用资金不足，已计入前序计划、预计滑点和手续费，不再创建模拟订单。"
+          : "现金可覆盖一手，但当前单笔上限、费用及滑点后的仓位、策略预算或费用效率不足以形成合格整手买单。",
         ruleChecks: [
           "lot-size: blocked",
           ...(cashCannotCoverLot
@@ -1266,8 +1305,8 @@ export function buildPaperTradingPlan(input: {
       entryRuleChecks.push("same-day-reentry: blocked");
     }
     const estimatedRoundTripFees = estimatedFee * 2;
-    const roundTripFeeRatio = estimatedNotional > 0
-      ? estimatedRoundTripFees / estimatedNotional
+    const roundTripFeeRatio = projectedCosts.notional > 0
+      ? estimatedRoundTripFees / projectedCosts.notional
       : Number.POSITIVE_INFINITY;
     if (roundTripFeeRatio > MAX_ENTRY_ROUND_TRIP_FEE_RATIO) {
       entryBlockReasons.push(
@@ -1316,6 +1355,8 @@ export function buildPaperTradingPlan(input: {
       quantity,
       price: candidate.price,
       estimatedNotional,
+      estimatedExecution: { fillPrice: projectedCosts.fillPrice, notional: projectedCosts.notional,
+        commission: estimatedFee, cashRequired: estimatedCashRequired, equityAfterFill },
       reason: [
         candidate.reason || "候选策略与优质股评分同时进入纸面观察。",
         ...candidate.strategyEvidence,
@@ -1325,6 +1366,7 @@ export function buildPaperTradingPlan(input: {
         "paper-only",
         "lot-size: pass",
         "cash-check: pass",
+        "position-weight-after-costs: pass",
         `cash-reservation: pass (${estimatedCashRequired.toFixed(2)})`,
         `defensive-score: pass (${candidate.defensiveScore})`,
         `strategy-route: pass (${candidate.strategyKey})`,
@@ -1346,6 +1388,7 @@ export function buildPaperTradingPlan(input: {
       0,
       remainingPlannedCash - estimatedCashRequired,
     );
+    remainingPlannedEquity = equityAfterFill;
     plannedNewPositions += 1;
   }
 
@@ -1389,11 +1432,11 @@ export function buildPaperTradingPlan(input: {
           (operation) => operation.action === "paper-buy-plan",
         );
         const plannedBuyNotional = buyOperations.reduce(
-          (sum, operation) => sum + operation.estimatedNotional,
+          (sum, operation) => sum + (operation.estimatedExecution?.notional ?? operation.estimatedNotional),
           0,
         );
         const largestPlannedBuyNotional = buyOperations.reduce(
-          (maximum, operation) => Math.max(maximum, operation.estimatedNotional),
+          (maximum, operation) => Math.max(maximum, operation.estimatedExecution?.notional ?? operation.estimatedNotional),
           0,
         );
         const plannedBuyOrderCount = buyOperations.length;
@@ -1463,6 +1506,7 @@ export function buildPaperTradingPlan(input: {
     rules: [
       "A 股一手 100 股。",
       "A 股 T+1：当日买入的股票当日不可卖出。",
+      `买单按当前参考报价、${buyProjection.slippageBps} bps 预计滑点及按分舍入的佣金检查现金和费用后仓位；成交前仍须按最新行情与风控复核。`,
       "所有动作仅为本地 paper 模拟或观察，不连接真实券商。",
       "真实交易必须人工复核、独立权限域、审计日志和额度控制。",
     ],

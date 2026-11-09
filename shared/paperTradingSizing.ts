@@ -5,6 +5,15 @@ export type PaperTradingPlanSizingConstraint =
   | "planned-cash-budget"
   | "none";
 
+/** Static market-fill estimate; reference quotation amounts are kept separately. */
+export interface PaperBuyExecutionProjection {
+  fillPrice: number;
+  notional: number;
+  commission: number;
+  cashRequired: number;
+  equityAfterFill: number;
+}
+
 export interface PaperTradingPlanSizingDiagnostics {
   /** The profile ratio before any automatic market routing is applied. */
   profileNewPositionScale?: number;

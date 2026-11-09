@@ -45,8 +45,8 @@ function fixture(input: {
   };
   const market = new FixtureMarket(snapshot);
   const store = new InMemoryTradingStore(input.cash, false, () => new Date(marketTime));
-  // Zero slippage isolates commission rounding. The plan does not model slippage;
-  // execution still performs its separate current-price and risk checks.
+  // Zero slippage isolates commission rounding. The plan defaults to that cost
+  // input here; execution still rechecks current price and risk separately.
   const broker = new PaperBroker(market, store, new RiskEngine(limits), {
     mode: "paper", commissionRate: 0.0003, minimumCommission, slippageBps: 0, limits,
   });

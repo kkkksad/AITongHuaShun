@@ -46,6 +46,13 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it.each([0, 37, 500])("passes the configured %s bps cost model into the resulting plan", async (slippageBps) => {
+    const costConfig = createTestConfig({ ...config, SLIPPAGE_BPS: slippageBps });
+    const system = createTradingSystem(costConfig, () => date);
+    system.marketDataProvider = "akshare";
+    const result = await buildCurrentPaperTradingPlan({ config: costConfig, system, now: date });
+    expect(result.plan.rules.some(rule => rule.includes(`${slippageBps} bps 预计滑点`))).toBe(true);
+  });
   it("lets core history use two bounded slots before auxiliary requests", async () => {
     const start = Date.now();
     let active = 0;

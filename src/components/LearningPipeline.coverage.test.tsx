@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import LearningPipeline from "./LearningPipeline";
 
-function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing") {
+function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing", execution?: { fillPrice: number; notional: number; commission: number; cashRequired: number; equityAfterFill: number } | null) {
   const client = new QueryClient();
   client.setQueryData(["paper-trading-plan"], {
     tradingDate: "2026-11-05", provider: "mock",
@@ -40,7 +40,9 @@ function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing")
       },
       planQuality: "watch-only", summary: "样本",
     },
-    operations: [],
+    operations: execution === undefined ? [] : [{ timestamp: "2026-11-05T02:00:00Z", symbol: "600010", name: "成本样本",
+      action: "paper-buy-plan", strategy: "样本策略", quantity: 100, price: 10, estimatedNotional: 1000,
+      estimatedExecution: execution ?? undefined, reason: "样本", ruleChecks: [] }],
     topStrategy: null,
   });
   const html = renderToStaticMarkup(createElement(
@@ -68,5 +70,16 @@ describe("LearningPipeline strategy coverage explanation", () => {
     const html = renderCoverage(undefined);
     expect(html).toContain("快照候选筛选（未启用市场策略路由）·候选 4 个");
     expect(html).not.toContain("当前无匹配候选");
+  });
+  it("distinguishes reference amounts from projected fill principal, fees and debit", () => {
+    const html = renderCoverage(undefined, { fillPrice: 10.01, notional: 1001, commission: 5, cashRequired: 1006, equityAfterFill: 19994 });
+    expect(html).toContain("参考报价金额 ¥1,000");
+    expect(html).toContain("预计成交本金 ¥1,001.00"); expect(html).toContain("手续费 ¥5.00");
+    expect(html).toContain("合计占用 ¥1,006.00"); expect(html).toContain("报价变动需重新核验");
+  });
+  it("does not invent execution costs for an older plan", () => {
+    const html = renderCoverage(undefined, null);
+    expect(html).toContain("参考报价金额 ¥1,000");
+    expect(html).not.toContain("预计成交本金"); expect(html).not.toContain("合计占用");
   });
 });

@@ -53,6 +53,7 @@
 - [0039：稳健性证据逐股独立，胜率注明闭合分母](0039-strategy-evidence-is-per-symbol-and-closed-match.md)
 - [0040：长期Paper归档通过有界只读摘要服务网站](0040-paper-history-bounded-read-model.md)
 - [0041：按需采样API进程资源，区间与口径独立于主机容量](0041-api-process-resource-diagnostics.md)
+- [0042：计划买单按统一执行成本和费用后权益选择整手](0042-paper-plan-post-cost-sizing.md)
 
 ## 新建格式
 

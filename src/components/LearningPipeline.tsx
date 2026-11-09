@@ -824,8 +824,11 @@ export default function LearningPipeline() {
                     } as Record<string, string>)[operation.action]]}
                   </strong>
                   <span>
-                    {operation.strategy} · {operation.quantity} 股 · ¥{operation.estimatedNotional.toLocaleString("zh-CN")}
+                    {operation.strategy} · {operation.quantity} 股 · 参考报价金额 ¥{operation.estimatedNotional.toLocaleString("zh-CN")}
                   </span>
+                  {operation.estimatedExecution && <span>
+                    {`预计成交本金 ¥${operation.estimatedExecution.notional.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · 手续费 ¥${operation.estimatedExecution.commission.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · 合计占用 ¥${operation.estimatedExecution.cashRequired.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · 报价变动需重新核验`}
+                  </span>}
                   <span>{operation.reason}</span>
                 </div>
               </article>
