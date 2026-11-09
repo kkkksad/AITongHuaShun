@@ -148,10 +148,32 @@ function createExecutionFixture(input: {
       }
     },
   });
-  return { executor, system, plan, notifier, submitOrder, orderReads, findByClientOrderId };
+  return { executor, system, plan, notifier, submitOrder, orderReads, findByClientOrderId, marketRegimeResearch };
 }
 
 describe("paper execution checks the actual submission time", () => {
+  it("persists bounded historical evidence with a zero-order run", async () => {
+    const fixture = createExecutionFixture({
+      startedAt: "2026-08-21T09:35:00+08:00", operationCount: 0,
+    });
+    fixture.marketRegimeResearch.sourceStatus = "degraded";
+    fixture.marketRegimeResearch.warnings = [
+      "stock_zh_a_hist_tx() got an unexpected keyword argument 'timeout' https://x.test/?token=secret",
+    ];
+    const run = await fixture.executor.runOnce();
+    const diagnostic = {
+      sectorCount: 0, stockCount: 0, usableStockCount: 0,
+      issues: ["provider-contract", "sector-history-insufficient", "stock-history-insufficient"],
+    };
+    expect(run.researchContext?.researchDiagnostics).toEqual(diagnostic);
+    const audit = fixture.system.store.listAudit(20).find((event) => event.action === "paper-auto-execution.run");
+    expect(audit?.data?.researchDiagnostics).toEqual(diagnostic);
+    expect(JSON.stringify(audit?.data?.researchDiagnostics)).not.toContain("secret");
+    expect(run.submittedOrders).toEqual([]);
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+    expect(fixture.system.broker.getAccount().cash).toBe(10_000);
+  });
+
   it.each([
     ["lunch break", "2026-08-21T11:29:59+08:00", "2026-08-21T11:31:01+08:00", "lunch-break"],
     ["market close", "2026-08-21T14:59:59+08:00", "2026-08-21T15:01:01+08:00", "after-hours"],

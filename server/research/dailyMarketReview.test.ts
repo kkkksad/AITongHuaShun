@@ -366,6 +366,37 @@ describe("buildDailyMarketReview", () => {
     expect(unavailable.entryReview.status).toBe("data-unavailable");
   });
 
+  it.each([true, false])("explains degraded historical coverage only from recorded evidence (%s)", (hasEvidence) => {
+    const report = buildDailyMarketReview({
+      snapshot, provider: "akshare", account: { ...account, cash: 20_000 },
+      positions: [], orders: [],
+      auditEvents: [{
+        id: "degraded-run", category: "system", action: "paper-auto-execution.run",
+        message: "recorded", timestamp: "2026-07-14T06:50:00.000Z",
+        data: {
+          tradingDate: "2026-07-14", session: "open", regime: "unclear",
+          planQuality: "watch-only", sourceStatus: "degraded",
+          skippedReasons: [{ symbol: "CASH", reason: "正常观望：市场状态 unclear" }],
+          ...(hasEvidence ? { researchDiagnostics: {
+            sectorCount: 6, stockCount: 4, usableStockCount: 0,
+            issues: ["provider-contract", "stock-history-insufficient", "untrusted-secret"],
+          } } : {}),
+        },
+      }, {
+        id: "post-close", category: "system", action: "paper-auto-execution.run",
+        message: "closed", timestamp: "2026-07-14T07:50:00.000Z",
+        data: { session: "after-hours", planQuality: "not-run" },
+      }],
+      now: new Date("2026-07-14T08:00:00.000Z"),
+    });
+    expect(report.entryReview.status).toBe("data-unavailable");
+    expect(report.entryReview.cashWasConstraint).toBe(false);
+    const reasons = report.entryReview.reasons.join(" ");
+    expect(reasons).not.toContain("untrusted-secret");
+    expect(reasons.includes("6 个板块，0/4")).toBe(hasEvidence);
+    expect(reasons.includes("SDK不兼容")).toBe(hasEvidence);
+  });
+
   it("does not invent reasons for historical orders without decision audit", () => {
     const report = buildDailyMarketReview({
       snapshot,

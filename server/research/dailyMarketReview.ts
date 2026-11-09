@@ -7,6 +7,7 @@ import type {
   TradingMode,
 } from "../../shared/trading";
 import { getPaperStrategyProfilePolicy } from "../trading/paperStrategyProfile";
+import { describeResearchInputDiagnostics } from "./researchInputDiagnostics";
 import {
   getAshareTradingDateStatus,
   getChinaDateKey,
@@ -422,10 +423,13 @@ function buildEntryReview(input: {
     (reason) => /temporarily unavailable|暂不可用|没有可交易标的|超时/.test(reason),
   );
   if (unavailable) {
+    const diagnosticReasons = describeResearchInputDiagnostics(latestRun?.data?.researchDiagnostics);
     return {
       status: "data-unavailable",
       summary: "研究输入曾不可用或降级，系统没有用缺失数据生成 Paper 入场。",
-      reasons: skippedReasons.length > 0
+      reasons: diagnosticReasons.length > 0
+        ? [...diagnosticReasons, ...skippedReasons].slice(0, 5)
+        : skippedReasons.length > 0
         ? skippedReasons.slice(0, 3)
         : ["真实研究来源状态为 degraded。"],
       marketRegime,

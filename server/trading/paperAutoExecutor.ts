@@ -21,6 +21,10 @@ import { buildCurrentPaperTradingPlan } from "../research/paperTradingPlanServic
 import { assessMarketSnapshot } from "../research/dailyMarketReview";
 import type { AdaptiveStrategyRouting } from "../research/adaptiveStrategyRouter";
 import {
+  buildResearchInputDiagnostics,
+  type ResearchInputDiagnostics,
+} from "../research/researchInputDiagnostics";
+import {
   getAshareMarketSession,
   getChinaDateKey,
   type AshareMarketSession,
@@ -123,6 +127,7 @@ export interface PaperAutoExecutionResearchContext {
   dominantBlocker: string | null;
   dominantBlockerReason: string | null;
   blockedReasons: PaperTradingPlan["qualitySummary"]["blockedReasons"];
+  researchDiagnostics?: ResearchInputDiagnostics;
 }
 
 export interface PaperAutoExecutionRun {
@@ -502,6 +507,7 @@ export function buildPaperExecutionResearchContext(input: {
   plan: PaperTradingPlan;
   adaptiveRouting: AdaptiveStrategyRouting;
   sourceStatus: NotificationResearchSourceStatus;
+  researchDiagnostics?: ResearchInputDiagnostics;
 }): PaperAutoExecutionResearchContext {
   const { plan, adaptiveRouting } = input;
   const dominantBlocker = plan.qualitySummary.strategyCoverage.dominantBlocker;
@@ -532,6 +538,7 @@ export function buildPaperExecutionResearchContext(input: {
     dominantBlocker,
     dominantBlockerReason: dominantBlockerOperation?.reason ?? null,
     blockedReasons: plan.qualitySummary.blockedReasons,
+    ...(input.researchDiagnostics ? { researchDiagnostics: input.researchDiagnostics } : {}),
   };
 }
 
@@ -1190,6 +1197,7 @@ export class PaperAutoExecutor {
           plan,
           adaptiveRouting,
           sourceStatus,
+          researchDiagnostics: buildResearchInputDiagnostics(marketRegimeResearch),
         }),
         buildPlanSnapshot(plan),
       );
@@ -1418,6 +1426,7 @@ export class PaperAutoExecutor {
         dominantBlockerReason:
           run.researchContext?.dominantBlockerReason ?? null,
         blockedReasons: run.researchContext?.blockedReasons ?? null,
+        researchDiagnostics: run.researchContext?.researchDiagnostics ?? null,
         submittedOrders: run.submittedOrders.length,
         skippedOperations: run.skippedOperations.length,
         submittedOrderStatuses: run.submittedOrders.map((order) => ({

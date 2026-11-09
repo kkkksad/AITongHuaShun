@@ -351,6 +351,25 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
     expect(paperAutoExecutionAuditSignature(defensive)).not.toBe(
       paperAutoExecutionAuditSignature(recovery),
     );
+    const diagnosticRun = run({
+      researchContext: {
+        ...defensive.researchContext!,
+        researchDiagnostics: {
+          sectorCount: 6, stockCount: 4, usableStockCount: 0,
+          issues: ["provider-contract"],
+        },
+      },
+    });
+    expect(shouldPersistPaperAutoExecutionRun({
+      previousSignature: paperAutoExecutionAuditSignature(diagnosticRun),
+      previousPersistedAt: Date.parse(diagnosticRun.finishedAt),
+      run: run({
+        researchContext: {
+          ...diagnosticRun.researchContext!,
+          researchDiagnostics: { ...diagnosticRun.researchContext!.researchDiagnostics!, issues: ["provider-timeout"] },
+        },
+      }),
+    })).toBe(true);
   });
 
   it("treats a changed plan snapshot as a material audit change", () => {
