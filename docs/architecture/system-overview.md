@@ -1,5 +1,7 @@
 # 系统架构
 
+JSON交易Store仍只承载PAPER-CN-01；载入时先严格核对持久账户身份，再恢复资金/订单或迁移世代。身份不符不改写原文件、不自动创建账户，见[0046](../decisions/0046-single-account-paper-ledger-binding.md)。这不等于支持多账户，期货资金/撮合仍待独立实现。
+
 真实策略稳健性求值以单股票/单窗口为独立研究单元，每次新建策略及内存回测账户；最多12只×17固定策略×3窗=612次，每窗后让出事件循环。响应逐股身份、单股排名、实际测试数和费用后闭合分母，前端选择股票展示；原平均窗口胜率字段仅兼容保留。入口时点/来源校验继续先于求值，见[0039](../decisions/0039-strategy-evidence-is-per-symbol-and-closed-match.md)。
 
 固定现金预留与分时总仓位比例默认已按 [决策0010](../decisions/0010-no-fixed-paper-cash-reserve.md) 取消；`cashReserveRatio` / `cashReserveFloor` 内置值为0，`capitalPacing` / `maxInvestedRatio` 兼容值为1。阶段累计订单笔数仍单独限制，不能将这些兼容字段重新解释成必须持有现金。

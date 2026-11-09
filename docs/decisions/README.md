@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0046：单账户Paper账本必须匹配存储身份](0046-single-account-paper-ledger-binding.md)
+
 - [0001：将代码仓库作为记录系统](0001-repository-as-record.md)
 - [0002：采用 TypeScript 模拟交易后端栈](0002-simulation-backend-stack.md)
 - [0003：真实行情只读接入与纸面执行隔离](0003-read-only-market-provider-boundary.md)

@@ -643,6 +643,9 @@ export class JsonFileTradingStore implements TradingStore {
     if (state.version !== 1) {
       throw new Error(`Unsupported persisted state version: ${state.version}`);
     }
+    if (state.accountId !== this.accountId) {
+      throw new Error("Persisted Paper account does not match this A-share store.");
+    }
     if (state.paperFillLedger !== undefined) validatePaperFillLedger(state.paperFillLedger);
     for (const position of state.positions) {
       if (position.paperCycle !== undefined) validateOpenPaperCycle(position.paperCycle, position.quantity);

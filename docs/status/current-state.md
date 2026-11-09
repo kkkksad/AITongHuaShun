@@ -2,7 +2,9 @@
 
 **核对日期：** 2026-11-10（北京时间）
 
-指定股票换手率修复已通过完整144服务端文件2163项、55前端文件366项、Linux桥接166项与TS/Vite；12项新Python业务回归旧版全失败。腾讯第38字段按百分数传递，量额、来源时间与既有扫描阈值保持；健康与过热评分各自恢复证据输入，不代表保证成交。独立发布与线上核验继续中，见[模块25](../plans/2026-11-10-requested-quote-turnover.md)与[0045](../decisions/0045-requested-quote-turnover-percent.md)。
+单账户账本身份检查已实现，九类错账户旧版均未拒绝；修复后文件/目录内容保持，合法账户资金/挂单/控制与世代兼容。目标63项、完整145服务端文件2173项、55前端文件366项及TS/Vite通过，独立发布核验继续中，见[模块26](../plans/2026-11-10-paper-ledger-account-binding.md)与[0046](../decisions/0046-single-account-paper-ledger-binding.md)。
+
+指定股票换手率`d398609`已部署、UTC22:41核验619文件/三健康/可信HTTPS/原账户/检查点/归档世代及上一10efcc2材料，网络恢复后正常推送。完整144服务端文件2163项、55前端文件366项、TS/Vite及实际桥接镜像隔离166项通过；12项新Python业务回归旧版全失败。三股真实换手0.62/0.20/0.35与来源时间相符，既有扫描阈值保持；数据补齐不代表保证成交，见[模块25](../plans/2026-11-10-requested-quote-turnover.md)与[0045](../decisions/0045-requested-quote-turnover-percent.md)。
 
 研究并发与缓存复用`10efcc2`已独立部署，UTC22:27核验616文件/三健康/HTTPS/原账户/检查点/归档世代及上一eb299fa材料；网络恢复后UTC22:29正常推送成功。完整143服务端文件2161项、55前端文件366项及TS/Vite通过，实际Linux生产镜像隔离五文件59项通过。七项旧版业务回归全部失败，现缓存不淘汰在途、clear仍保留活动预算，TTL失败可重试；Node研究HTTP最多64实际请求，命中复用、超时释放，不新增队列/线程或挤占指定行情通道，见[模块24](../plans/2026-11-10-bounded-research-admission.md)与[0044](../decisions/0044-bounded-research-admission.md)。
 

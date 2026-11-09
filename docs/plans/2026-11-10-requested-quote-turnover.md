@@ -22,8 +22,8 @@ UTC22:24从服务器只读访问公开腾讯三只股票，来源时间仍为11�
 - [x] 旧版Python业务回归先失败，证明dataframe/HTTP丢掉字段；记录失败数。
 - [x] 最小映射与字段边界实现，目标Python/完整桥接与SDK测试、扫描器行为通过。
 - [x] 服务端144文件2163项、前端55文件366项与TS/Vite通过，变更行情传递后不放宽策略门槛，不生成生产订单。
-- [ ] 独立提交、推送、部署；只读核验三个来源换手率与API快照、健康/HTTPS/账户/检查点/归档世代/上一发布材料。
-- [ ] 实际生产桥接镜像无网络/无生产挂载下复跑相关解析/快通道测试，不能把隔离结果当盘中交易验证。
+- [x] `d3986095322b53d981ae49f75cb0755d9513e04b`独立提交部署，UTC22:41核验619文件、三健康/可信HTTPS/匿名保护、原账户/检查点/归档世代及上一10efcc2材料。GitHub网络恢复后正常推送成功。
+- [x] 实际生产桥接镜像无网络/无生产挂载、仅挂测试文件且PYTHONPATH=/app，完整166项通过；没有覆盖镜像源码，不把隔离结果当盘中交易验证。
 
 Python命令沿用既有Linux镜像工具与`python -m pytest akshare-bridge/test_bridge.py akshare-bridge/test_research_cache.py akshare-bridge/test_sdk_contract.py -q`；目标用`-k turnover`。TS测试显式`--dir server`。
 
@@ -33,4 +33,6 @@ Python命令沿用既有Linux镜像工具与`python -m pytest akshare-bridge/tes
 
 ## 验证记录
 
-12项新解析/真实QuoteCache→指定HTTP/无效值业务回归在旧版全失败，原154项保持；只增加第38字段非负映射后Linux完整166项通过，含真实固定SDK离线契约。新增dailyCandidates两项与既有Quality两项/来源时间七项合计11项在原扫描器实现中通过，没有修改评分逻辑或门槛。完整服务端144文件2163项、前端55文件366项及TypeScript/Vite通过。最终发布核验继续中。
+12项新解析/真实QuoteCache→指定HTTP/无效值业务回归在旧版全失败，原154项保持；只增加第38字段非负映射后Linux完整166项通过，含真实固定SDK离线契约。新增dailyCandidates两项与既有Quality两项/来源时间七项合计11项在原扫描器实现中通过，没有修改评分逻辑或门槛。完整服务端144文件2163项、前端55文件366项及TypeScript/Vite通过，实际发布验证见下。
+
+UTC22:41桥接实际认证HTTP三股换手率0.62/0.20/0.35与公开源一致，来源仍为11月9日收盘时刻。API和桥接镜像/容器均更换，web复用原镜像并刷新代理；不能把本次发布称为API无重启。归档210运行/88账户样本、integrity ok、分钟摘要published，风险savedAt仍17:54:57.651Z、游标0/正常/峰值20000/全计数0。上一版本616文件及三镜像、私有导出保护通过。

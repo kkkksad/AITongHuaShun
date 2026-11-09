@@ -26,6 +26,8 @@ Paper验证策略的预算比例是最终风险额度内的目标。费用有效
 
 ## 订单边界
 
+单账户JSON账本身份必须严格匹配PAPER-CN-01，错账户或身份缺失在迁移/裁剪/资金载入前拒绝，不能通过自动改名、重置或覆盖原文件恢复服务。多市场必须另建显式账户路由和独立资金/风险/幂等，见[0046](../decisions/0046-single-account-paper-ledger-binding.md)。
+
 日亏损风控必须使用交易日权益基线，不能把兼容字段`dailyPnl*`的重置后累计结果当作每日收益。双Store基线重建和缺失处理见[决策0021](../decisions/0021-paper-trading-day-risk-baseline.md)；资料不足不得伪造零亏损新增仓位。
 
 挂单不保留永久风险许可，实际撮合前重新检查日亏损、熔断、额度与T+1，见[决策0022](../decisions/0022-paper-pending-order-risk-recheck.md)。预约不得重复扣自身预算，也不能借旧挂单绕过新风险状态。
