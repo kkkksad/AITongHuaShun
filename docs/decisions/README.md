@@ -48,6 +48,7 @@
 - [0034：Paper成交活动与委托提交分别按自身时间统计](0034-paper-fill-activity-time.md)
 - [0035：发布前分别检查应用与Docker存储可用空间](0035-production-deployment-disk-preflight.md)
 - [0036：真实策略验证先核对历史时点、股票和复权证据](0036-real-strategy-history-evidence-boundary.md)
+- [0037：报价来源时间不得由抓取时间补齐](0037-quote-source-time-is-not-fetch-time.md)
 
 ## 新建格式
 

@@ -1150,6 +1150,50 @@ class TestSectorAndHistoryEndpoints:
 
 
 class TestQuoteCache:
+    @pytest.mark.parametrize("cache_type", [QuoteCache, IndexCache])
+    @pytest.mark.parametrize("timestamp", [None, "", "not-a-time", "20260230153000", float("nan"), pd.NA])
+    def test_unknown_source_time_is_not_replaced_by_fetch_time(self, cache_type, timestamp):
+        cache = cache_type()
+        frame = pd.DataFrame([{
+            "代码": "600519" if cache_type is QuoteCache else "sh000001",
+            "名称": "时间证据测试",
+            "最新价": 100,
+            "昨收": 99,
+            "涨跌幅": 1,
+            "成交量": 1000,
+            "更新时间": timestamp,
+        }])
+        assert cache._parse_dataframe(frame) == 1
+        quote = next(iter(cache._data.values()))
+        assert quote.price == 100
+        assert quote.updatedAt == ""
+        assert quote.tradable is False
+
+    @pytest.mark.parametrize("cache_type", [QuoteCache, IndexCache])
+    def test_source_time_is_converted_from_beijing_without_rejuvenating(self, cache_type):
+        cache = cache_type()
+        frame = pd.DataFrame([{
+            "代码": "600519" if cache_type is QuoteCache else "sh000001",
+            "最新价": 100, "昨收": 99, "涨跌幅": 1, "成交量": 1000,
+            "更新时间": "20261109161440",
+        }])
+        assert cache._parse_dataframe(frame) == 1
+        quote = next(iter(cache._data.values()))
+        assert quote.updatedAt == "2026-11-09T08:14:40.000Z"
+        assert quote.tradable is (cache_type is QuoteCache)
+
+    def test_missing_time_on_one_stock_does_not_borrow_another_stocks_time(self):
+        cache = QuoteCache()
+        frame = pd.DataFrame([
+            {"代码": "600519", "最新价": 100, "昨收": 99, "成交量": 1000, "更新时间": "20261109161440"},
+            {"代码": "300750", "最新价": 50, "昨收": 49, "成交量": 1000},
+        ])
+        assert cache._parse_dataframe(frame) == 2
+        assert cache._data["600519"].updatedAt == "2026-11-09T08:14:40.000Z"
+        assert cache._data["600519"].tradable is True
+        assert cache._data["300750"].updatedAt == ""
+        assert cache._data["300750"].tradable is False
+
     def test_cache_starts_empty(self):
         cache = QuoteCache(ttl_sec=3.0)
         assert cache.count == 0

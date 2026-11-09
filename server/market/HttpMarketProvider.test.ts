@@ -881,7 +881,7 @@ describe("HttpMarketProvider fetch 响应处理", () => {
           expect(quote!.previousClose).toBe(0);
           expect(quote!.changePercent).toBe(0);
           expect(quote!.volume).toBe(0);
-          expect(quote!.updatedAt).toBeTruthy();
+          expect(quote!.updatedAt).toBe("");
         }
       },
       { timeout: 2000 },

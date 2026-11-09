@@ -73,6 +73,8 @@ Paper核心行业/个股历史先于辅助外盘/新闻启动，核心12秒期�
 
 AkShare Paper订单按单票来源`updatedAt`执行120秒年龄和5秒未来偏差门槛；陈旧个股只进入等待/观察，其他新鲜个股不被连坐。Mock与历史回放不使用墙钟年龄检查，详细边界见[决策0023](../decisions/0023-paper-quote-source-age-gate.md)。
 
+桥接和HTTP适配器不得用抓取/接纳时间填充未知`updatedAt`；空时间保留为未知，Python观察报价不可交易，初始零价占位也无来源时间。`marketTime`和缓存完成年龄仍独立记录本地接纳状态，见[决策0037](../decisions/0037-quote-source-time-is-not-fetch-time.md)。
+
 Paper计划操作附带候选分区；另有只读`candidatePool`合并两扫描器、持仓和已有计划，按股去重统计观察、待确认、买入计划就绪、持仓和待退出，最多120条明细并报告省略数。原因区分逐股计划、全局限制、扫描和缺失诊断，不参与预算、队列或提交；Broker仍是最终边界，见[决策0024](../decisions/0024-paper-candidate-tiers.md)。
 
 `server/monitoring/requestTelemetry.ts` 在每个 Fastify 应用实例内按路由模板聚合最近耗时。它最多保留 64 条路由、每路由 128 个样本，路由满时淘汰最久未更新项；只统计方法、路由模板、状态、耗时和时间，不保存查询值、请求/响应正文或凭据。`/api/system/performance` 把该窗口与当前内存行情质量和 WebSocket 状态组合，不触发外部请求。

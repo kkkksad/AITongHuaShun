@@ -654,7 +654,6 @@ class QuoteCache:
 
     def _parse_dataframe(self, df) -> int:
         new_data: dict[str, MarketQuote] = {}
-        now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
 
         for _, row in df.iterrows():
             try:
@@ -667,16 +666,17 @@ class QuoteCache:
                 previous_close = float(row.get("昨收", 0) or 0)
                 change_pct = float(row.get("涨跌幅", 0) or 0)
                 volume = int(float(row.get("成交量", 0) or 0))
+                source_time = normalize_quote_timestamp(row.get("更新时间"))
 
                 new_data[symbol] = MarketQuote(
                     symbol=symbol,
                     name=name,
-                    tradable=True,
+                    tradable=bool(source_time),
                     price=price,
                     previousClose=previous_close,
                     changePercent=change_pct,
                     volume=volume,
-                    updatedAt=normalize_quote_timestamp(row.get("更新时间"), now_iso),
+                    updatedAt=source_time,
                     open=self._safe_float(row.get("今开")),
                     high=self._safe_float(row.get("最高")),
                     low=self._safe_float(row.get("最低")),
@@ -804,7 +804,6 @@ class IndexCache:
 
     def _parse_dataframe(self, df) -> int:
         new_data: dict[str, MarketQuote] = {}
-        now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
 
         for _, row in df.iterrows():
             try:
@@ -826,7 +825,7 @@ class IndexCache:
                     previousClose=previous_close,
                     changePercent=change_pct,
                     volume=volume,
-                    updatedAt=normalize_quote_timestamp(row.get("更新时间"), now_iso),
+                    updatedAt=normalize_quote_timestamp(row.get("更新时间")),
                     open=self._safe_float(row.get("今开")),
                     high=self._safe_float(row.get("最高")),
                     low=self._safe_float(row.get("最低")),
@@ -955,11 +954,11 @@ def _parse_tencent_number(value: object, default: float = 0.0) -> float:
         return default
 
 
-def normalize_quote_timestamp(value: object, fallback: str) -> str:
-    """Normalize Tencent's exchange timestamp without pretending stale data is live."""
-    raw = str(value or "").strip()
+def normalize_quote_timestamp(value: object) -> str:
+    """Keep unknown source time unknown; cache receipt time is a separate clock."""
+    raw = str(value).strip() if value is not None else ""
     if not re.fullmatch(r"\d{14}", raw):
-        return fallback
+        return ""
     try:
         local_time = datetime.strptime(raw, "%Y%m%d%H%M%S").replace(
             tzinfo=timezone(timedelta(hours=8)),
@@ -968,7 +967,7 @@ def normalize_quote_timestamp(value: object, fallback: str) -> str:
             "+00:00", "Z"
         )
     except ValueError:
-        return fallback
+        return ""
 
 
 def fetch_tencent_a_share_dataframe(symbols: tuple[str, ...], source: str):

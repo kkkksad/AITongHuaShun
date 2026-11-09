@@ -94,7 +94,7 @@ export class HttpMarketProvider
         previousClose: 0,
         changePercent: 0,
         volume: 0,
-        updatedAt: this.marketTime,
+        updatedAt: "",
       });
     }
 
@@ -107,7 +107,7 @@ export class HttpMarketProvider
         previousClose: 0,
         changePercent: 0,
         volume: 0,
-        updatedAt: this.marketTime,
+        updatedAt: "",
       });
     }
   }
@@ -167,7 +167,7 @@ export class HttpMarketProvider
     this.lastFetchSuccessMs = Date.now();
     const now = new Date(this.lastFetchSuccessMs).toISOString();
     for (const quote of result.quotes) {
-      this.quotes.set(quote.symbol, { ...quote, updatedAt: quote.updatedAt || now });
+      this.quotes.set(quote.symbol, { ...quote });
     }
     this.marketTime = now;
     this.sequence += 1;
@@ -250,7 +250,7 @@ export class HttpMarketProvider
           previousClose: Number(q.previousClose),
           changePercent: Number(q.changePercent),
           volume: Number(q.volume),
-          updatedAt: q.updatedAt ?? new Date().toISOString(),
+          updatedAt: typeof q.updatedAt === "string" ? q.updatedAt : "",
           open: q.open != null ? Number(q.open) : undefined,
           high: q.high != null ? Number(q.high) : undefined,
           low: q.low != null ? Number(q.low) : undefined,
