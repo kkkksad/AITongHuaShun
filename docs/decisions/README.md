@@ -30,6 +30,8 @@
 
 - [0022：Paper挂单成交前重新核验统一风险](0022-paper-pending-order-risk-recheck.md)
 
+- [0023：Paper新单与撮合按单票报价来源时间保护](0023-paper-quote-source-age-gate.md)
+
 ## 新建格式
 
 文件名使用 `NNNN-short-title.md`。

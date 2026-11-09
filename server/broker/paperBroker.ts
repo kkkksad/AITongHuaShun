@@ -22,6 +22,26 @@ interface PaperBrokerOptions {
   minimumCommission: number;
   slippageBps: number;
   limits: RiskLimits;
+  /** Wall-clock source age guard; undefined for deterministic mock/history providers. */
+  quoteMaxAgeMs?: number;
+  clock?: () => Date;
+}
+
+const MAX_FUTURE_QUOTE_SKEW_MS = 5_000;
+
+export function quoteFreshnessReason(
+  quote: { updatedAt?: string },
+  nowMs: number,
+  maxAgeMs?: number,
+): string | null {
+  if (maxAgeMs === undefined) return null;
+  if (!Number.isFinite(maxAgeMs) || maxAgeMs < 0) return "行情新鲜度配置无效";
+  const timestamp = Date.parse(quote.updatedAt ?? "");
+  if (!Number.isFinite(timestamp)) return "行情缺少有效来源时间";
+  const ageMs = nowMs - timestamp;
+  if (ageMs < -MAX_FUTURE_QUOTE_SKEW_MS) return "行情来源时间超前，暂不下单";
+  if (ageMs > maxAgeMs) return `行情已陈旧 ${Math.round(ageMs / 1000)} 秒，暂不下单`;
+  return null;
 }
 
 export class PaperBroker extends EventEmitter {
@@ -44,6 +64,17 @@ export class PaperBroker extends EventEmitter {
 
     // Evaluate risk FIRST, before creating the order and blocking cash
     const snapshot = this.market.getSnapshot();
+    const quoteFreshness = quote && quoteFreshnessReason(
+      quote,
+      (this.options.clock?.() ?? new Date()).getTime(),
+      this.options.quoteMaxAgeMs,
+    );
+    if (quoteFreshness) {
+      const order = this.store.createOrder(request, quote.price, quote.name, provenance);
+      const rejected = this.store.rejectOrder(order, quoteFreshness, "STALE_MARKET_QUOTE");
+      this.emit("order.updated", rejected);
+      return rejected;
+    }
     const account = this.getAccount(snapshot);
     const position = this.getPositions(snapshot).find(
       (candidate) => candidate.symbol === request.symbol,
@@ -254,6 +285,12 @@ export class PaperBroker extends EventEmitter {
       // Other pending orders are matched in existing order against actual fills.
       const account = this.getAccount(snapshot);
       const matchingQuote = snapshot.quotes.find((quote) => quote.symbol === order.symbol);
+      const matchingFreshness = matchingQuote && quoteFreshnessReason(
+        matchingQuote,
+        (this.options.clock?.() ?? new Date()).getTime(),
+        this.options.quoteMaxAgeMs,
+      );
+      if (matchingFreshness) return { ...order };
       const decision = this.risk.evaluate({
         request: { symbol: order.symbol, side: order.side, type: "market", quantity: order.quantity },
         // Existing matching accepts older snapshots without this field; explicit
@@ -266,6 +303,15 @@ export class PaperBroker extends EventEmitter {
       });
       if (this.store.isPaused()) return { ...order };
       if (!decision.allowed) return this.store.rejectOrder(order, decision.message, decision.code);
+    }
+
+    const immediateFreshness = quoteFreshnessReason(
+      snapshot.quotes.find((quote) => quote.symbol === order.symbol) ?? { updatedAt: undefined },
+      (this.options.clock?.() ?? new Date()).getTime(),
+      this.options.quoteMaxAgeMs,
+    );
+    if (immediateFreshness) {
+      return this.store.rejectOrder(order, immediateFreshness, "STALE_MARKET_QUOTE");
     }
 
     if (order.side === "buy") {

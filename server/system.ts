@@ -103,6 +103,8 @@ export function createTradingSystem(
     minimumCommission: config.MIN_COMMISSION,
     slippageBps: config.SLIPPAGE_BPS,
     limits,
+    quoteMaxAgeMs: config.MARKET_DATA_PROVIDER === "akshare" ? 120_000 : undefined,
+    clock,
   });
 
   return {
