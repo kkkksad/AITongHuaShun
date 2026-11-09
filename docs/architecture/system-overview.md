@@ -1,5 +1,7 @@
 # 系统架构
 
+多市场独立资金、事务主账本迁移和期货准入的目标方案统一见[多市场Paper账本](multi-market-paper-ledger.md)与[0047](../decisions/0047-multi-market-paper-ledger-migration.md)；当前仍是单A股JSON主账本，SQLite只读归档，期货仅研究，不能把目标设计当成已实现撮合。
+
 JSON交易Store仍只承载PAPER-CN-01；载入时先严格核对持久账户身份，再恢复资金/订单或迁移世代。身份不符不改写原文件、不自动创建账户，见[0046](../decisions/0046-single-account-paper-ledger-binding.md)。这不等于支持多账户，期货资金/撮合仍待独立实现。
 
 真实策略稳健性求值以单股票/单窗口为独立研究单元，每次新建策略及内存回测账户；最多12只×17固定策略×3窗=612次，每窗后让出事件循环。响应逐股身份、单股排名、实际测试数和费用后闭合分母，前端选择股票展示；原平均窗口胜率字段仅兼容保留。入口时点/来源校验继续先于求值，见[0039](../decisions/0039-strategy-evidence-is-per-symbol-and-closed-match.md)。

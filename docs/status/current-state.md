@@ -2,7 +2,9 @@
 
 **核对日期：** 2026-11-10（北京时间）
 
-单账户账本身份检查已实现，九类错账户旧版均未拒绝；修复后文件/目录内容保持，合法账户资金/挂单/控制与世代兼容。目标63项、完整145服务端文件2173项、55前端文件366项及TS/Vite通过，独立发布核验继续中，见[模块26](../plans/2026-11-10-paper-ledger-account-binding.md)与[0046](../decisions/0046-single-account-paper-ledger-binding.md)。
+单账户账本身份`fe755a8`已部署，UTC22:52核验622文件/三健康/可信HTTPS/原账户/检查点/归档世代及上一d398609材料，GitHub网络中断后实际同步另查。九类错账户旧版均未拒绝；修复后文件/目录保持，合法账户兼容。目标63项、完整145服务端文件2173项、55前端文件366项、TS/Vite及实际Linux镜像隔离63项/私有生产账本副本兼容通过，见[模块26](../plans/2026-11-10-paper-ledger-account-binding.md)与[0046](../decisions/0046-single-account-paper-ledger-binding.md)。
+
+多市场独立资金与主账本迁移[目标设计](../architecture/multi-market-paper-ledger.md)已完成，账户/世代/市场隔离、原A股20000资金保留、单writer事务/驱动验收、静止导入与激活回滚、具体期货合约/保证金/夜盘结算要求明确。当前主账本仍JSON、SQLite仅归档，期货仍研究，未创建独立期货资金或撮合，见[0047](../decisions/0047-multi-market-paper-ledger-migration.md)与[模块27](../plans/2026-11-10-multi-market-ledger-design.md)。
 
 指定股票换手率`d398609`已部署、UTC22:41核验619文件/三健康/可信HTTPS/原账户/检查点/归档世代及上一10efcc2材料，网络恢复后正常推送。完整144服务端文件2163项、55前端文件366项、TS/Vite及实际桥接镜像隔离166项通过；12项新Python业务回归旧版全失败。三股真实换手0.62/0.20/0.35与来源时间相符，既有扫描阈值保持；数据补齐不代表保证成交，见[模块25](../plans/2026-11-10-requested-quote-turnover.md)与[0045](../decisions/0045-requested-quote-turnover-percent.md)。
 

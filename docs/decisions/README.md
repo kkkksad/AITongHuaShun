@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0047：多市场Paper独立资金与主账本迁移](0047-multi-market-paper-ledger-migration.md)
+
 - [0046：单账户Paper账本必须匹配存储身份](0046-single-account-paper-ledger-binding.md)
 
 - [0001：将代码仓库作为记录系统](0001-repository-as-record.md)

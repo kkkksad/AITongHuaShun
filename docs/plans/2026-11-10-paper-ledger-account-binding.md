@@ -18,7 +18,11 @@ server/store/jsonFileTradingStore.ts与inMemoryTradingStore.ts固定账户PAPER-
 - [x] 新测试旧版九项未拒绝而失败、一项正常控制通过；修复后合法PAPER-CN-01重新载入使用不同startingCash仍保留原资金、挂单、序号/控制与epoch，既有无epoch合法账本迁移通过。
 - [x] 在server/store/jsonFileTradingStore.ts版本检查后增加严格accountId比较，失败抛固定错误，不输出不受信任身份内容，不提供自动改名或宽松回退。
 - [x] 目标Store/原子/epoch/执行边界四文件63项、完整145服务端文件2173项、55前端文件366项与TypeScript/Vite通过。生产私有副本兼容与实际Linux镜像验证待发布后执行。
-- [ ] 记录0046、状态/架构/安全边界与主计划；独立提交、推送/网络失败如实记录、同SHA归档部署；核验原资金/检查点/归档世代/HTTPS/上一版本。
+- [x] 0046与状态/架构/安全边界、主计划已同步；`fe755a82f1b2a69121f26c9faccd55ca7db17f09`独立提交部署，UTC22:52核验622文件/三健康/可信HTTPS/原账户/检查点/归档世代和上一d398609材料。GitHub推送返回连接中断，远端实际SHA另行核对。
+
+## 发布验证
+
+实际Linux API镜像无网络/无生产挂载，原四文件63项通过。生产原账本只复制到私有临时目录并只读挂入隔离容器；容器内再复制后使用真实Store重开，原始字节/账户身份/资金/订单/epoch全部保持，宿主原文件SHA未变。没有用测试初始化账户覆盖生产状态。归档211运行/90样本、integrity ok/摘要published；风险savedAt仍17:54:57.651Z、游标0/正常/峰值20000/全计数0。上一d398609的619文件/三镜像与私有导出保护通过。
 
 目标命令使用node node_modules/vitest/vitest.mjs run --dir server --environment node --maxWorkers=1 --minWorkers=1，显式选择accountIdentity/atomic/epoch/controlBoundary。完整服务端与前端Vitest串行，不同时运行。
 
