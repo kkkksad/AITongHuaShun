@@ -384,7 +384,7 @@ describe.each<Backend>(["memory", "json"])("PaperBroker position reservations: %
     market.setPrice("600001", 10);
     broker.markToMarket();
     expectPositionRejection(store, first);
-    expect(evaluate).not.toHaveBeenCalled();
+    expect(evaluate).toHaveBeenCalledTimes(1);
     expect(risk.getState()).toEqual(state);
     expect(store.getCash()).toBe(10_000);
   });

@@ -28,6 +28,8 @@
 
 - [0021：Paper日亏损使用独立交易日权益基线](0021-paper-trading-day-risk-baseline.md)
 
+- [0022：Paper挂单成交前重新核验统一风险](0022-paper-pending-order-risk-recheck.md)
+
 ## 新建格式
 
 文件名使用 `NNNN-short-title.md`。

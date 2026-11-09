@@ -248,6 +248,26 @@ export class PaperBroker extends EventEmitter {
       return this.store.rejectOrder(order, "可用资金不足", "INSUFFICIENT_CASH");
     }
 
+    if (deferWhenPaused) {
+      // A pending order is an intention, not a lasting risk approval. Evaluate
+      // its actual matching quote and ledger, excluding its own reservation.
+      // Other pending orders are matched in existing order against actual fills.
+      const account = this.getAccount(snapshot);
+      const matchingQuote = snapshot.quotes.find((quote) => quote.symbol === order.symbol);
+      const decision = this.risk.evaluate({
+        request: { symbol: order.symbol, side: order.side, type: "market", quantity: order.quantity },
+        // Existing matching accepts older snapshots without this field; explicit
+        // non-tradability was already deferred by markToMarket above.
+        quote: matchingQuote && { ...matchingQuote, tradable: matchingQuote.tradable !== false },
+        account: { ...account, cash: spendable },
+        position: this.getPositions(snapshot).find((position) => position.symbol === order.symbol),
+        requiredCash: costs.cashDebit,
+        mode: this.options.mode,
+      });
+      if (this.store.isPaused()) return { ...order };
+      if (!decision.allowed) return this.store.rejectOrder(order, decision.message, decision.code);
+    }
+
     if (order.side === "buy") {
       const account = this.getAccount(snapshot);
       const position = this.getPositions(snapshot).find((candidate) => candidate.symbol === order.symbol);
