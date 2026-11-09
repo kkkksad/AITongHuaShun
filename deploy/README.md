@@ -8,7 +8,18 @@
 
 常规更新由`deploy/update-server.sh`完成归档核验、完整构建和健康检查。构建证明变化但运行内容相同的镜像复用上一已验证镜像，减少行情缓存被无关重启清空；服务环境/挂载/配置变化仍由Compose处理。程序层、环境、入口、健康和平台变化会正常启用新镜像，无法校验时恢复旧源码/配置后再启动旧镜像，见[决策0026](../docs/decisions/0026-reuse-identical-runtime-images.md)。
 
-当前成功后会删除临时rollback标签和源码备份，部署过程回退不等于持久备份。回部署已知旧SHA使用保存的旧版本归档，仍需完整核验；没有在生产主动演练失败回退。Linux离线流程验证可运行`python3 -m unittest discover -s deploy -p 'test_*.py'`，所有破坏性路径只作用于临时fixture目录。
+发布器启用留存工具后，在源码替换前保存当前源码与三个healthy容器的确切镜像，健康成功后原子切换`runtime/releases/index.json`的previous。失败不覆盖原previous，重复同提交且内容一致时保持原previous；首次安装仍由旧发布器运行，下一次发布才真正启用。源码身份未知时显示null，不能以外部标识猜测SHA。详见[决策0032](../docs/decisions/0032-retain-previous-healthy-release-assets.md)。
+
+留存排除runtime、Git、私有.env和Python缓存；镜像标签仅为`kairos-{akshare-bridge,api,web}:retained-release-<16hex>`，源码/镜像校验失败停止更新。正常保留一槽，旧清理失败或中断遗留会明确保留，四槽后停止新建等待复核；不得手动删除index指向的槽位。部署成功清除临时rollback资源后不再做宿主全局prune。
+
+只读核验与导出源码：
+
+```bash
+python3 deploy/release_retention.py verify --root /opt/kairos
+python3 deploy/release_retention.py export --root /opt/kairos --output /tmp/kairos-previous-source.tar.gz
+```
+
+导出不覆盖已有文件，不包含账户/配置/证书。当前没有免构建的一键恢复命令；回部署已知旧SHA仍需保存归档、核对账本兼容性并执行完整发布检查。留存材料是同盘恢复准备，不是异机灾备。没有在生产主动演练失败回退。Linux离线流程验证可运行`python3 -m unittest discover -s deploy -p 'test_*.py'`，所有破坏性路径只作用于临时fixture目录。
 
 镜像复用后，发布器还检查保留的Nginx代理：后端容器更换或挂载配置哈希变化时，仅重建仍被保留的web，使上游地址和单文件挂载刷新。没有依赖变化则保持容器；代理刷新失败同样恢复旧源码/Compose和镜像。首次安装这项修复仍由旧发布器运行，下一次后端发布再核验真实刷新。
 

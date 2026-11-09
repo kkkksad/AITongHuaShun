@@ -14,6 +14,19 @@ IMAGES=(kairos-akshare-bridge kairos-api kairos-web)
 proxy_backend_before=""
 proxy_container_before=""
 proxy_config_changed=0
+RETENTION_TOOL_DIR=""
+RETENTION_SLOT=""
+
+cleanup_retention_attempt() {
+  if [[ -n "${RETENTION_TOOL_DIR}" ]]; then
+    if [[ -n "${RETENTION_SLOT}" ]]; then
+      python3 "${RETENTION_TOOL_DIR}/release_retention.py" abort --root "${ROOT}" --slot "${RETENTION_SLOT}" || \
+        echo "Retained-release attempt cleanup needs attention." >&2
+    fi
+    rm -rf "${RETENTION_TOOL_DIR}"
+  fi
+}
+trap cleanup_retention_attempt EXIT
 
 if [[ ! "${COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
   echo "A full Git commit SHA is required." >&2
@@ -113,6 +126,13 @@ prepare_acme_runtime
 
 previous_commit="$(git rev-parse HEAD 2>/dev/null || true)"
 
+# Keep the running tool stable while the new archive replaces deploy/ underneath it.
+# The first install uses the older updater; retention begins on its next release.
+if [[ -s "${ROOT}/deploy/release_retention.py" ]]; then
+  RETENTION_TOOL_DIR="$(mktemp -d /tmp/kairos-release-tools-XXXXXX)"
+  cp "${ROOT}/deploy/release_retention.py" "${ROOT}/deploy/image_runtime_fingerprint.py" "${RETENTION_TOOL_DIR}/"
+fi
+
 replace_source_from_archive() {
   local archive="${1:?archive is required}"
   local required
@@ -146,6 +166,12 @@ replace_source_from_archive() {
     rm -rf "${SOURCE_STAGING}"
     echo "Could not back up the current production source." >&2
     exit 1
+  fi
+  if [[ -n "${RETENTION_TOOL_DIR}" ]]; then
+    if ! RETENTION_SLOT="$(python3 "${RETENTION_TOOL_DIR}/release_retention.py" stage --root "${ROOT}" --commit "${COMMIT}")"; then
+      echo "Could not retain the matching healthy source/image set; current source is preserved." >&2
+      exit 1
+    fi
   fi
   find "${ROOT}" -mindepth 1 -maxdepth 1 \
     ! -name runtime \
@@ -250,12 +276,22 @@ while (( SECONDS < deadline )); do
     fi
   done
   if (( all_healthy == 1 )) && curl -kfsS https://127.0.0.1/healthz >/dev/null && curl -kfsS https://127.0.0.1/api/health >/dev/null; then
+    if [[ -n "${RETENTION_SLOT}" ]]; then
+      if ! python3 "${RETENTION_TOOL_DIR}/release_retention.py" promote --root "${ROOT}" --slot "${RETENTION_SLOT}" --commit "${COMMIT}"; then
+        restore_source
+        restore_images
+        echo "Could not commit retained release assets; rollback attempted." >&2
+        exit 1
+      fi
+      RETENTION_SLOT=""
+    fi
     for image in "${IMAGES[@]}"; do
       docker image rm "${image}:rollback" >/dev/null 2>&1 || true
     done
     rm -rf "${SOURCE_STAGING}"
     rm -f "${RELEASE_ARCHIVE}" "${SOURCE_BACKUP}"
-    docker image prune -f --filter "until=168h" >/dev/null
+    # Host-wide dangling-image pruning cannot prove application ownership.
+    # Retained slots manage only their own exact tags; cache maintenance is separate.
     echo "KAIROS production deployment completed at ${COMMIT}."
     exit 0
   fi

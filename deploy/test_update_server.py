@@ -26,12 +26,19 @@ if a[:2]==['image','inspect']:
   data=s['tags'][name]
   output=json.dumps([data])
 elif a[:2]==['image','tag']:
- s['tags'][a[3]]=s['tags'][a[2]]
- record('tag',source=a[2],target=a[3])
+ item=s['tags'].get(a[2]) or next((v for v in s['tags'].values() if v['Id']==a[2]),None)
+ if item is None: code=1
+ else:
+  s['tags'][a[3]]=item
+  record('tag',source=a[2],target=a[3])
 elif a[:2]==['image','rm']:
  s['tags'].pop(a[2],None)
-elif a[:2]==['image','prune']: pass
-elif a[:1]==['inspect']: output='healthy'
+elif a[:2]==['image','prune']: record('host-prune')
+elif a[:1]==['inspect']:
+ if '--format' in a: output='healthy'
+ else:
+  service=next((k for k,v in s['containers'].items() if v==a[-1]),None)
+  output=json.dumps([dict(Image=s['container_images'].get(service),State={'Health':{'Status':'healthy'}})])
 elif a[:1]==['exec']: output=s['nginx_digest']+'  /etc/nginx/conf.d/default.conf'
 elif a[:1]==['compose']:
  args=a[a.index('-f')+2:];command=args[0]
@@ -42,6 +49,8 @@ elif a[:1]==['compose']:
    if name=='kairos-api' and os.environ.get('FAKE_FAIL')!='metadata-only': new['RootFS']={'Type':'layers','Layers':['new-api-code']}
    if os.environ.get('FAKE_FAIL')=='bridge-config-change' and name=='kairos-akshare-bridge': new['Config']={'Cmd':['changed-start']}
    if os.environ.get('FAKE_FAIL')=='fingerprint' and name=='kairos-web': new.pop('Config')
+   if os.environ.get('FAKE_REAL_IDS'):
+    new['Id']='sha256:'+hashlib.sha256(json.dumps([new.get('Config'),new['RootFS']],sort_keys=True).encode()).hexdigest()
    s['tags'][name+':production']=new
   if os.environ.get('FAKE_FAIL')=='build': code=1
  elif command=='up':
@@ -195,6 +204,70 @@ class DeploymentFlowTests(unittest.TestCase):
 
     def test_failed_proxy_refresh_restores_matching_old_release(self):
         self.assert_failed_flow("proxy-refresh")
+
+    def enable_retention(self):
+        for name in ("release_retention.py", "image_runtime_fingerprint.py"):
+            for target in (self.root / "deploy" / name, self.release / "deploy" / name):
+                shutil.copyfile(REPOSITORY / "deploy" / name, target)
+        state = json.loads(self.statefile.read_text())
+        for image in state["tags"].values():
+            image["Id"] = "sha256:" + hashlib.sha256(image["Id"].encode()).hexdigest()
+        for service, name in zip(("akshare-bridge", "backend", "web"), ("kairos-akshare-bridge", "kairos-api", "kairos-web")):
+            state["container_images"][service] = state["tags"][name + ":production"]["Id"]
+        self.statefile.write_text(json.dumps(state))
+        self.env["FAKE_REAL_IDS"] = "1"
+        self.write_archive()
+
+    def test_success_keeps_previous_source_and_three_matching_image_tags(self):
+        self.enable_retention()
+        result, state = self.run_deployment()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        index = json.loads((self.root / "runtime/releases/index.json").read_text())
+        self.assertEqual(index["current"]["commit"], COMMIT)
+        source = self.root / "runtime/releases" / index["previous"] / "source.tar.gz"
+        with tarfile.open(source) as archive:
+            self.assertEqual(archive.extractfile("old-source.txt").read(), b"old source")
+            self.assertNotIn(".env.production", archive.getnames())
+        self.assertEqual(len([tag for tag in state["tags"] if ":retained-" in tag]), 3)
+        self.assertFalse(any(event["kind"] == "host-prune" for event in state["events"]))
+
+    def test_failed_build_preserves_old_source_and_does_not_publish_retention_pointer(self):
+        self.enable_retention()
+        result, state = self.run_deployment("build")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual((self.root / "old-source.txt").read_text(), "old source")
+        self.assertFalse((self.root / "runtime/releases/index.json").exists())
+        self.assertFalse(any(":retained-" in tag for tag in state["tags"]))
+
+    def test_repeat_deployment_keeps_original_previous_slot(self):
+        self.enable_retention()
+        result, _ = self.run_deployment()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        first = json.loads((self.root / "runtime/releases/index.json").read_text())["previous"]
+        self.write_archive()
+        result, state = self.run_deployment()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads((self.root / "runtime/releases/index.json").read_text())["previous"], first)
+        self.assertEqual(len([tag for tag in state["tags"] if ":retained-" in tag]), 3)
+
+    def test_missing_or_mismatched_healthy_images_stop_before_source_replacement(self):
+        self.enable_retention()
+        state = json.loads(self.statefile.read_text()); state["container_images"]["backend"] = "sha256:" + "f" * 64
+        self.statefile.write_text(json.dumps(state))
+        result, _ = self.run_deployment()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("current source is preserved", result.stderr)
+        self.assertEqual((self.root / "old-source.txt").read_text(), "old source")
+
+    def test_target_archive_without_retention_helper_can_still_complete_with_copied_tool(self):
+        self.enable_retention()
+        (self.release / "deploy/release_retention.py").unlink()
+        (self.release / "deploy/image_runtime_fingerprint.py").unlink()
+        self.write_archive()
+        result, state = self.run_deployment()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / "runtime/releases/index.json").exists())
+        self.assertEqual(len([tag for tag in state["tags"] if ":retained-" in tag]), 3)
 
     def assert_failed_flow(self, failure):
         result, state = self.run_deployment(failure)

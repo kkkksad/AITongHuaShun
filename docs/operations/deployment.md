@@ -97,6 +97,8 @@ quant.example.com {
 
 发布工具按运行内容复用相同镜像，保留未改动服务的内存缓存；失败先恢复旧源码/Compose，再启动旧镜像。比较字段、旧归档兼容和首次升级验证见[生产手册](../../deploy/README.md)与[决策0026](../decisions/0026-reuse-identical-runtime-images.md)。
 
+启用0032后留存上一健康源码与三镜像至受限槽位，核验与导出步骤统一见[生产手册](../../deploy/README.md)。首次安装不代表已有previous，须随后正常发布才生成。私有.env、账户、证书和日志不进入源码归档；同盘留存不是灾备。宿主全局prune已从新发布器移除，当前没有一键免构建恢复或自动构建缓存清理。
+
 同机SQLite长期复盘库通过独立systemd任务安装，配置、资源上限、诊断和在线备份统一见[Paper历史归档](paper-history.md)。数据库不暴露公网端口，不替代下述JSON交易账本。
 
 - 持久化 paper 状态时使用受限目录挂载和 `STORE_BACKEND=json`；JSON 仍只适合单进程模拟，不是生产数据库。
