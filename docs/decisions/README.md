@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0052：新增标的交易漏斗](0052-new-position-candidate-funnel.md)：分开持仓匹配、新股资格、初始独立金额与最终拟买，保留交易规则和旧响应兼容。
+
 - [0051：Paper运行阶段耗时使用单调时钟](0051-paper-run-monotonic-stage-timing.md)
 
 - [0050：真实行情Paper计划不等待合成参数榜](0050-real-paper-plans-independent-of-synthetic-ranking.md)

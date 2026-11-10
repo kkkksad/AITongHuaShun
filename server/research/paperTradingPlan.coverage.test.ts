@@ -51,6 +51,9 @@ describe("paper strategy coverage mode", () => {
       unmatchedCandidateCount: 1,
       summary: "当前候选来自快照/质量筛选，未启用市场策略路由；仍须通过金额、候选质量和风控复核。",
     });
+    expect(result.qualitySummary.strategyCoverage).toHaveProperty("newPositionFunnel.eligibleNewSymbolCount", 1);
+    expect(result.qualitySummary.strategyCoverage).toHaveProperty("newPositionFunnel.plannedBuyCount", 1);
+    expect(result.guardrails.join(" ")).toContain("合成研究");
   });
 
   it("marks an adaptive route separately and preserves matched strategy counts", () => {

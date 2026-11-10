@@ -122,6 +122,7 @@ export default function LearningPipeline() {
   const routeScale = paperPlan?.adaptiveRouting?.newPositionScale;
   const effectiveScale = paperPlan?.strategyProfile?.effectiveNewPositionScale;
   const paperPlanQuality = paperPlan?.qualitySummary;
+  const newPositionFunnel = paperPlanQuality?.strategyCoverage.newPositionFunnel;
   const coverageMode = paperPlanQuality
     ? paperPlanQuality.strategyCoverage.coverageMode ?? (
         paperPlan.executionStrategy.mode === "manual"
@@ -763,7 +764,7 @@ export default function LearningPipeline() {
               <strong>纸面计划诊断</strong>
               <p>{paperPlanQuality.summary}</p>
               <span>
-                可买 {paperPlanQuality.affordableCandidateCount} / 候选 {paperPlanQuality.candidatePoolSize}
+                金额可覆盖 {paperPlanQuality.affordableCandidateCount} / 候选 {paperPlanQuality.candidatePoolSize}
                 ，拟投入 {(paperPlanQuality.cashDeploymentPercent * 100).toFixed(1)}%，拦截{" "}
                 {paperPlanQuality.actionCounts.blocked}，持有 {paperPlanQuality.actionCounts.hold}
               </span>
@@ -799,6 +800,15 @@ export default function LearningPipeline() {
                 已命中 {paperPlanQuality.strategyCoverage.matchedKeys.length} 个 ·
                 主策略 {adaptiveStrategyLabel(paperPlanQuality.strategyCoverage.dominantStrategyKey ?? "暂无")}
               </span>
+              {newPositionFunnel && (
+                <>
+                  <strong>新增标的漏斗</strong>
+                  <span>{`去重扫描 ${newPositionFunnel.scannerCandidateCount} · 本轮考虑 ${newPositionFunnel.consideredCandidateCount}（排序前 12）`}</span>
+                  <span>{`已有持仓 ${newPositionFunnel.existingPositionCount} · 新标的 ${newPositionFunnel.newSymbolCount} · 资格通过 ${newPositionFunnel.eligibleNewSymbolCount} · 独立金额通过 ${newPositionFunnel.individuallySizedNewSymbolCount} · 最终拟买 ${newPositionFunnel.plannedBuyCount}`}</span>
+                  <span>全局新增许可：{newPositionFunnel.allowNewPositions ? "允许" : "停止新增"}</span>
+                  <small>资格通过包含所示策略或快照筛选；独立金额按初始预算逐只计算，累计资金、候选质量、每日额度和提交风控仍须复核。</small>
+                </>
+              )}
               <small>合格机会覆盖，不强制换手，不代表预期盈利。</small>
             </div>
           )}

@@ -277,6 +277,7 @@ function qualityStocks(
 
 function build(input: {
   leaderboard?: StrategyLeaderboardReport;
+  qualityOverride?: DailyQualityStockReport;
   positions?: PositionSnapshot[];
   adaptiveRouting?: AdaptiveStrategyRouting;
   research?: MarketRegimeResearchReport;
@@ -299,7 +300,7 @@ function build(input: {
     orders: input.orders ?? [],
     leaderboard: input.leaderboard ?? leaderboard(),
     candidates: candidates(),
-    qualityStocks: qualityStocks(
+    qualityStocks: input.qualityOverride ?? qualityStocks(
       input.includeCandidate,
       input.candidateCount,
       input.candidateScores,
@@ -322,6 +323,51 @@ function build(input: {
 }
 
 describe("adaptive paper trading plan", () => {
+  it("distinguishes a signal matched by an existing holding from a new entry opportunity", () => {
+    const stock = { ...qualityStocks(true).stocks[0], symbol: "600519", name: "测试持仓", price: 10 };
+    const plan = build({ cash: 7000, positions: [position()], qualityOverride: { stocks: [stock] } as DailyQualityStockReport });
+    expect(plan.executionStrategy.matchedCandidateCount).toBe(1);
+    expect(plan.qualitySummary.strategyCoverage).toHaveProperty("newPositionFunnel", {
+      scope: "ranked-top-12", scannerCandidateCount: 1, consideredCandidateCount: 1,
+      existingPositionCount: 1, newSymbolCount: 0, eligibleNewSymbolCount: 0,
+      individuallySizedNewSymbolCount: 0, plannedBuyCount: 0, allowNewPositions: true,
+    });
+    expect(plan.operations.some(item => item.action === "paper-buy-plan")).toBe(false);
+  });
+
+  it.each([10_000, 412])("separates a matched new symbol from its initial fee/lot budget at cash %s", cash => {
+    const plan = build({ cash, includeCandidate: true, research: marketRegime("healthy-trend", 0.8, "601988") });
+    expect(plan.qualitySummary.strategyCoverage).toHaveProperty("newPositionFunnel", {
+      scope: "ranked-top-12", scannerCandidateCount: 1, consideredCandidateCount: 1,
+      existingPositionCount: 0, newSymbolCount: 1, eligibleNewSymbolCount: 1,
+      individuallySizedNewSymbolCount: cash === 412 ? 0 : 1, plannedBuyCount: cash === 412 ? 0 : 1,
+      allowNewPositions: true,
+    });
+  });
+
+  it("retains global profile permission separately from signal coverage", () => {
+    const plan = build({ cash: 10_000, includeCandidate: true, strategyProfile: "capital-preservation",
+      research: marketRegime("healthy-trend", 0.8, "601988") });
+    expect(plan.qualitySummary.strategyCoverage).toHaveProperty("newPositionFunnel.allowNewPositions", false);
+    expect(plan.qualitySummary.strategyCoverage).toHaveProperty("newPositionFunnel.eligibleNewSymbolCount", 1);
+    expect(plan.operations.some(item => item.action === "paper-buy-plan")).toBe(false);
+  });
+
+  it("makes the bounded candidate selection explicit without counting scanner duplicates twice", () => {
+    const rows = Array.from({ length: 17 }, (_, index) => ({ ...qualityStocks(true).stocks[0],
+      symbol: `600${String(index).padStart(3, "0")}` }));
+    const plan = build({ cash: 10_000, qualityOverride: { stocks: [...rows, rows[0]] } as DailyQualityStockReport });
+    expect(plan.qualitySummary.candidatePoolSize).toBe(12);
+    expect(plan.qualitySummary.strategyCoverage).toHaveProperty("newPositionFunnel.scannerCandidateCount", 17);
+    expect(plan.qualitySummary.strategyCoverage).toHaveProperty("newPositionFunnel.consideredCandidateCount", 12);
+    expect(plan.qualitySummary.strategyCoverage).toHaveProperty("newPositionFunnel.newSymbolCount", 12);
+  });
+
+  it("describes actual historical routing instead of claiming no history has been connected", () => {
+    const plan = build({});
+    expect(plan.guardrails.join(" ")).toContain("真实历史");
+    expect(plan.guardrails.join(" ")).not.toContain("尚未接入授权历史");
+  });
   it.each(["buy", "sell", "blocked"])("keeps %s decisions identical when the synthetic leaderboard is absent or reordered", (scenario) => {
     const request: Parameters<typeof build>[0] = scenario === "buy"
       ? { cash: 10_000, includeCandidate: true, research: marketRegime("healthy-trend", 0.8, "601988") }

@@ -3,8 +3,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import LearningPipeline from "./LearningPipeline";
+import type { PaperNewPositionFunnel } from "../../shared/paperTradingCoverage";
 
-function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing", execution?: { fillPrice: number; notional: number; commission: number; cashRequired: number; equityAfterFill: number } | null, legacyRouting = false) {
+function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing", execution?: { fillPrice: number; notional: number; commission: number; cashRequired: number; equityAfterFill: number } | null, legacyRouting = false, funnel?: PaperNewPositionFunnel) {
   const client = new QueryClient();
   client.setQueryData(["paper-trading-plan"], {
     tradingDate: "2026-11-05", provider: "mock",
@@ -32,6 +33,7 @@ function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing",
       plannedBuyNotional: 0, plannedBuyFees: 0, plannedCashRequired: 0,
       plannedSellNotional: 0, cashDeploymentPercent: 0, remainingCashAfterPlan: 20_000,
       strategyCoverage: {
+        newPositionFunnel: funnel,
         coverageMode, eligibleKeys: [], matchedKeys: [], matchedCandidateCount: 0,
         unmatchedCandidateCount: 4, dominantStrategyKey: null, dominantBlocker: null,
         summary: coverageMode === "snapshot-fallback"
@@ -53,6 +55,26 @@ function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing",
 }
 
 describe("LearningPipeline strategy coverage explanation", () => {
+  it("shows held matches separately from new opportunities and final buy plans", () => {
+    const html = renderCoverage("adaptive-routing", undefined, false, {
+      scope: "ranked-top-12", scannerCandidateCount: 17, consideredCandidateCount: 12,
+      existingPositionCount: 4, newSymbolCount: 8, eligibleNewSymbolCount: 2,
+      individuallySizedNewSymbolCount: 1, plannedBuyCount: 0, allowNewPositions: true,
+    });
+    expect(html).toContain("新增标的漏斗");
+    expect(html).toContain("去重扫描 17"); expect(html).toContain("本轮考虑 12");
+    expect(html).toContain("已有持仓 4"); expect(html).toContain("新标的 8");
+    expect(html).toContain("资格通过 2"); expect(html).toContain("独立金额通过 1");
+    expect(html).toContain("最终拟买 0");
+    expect(html).toContain("累计资金");
+    expect(html).not.toContain("可买 4");
+  });
+
+  it("does not invent zero new candidates for an older report", () => {
+    const html = renderCoverage("adaptive-routing");
+    expect(html).not.toContain("新增标的漏斗");
+    expect(html).not.toContain("最终拟买 0");
+  });
   it("describes snapshot fallback without claiming unmatched strategies", () => {
     const html = renderCoverage("snapshot-fallback");
     expect(html).toContain("快照候选筛选（未启用市场策略路由）·候选 4 个");

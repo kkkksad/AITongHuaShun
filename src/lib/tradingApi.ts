@@ -14,7 +14,7 @@ import type {
 } from "../../shared/trading";
 import type { ApiPerformanceSnapshot } from "../../shared/systemMonitoring";
 import type { PaperBuyExecutionProjection, PaperTradingPlanSizingDiagnostics } from "../../shared/paperTradingSizing";
-import type { PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
+import type { PaperNewPositionFunnel, PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
 import type { PaperCandidatePool } from "../../shared/paperCandidatePool";
 import { ApiRequestError } from "./apiError";
 
@@ -592,6 +592,7 @@ export interface PaperTradingPlanQualitySummary {
   remainingCashAfterPlan: number;
   strategyCoverage: {
     coverageMode?: PaperTradingStrategyCoverageMode;
+    newPositionFunnel?: PaperNewPositionFunnel;
     eligibleKeys: string[];
     matchedKeys: string[];
     matchedCandidateCount: number;

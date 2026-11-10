@@ -4,7 +4,7 @@ import type {
   PaperTradingPlanSizingConstraint,
   PaperTradingPlanSizingDiagnostics,
 } from "../../shared/paperTradingSizing";
-import type { PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
+import type { PaperNewPositionFunnel, PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
 export type { PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
 export type {
   PaperTradingPlanSizingConstraint,
@@ -92,6 +92,7 @@ export interface PaperTradingPlanQualitySummary {
   strategyCoverage: {
     /** Optional additive field; old reports retain the legacy counters. */
     coverageMode?: PaperTradingStrategyCoverageMode;
+    newPositionFunnel?: PaperNewPositionFunnel;
     eligibleKeys: string[];
     matchedKeys: string[];
     matchedCandidateCount: number;
@@ -1027,8 +1028,7 @@ export function buildPaperTradingPlan(input: {
       if (b.priority !== a.priority) return b.priority - a.priority;
       if (b.score !== a.score) return b.score - a.score;
       return a.price - b.price;
-    })
-    .slice(0, 12);
+    });
   const selectPlanStrategy = (
     candidate: (typeof rankedCandidatePool)[number],
   ) => {
@@ -1044,9 +1044,9 @@ export function buildPaperTradingPlan(input: {
       strategyEvidence: signal?.evidence ?? candidate.strategyEvidence,
     };
   };
-  const candidatePool = rankedCandidatePool;
+  const candidatePool = rankedCandidatePool.slice(0, 12);
   const candidatePoolSize = candidatePool.length;
-  const affordableCandidateCount = candidatePool.filter((candidate) => {
+  const affordableCandidates = candidatePool.filter((candidate) => {
     const quantity = candidatePlanQuantity(
       candidate,
       plannedCashBudget,
@@ -1057,7 +1057,12 @@ export function buildPaperTradingPlan(input: {
       buyProjection,
     );
     return quantity >= input.lotSize;
-  }).length;
+  });
+  const affordableCandidateCount = affordableCandidates.length;
+  const individuallySizedSymbols = new Set(affordableCandidates.map((candidate) => candidate.symbol));
+  const eligibleNewCandidates = candidatePool.filter((candidate) =>
+    !positionMap.has(candidate.symbol) && candidate.strategyEligible && candidate.strategyKey,
+  );
   const positionConflictCount = candidatePool.filter((candidate) =>
     positionMap.has(candidate.symbol),
   ).length;
@@ -1528,7 +1533,22 @@ export function buildPaperTradingPlan(input: {
       cash: input.account.cash,
       commissionRate: input.commissionRate,
       minimumCommission: input.minimumCommission,
-      strategyCoverage,
+      strategyCoverage: {
+        ...strategyCoverage,
+        newPositionFunnel: {
+          scope: "ranked-top-12",
+          scannerCandidateCount: rankedCandidatePool.length,
+          consideredCandidateCount: candidatePoolSize,
+          existingPositionCount: positionConflictCount,
+          newSymbolCount: candidatePoolSize - positionConflictCount,
+          eligibleNewSymbolCount: eligibleNewCandidates.length,
+          individuallySizedNewSymbolCount: eligibleNewCandidates.filter((candidate) =>
+            individuallySizedSymbols.has(candidate.symbol),
+          ).length,
+          plannedBuyCount: operations.filter((operation) => operation.action === "paper-buy-plan").length,
+          allowNewPositions: routeAllowsBuying,
+        },
+      },
     }),
     operations: operations.map((operation) => ({
       ...operation,
@@ -1541,7 +1561,9 @@ export function buildPaperTradingPlan(input: {
     guardrails: [
       "本计划不代表真实收益，也不构成投资建议。",
       "同花顺或中信账户不得通过网页登录态、密码、Cookie 或明文 Token 接入本平台。",
-      "当前只使用实时快照和合成研究样本，尚未接入授权历史 K 线样本外验证。",
+      input.adaptiveRouting && input.marketRegimeResearch
+        ? "本计划使用实时快照与真实历史形态路由；形态验证不等同于独立样本外收益证据。"
+        : "当前候选使用快照筛选与合成研究说明，不能视为真实历史样本外验证。",
     ],
   };
 }
