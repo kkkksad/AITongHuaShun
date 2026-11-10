@@ -1,5 +1,7 @@
 # 系统架构
 
+私有历史BacktestEngine逐根复用markToMarket返回的撮合后账户，空信号曲线直接使用，有任何信号仍重读；无跨bar/订单账户缓存，不改生产Broker，回调观察复制/费用/每日风控保持，见[0072](../decisions/0072-backtest-same-bar-account-reuse.md)。
+
 getChinaDateKey用单槽复用最近一次成功的UTC+8日期标签，午夜/回拨/非法及偏移溢出保持原语义，常量空间；账户/订单/报价和每日风控基线仍即时重算，见[0071](../decisions/0071-beijing-date-key-bounded-reuse.md)。
 
 KairosQuietPullbackStrategy历史回测绑定首个可交易正价股票，按实际持仓均价/可卖整手退出；拒单和T+1保留真实状态，线上同名候选实现独立。入场与退出阈值保持，见[0070](../decisions/0070-quiet-pullback-actual-holdings.md)。

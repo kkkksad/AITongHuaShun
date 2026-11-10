@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0072：回测单根账户复用](0072-backtest-same-bar-account-reuse.md)：复用私有撮合后账户，空信号少重建，有信号仍重读，无跨bar缓存。
+
 - [0071：北京时间日期键单槽复用](0071-beijing-date-key-bounded-reuse.md)：缓存不可变日期标签，保留非法/溢出/回拨语义，不缓存账户和风险。
 - [0070：缩量回撤实际持仓](0070-quiet-pullback-actual-holdings.md)：拒单/T+1后重查实际持仓、成交均价和可卖整手，绑定单股。
 - [0069：回测实际回放期限](0069-backtest-replay-bar-period.md)：初始资金基准不作额外交易日，保留252根日线/年假设。

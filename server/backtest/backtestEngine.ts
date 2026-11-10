@@ -155,11 +155,10 @@ export class BacktestEngine {
 
       // 按 Broker 遍历挂单的实际顺序记录成交，再向策略提供撮合后的账户。
       const pendingOrders = this.store.getPendingOrders();
-      this.broker.markToMarket(snapshot);
+      const account = this.broker.markToMarket(snapshot);
       for (const order of pendingOrders) {
         this.recordFilledOrder(order, i, snapshot.marketTime);
       }
-      const account = this.broker.getAccount(snapshot);
       const positions = this.store.getPositions(snapshot);
 
       // 调用策略
@@ -185,12 +184,14 @@ export class BacktestEngine {
       }
 
       // 处理信号
+      let processedSignal = false;
       for (const signal of signals) {
+        processedSignal = true;
         this.processSignal(signal, account, positions, i, snapshot.marketTime);
       }
 
-      // 再次获取账户快照以反映所有成交
-      const updatedAccount = this.broker.getAccount(snapshot);
+      // 空信号没有账本变更，复用本根撮合后账户；任何信号仍按原规则重读。
+      const updatedAccount = processedSignal ? this.broker.getAccount(snapshot) : account;
 
       // 记录权益曲线
       this.equityCurve.push({
