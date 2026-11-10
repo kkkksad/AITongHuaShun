@@ -4,6 +4,7 @@ import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 import { isTechnologySector } from "./sectorPulse";
 import { validateStrategyHistory } from "./strategyHistoryEvidence";
 import { validateSectorHistory } from "./sectorHistoryEvidence";
+import { normalizeSectorSnapshotResponse } from "./sectorSnapshotEvidence";
 
 export interface HistoricalBar {
   date: string;
@@ -622,6 +623,9 @@ export function analyzeMarketRegimeData(
   const asOf = new Date(input.asOf?.getTime() ?? Date.now());
   if (!Number.isFinite(asOf.getTime())) throw new Error("Invalid market regime clock");
   const days = Number.isFinite(input.days) ? Math.min(500, Math.max(1, Math.floor(input.days))) : 180;
+  const sectorResponse = normalizeSectorSnapshotResponse(input.sectorResponse);
+  const selectedResponse = input.requestedSectors === undefined ? sectorResponse
+    : normalizeSectorSnapshotResponse({ ...input.sectorResponse, sectors: input.requestedSectors });
   const checkedStocks = input.stockHistory?.provider !== "akshare"
     ? { series: [], warnings: ["历史证据校验：个股历史返回供应方不是AkShare，不用于真实形态。"] }
     : !Array.isArray(input.stockHistory.series)
@@ -629,7 +633,7 @@ export function analyzeMarketRegimeData(
       : validateStrategyHistory(input.stockHistory.series, {
           asOf, requestedSymbols: new Set(input.stockNames.keys()), maxBars: days,
         });
-  const requestedSectors = input.requestedSectors ?? input.sectorResponse.sectors;
+  const requestedSectors = selectedResponse.sectors;
   const checkedSectors = input.sectorHistory?.provider !== "akshare"
     ? { series: [], warnings: ["行业历史证据校验：返回供应方不是AkShare，不用于真实市场路由。"] }
     : !Array.isArray(input.sectorHistory.series)
@@ -667,7 +671,8 @@ export function analyzeMarketRegimeData(
     .map((stock, index) => ({ rank: index + 1, ...stock }));
 
   const warnings = warningList(
-    input.sectorResponse.warning,
+    sectorResponse.warning,
+    selectedResponse.warning,
     input.sectorHistory?.warning,
     input.stockHistory?.warning,
     ...checkedStocks.warnings,
@@ -689,13 +694,13 @@ export function analyzeMarketRegimeData(
     provider: input.provider,
     sourceStatus,
     source: {
-      sectorSource: input.sectorResponse.source,
+      sectorSource: sectorResponse.source,
       sectorHistorySource: [...new Set(checkedSectors.series.map(series => series.source))].sort().join(" + ") || "unavailable",
       stockHistorySource: [...new Set(checkedStocks.series.map(series => series.source))].sort().join(" + ") || "unavailable",
       fetchedAt:
         input.stockHistory?.fetchedAt ||
         input.sectorHistory?.fetchedAt ||
-        input.sectorResponse.fetchedAt ||
+        sectorResponse.fetchedAt ||
         null,
       days,
       sectorAdjustment: "none",
@@ -875,6 +880,7 @@ export async function buildMarketRegimeResearch(
     };
   }
 
+  sectorResponse = normalizeSectorSnapshotResponse(sectorResponse);
   const requestedSectors = selectSectorUniverse(sectorResponse.sectors, input.sectorLimit);
   const sectorNames = requestedSectors.map((sector) => sector.name);
   const stockLimit = Math.max(1, Math.min(input.stockLimit, 12));

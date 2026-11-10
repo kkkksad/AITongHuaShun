@@ -1,5 +1,7 @@
 # 系统架构
 
+行业快照在构建/分析两入口按unknown规范化，坏HTTP200正文/行业记录不能使独立股票历史研究丢失；可选坏字段保持null并警告，结构有效不证明来源时间新鲜。历史身份/日线和降级交易限制继续独立执行，见[0065](../decisions/0065-sector-snapshot-structure-isolation.md)。
+
 LearningPipeline对共享合成榜query使用enabled=false/显式refetch，普通进入/焦点/失效/核心刷新不触发网格，缓存保留并标时间；独立策略页规则不变。客户端取消不冒充服务器网格中止，不提高并发，见[0054](../decisions/0054-learning-pipeline-synthetic-research-on-demand.md)。
 
 Paper计划进入时复制asOf并只读一次有界审计快照，策略频次采用有限七日闭区间，防守延续要求实际北京时间日期/元数据一致且不晚于asOf、按实际毫秒择新。异步等待后不混入新证据，不改信号/额度，见[0053](../decisions/0053-paper-plan-audit-evidence-cutoff.md)。
