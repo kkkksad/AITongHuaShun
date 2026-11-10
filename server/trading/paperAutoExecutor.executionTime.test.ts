@@ -26,6 +26,8 @@ function createExecutionFixture(input: {
   quoteGuard?: boolean;
   maxOrdersPerRun?: number;
   maxDailyOrders?: number;
+  monotonicClock?: () => number;
+  onOrder?: () => void;
 }) {
   let now = new Date(input.startedAt);
   const config = createTestConfig({
@@ -151,8 +153,10 @@ function createExecutionFixture(input: {
     maxDailyOrders: input.maxDailyOrders ?? 4,
     targetDailyOrders: Math.min(2, input.maxDailyOrders ?? 4),
     clock: () => now,
+    monotonicClock: input.monotonicClock,
     planNotifier: notifier,
     onOrder: () => {
+      input.onOrder?.();
       submittedCount += 1;
       if (submittedCount === 1 && input.afterFirstOrderAt) {
         now = new Date(input.afterFirstOrderAt);
@@ -161,6 +165,89 @@ function createExecutionFixture(input: {
   });
   return { executor, system, plan, notifier, submitOrder, orderReads, findByClientOrderId, marketRegimeResearch, snapshot };
 }
+
+describe("persisted monotonic paper run timing", () => {
+  it("measures research, both notifications and two actual fills despite a wall-clock reversal", async () => {
+    let elapsed = 0;
+    const fixture = createExecutionFixture({ startedAt: "2026-11-10T02:00:00Z",
+      notificationFinishedAt: "2026-11-10T01:55:00Z", operationCount: 2,
+      monotonicClock: () => elapsed, onOrder: () => { elapsed += 7; } });
+    const original = vi.mocked(paperPlans.buildCurrentPaperTradingPlan).getMockImplementation()!;
+    vi.mocked(paperPlans.buildCurrentPaperTradingPlan).mockImplementation(async (...args) => {
+      elapsed += 120;
+      return original(...args);
+    });
+    const notify = fixture.notifier.notify.getMockImplementation()!;
+    fixture.notifier.notify.mockImplementation(async (...args) => { elapsed += 25; return notify(...args); });
+    fixture.notifier.notifyOrderEvents.mockImplementation(async () => { elapsed += 15; return { status: "disabled" }; });
+    const run = await fixture.executor.runOnce();
+    expect(run.submittedOrders).toHaveLength(2);
+    expect(Date.parse(run.finishedAt)).toBeLessThan(Date.parse(run.startedAt));
+    expect(run).toHaveProperty("timing", { clock: "monotonic", scope: "run-before-audit", unit: "ms",
+      totalMs: 174, researchMs: 120, notificationMs: 40, executionMs: 14 });
+    const audit = fixture.system.store.listAudit(100).find(item => item.action === "paper-auto-execution.run");
+    expect(audit?.data).toMatchObject({ startedAt: run.startedAt, finishedAt: run.finishedAt, timing: run.timing });
+  });
+
+  it("records failed research duration and leaves stages that never ran unknown", async () => {
+    let elapsed = 0;
+    const fixture = createExecutionFixture({ startedAt: "2026-11-10T02:00:00Z", monotonicClock: () => elapsed });
+    vi.mocked(paperPlans.buildCurrentPaperTradingPlan).mockImplementation(async () => {
+      elapsed = 1234;
+      throw new Error("fixture research failed");
+    });
+    const run = await fixture.executor.runOnce();
+    expect(run.planQuality).toBe("not-run");
+    expect(run).toHaveProperty("timing", { clock: "monotonic", scope: "run-before-audit", unit: "ms",
+      totalMs: 1234, researchMs: 1234, notificationMs: null, executionMs: null });
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+  });
+
+  it("does not invent research or notification work for a closed-session skip", async () => {
+    const fixture = createExecutionFixture({ startedAt: "2026-11-10T12:00:00Z", monotonicClock: () => 7 });
+    const run = await fixture.executor.runOnce();
+    expect(run).toHaveProperty("timing", { clock: "monotonic", scope: "run-before-audit", unit: "ms",
+      totalMs: 0, researchMs: null, notificationMs: null, executionMs: null });
+    expect(paperPlans.buildCurrentPaperTradingPlan).not.toHaveBeenCalled();
+  });
+
+  it("measures a degraded-market notification without inventing a research request", async () => {
+    let elapsed = 0;
+    const fixture = createExecutionFixture({ startedAt: "2026-11-10T02:00:00Z", monotonicClock: () => elapsed });
+    fixture.snapshot.quotes.length = 0;
+    fixture.notifier.notify.mockImplementation(async () => { elapsed = 17; return { status: "disabled" }; });
+    const run = await fixture.executor.runOnce();
+    expect(run.timing).toMatchObject({ totalMs: 17, researchMs: null, notificationMs: 17, executionMs: null });
+    expect(paperPlans.buildCurrentPaperTradingPlan).not.toHaveBeenCalled();
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+  });
+
+  it("retains notification failure timing without submitting an order", async () => {
+    let elapsed = 0;
+    const fixture = createExecutionFixture({ startedAt: "2026-11-10T02:00:00Z", monotonicClock: () => elapsed });
+    fixture.notifier.notify.mockImplementation(async () => { elapsed += 11; throw new Error("fixture notify failed"); });
+    const run = await fixture.executor.runOnce();
+    expect(run.timing).toMatchObject({ totalMs: 11, researchMs: 0, notificationMs: 11, executionMs: 0 });
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+  });
+
+  it("keeps an overlapping skip isolated from the in-flight run's research timer", async () => {
+    let elapsed = 0;
+    const fixture = createExecutionFixture({ startedAt: "2026-11-10T02:00:00Z", monotonicClock: () => elapsed });
+    const original = vi.mocked(paperPlans.buildCurrentPaperTradingPlan).getMockImplementation()!;
+    let release!: () => void;
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    vi.mocked(paperPlans.buildCurrentPaperTradingPlan).mockImplementation(async (...args) => { await wait; return original(...args); });
+    const first = fixture.executor.runOnce();
+    elapsed = 10;
+    const overlap = await fixture.executor.runOnce();
+    expect(overlap).toHaveProperty("timing.researchMs", null);
+    expect(overlap).toHaveProperty("timing.totalMs", 0);
+    elapsed = 45;
+    release();
+    expect(await first).toHaveProperty("timing.researchMs", 45);
+  });
+});
 
 describe("automatic activity counts by fill time", () => {
   const start = "2026-08-21T14:00:00+08:00";

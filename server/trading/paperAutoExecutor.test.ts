@@ -258,7 +258,11 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
       id: "paper-auto-2026-07-17-0002",
       startedAt: "2026-07-17T01:41:00.000Z",
       finishedAt: "2026-07-17T01:41:01.000Z",
+      timing: { clock: "monotonic", scope: "run-before-audit", unit: "ms", totalMs: 2500,
+        researchMs: 2490, executionMs: 10, notificationMs: null },
     });
+
+    expect(paperAutoExecutionAuditSignature(current)).toBe(paperAutoExecutionAuditSignature(previous));
 
     expect(shouldPersistPaperAutoExecutionRun({
       run: current,

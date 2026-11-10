@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0051：Paper运行阶段耗时使用单调时钟](0051-paper-run-monotonic-stage-timing.md)
+
 - [0050：真实行情Paper计划不等待合成参数榜](0050-real-paper-plans-independent-of-synthetic-ranking.md)
 
 - [0049：历史调度的排队与工作耗时](0049-history-queue-and-work-timing.md)

@@ -44,6 +44,8 @@ import {
 import { getPaperStrategyProfilePolicy } from "./paperStrategyProfile";
 import { getOrderFillTime } from "./orderFillTime";
 import { assertPaperExecutionRevision, PaperExecutionContextChangedError } from "./paperExecutionContext";
+import { PaperExecutionTimer } from "./paperExecutionTiming";
+import type { PaperExecutionTiming } from "../../shared/paperExecutionTiming";
 
 export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
 export type PaperAutoExecutionActivityMode =
@@ -137,6 +139,7 @@ export interface PaperAutoExecutionRun {
   trigger: PaperAutoExecutionTrigger;
   startedAt: string;
   finishedAt: string;
+  timing?: PaperExecutionTiming;
   tradingDate: string;
   session: PaperAutoExecutionSession;
   phase: AShareTradingPhase;
@@ -197,6 +200,7 @@ export interface PaperAutoExecutorOptions {
   maxDailyOrders: number;
   targetDailyOrders: number;
   clock?: () => Date;
+  monotonicClock?: () => number;
   onOrder?: (order: OrderRecord, request: OrderRequest) => void;
   planNotifier?: Pick<PaperPlanNotifier, "notify" | "notifyOrderEvents">;
 }
@@ -818,6 +822,7 @@ export class PaperAutoExecutor {
   }
 
   async runOnce(trigger: PaperAutoExecutionTrigger = "manual"): Promise<PaperAutoExecutionRun> {
+    const timing = new PaperExecutionTimer(this.options.monotonicClock);
     const started = this.now();
     const session = getAshareSession(started);
     const initialPolicy = getIntradayExecutionPolicy(started, null);
@@ -831,6 +836,7 @@ export class PaperAutoExecutor {
         trigger,
         startedAt: started.toISOString(),
         finishedAt: this.now().toISOString(),
+        timing: timing.snapshot(),
         tradingDate,
         session,
         phase: initialPolicy.phase,
@@ -862,7 +868,7 @@ export class PaperAutoExecutor {
           action: "observe",
           reason: "paper auto execution and notifications are both disabled",
         });
-        return this.finalizeRun(trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
+        return this.finalizeRun(timing, trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
       }
 
       if (this.options.config.REAL_TRADING_ENABLED || this.options.config.MARKET_MODE !== "paper") {
@@ -871,7 +877,7 @@ export class PaperAutoExecutor {
           action: "blocked",
           reason: "auto execution requires MARKET_MODE=paper and REAL_TRADING_ENABLED=false",
         });
-        return this.finalizeRun(trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
+        return this.finalizeRun(timing, trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
       }
 
       if (this.options.tradeWindowOnly && session !== "open") {
@@ -880,7 +886,7 @@ export class PaperAutoExecutor {
           action: "observe",
           reason: `outside A-share trading session: ${session}`,
         });
-        return this.finalizeRun(trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
+        return this.finalizeRun(timing, trigger, started, tradingDate, session, initialPolicy, "not-run", submittedOrders, skippedOperations);
       }
 
       const initialSnapshot = this.options.system.market.getSnapshot();
@@ -920,7 +926,7 @@ export class PaperAutoExecutor {
           this.options.system.store.listAudit(10_000),
           this.now(),
         );
-        await this.options.planNotifier?.notify(plan, {
+        if (this.options.planNotifier) await timing.measure("notificationMs", () => this.options.planNotifier!.notify(plan, {
           account,
           positions,
           executableOperations: [],
@@ -939,8 +945,9 @@ export class PaperAutoExecutor {
             warnings: ["当前没有可交易行情，定时简报仍保留诚实降级状态。"],
             newsHighlights: [],
           },
-        });
+        }));
         return this.finalizeRun(
+          timing,
           trigger,
           started,
           tradingDate,
@@ -979,7 +986,7 @@ export class PaperAutoExecutor {
         realResearchDataFeed,
         externalMarketImpact,
         adaptiveRouting,
-      } = await buildCurrentPaperTradingPlan({
+      } = await timing.measure("researchMs", () => buildCurrentPaperTradingPlan({
         system: this.options.system,
         config: this.options.config,
         now: started,
@@ -992,7 +999,7 @@ export class PaperAutoExecutor {
           ),
         }),
         activityMode: this.options.config.PAPER_AUTO_EXECUTION_ACTIVITY_MODE,
-      });
+      }));
       assertExecutionContext();
       // Research can finish with a cached or unchanged snapshot from another
       // date. Stop before plan-date quotas, idempotency keys or notifications.
@@ -1003,6 +1010,7 @@ export class PaperAutoExecutor {
           reason: `计划交易日期与本轮交易日期不一致（计划 ${plan.tradingDate}，本轮 ${tradingDate}），保持 Paper 观望并等待本交易日行情。`,
         });
         return this.finalizeRun(
+          timing,
           trigger,
           started,
           tradingDate,
@@ -1040,6 +1048,7 @@ export class PaperAutoExecutor {
       if (researchTimeBlocker) {
         skippedOperations.push(researchTimeBlocker);
         return this.finalizeRun(
+          timing,
           trigger,
           started,
           tradingDate,
@@ -1053,11 +1062,11 @@ export class PaperAutoExecutor {
       const policy = getIntradayExecutionPolicy(researchFinishedAt, plan.adaptiveRouting);
       const snapshot = this.options.system.market.getSnapshot();
       const marketAssessment = assessMarketSnapshot(snapshot);
-      const preparedOperations = this.preflightOperations(
+      const preparedOperations = timing.measureSync("executionMs", () => this.preflightOperations(
         plan,
         policy,
         skippedOperations,
-      );
+      ));
       const sourceStatus = resolveNotificationSourceStatus({
         marketRegime: marketRegimeResearch.sourceStatus,
         auxiliaryResearch: realResearchDataFeed.sourceStatus,
@@ -1111,68 +1120,68 @@ export class PaperAutoExecutor {
           }),
         },
       };
-      await this.options.planNotifier?.notify(plan, notificationContext);
+      if (this.options.planNotifier) await timing.measure("notificationMs", () => this.options.planNotifier!.notify(plan, notificationContext));
       assertExecutionContext();
 
       let executionTimeStopped = false;
-      for (const { operation, request } of (
-        this.options.enabled ? preparedOperations : []
-      )) {
-        assertExecutionContext();
-        // Notifications may wait on the network, and onOrder may change state
-        // between synchronous submissions. Check the real clock for every order.
-        const submissionTimeBlocker = executionTimeBlocker(this.now(), "逐笔提交前");
-        if (submissionTimeBlocker) {
-          skippedOperations.push(submissionTimeBlocker);
-          executionTimeStopped = true;
-          break;
-        }
-        const currentQuoteReason = this.tradingQuoteReason(operation.symbol);
-        if (currentQuoteReason) {
-          skippedOperations.push(paperAutoExecutionSkip(operation, currentQuoteReason));
-          continue;
-        }
-        const side = request.side;
-        const order = this.options.system.broker.submitOrder(request, {
-          strategy: operation.strategy,
-          strategyKey: paperOperationStrategyKey(operation) ?? undefined,
-        });
-        this.options.onOrder?.(order, request);
-        submittedOrders.push({
-          symbol: order.symbol,
-          side: order.side,
-          quantity: order.quantity,
-          clientOrderId: request.clientOrderId ?? "",
-          status: order.status,
-          orderId: order.id,
-          rejectionReason: order.rejectionReason,
-          strategy: operation.strategy,
-          strategyKey: paperOperationStrategyKey(operation),
-          reason: operation.reason,
-          ruleChecks: [...operation.ruleChecks],
-          estimatedNotional: operation.estimatedNotional,
-        });
-        this.options.system.store.appendAudit(
-          "system",
-          "paper-auto-execution.decision",
-          "paper auto execution decision recorded",
-          {
-            tradingDate: plan.tradingDate,
+      if (this.options.enabled) timing.measureSync("executionMs", () => {
+        for (const { operation, request } of preparedOperations) {
+          assertExecutionContext();
+          // Notifications may wait on the network, and onOrder may change state
+          // between synchronous submissions. Check the real clock for every order.
+          const submissionTimeBlocker = executionTimeBlocker(this.now(), "逐笔提交前");
+          if (submissionTimeBlocker) {
+            skippedOperations.push(submissionTimeBlocker);
+            executionTimeStopped = true;
+            break;
+          }
+          const currentQuoteReason = this.tradingQuoteReason(operation.symbol);
+          if (currentQuoteReason) {
+            skippedOperations.push(paperAutoExecutionSkip(operation, currentQuoteReason));
+            continue;
+          }
+          const side = request.side;
+          const order = this.options.system.broker.submitOrder(request, {
+            strategy: operation.strategy,
+            strategyKey: paperOperationStrategyKey(operation) ?? undefined,
+          });
+          this.options.onOrder?.(order, request);
+          submittedOrders.push({
+            symbol: order.symbol,
+            side: order.side,
+            quantity: order.quantity,
+            clientOrderId: request.clientOrderId ?? "",
+            status: order.status,
             orderId: order.id,
-            clientOrderId: request.clientOrderId,
-            symbol: operation.symbol,
-            side,
-            quantity: operation.quantity,
+            rejectionReason: order.rejectionReason,
             strategy: operation.strategy,
             strategyKey: paperOperationStrategyKey(operation),
             reason: operation.reason,
-            ruleChecks: operation.ruleChecks,
+            ruleChecks: [...operation.ruleChecks],
             estimatedNotional: operation.estimatedNotional,
-            status: order.status,
-            rejectionReason: order.rejectionReason,
-          },
-        );
-      }
+          });
+          this.options.system.store.appendAudit(
+            "system",
+            "paper-auto-execution.decision",
+            "paper auto execution decision recorded",
+            {
+              tradingDate: plan.tradingDate,
+              orderId: order.id,
+              clientOrderId: request.clientOrderId,
+              symbol: operation.symbol,
+              side,
+              quantity: operation.quantity,
+              strategy: operation.strategy,
+              strategyKey: paperOperationStrategyKey(operation),
+              reason: operation.reason,
+              ruleChecks: operation.ruleChecks,
+              estimatedNotional: operation.estimatedNotional,
+              status: order.status,
+              rejectionReason: order.rejectionReason,
+            },
+          );
+        }
+      });
 
       if (this.options.enabled && submittedOrders.length > 0) {
         const currentOrderIds = new Set(submittedOrders.map((order) => order.orderId));
@@ -1184,7 +1193,7 @@ export class PaperAutoExecutor {
         if (persistedOrders.length > 0) {
           const refreshedAccount = this.options.system.broker.getAccount();
           const refreshedPositions = this.options.system.broker.getPositions();
-          await this.options.planNotifier?.notifyOrderEvents(
+          if (this.options.planNotifier) await timing.measure("notificationMs", () => this.options.planNotifier!.notifyOrderEvents(
             plan,
             {
               ...notificationContext,
@@ -1210,11 +1219,12 @@ export class PaperAutoExecutor {
               },
             },
             persistedOrders,
-          );
+          ));
         }
       }
 
       return this.finalizeRun(
+        timing,
         trigger,
         started,
         tradingDate,
@@ -1240,6 +1250,7 @@ export class PaperAutoExecutor {
         reason: contextChanged ? detail : `paper auto execution input is temporarily unavailable: ${detail.slice(0, 240)}`,
       });
       return this.finalizeRun(
+        timing,
         trigger,
         started,
         tradingDate,
@@ -1387,6 +1398,7 @@ export class PaperAutoExecutor {
   }
 
   private finalizeRun(
+    timing: PaperExecutionTimer,
     trigger: PaperAutoExecutionTrigger,
     started: Date,
     tradingDate: string,
@@ -1403,6 +1415,7 @@ export class PaperAutoExecutor {
       trigger,
       startedAt: started.toISOString(),
       finishedAt: this.now().toISOString(),
+      timing: timing.snapshot(),
       tradingDate,
       session,
       phase: policy.phase,
@@ -1436,6 +1449,9 @@ export class PaperAutoExecutor {
       "paper auto execution run recorded",
       {
         id: run.id,
+        startedAt: run.startedAt,
+        finishedAt: run.finishedAt,
+        timing: run.timing ?? null,
         trigger: run.trigger,
         tradingDate: run.tradingDate,
         session: run.session,
