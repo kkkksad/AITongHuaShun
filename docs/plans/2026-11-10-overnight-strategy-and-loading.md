@@ -278,6 +278,18 @@ C的newPositionFunnel已进入run.strategyCoverage，但Python归档未保存，
 - [x] 新建server/backtest/backtestEngine.metricsPeriod.test.ts，以真实引擎验证2/5/252根计数、252根已知10%净值收益对应10%年化、首根费用及下行风险、零成交与重复运行；旧版六项全部复现失败。
 - [x] 最小实现为`const barCount = this.provider.length;`，shared/backtest.ts明确基线不计数、252根年化假设；目标六文件101项及所有既有回测/优化调用通过。
 - [x] 用固定真实12股×17策略×3窗×双成本1224次比较，剥离明确受影响的barCount/annualizedReturn/sharpeRatio/sortinoRatio/calmarRatio后经济报告严格相等；957组年化相关值改变，四单指标各72组排序保持。本机合成榜11项得分改变、16项最优参数/排名保持，不按收益方向筛选。
-- [ ] 运行完整server、TypeScript/Vite，更新专题/状态/决策，独立提交推送部署；实际镜像隔离测试、原账户及上一版本留存/HTTPS核验后记录完成。
+- [x] 运行完整server、TypeScript/Vite，更新专题/状态/决策，独立提交推送部署；实际镜像隔离测试、原账户及上一版本留存/HTTPS核验后记录完成。
 
 - U本地完整161服务端文件2444项及TS/Vite通过，前端/Python行为未改沿用T2前端384项/T1 Linux36项；当前指标修正不是收益或胜率提高证据。准备独立提交部署及原账户核验。
+
+- U已推送部署d800eb3，UTC22:13:50核验681归档文件/三健康/200与401/双域可信HTTPS/真实关闭，经济摘要和风险检查点保持。上一T2版679文件/三镜像/私有材料留存通过，实际生产镜像无网络/无生产挂载六文件101项通过。
+
+### 模块V：缩量回撤回测使用实际持仓（实施前合同）
+
+KairosQuietPullbackStrategy仍在发信号时修改inPosition/entryPrice，拒买后不再重试、拒卖/T+1可能丢失退出状态；逐根首股选择还混用历史。只修改server/backtest/strategies/KairosDefensiveStrategies.ts中的该类，参考已验证的低波趋势合同：绑定首个正价可交易股，以实际quantity/averagePrice/availableQuantity退出，拒单后重查。趋势/回撤/量比/RSI/反弹/止盈止损/暖机/权重保持；不是线上同名候选调参。
+
+- [x] 新建该类positions回归，以真实引擎复现拒买/费用重试、T+1/拒卖和滑点均价；覆盖已有仓/部分可卖整手/结构退出及股票换序/缺失/reset，旧版19项17失败。结构退出fixture更正健康前根预期后重跑旧版仍17失败。
+- [x] 最小修改该类，独立固定真实12股三窗双成本72组旧新完整报告保持，64组有成交、8组无成交、均无拒单；不按有利收益筛选，不放宽或拆分单笔限额。
+- [ ] 目标及完整server、TS/Vite、文档和新决策完成后独立提交推送部署；镜像隔离/原账户/上一发布和HTTPS核验。
+
+- V目标五文件123项、完整162后端2463项及TS/Vite通过；前端/Python未变沿用T2前端384项/T1 Linux36项。专项回归证明修复，冻结历史未复现同问题，不能称收益提升；准备独立提交发布。
