@@ -1,6 +1,11 @@
 const CHINA_TZ_OFFSET_MINUTES = 8 * 60;
 const CHINA_TZ_OFFSET_MS = CHINA_TZ_OFFSET_MINUTES * 60_000;
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MS = 86_400_000;
+const MAX_DATE_TIMESTAMP = 8_640_000_000_000_000;
+// Only an immutable calendar label is reused; account and market state are not cached.
+let cachedChinaDay = NaN;
+let cachedChinaDateKey = "";
 
 export const ASHARE_TRADING_CALENDAR_VERSION = "2026.10.04";
 export const ASHARE_TRADING_CALENDAR_SOURCE =
@@ -114,9 +119,16 @@ function dateKeyCoverage(date: string): boolean {
 
 export function getChinaDateKey(value: Date): string {
   assertValidDate(value);
-  return new Date(value.getTime() + CHINA_TZ_OFFSET_MS)
-    .toISOString()
-    .slice(0, 10);
+  const shiftedTime = value.getTime() + CHINA_TZ_OFFSET_MS;
+  const day = Math.floor(shiftedTime / DAY_MS);
+  // Even a valid Date can overflow when shifted, including within a cached day.
+  if (day === cachedChinaDay && Math.abs(shiftedTime) <= MAX_DATE_TIMESTAMP) {
+    return cachedChinaDateKey;
+  }
+  const key = new Date(shiftedTime).toISOString().slice(0, 10);
+  cachedChinaDay = day;
+  cachedChinaDateKey = key;
+  return key;
 }
 
 export function getChinaMinutes(value: Date): number {

@@ -4,6 +4,14 @@
 
 ## 索引
 
+- [0071：北京时间日期键单槽复用](0071-beijing-date-key-bounded-reuse.md)：缓存不可变日期标签，保留非法/溢出/回拨语义，不缓存账户和风险。
+- [0070：缩量回撤实际持仓](0070-quiet-pullback-actual-holdings.md)：拒单/T+1后重查实际持仓、成交均价和可卖整手，绑定单股。
+- [0069：回测实际回放期限](0069-backtest-replay-bar-period.md)：初始资金基准不作额外交易日，保留252根日线/年假设。
+- [0068：新标的漏斗归档](0068-new-position-funnel-archive.md)：Python/Node白名单及有界只读页面，旧记录未知、拟买不等于成交。
+- [0067：强势回踩实际持仓](0067-pullback-actual-holdings.md)：信号意图与真实回测持仓分离，退出按成交均价和可卖数量。
+- [0066：回测回调观察副本](0066-backtest-callback-observation-copies.md)：生命周期对象修改不污染引擎定量、估值和报告。
+- [0065：行业快照结构隔离](0065-sector-snapshot-structure-isolation.md)：坏行业响应不丢独立股票研究，有效部分保留，结构不代替来源时间。
+
 - [0064：历史提供者证据隔离](0064-historical-provider-evidence-isolation.md)：拥有输入副本，读出及事件不能污染历史；标量回放时钟避免复制报价。
 
 - [0063：低波趋势实际持仓](0063-low-vol-trend-actual-holdings.md)：绑定单股，拒单/T+1后读取实际仓位，以滑点后均价和可卖整手判断。

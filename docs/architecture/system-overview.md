@@ -1,5 +1,7 @@
 # 系统架构
 
+getChinaDateKey用单槽复用最近一次成功的UTC+8日期标签，午夜/回拨/非法及偏移溢出保持原语义，常量空间；账户/订单/报价和每日风控基线仍即时重算，见[0071](../decisions/0071-beijing-date-key-bounded-reuse.md)。
+
 KairosQuietPullbackStrategy历史回测绑定首个可交易正价股票，按实际持仓均价/可卖整手退出；拒单和T+1保留真实状态，线上同名候选实现独立。入场与退出阈值保持，见[0070](../decisions/0070-quiet-pullback-actual-holdings.md)。
 
 BacktestEngine指标的barCount使用实际回放N根，权益曲线保留初始基准加N点。年化期限按N/252，基准不作为额外交易日；首根费用仍进入收益/波动/回撤。该日线假设不提供不规则日历或日内年化，见[0069](../decisions/0069-backtest-replay-bar-period.md)。
