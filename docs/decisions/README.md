@@ -4,6 +4,10 @@
 
 ## 索引
 
+- [0077：波动收缩突破实际持仓](0077-contraction-breakout-actual-holdings.md)：历史区间和量价门槛保持，按实际均价/可卖整手退出。
+- [0076：量价突破实际持仓](0076-volume-price-breakout-actual-holdings.md)：拒单/T+1后重读，不混合股票历史，原放量/日内位置过滤保持。
+- [0075：质量低波实际持仓](0075-quality-low-vol-actual-holdings.md)：拒单后重新评估，原暖机/趋势效率/波动过滤保持，实际均价阈值差异完整记录。
+
 - [0074：洗盘恢复实际持仓](0074-washout-recovery-actual-holdings.md)：绑定单股，拒单/T+1后按实际均价与可卖整手评估，保留量比/趋势门槛。
 
 - [0073：合成榜闭合样本分母](0073-synthetic-leaderboard-closed-samples.md)：未平仓/空榜/旧坏样本未知，盈利/闭合分母与成交单数分开，不改评分或排序。

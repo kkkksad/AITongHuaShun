@@ -79,8 +79,7 @@ export class KairosVolatilityContractionBreakoutStrategy implements BacktestStra
   private readonly highs: number[] = [];
   private readonly lows: number[] = [];
   private readonly volumes: number[] = [];
-  private inPosition = false;
-  private entryPrice = 0;
+  private boundSymbol?: string;
 
   constructor(
     private readonly contractionPeriod = 20,
@@ -104,13 +103,15 @@ export class KairosVolatilityContractionBreakoutStrategy implements BacktestStra
     this.highs.length = 0;
     this.lows.length = 0;
     this.volumes.length = 0;
-    this.inPosition = false;
-    this.entryPrice = 0;
+    this.boundSymbol = undefined;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = firstTradableQuote(context);
+    const quote = this.boundSymbol === undefined
+      ? firstTradableQuote(context)
+      : context.snapshot.quotes.find((item) => item.symbol === this.boundSymbol && item.tradable && item.price > 0);
     if (!quote) return [];
+    this.boundSymbol ??= quote.symbol;
 
     const price = quote.price;
     this.prices.push(price);
@@ -129,8 +130,9 @@ export class KairosVolatilityContractionBreakoutStrategy implements BacktestStra
     const previousTrendMa = sma(this.prices.slice(0, -5), this.trendPeriod);
     if (!Number.isFinite(trendMa) || !Number.isFinite(previousTrendMa)) return [];
 
-    if (this.inPosition) {
-      const entryReturn = price / this.entryPrice - 1;
+    const position = context.positions.find((item) => item.symbol === quote.symbol);
+    if (position && position.quantity > 0) {
+      const entryReturn = position.averagePrice > 0 ? price / position.averagePrice - 1 : NaN;
       const exitMa = sma(this.prices, 10);
       const failedBreakout = Number.isFinite(exitMa) && price < exitMa;
       if (
@@ -139,13 +141,14 @@ export class KairosVolatilityContractionBreakoutStrategy implements BacktestStra
         failedBreakout ||
         trendMa < previousTrendMa
       ) {
-        this.inPosition = false;
-        this.entryPrice = 0;
+        const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+        const quantity = Math.floor(sellable / 100) * 100;
+        if (quantity <= 0) return [];
         return [{
           symbol: quote.symbol,
           side: "sell",
           type: "market",
-          targetWeight: 1,
+          quantity,
         }];
       }
       return [];
@@ -188,8 +191,6 @@ export class KairosVolatilityContractionBreakoutStrategy implements BacktestStra
       trendHealthy &&
       notOverheated
     ) {
-      this.inPosition = true;
-      this.entryPrice = price;
       return [{
         symbol: quote.symbol,
         side: "buy",
