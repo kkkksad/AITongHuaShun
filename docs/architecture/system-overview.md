@@ -243,6 +243,8 @@ AkShare 原生调用使用单工作线程串行化，避免其 JavaScript 运行
 
 ## 关键质量属性
 
+实时观察通道按[0058](../decisions/0058-websocket-client-transport-isolation.md)隔离单个客户端的send/ping/terminate异常，先清理注册表与心跳、再尽力终止，其他广播和行情/Broker回调继续。重复注册幂等，30秒心跳实际执行90秒无pong清理；服务端JSON编码错误仍显式抛出，不重试订单或提供事件重放。
+
 真实交易个股形态入口按[0056](../decisions/0056-stock-regime-history-evidence-boundary.md)先校验请求股票/实际来源/qfq、唯一日期/有效量价及完整日线时间上限，再运行61根门槛、形态与历史条件频率。构建时冻结报告/快照较早上限，Paper共享其asOf，缓存按已完成日线日期隔离；有效部分独立保留并显示排除警告。行业入口按[0057](../decisions/0057-sector-history-identity-and-time-boundary.md)增加本次采样行业的唯一名称/代码身份、实际来源与none复权校验，复用相同完整日线规则，冲突别名不以后写覆盖。
 
 长期Paper复盘采用[独立SQLite只读观察副本](../decisions/0025-read-only-sqlite-paper-history.md)：Python标准库任务每分钟读取JSON账本，使用持久账户世代隔离实验，订单365天、样本/运行摘要90天，受容量和进程资源限制。它不参与订单执行，不替代JSON主账本，也不保存任意原始审计data。安装与备份见[操作手册](../operations/paper-history.md)。

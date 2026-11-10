@@ -23,20 +23,25 @@ export class WebSocketHub {
   private readonly clients = new Map<ClientSocket, ClientEntry>();
 
   add(socket: ClientSocket): void {
-    const remove = () => {
-      const entry = this.clients.get(socket);
-      if (entry) {
-        clearInterval(entry.pingTimer);
-      }
-      this.clients.delete(socket);
-    };
+    if (this.clients.has(socket)) return;
+    const remove = () => this.remove(socket);
 
     socket.on("close", remove);
     socket.on("error", remove);
 
     const pingTimer = setInterval(() => {
+      const current = this.clients.get(socket);
+      if (!current) return;
+      if (Date.now() - current.lastPong >= HEARTBEAT_TIMEOUT_MS) {
+        this.discard(socket);
+        return;
+      }
       if (socket.readyState === OPEN_STATE) {
-        socket.ping();
+        try {
+          socket.ping();
+        } catch {
+          this.discard(socket);
+        }
       }
     }, HEARTBEAT_INTERVAL_MS);
 
@@ -61,7 +66,13 @@ export class WebSocketHub {
 
   send(socket: ClientSocket, event: TradingEvent): void {
     if (socket.readyState === OPEN_STATE) {
-      socket.send(JSON.stringify(event));
+      // Serialization failures are server errors; only isolate transport errors.
+      const payload = JSON.stringify(event);
+      try {
+        socket.send(payload);
+      } catch {
+        this.discard(socket);
+      }
     }
   }
 
@@ -75,9 +86,7 @@ export class WebSocketHub {
     let pruned = 0;
     for (const [socket, entry] of this.clients) {
       if (Date.now() - entry.lastPong >= HEARTBEAT_TIMEOUT_MS) {
-        clearInterval(entry.pingTimer);
-        socket.terminate();
-        this.clients.delete(socket);
+        this.discard(socket);
         pruned += 1;
       }
     }
@@ -86,5 +95,21 @@ export class WebSocketHub {
 
   get connectionCount(): number {
     return this.clients.size;
+  }
+
+  private remove(socket: ClientSocket): void {
+    const entry = this.clients.get(socket);
+    if (entry) clearInterval(entry.pingTimer);
+    this.clients.delete(socket);
+  }
+
+  private discard(socket: ClientSocket): void {
+    // Remove local state first: termination itself may throw or emit close.
+    this.remove(socket);
+    try {
+      socket.terminate();
+    } catch {
+      // A broken peer cannot interrupt the caller or another peer's cleanup.
+    }
   }
 }

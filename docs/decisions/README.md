@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0058：实时客户端故障隔离](0058-websocket-client-transport-isolation.md)：传输异常不打断交易回调和其他客户端，重复注册幂等，90秒无pong实际清理。
+
 - [0057：行业历史身份与时间](0057-sector-history-identity-and-time-boundary.md)：唯一请求行业、名称/代码一致、none复权及共享完整日线校验，冲突不覆盖。
 
 - [0056：个股形态历史入口](0056-stock-regime-history-evidence-boundary.md)：真实交易先校验来源、前复权、请求股票和完整日线，Paper缓存按日线完成日期隔离。

@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import type { FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OrderRecord } from "../../shared/trading";
 import { buildTradingApp } from "../app";
 import { createTradingSystem } from "../system";
@@ -62,6 +62,26 @@ describe("WebSocket order snapshots", () => {
     expect(messages.map((message) => message.type)).toEqual([
       "system.status", "market.snapshot", "account.snapshot", "positions.snapshot", "orders.snapshot",
     ]);
+  });
+
+  it.each(["market", "order"])("keeps %s processing and healthy clients working after a peer send fails", async trigger => {
+    const { app, system } = await createApp();
+    await connect(app);
+    const bad = app.websocketServer.clients.values().next().value!;
+    const healthy = await connect(app);
+    vi.spyOn(bad, "send").mockImplementation(() => { throw Error("controlled client transport failure"); });
+    const mark = vi.spyOn(system.broker, "markToMarket");
+    if (trigger === "market") {
+      expect(() => system.market.tick()).not.toThrow();
+      expect(mark).toHaveBeenCalled();
+    } else {
+      expect(() => system.broker.submitOrder({ symbol: "601318", side: "buy", type: "market", quantity: 100 })).not.toThrow();
+      expect(system.broker.getOrders()[0].status).toBe("filled");
+    }
+    await new Promise<void>(resolve => setImmediate(resolve));
+    const type = trigger === "market" ? "market.snapshot" : "order.updated";
+    expect(healthy.messages.filter(message => message.type === type).length).toBeGreaterThan(trigger === "market" ? 1 : 0);
+    expect((await app.inject({ method: "GET", url: "/api/health" })).statusCode).toBe(200);
   });
 
   it("sends the same newest 50 orders as the trading bootstrap REST request", async () => {
