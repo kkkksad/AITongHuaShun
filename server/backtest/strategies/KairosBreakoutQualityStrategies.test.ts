@@ -188,8 +188,11 @@ describe("KairosBreakoutQualityStrategies", () => {
       }));
     }
 
-    expect(signals(strategy, history).flat()).toEqual([
+    // This helper never supplies a filled position, so each eligible bar stays an entry intent.
+    const output = signals(strategy, history);
+    expect(output.slice(0, 15).every(signals => signals.length === 0)).toBe(true);
+    expect(output.slice(15)).toEqual(Array.from({ length: 7 }, () => [
       expect.objectContaining({ side: "buy", targetWeight: 0.18 }),
-    ]);
+    ]));
   });
 });

@@ -315,8 +315,7 @@ export class KairosVolumePriceBreakoutStrategy implements BacktestStrategy {
 export class KairosQualityLowVolTrendStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
-  private inPosition = false;
-  private entryPrice = 0;
+  private boundSymbol?: string;
 
   constructor(
     private readonly fastPeriod = 20,
@@ -335,13 +334,15 @@ export class KairosQualityLowVolTrendStrategy implements BacktestStrategy {
 
   reset(): void {
     this.prices.length = 0;
-    this.inPosition = false;
-    this.entryPrice = 0;
+    this.boundSymbol = undefined;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = firstTradableQuote(context);
+    const quote = this.boundSymbol === undefined
+      ? firstTradableQuote(context)
+      : context.snapshot.quotes.find((item) => item.symbol === this.boundSymbol && item.tradable && item.price > 0);
     if (!quote) return [];
+    this.boundSymbol ??= quote.symbol;
 
     const price = quote.price;
     this.prices.push(price);
@@ -359,8 +360,9 @@ export class KairosQualityLowVolTrendStrategy implements BacktestStrategy {
       return [];
     }
 
-    if (this.inPosition) {
-      const entryReturn = price / this.entryPrice - 1;
+    const position = context.positions.find((item) => item.symbol === quote.symbol);
+    if (position && position.quantity > 0) {
+      const entryReturn = position.averagePrice > 0 ? price / position.averagePrice - 1 : NaN;
       const structureFailed = price < fastMa * 0.97 || fastMa < previousFastMa;
       const volatilityFailed = volatility > this.maxDailyVolatility * 1.8;
       if (
@@ -369,13 +371,14 @@ export class KairosQualityLowVolTrendStrategy implements BacktestStrategy {
         structureFailed ||
         volatilityFailed
       ) {
-        this.inPosition = false;
-        this.entryPrice = 0;
+        const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+        const quantity = Math.floor(sellable / 100) * 100;
+        if (quantity <= 0) return [];
         return [{
           symbol: quote.symbol,
           side: "sell",
           type: "market",
-          targetWeight: 1,
+          quantity,
         }];
       }
       return [];
@@ -402,8 +405,6 @@ export class KairosQualityLowVolTrendStrategy implements BacktestStrategy {
       volatilityControlled &&
       notOverheated
     ) {
-      this.inPosition = true;
-      this.entryPrice = price;
       return [{
         symbol: quote.symbol,
         side: "buy",
