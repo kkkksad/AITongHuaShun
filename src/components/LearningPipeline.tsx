@@ -20,6 +20,7 @@ import {
   adaptivePostureLabel,
   adaptiveRegimeLabel,
 } from "../lib/adaptiveStrategyPresentation";
+import { formatResearchDataTime } from "../lib/researchQueryPresentation";
 import {
   fetchLearningState,
   fetchSelfOptimizationStatus,
@@ -91,7 +92,8 @@ export default function LearningPipeline() {
   const [weeklyPeriod, setWeeklyPeriod] = useState<WeeklyPaperReviewWindow>("previous");
 
   const weeklyPeriodLabel = weeklyPeriod === "previous" ? "上周" : "本周";
-  const leaderboardQuery = useQuery(strategyLeaderboardQueryOptions(120));
+  // This grid is an optional synthetic study; normal account/review reads do not need it.
+  const leaderboardQuery = useQuery({ ...strategyLeaderboardQueryOptions(120), enabled: false });
   const candidatesQuery = useQuery(dailyCandidatesQueryOptions(24));
   const learningStateQuery = useQuery({
     queryKey: ["learning-state"],
@@ -176,7 +178,7 @@ export default function LearningPipeline() {
       status: leaderboardQuery.data ? "done" : leaderboardQuery.isFetching ? "running" : "pending",
       detail: leaderboardQuery.data
         ? `门槛通过 ${leaderboardQuery.data.entries.filter((entry) => entry.qualityGate === "pass").length} / ${leaderboardQuery.data.entries.length}`
-        : leaderboardQuery.isError ? "榜单暂不可用" : "等待策略榜单",
+        : leaderboardQuery.isError ? "榜单暂不可用" : leaderboardQuery.isFetching ? "正在运行合成初筛" : "按需运行合成初筛",
     },
     {
       name: "Paper 成交观察",
@@ -900,7 +902,6 @@ export default function LearningPipeline() {
             aria-label="刷新研究管线"
             className="icon-button"
             disabled={
-              leaderboardQuery.isFetching ||
               candidatesQuery.isFetching ||
               learningStateQuery.isFetching ||
               paperPlanQuery.isFetching ||
@@ -909,7 +910,6 @@ export default function LearningPipeline() {
               selfOptimizationQuery.isFetching
             }
             onClick={() => {
-              void leaderboardQuery.refetch();
               void candidatesQuery.refetch();
               void learningStateQuery.refetch();
               void paperPlanQuery.refetch();
@@ -928,18 +928,37 @@ export default function LearningPipeline() {
             <span>/ 100</span>
           </div>
           <div>
-            <strong>{topStrategy?.strategyName ?? "等待策略排行榜"}</strong>
+            <strong>{topStrategy?.strategyName ?? "合成初筛尚未运行"}</strong>
             <p>
               {topStrategy
                 ? `合成样本胜率 ${(topStrategy.metrics.winRate * 100).toFixed(1)}% · ${topStrategy.metrics.totalTrades} 次模拟交易`
-                : "后端启动后自动拉取策略排行榜。"}
+                : "按需运行合成样本初筛；当前 Paper 计划与复盘独立加载。"}
             </p>
           </div>
         </div>
+        <button
+          type="button"
+          className="secondary-button"
+          aria-label="运行合成初筛"
+          disabled={leaderboardQuery.isFetching}
+          onClick={() => void leaderboardQuery.refetch()}
+        >
+          <RefreshCw size={16} className={leaderboardQuery.isFetching ? "spin" : undefined} />
+          {leaderboardQuery.isFetching ? "正在运行合成初筛…" : leaderboardQuery.data ? "重新运行合成初筛" : "运行合成初筛"}
+        </button>
+        {leaderboardQuery.data && <small>合成初筛缓存 · 上次更新 {formatResearchDataTime(leaderboardQuery.dataUpdatedAt)}</small>}
+        <ResearchQueryState
+          hasData={Boolean(leaderboardQuery.data)}
+          isLoading={leaderboardQuery.isLoading}
+          isError={leaderboardQuery.isError}
+          dataUpdatedAt={leaderboardQuery.dataUpdatedAt}
+          loadingText="正在计算合成初筛…"
+          unavailableText="合成初筛暂不可用，可单独重试；当前交易计划与复盘仍可使用。"
+        />
         <ul className="check-list">
           <li className={leaderboardQuery.data ? "done" : ""}>
             {leaderboardQuery.data ? <Check size={15} /> : <Clock3 size={15} />}
-            {leaderboardQuery.data ? "策略初筛榜单已更新" : "等待策略初筛榜单"}
+            {leaderboardQuery.data ? "策略初筛榜单已更新" : leaderboardQuery.isFetching ? "合成初筛计算中" : "合成初筛按需运行"}
           </li>
           <li className={candidatesQuery.data ? "done" : ""}>
             {candidatesQuery.data ? <Check size={15} /> : <Clock3 size={15} />}

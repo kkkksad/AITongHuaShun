@@ -1,5 +1,7 @@
 # 系统架构
 
+LearningPipeline对共享合成榜query使用enabled=false/显式refetch，普通进入/焦点/失效/核心刷新不触发网格，缓存保留并标时间；独立策略页规则不变。客户端取消不冒充服务器网格中止，不提高并发，见[0054](../decisions/0054-learning-pipeline-synthetic-research-on-demand.md)。
+
 Paper计划进入时复制asOf并只读一次有界审计快照，策略频次采用有限七日闭区间，防守延续要求实际北京时间日期/元数据一致且不晚于asOf、按实际毫秒择新。异步等待后不混入新证据，不改信号/额度，见[0053](../decisions/0053-paper-plan-audit-evidence-cutoff.md)。
 
 Paper计划在原初始金额计算上增加只读newPositionFunnel，分开双扫描去重/前12、持仓/新标的和最终买单；不增加历史请求或改变经济操作。诊断进入现有运行审计，本模块未接SQLite漏斗白名单，旧页面响应不造0，见[0052](../decisions/0052-new-position-candidate-funnel.md)。
