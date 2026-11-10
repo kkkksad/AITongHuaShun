@@ -16,6 +16,39 @@ const render = (state: PaperHistoryArchiveReport["state"], data: PaperHistoryEvi
   renderToStaticMarkup(createElement(PaperHistoryArchiveContent, { report: { state, data }, isFetching: false, onRefresh() {} }));
 
 describe("Paper archive evidence presentation", () => {
+  const run = { occurredAt: "2026-11-09T14:00:00Z", session: "open" as const, phase: null,
+    regime: null, planQuality: null, sourceStatus: null, submittedOrders: null, skippedOperations: null,
+    blockers: {}, issues: [] };
+  const funnel = { scope: "ranked-top-12" as const, scannerCandidateCount: 18, consideredCandidateCount: 12,
+    existingPositionCount: 4, newSymbolCount: 8, eligibleNewSymbolCount: 5,
+    individuallySizedNewSymbolCount: 2, plannedBuyCount: 1, allowNewPositions: false };
+  it("shows separate recorded new-symbol funnel counts and the global permission", () => {
+    const html = render("ready", { ...evidence, latestRuns: [{ ...run, newPositionFunnel: funnel }] });
+    expect(html).toContain("最近新增标的漏斗");
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const table = [...doc.querySelectorAll("table")].find(t => t.caption?.textContent?.includes("最近新增标的漏斗"))!;
+    expect([...table.querySelectorAll("tbody td")].slice(1).map(c => c.textContent))
+      .toEqual(["18", "12", "4", "8", "5", "2", "1", "不允许新增"]);
+    expect(html).toContain("拟买不是提交或成交");
+    expect(html).toContain("独立金额");
+  });
+  it("keeps old funnel evidence unknown and actual zero distinct from missing counts", () => {
+    const zero = Object.fromEntries(Object.entries(funnel).map(([key, value]) => [key, typeof value === "number" ? 0 : value]));
+    const html = render("stale", { ...evidence, latestRuns: [run, { ...run, newPositionFunnel: zero as typeof funnel }] });
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const table = [...doc.querySelectorAll("table")].find(t => t.caption?.textContent?.includes("最近新增标的漏斗"))!;
+    expect([...table.querySelectorAll("tbody tr")][0].textContent).toContain("未知");
+    expect([...table.querySelectorAll("tbody tr")][1].textContent).toContain("不允许新增");
+    expect([...table.querySelectorAll("tbody tr")][1].querySelectorAll("td")[1].textContent).toBe("0");
+    expect(html).toContain("归档已过期");
+  });
+  it("bounds funnel rows to twenty and hides prior-account funnel evidence", () => {
+    const data = { ...evidence, latestRuns: Array.from({ length: 21 }, () => ({ ...run, newPositionFunnel: funnel })) };
+    const html = render("ready", data), doc = new DOMParser().parseFromString(html, "text/html");
+    const table = [...doc.querySelectorAll("table")].find(t => t.caption?.textContent?.includes("最近新增标的漏斗"))!;
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(20);
+    expect(render("waiting-for-account", data)).not.toContain("最近新增标的漏斗");
+  });
   it("shows bounded recent run timings and keeps zero distinct from an unmeasured stage", () => {
     const html = render("ready", { ...evidence, latestRuns: [{ occurredAt: "2026-11-09T14:00:00Z", session: "open",
       phase: null, regime: null, planQuality: null, sourceStatus: null, submittedOrders: 0, skippedOperations: 1,

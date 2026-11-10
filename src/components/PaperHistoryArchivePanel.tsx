@@ -75,6 +75,20 @@ export function PaperHistoryArchiveContent({ report, isFetching, onRefresh }: {
           </table>
         </div>
         <p className="empty-copy">耗时按单调时钟记录，区别于两条记录间隔；总耗时不含最终运行审计写盘。研究可能命中缓存，准备/提交包含预检且不代表成交，通知耗时不代表发送成功。旧记录、未运行阶段或无效样本为未知；合并后的样本不代表完整分布。</p>
+        <div className="compare-ranking-table-wrapper paper-history-table-wrapper">
+          <table><caption>最近新增标的漏斗（最多20条保留记录）</caption>
+            <thead><tr><th>北京时间</th><th>扫描去重</th><th>前12考虑</th><th>已有持仓</th><th>新标的</th>
+              <th>策略资格</th><th>独立金额</th><th>最终拟买</th><th>全局新增许可</th></tr></thead>
+            <tbody>{data.latestRuns.slice(0, 20).map((run, index) => <tr key={`${run.occurredAt}-${index}`}>
+              <td>{timestamp(run.occurredAt)}</td><td>{run.newPositionFunnel?.scannerCandidateCount ?? "未知"}</td>
+              <td>{run.newPositionFunnel?.consideredCandidateCount ?? "未知"}</td><td>{run.newPositionFunnel?.existingPositionCount ?? "未知"}</td>
+              <td>{run.newPositionFunnel?.newSymbolCount ?? "未知"}</td><td>{run.newPositionFunnel?.eligibleNewSymbolCount ?? "未知"}</td>
+              <td>{run.newPositionFunnel?.individuallySizedNewSymbolCount ?? "未知"}</td><td>{run.newPositionFunnel?.plannedBuyCount ?? "未知"}</td>
+              <td>{run.newPositionFunnel ? run.newPositionFunnel.allowNewPositions ? "允许评估新增" : "不允许新增" : "未知"}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <p className="empty-copy">扫描去重后的本轮排序前12只，分开已有持仓与新标的；策略资格和独立金额只统计新标的。独立金额按初始预算逐只计算，不代表同批资金充足；拟买不是提交或成交，全局许可仍需逐笔风控。旧记录或无效漏斗为未知，未补造为零。</p>
       </>}
       <p className="empty-copy">采集周期约一分钟；只统计已持久化的运行记录，无变化轮次可能合并。规则次数可能重复涉及同一候选，并非拒单数；归档不是完整事件日志，不计算胜率或当前市值收益。</p>
     </>}
