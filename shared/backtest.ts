@@ -6,7 +6,7 @@ import type {
   PositionSnapshot,
 } from "./trading";
 
-/** 策略在每根K线上的上下文信息 */
+/** 策略生命周期的独立观察副本；修改字段不会修改引擎的估值、信号定量或报告。 */
 export interface StrategyContext {
   /** 当前行情快照 */
   snapshot: MarketSnapshot;

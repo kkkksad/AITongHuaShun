@@ -1,5 +1,7 @@
 # 系统架构
 
+BacktestEngine的onStart/onBar/onEnd统一接收独立可变观察副本，包含逐报价/持仓和账户tradingDayPerformance；引擎定量、估值和报告保持原对象。回调信号仍经Broker，不能把对象隔离当作策略安全沙箱，见[0066](../decisions/0066-backtest-callback-observation-copies.md)。
+
 行业快照在构建/分析两入口按unknown规范化，坏HTTP200正文/行业记录不能使独立股票历史研究丢失；可选坏字段保持null并警告，结构有效不证明来源时间新鲜。历史身份/日线和降级交易限制继续独立执行，见[0065](../decisions/0065-sector-snapshot-structure-isolation.md)。
 
 LearningPipeline对共享合成榜query使用enabled=false/显式refetch，普通进入/焦点/失效/核心刷新不触发网格，缓存保留并标时间；独立策略页规则不变。客户端取消不冒充服务器网格中止，不提高并发，见[0054](../decisions/0054-learning-pipeline-synthetic-research-on-demand.md)。

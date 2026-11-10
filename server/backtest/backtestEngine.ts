@@ -21,6 +21,17 @@ import { PaperBroker } from "../broker/paperBroker";
 import { RiskEngine } from "../risk/riskEngine";
 import { HistoricalDataProvider } from "./HistoricalDataProvider";
 
+function copyStrategyContext<T extends Omit<StrategyContext, "barIndex" | "totalBars">>(context: T): T {
+  return {
+    ...context,
+    snapshot: { ...context.snapshot, quotes: context.snapshot.quotes.map(quote => ({ ...quote })) },
+    account: { ...context.account, ...(context.account.tradingDayPerformance === undefined ? {} : {
+      tradingDayPerformance: { ...context.account.tradingDayPerformance },
+    }) },
+    positions: context.positions.map(position => ({ ...position })),
+  };
+}
+
 /**
  * 回测引擎 —— 按历史K线逐根回放，执行策略信号，计算绩效指标。
  *
@@ -127,13 +138,13 @@ export class BacktestEngine {
 
     // 回调策略 onStart
     if (this.strategy.onStart) {
-      this.strategy.onStart({
+      this.strategy.onStart(copyStrategyContext({
         snapshot: firstSnapshot,
         account: initialAccount,
         positions: this.store.getPositions(firstSnapshot),
         equity: initialAccount.equity,
         cash: initialAccount.cash,
-      });
+      }));
     }
 
     const totalBars = this.provider.length;
@@ -152,7 +163,7 @@ export class BacktestEngine {
       const positions = this.store.getPositions(snapshot);
 
       // 调用策略
-      const context: StrategyContext = {
+      const context: StrategyContext = copyStrategyContext({
         snapshot,
         account,
         positions,
@@ -160,7 +171,7 @@ export class BacktestEngine {
         cash: account.cash,
         barIndex: i,
         totalBars,
-      };
+      });
 
       let signals: StrategySignal[];
       try {
@@ -200,7 +211,7 @@ export class BacktestEngine {
     const finalPositions = this.store.getPositions(finalSnapshot);
 
     if (this.strategy.onEnd) {
-      this.strategy.onEnd({
+      this.strategy.onEnd(copyStrategyContext({
         snapshot: finalSnapshot,
         account: finalAccount,
         positions: finalPositions,
@@ -208,7 +219,7 @@ export class BacktestEngine {
         cash: finalAccount.cash,
         barIndex: totalBars - 1,
         totalBars,
-      });
+      }));
     }
 
     const metrics = this.computeMetrics(finalAccount);
