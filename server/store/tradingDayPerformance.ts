@@ -15,6 +15,13 @@ export function calculateTradingDayPerformance(input: {
   snapshot: MarketSnapshot;
 }): TradingDayPerformance {
   const date = getChinaDateKey(input.now);
+  // UTC+8 has no daylight-saving transition: one half-open day interval is
+  // equivalent to formatting every filled/source timestamp as a China date.
+  const dayMs = 86_400_000;
+  const chinaOffsetMs = 8 * 60 * 60 * 1_000;
+  const dayStart = Math.floor((input.now.getTime() + chinaOffsetMs) / dayMs) * dayMs - chinaOffsetMs;
+  const dayEnd = dayStart + dayMs;
+  const isToday = (timestamp: number): boolean => timestamp >= dayStart && timestamp < dayEnd;
   const unavailable = (): TradingDayPerformance => ({
     date, openingEquity: null, pnl: null, pnlPercent: null, baselineSource: "unavailable",
   });
@@ -25,8 +32,7 @@ export function calculateTradingDayPerformance(input: {
   };
   const started = input.auditEvents.find((event) =>
     event.action === "account.created" || event.action === "account.reset");
-  if (started && Number.isFinite(Date.parse(started.timestamp)) &&
-      getChinaDateKey(new Date(started.timestamp)) === date) {
+  if (started && isToday(Date.parse(started.timestamp))) {
     return result(input.startingEquity, "account-start");
   }
 
@@ -36,7 +42,7 @@ export function calculateTradingDayPerformance(input: {
     if (order.status !== "filled") continue;
     const timestamp = Date.parse(order.filledAt ?? order.updatedAt);
     if (!Number.isFinite(timestamp)) return unavailable();
-    if (getChinaDateKey(new Date(timestamp)) !== date) continue;
+    if (!isToday(timestamp)) continue;
     if (!Number.isFinite(order.notional) || order.notional < 0 ||
         !Number.isFinite(order.commission) || order.commission < 0 ||
         !Number.isInteger(order.filledQuantity) || order.filledQuantity <= 0) return unavailable();
@@ -56,8 +62,7 @@ export function calculateTradingDayPerformance(input: {
     if (quantity === 0) continue;
     const quote = quotes.get(symbol);
     if (!quote || !Number.isFinite(quote.previousClose) || quote.previousClose <= 0 ||
-        !Number.isFinite(Date.parse(quote.updatedAt)) ||
-        getChinaDateKey(new Date(quote.updatedAt)) !== date) return unavailable();
+        !isToday(Date.parse(quote.updatedAt))) return unavailable();
     openingEquity += quantity * quote.previousClose;
   }
   return result(openingEquity, "previous-close");

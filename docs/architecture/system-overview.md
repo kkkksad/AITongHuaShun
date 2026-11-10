@@ -88,6 +88,8 @@ FastAPI + AkShare :8800
 
 前后端共享 `shared/trading.ts` 中的行情、账户、持仓、订单、风险和实时事件契约。`AccountSnapshot.dailyPnl*` 是兼容旧客户端的历史字段名，存储语义是账户重置以来累计结果。日亏损风控使用独立`tradingDayPerformance`，双Store按总现金、完整当日成交、隔夜股数和当日来源昨收还原每日基线；缺失时明确返回null并限制新买单，见[决策0021](../decisions/0021-paper-trading-day-risk-baseline.md)。每日复盘同日复用此基线，旧快照/上一交易日兼容重建按含预约总现金和实际成交日期，避免挂单制造虚假盈亏。
 
+每日基线内部按[0062](../decisions/0062-trading-day-baseline-numeric-membership.md)生成一次北京时间半开日界，已解析成交/来源时间做数值归属判断，保留account-start/unknown和费用语义；不以账户或订单缓存替代即时重建。
+
 Paper核心行业/个股历史先于辅助外盘/新闻启动，核心12秒期限及辅助1.5至4秒期限分别降级；全局桥接并发上限保持，其他API和已在运行的后台任务不受此局部顺序保证。缓存和等待代价见[决策0027](../decisions/0027-core-research-before-auxiliary.md)。
 
 `server/market/dataQuality.ts` 是行情质量的唯一计算入口。它按请求股票池计算有效覆盖，使用整批报价低 10% 分位新鲜度避免单条最新报价掩盖陈旧批次，并把合法主板、创业板、科创板和北交所涨跌停与越界价格异常分开。`/api/market/quality` 只读取当前内存快照，不触发外部抓取；浏览器只在后端连接时轮询该接口。

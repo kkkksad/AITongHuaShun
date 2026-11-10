@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0062：每日基线数值日界](0062-trading-day-baseline-numeric-membership.md)：一次UTC+8日界替代逐成交日期格式化，账务与风控结果保持，不缓存账户。
+
 - [0061：布林带平价新仓边界](0061-bollinger-flat-entry-boundary.md)：完全平价或重合轨道不新买，原持仓退出纪律保持，真实微小变化不设任意门槛。
 
 - [0060：RSI平价窗口中性约定](0060-neutral-rsi-flat-windows.md)：保留Cutler最近窗口公式，涨跌均零取50，防止已有持仓被错误视为超买。
