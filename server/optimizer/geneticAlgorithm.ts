@@ -11,6 +11,8 @@
  * 7. 重复 2-6 直至达到最大代数
  */
 
+import { performance } from "node:perf_hooks";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import type { MarketSnapshot } from "../../shared/trading";
 import type { BacktestMetrics } from "../../shared/backtest";
 import { BacktestEngine } from "../backtest/backtestEngine";
@@ -23,6 +25,8 @@ import type {
   StrategyFactory,
 } from "./types";
 import { computeScore } from "./scoreUtils";
+
+const COMPUTE_SLICE_MS = 8;
 
 function randomValue(range: ParameterRange, rng: () => number): number {
   const raw = range.min + rng() * (range.max - range.min);
@@ -203,6 +207,7 @@ export async function geneticAlgorithm(
   const allTrials: Map<string, OptimizationTrial> = new Map();
   let trialIdCounter = 0;
   const convergenceCurve: { generation: number; bestScore: number; avgScore: number }[] = [];
+  let sliceStartedAt = performance.now();
 
   for (let gen = 0; gen < config.generations; gen++) {
     // Evaluate
@@ -216,6 +221,12 @@ export async function geneticAlgorithm(
         trialIdCounter++;
         await evaluateIndividual(individual, snapshots, factory, btCfg, config.objectives, trialIdCounter);
         if (individual.trial) allTrials.set(key, individual.trial);
+      }
+      // Resolved factory promises only yield to microtasks. Give timers and
+      // socket I/O a turn, including cached individuals and failed trials.
+      if (performance.now() - sliceStartedAt >= COMPUTE_SLICE_MS) {
+        await yieldToEventLoop();
+        sliceStartedAt = performance.now();
       }
     }
 
@@ -237,6 +248,10 @@ export async function geneticAlgorithm(
       mutate(c2, factory.parameters, config.mutationRate, rng);
       nextGen.push(c1);
       if (nextGen.length < config.populationSize) nextGen.push(c2);
+      if (performance.now() - sliceStartedAt >= COMPUTE_SLICE_MS) {
+        await yieldToEventLoop();
+        sliceStartedAt = performance.now();
+      }
     }
     population = nextGen;
   }
