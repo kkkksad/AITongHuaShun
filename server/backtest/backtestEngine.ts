@@ -91,7 +91,7 @@ export class BacktestEngine {
     this.store = new InMemoryTradingStore(
       this.config.initialCapital,
       false,
-      () => new Date(this.provider.getSnapshot().marketTime),
+      () => new Date(this.provider.marketTime),
     );
     this.risk = new RiskEngine(this.limits);
     this.broker = new PaperBroker(this.provider, this.store, this.risk, {
@@ -140,11 +140,7 @@ export class BacktestEngine {
 
     // 逐根回放
     for (let i = 0; i < totalBars; i++) {
-      if (i > 0) {
-        this.provider.tick();
-      }
-
-      const snapshot = this.provider.getSnapshot();
+      const snapshot = i > 0 ? this.provider.tick() : this.provider.getSnapshot();
 
       // 按 Broker 遍历挂单的实际顺序记录成交，再向策略提供撮合后的账户。
       const pendingOrders = this.store.getPendingOrders();

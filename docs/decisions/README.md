@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0064：历史提供者证据隔离](0064-historical-provider-evidence-isolation.md)：拥有输入副本，读出及事件不能污染历史；标量回放时钟避免复制报价。
+
 - [0063：低波趋势实际持仓](0063-low-vol-trend-actual-holdings.md)：绑定单股，拒单/T+1后读取实际仓位，以滑点后均价和可卖整手判断。
 
 - [0062：每日基线数值日界](0062-trading-day-baseline-numeric-membership.md)：一次UTC+8日界替代逐成交日期格式化，账务与风控结果保持，不缓存账户。

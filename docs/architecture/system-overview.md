@@ -163,6 +163,7 @@ Paper异步研究/通知绑定Store进程内执行控制修订；成功的暂停
 - `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都实现账户重置和策略档位持久化，但都不是未来数据库模型的替代品。
 - Store读取不缓存账户或持仓快照。空持仓直接返回空数组；非空持仓每次读取注入时钟，仅在精确毫秒相同时复用交易日格式化字符串，时间前进或回拨均重新计算，行情与账户值始终重新估值。
 - `BacktestEngine`每bar先撮合并按Broker实际顺序记录此前挂单的成交，再生成策略账户/持仓context；当前bar的批信号仍共享该context。返回的权益曲线、成交元素及配置与引擎隔离，同引擎再次run不能清空或改写旧报告；同bar成交价格、费用、T+1及初始权益点模型不变。
+- `HistoricalDataProvider`按[0064](../decisions/0064-historical-provider-evidence-isolation.md)拥有输入快照/报价副本，getSnapshot及tick/seek返回独立报价；有监听者时另复制事件payload，getQuote保持单报价副本。BacktestEngine取钟只读marketTime标量，避免复制价格。提供者隔离不代表当前策略context全部已沙箱化，新增嵌套报价字段须扩展复制合同。
 - 合成回测的`TurtleStrategy`首次tradable绑定到reset，缺失/不可交易等待，不混用其他股票的价格或估算高低；仅用当前价格之前完整N/M条观测构造入场/退出通道，比较时排除当前bar；当前行情契约未提供真实OHLC，仍沿用价格±1%的估算高低点，并保留含当前价格的均线过滤，不能解释为真实高低价海龟历史验证。信号读取绑定股实际模拟持仓/可卖整手，拒买不形成虚拟仓，T+1或拒卖后按持续突破/退出条件重查，两filter退出分支保持。
 - 回测`DCAStrategy`的止盈依据目标标的实际持仓、成交均价和T+1可卖整手量，不把买入信号累加为已成交持仓，也不在卖出意图时清账；拒绝/部分卖出后下bar重新核对。均价含滑点不含佣金，止盈阈值属于价格收益，买入尝试周期保持独立。
 - 回测`KairosLowVolTrendStrategy`按[0063](../decisions/0063-low-vol-trend-actual-holdings.md)首次有效报价绑定单股，缺失/不可交易等待；直接读取实际quantity/averagePrice/可卖整手，不以拒单/T+1后的信号意图翻转仓位，价格止盈止损包含买入滑点但不含佣金，趋势/波动退出保持。其他自定义策略的虚拟状态仍需逐类审计，在线同名Paper候选不是此回测类。

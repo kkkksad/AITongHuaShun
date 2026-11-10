@@ -2,6 +2,10 @@ import { EventEmitter } from "node:events";
 import type { MarketQuote, MarketSnapshot } from "../../shared/trading";
 import type { MarketDataProvider } from "../contracts/MarketDataProvider";
 
+function copySnapshot(snapshot: MarketSnapshot): MarketSnapshot {
+  return { ...snapshot, quotes: snapshot.quotes.map((quote) => ({ ...quote })) };
+}
+
 /**
  * 历史行情重放提供者 —— 实现 MarketDataProvider 契约，
  * 用于回测引擎按顺序重放历史行情快照。
@@ -26,7 +30,7 @@ export class HistoricalDataProvider
     if (snapshots.length === 0) {
       throw new Error("HistoricalDataProvider requires at least one snapshot.");
     }
-    this.snapshots = snapshots;
+    this.snapshots = snapshots.map(copySnapshot);
   }
 
   /** 重设到第一根 bar */
@@ -42,6 +46,11 @@ export class HistoricalDataProvider
   /** bar 总数 */
   get length(): number {
     return this.snapshots.length;
+  }
+
+  /** Scalar replay clock; reading time never needs to copy the quote payload. */
+  get marketTime(): string {
+    return this.currentSnapshot.marketTime;
   }
 
   /** 是否已经回放完所有 bar */
@@ -68,7 +77,7 @@ export class HistoricalDataProvider
   }
 
   getSnapshot(): MarketSnapshot {
-    return { ...this.currentSnapshot };
+    return copySnapshot(this.currentSnapshot);
   }
 
   tick(): MarketSnapshot {
@@ -97,7 +106,7 @@ export class HistoricalDataProvider
 
   private emitSnapshot(): MarketSnapshot {
     const snapshot = this.getSnapshot();
-    this.emit("snapshot", snapshot);
+    this.emit("snapshot", this.listenerCount("snapshot") > 0 ? copySnapshot(snapshot) : snapshot);
     return snapshot;
   }
 }
