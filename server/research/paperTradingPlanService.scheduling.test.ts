@@ -47,6 +47,36 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it("passes the frozen planning clock to core history research", async () => {
+    const request = input();
+    await buildCurrentPaperTradingPlan(request);
+    expect(builders.core.mock.calls[0][0].now).toEqual(request.now);
+  });
+
+  it.each([false, true])("isolates cached history across the completed daily close, backwards=%s", async backwards => {
+    const request = input();
+    const original = request.system.market.getSnapshot();
+    const times = ["2026-11-09T06:59:59Z", "2026-11-09T07:00:01Z"];
+    if (backwards) times.reverse();
+    const snapshot = vi.spyOn(request.system.market, "getSnapshot");
+    for (const marketTime of times) {
+      snapshot.mockReturnValue({ ...original, marketTime });
+      await buildCurrentPaperTradingPlan({ ...request, now: new Date(marketTime) });
+    }
+    expect(builders.core).toHaveBeenCalledTimes(2);
+  });
+
+  it("still shares core history within the same completed-day boundary despite quote ticks", async () => {
+    const request = input();
+    const original = request.system.market.getSnapshot();
+    const snapshot = vi.spyOn(request.system.market, "getSnapshot");
+    for (const marketTime of ["2026-11-09T06:59:56Z", "2026-11-09T06:59:58Z"]) {
+      snapshot.mockReturnValue({ ...original, marketTime });
+      await buildCurrentPaperTradingPlan({ ...request, now: new Date(marketTime) });
+    }
+    expect(builders.core).toHaveBeenCalledOnce();
+  });
+
   it("ignores defensive evidence after the supplied planning time", async () => {
     const request = input();
     vi.spyOn(request.system.store, "listAudit").mockReturnValue([{

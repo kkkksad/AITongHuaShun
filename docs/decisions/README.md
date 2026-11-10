@@ -4,6 +4,10 @@
 
 ## 索引
 
+- [0056：个股形态历史入口](0056-stock-regime-history-evidence-boundary.md)：真实交易先校验来源、前复权、请求股票和完整日线，Paper缓存按日线完成日期隔离。
+
+- [0055：遗传搜索协作调度](0055-genetic-search-cooperative-scheduling.md)：正常、失败和缓存个体以及繁殖循环按单调切片放行宏任务，经济输出保持。
+
 - [0054：合成初筛按需运行](0054-learning-pipeline-synthetic-research-on-demand.md)：研究管线进入与普通刷新不运行合成网格，保留缓存和显式研究。
 
 - [0053：Paper计划审计时点](0053-paper-plan-audit-evidence-cutoff.md)：未来/无效时间不参与策略轮换与降级防守，单轮共用进入时证据快照。

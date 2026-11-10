@@ -2,6 +2,7 @@ import type { MarketSnapshot, TradingMode } from "../../shared/trading";
 import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 import { isTechnologySector } from "./sectorPulse";
+import { validateStrategyHistory } from "./strategyHistoryEvidence";
 
 export interface HistoricalBar {
   date: string;
@@ -165,6 +166,7 @@ export interface MarketRegimeResearchReport {
 }
 
 export interface AnalyzeMarketRegimeInput {
+  asOf?: Date;
   mode: TradingMode;
   provider: string;
   days: number;
@@ -175,6 +177,7 @@ export interface AnalyzeMarketRegimeInput {
 }
 
 export interface BuildMarketRegimeResearchInput {
+  now?: Date;
   bridgeUrl: string;
   bridgeToken?: string;
   marketDataProvider: string;
@@ -614,6 +617,16 @@ function warningList(...warnings: Array<string | null | undefined>): string[] {
 export function analyzeMarketRegimeData(
   input: AnalyzeMarketRegimeInput,
 ): MarketRegimeResearchReport {
+  const asOf = new Date(input.asOf?.getTime() ?? Date.now());
+  if (!Number.isFinite(asOf.getTime())) throw new Error("Invalid market regime clock");
+  const days = Number.isFinite(input.days) ? Math.min(500, Math.max(1, Math.floor(input.days))) : 180;
+  const checkedStocks = input.stockHistory?.provider !== "akshare"
+    ? { series: [], warnings: ["历史证据校验：个股历史返回供应方不是AkShare，不用于真实形态。"] }
+    : !Array.isArray(input.stockHistory.series)
+      ? { series: [], warnings: ["历史证据校验：个股历史缺少有效序列列表，不用于真实形态。"] }
+      : validateStrategyHistory(input.stockHistory.series, {
+          asOf, requestedSymbols: new Set(input.stockNames.keys()), maxBars: days,
+        });
   const historyByName = new Map(
     input.sectorHistory.series.map((series) => [series.name || series.symbol, series]),
   );
@@ -636,7 +649,7 @@ export function analyzeMarketRegimeData(
     unclear: 2,
     "insufficient-data": 1,
   };
-  const stockRegimes = input.stockHistory.series
+  const stockRegimes = checkedStocks.series
     .map((series) =>
       classifyStockRegime(
         series.symbol,
@@ -653,7 +666,8 @@ export function analyzeMarketRegimeData(
   const warnings = warningList(
     input.sectorResponse.warning,
     input.sectorHistory.warning,
-    input.stockHistory.warning,
+    input.stockHistory?.warning,
+    ...checkedStocks.warnings,
   );
   if (sectorOutlooks.length === 0) warnings.push("没有板块具备至少 61 根有效日线。");
   const usableStockCount = stockRegimes.filter(
@@ -666,20 +680,20 @@ export function analyzeMarketRegimeData(
       : "degraded";
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt: asOf.toISOString(),
     mode: input.mode,
     provider: input.provider,
     sourceStatus,
     source: {
       sectorSource: input.sectorResponse.source,
       sectorHistorySource: input.sectorHistory.source,
-      stockHistorySource: input.stockHistory.source,
+      stockHistorySource: [...new Set(checkedStocks.series.map(series => series.source))].sort().join(" + ") || "unavailable",
       fetchedAt:
-        input.stockHistory.fetchedAt ||
+        input.stockHistory?.fetchedAt ||
         input.sectorHistory.fetchedAt ||
         input.sectorResponse.fetchedAt ||
         null,
-      days: input.days,
+      days,
       sectorAdjustment: "none",
       stockAdjustment: "qfq",
       sectorCount: sectorOutlooks.length,
@@ -730,6 +744,7 @@ function emptyBridgeResponses(): {
 function unavailableReport(input: BuildMarketRegimeResearchInput): MarketRegimeResearchReport {
   const empty = emptyBridgeResponses();
   const report = analyzeMarketRegimeData({
+    asOf: input.now,
     mode: input.mode,
     provider: input.marketDataProvider,
     days: input.days,
@@ -824,7 +839,16 @@ function failedHistory(source: string, warning: string): HistoricalBarsResponse 
 export async function buildMarketRegimeResearch(
   input: BuildMarketRegimeResearchInput,
 ): Promise<MarketRegimeResearchReport> {
-  if (input.marketDataProvider !== "akshare") return unavailableReport(input);
+  const now = new Date(input.now?.getTime() ?? Date.now());
+  if (!Number.isFinite(now.getTime())) throw new Error("Invalid market regime clock");
+  const frozenInput = { ...input, now };
+  if (input.marketDataProvider !== "akshare") return unavailableReport(frozenInput);
+  const snapshotTime = Date.parse(input.snapshot.marketTime);
+  const cutoff = Math.min(now.getTime(), snapshotTime);
+  if (!Number.isFinite(cutoff) || snapshotTime > now.getTime() + 5_000) {
+    return buildUnavailableMarketRegimeResearch(frozenInput,
+      "历史证据校验：行情快照时间无效或明显晚于报告时点，不使用未来股票池。");
+  }
 
   const fetchImpl = input.fetchImpl ?? fetch;
   const baseUrl = trimTrailingSlash(input.bridgeUrl);
@@ -908,7 +932,8 @@ export async function buildMarketRegimeResearch(
           `股票历史日线暂不可用: ${bridgeErrorMessage(stockHistoryResult.reason)}`,
         );
 
-  return analyzeMarketRegimeData({
+  const report = analyzeMarketRegimeData({
+    asOf: new Date(cutoff),
     mode: input.mode,
     provider: input.marketDataProvider,
     days: input.days,
@@ -917,4 +942,5 @@ export async function buildMarketRegimeResearch(
     stockHistory,
     stockNames,
   });
+  return { ...report, generatedAt: now.toISOString() };
 }

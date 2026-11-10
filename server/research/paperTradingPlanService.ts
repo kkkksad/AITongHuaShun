@@ -197,6 +197,7 @@ export function buildPaperResearchCacheKey(input: {
   criticalHistoryStockLimit: number;
   preferredHistoricalStocks: Array<{ symbol: string; name: string }>;
   positionSymbols: string[];
+  historyCutoffDay?: string;
 }): string {
   // Market sequence changes on every quote tick; the TTL is the research
   // freshness boundary, so volatile snapshots must not defeat deduplication.
@@ -206,6 +207,7 @@ export function buildPaperResearchCacheKey(input: {
     input.bridgeUrl,
     input.leaderboardBars,
     input.criticalHistoryStockLimit,
+    input.historyCutoffDay ?? "unspecified",
     [...input.preferredHistoricalStocks]
       .map((stock) => stock.symbol)
       .sort()
@@ -222,6 +224,7 @@ export function resolveAuxiliaryResearchTimeoutMs(baseTimeoutMs: number): number
 }
 
 async function buildPaperResearchContext(input: {
+  asOf: Date;
   system: TradingSystem;
   config: ServerConfig;
   snapshot: ReturnType<TradingSystem["market"]["getSnapshot"]>;
@@ -230,6 +233,13 @@ async function buildPaperResearchContext(input: {
   leaderboardBars: number;
   criticalHistoryStockLimit: number;
 }): Promise<PaperResearchContext> {
+  const snapshotTime = Date.parse(input.snapshot.marketTime);
+  const cutoff = Math.min(input.asOf.getTime(), snapshotTime);
+  // A-share daily candles complete at 07:00 UTC. Keep the TTL shared across
+  // quote ticks, but never reuse a history context across that evidence boundary.
+  const historyCutoffDay = Number.isFinite(cutoff) && snapshotTime <= input.asOf.getTime() + 5_000
+    ? new Date(cutoff - 7 * 60 * 60_000).toISOString().slice(0, 10)
+    : "invalid";
   return getPaperResearchCache(input.system).getOrCreate(
     buildPaperResearchCacheKey({
       provider: input.system.marketDataProvider,
@@ -239,6 +249,7 @@ async function buildPaperResearchContext(input: {
       criticalHistoryStockLimit: input.criticalHistoryStockLimit,
       preferredHistoricalStocks: input.preferredHistoricalStocks,
       positionSymbols: input.positions.map((position) => position.symbol),
+      historyCutoffDay,
     }),
     (value) => value.marketRegimeResearch.sourceStatus === "degraded"
       ? PAPER_DEGRADED_RESEARCH_CACHE_TTL_MS
@@ -259,6 +270,7 @@ async function buildPaperResearchContext(input: {
             )),
         withResearchDeadline({
           task: buildMarketRegimeResearch({
+            now: input.asOf,
             bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
             bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
             marketDataProvider: input.system.marketDataProvider,
@@ -273,6 +285,7 @@ async function buildPaperResearchContext(input: {
           timeoutMs: PAPER_CORE_RESEARCH_TIMEOUT_MS,
           fallback: (reason) => buildUnavailableMarketRegimeResearch(
             {
+              now: input.asOf,
               bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
               bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
               marketDataProvider: input.system.marketDataProvider,
@@ -387,6 +400,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     limit: criticalHistoryStockLimit,
   });
   const researchContext = await buildPaperResearchContext({
+    asOf,
     system: input.system,
     config: input.config,
     snapshot,
