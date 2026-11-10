@@ -77,6 +77,32 @@ function feed(strategy: RSIStrategy, prices: number[], positions: PositionSnapsh
 }
 
 describe("RSIStrategy actual holdings", () => {
+  it("keeps a real position through unchanged prices without inventing an overbought exit", () => {
+    const { engine, signals } = createRun(
+      new RSIStrategy(2, 30, 70, 0.5), snapshots([12, 11, 10, 10, 10, 10]),
+    );
+    const report = engine.run();
+    expect(signals.slice(3)).toEqual([[], [], []]);
+    expect(report.trades.map(({ barIndex, side, quantity }) => [barIndex, side, quantity]))
+      .toEqual([[2, "buy", 500]]);
+    expect(report.finalPositions).toMatchObject([{ quantity: 500, availableQuantity: 500 }]);
+    expect(report.finalAccount.cash).toBe(4_995);
+    expect(report.metrics.totalCommission).toBe(5);
+  });
+
+  it("still exits the actual position when a genuine rise follows the neutral flat window", () => {
+    const { engine, signals } = createRun(
+      new RSIStrategy(2, 30, 70, 0.5), snapshots([12, 11, 10, 10, 10, 10, 11, 12]),
+    );
+    const report = engine.run();
+    expect(signals.slice(3, 6)).toEqual([[], [], []]);
+    expect(report.trades.map(({ barIndex, side, quantity }) => [barIndex, side, quantity]))
+      .toEqual([[2, "buy", 500], [6, "sell", 500]]);
+    expect(report.finalPositions).toEqual([]);
+    expect(report.finalAccount.cash).toBe(10_490);
+    expect(report.metrics.totalCommission).toBe(10);
+  });
+
   it("retries an oversold buy after a fee rejection when the next price makes it affordable", () => {
     const { engine, contexts, signals } = createRun(
       new RSIStrategy(2, 30, 70, 1),

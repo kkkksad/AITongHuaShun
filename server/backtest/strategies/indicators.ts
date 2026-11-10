@@ -36,13 +36,14 @@ export function ema(prices: number[], period: number): number {
  *  RSI (相对强弱指标)
  *  ------------------------------------------------------------------ */
 
+/** Cutler RSI: simple average gains/losses in the latest period; flat windows are neutral. */
 export function rsi(prices: number[], period: number): number {
   if (prices.length < period + 1 || period <= 0) return NaN;
 
   let avgGain = 0;
   let avgLoss = 0;
 
-  // 初始 Wilder 平均
+  // 最近 period 个涨跌的简单平均（不使用 Wilder 递推）。
   for (let i = prices.length - period; i < prices.length; i++) {
     const change = prices[i] - prices[i - 1];
     if (change > 0) avgGain += change;
@@ -51,7 +52,7 @@ export function rsi(prices: number[], period: number): number {
   avgGain /= period;
   avgLoss /= period;
 
-  if (avgLoss === 0) return 100;
+  if (avgLoss === 0) return avgGain === 0 ? 50 : 100;
   const rs = avgGain / avgLoss;
   return 100 - 100 / (1 + rs);
 }

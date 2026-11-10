@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0060：RSI平价窗口中性约定](0060-neutral-rsi-flat-windows.md)：保留Cutler最近窗口公式，涨跌均零取50，防止已有持仓被错误视为超买。
+
 - [0059：MACD增量回测状态](0059-incremental-macd-backtest-state.md)：逐根EMA保持数学/交易结果一致，移除全前缀重算，整体榜单未证明显著提速。
 
 - [0058：实时客户端故障隔离](0058-websocket-client-transport-isolation.md)：传输异常不打断交易回调和其他客户端，重复注册幂等，90秒无pong实际清理。
