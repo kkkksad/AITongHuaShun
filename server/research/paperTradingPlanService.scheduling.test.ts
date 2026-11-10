@@ -6,6 +6,7 @@ import { buildUnavailableMarketRegimeResearch } from "./marketRegimeResearch";
 import { buildUnavailableRealResearchDataFeed } from "./realResearchData";
 import { buildUnavailableExternalMarketImpact } from "./externalMarketImpact";
 import { buildUnavailableStrategyLeaderboard } from "./strategyLeaderboard";
+import { InMemoryResearchStore } from "./researchStore";
 
 const builders = vi.hoisted(() => ({ core: vi.fn(), news: vi.fn(), external: vi.fn(), leaderboard: vi.fn() }));
 vi.mock("./marketRegimeResearch", async (original) => ({
@@ -46,6 +47,47 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it("does not start synthetic optimization for real-history plans even if the builder would hang", async () => {
+    builders.leaderboard.mockImplementation(() => new Promise(() => {}));
+    let result: Awaited<ReturnType<typeof buildCurrentPaperTradingPlan>> | undefined;
+    const request = buildCurrentPaperTradingPlan(input()).then(value => { result = value; });
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(result).toBeDefined();
+    expect(builders.leaderboard).not.toHaveBeenCalled();
+    expect(builders.core).toHaveBeenCalledOnce();
+    expect(builders.news).toHaveBeenCalledOnce();
+    expect(result?.leaderboard).toMatchObject({ evaluationStatus: "not-requested", entries: [] });
+    expect(result?.leaderboard.guardrails.join(" ")).toContain("独立");
+    expect(result?.leaderboard.guardrails.join(" ")).not.toContain("没有可交易行情");
+    await request;
+  });
+
+  it("does not record a synthetic research run when only real-history planning was requested", async () => {
+    const researchStore = new InMemoryResearchStore();
+    const record = vi.spyOn(researchStore, "recordStrategyLeaderboard");
+    const result = await buildCurrentPaperTradingPlan({ ...input(), researchStore });
+    expect(result.leaderboard.entries).toEqual([]);
+    expect(record).not.toHaveBeenCalled();
+    expect(builders.leaderboard).not.toHaveBeenCalled();
+  });
+
+  it("preserves synthetic research and its history for the mock demonstration", async () => {
+    const request = input();
+    request.system.marketDataProvider = "mock";
+    const researchStore = new InMemoryResearchStore();
+    const record = vi.spyOn(researchStore, "recordStrategyLeaderboard");
+    const pending = deferred<ReturnType<typeof buildUnavailableStrategyLeaderboard>>();
+    builders.leaderboard.mockReturnValueOnce(pending.promise);
+    let settled = false;
+    const result = buildCurrentPaperTradingPlan({ ...request, researchStore }).then(value => { settled = true; return value; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    expect(builders.leaderboard).toHaveBeenCalledOnce();
+    const report = buildUnavailableStrategyLeaderboard(request.system.market.getSnapshot(), "mock");
+    pending.resolve(report);
+    expect((await result).leaderboard).toBe(report);
+    expect(record).toHaveBeenCalledWith(report);
+  });
   it.each(["profile", "strategy-ABA", "pause-resume", "same-money-reset"])(
     "discards read-only plans when %s changes while shared research is pending", async (change) => {
       const request = input();

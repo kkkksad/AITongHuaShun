@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import LearningPipeline from "./LearningPipeline";
 
-function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing", execution?: { fillPrice: number; notional: number; commission: number; cashRequired: number; equityAfterFill: number } | null) {
+function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing", execution?: { fillPrice: number; notional: number; commission: number; cashRequired: number; equityAfterFill: number } | null, legacyRouting = false) {
   const client = new QueryClient();
   client.setQueryData(["paper-trading-plan"], {
     tradingDate: "2026-11-05", provider: "mock",
@@ -22,7 +22,7 @@ function renderCoverage(coverageMode?: "snapshot-fallback" | "adaptive-routing",
     adaptiveRouting: coverageMode === "adaptive-routing" ? {
       newPositionScale: 1, regime: "trend-up-low-volatility", confidence: 0.7,
       positionPosture: "accumulate", cashReserveRatio: 0, evidence: [],
-      strategyPlaybook: { useWhen: "样本", avoidWhen: "样本" },
+      strategyPlaybook: { useWhen: "样本", avoidWhen: "样本", primaryStrategyKeys: legacyRouting ? undefined : ["rsi"] },
       eligibleStrategyKeys: [], allowNewPositions: true,
     } : null,
     qualitySummary: {
@@ -64,6 +64,12 @@ describe("LearningPipeline strategy coverage explanation", () => {
     const html = renderCoverage("adaptive-routing");
     expect(html).toContain("当前无匹配候选");
     expect(html).toContain("未匹配 4 个");
+    expect(html).toContain("当前参考策略 RSI");
+    expect(html).not.toContain("当前策略 资金盾牌");
+  });
+
+  it("keeps old routing reports readable when their primary strategy list is missing", () => {
+    expect(renderCoverage("adaptive-routing", undefined, true)).toContain("等待路由确认");
   });
 
   it("infers snapshot fallback for legacy auto reports without the optional field", () => {

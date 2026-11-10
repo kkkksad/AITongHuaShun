@@ -276,6 +276,7 @@ function qualityStocks(
 }
 
 function build(input: {
+  leaderboard?: StrategyLeaderboardReport;
   positions?: PositionSnapshot[];
   adaptiveRouting?: AdaptiveStrategyRouting;
   research?: MarketRegimeResearchReport;
@@ -296,7 +297,7 @@ function build(input: {
     account: account(input.cash),
     positions: input.positions ?? [],
     orders: input.orders ?? [],
-    leaderboard: leaderboard(),
+    leaderboard: input.leaderboard ?? leaderboard(),
     candidates: candidates(),
     qualityStocks: qualityStocks(
       input.includeCandidate,
@@ -321,6 +322,23 @@ function build(input: {
 }
 
 describe("adaptive paper trading plan", () => {
+  it.each(["buy", "sell", "blocked"])("keeps %s decisions identical when the synthetic leaderboard is absent or reordered", (scenario) => {
+    const request: Parameters<typeof build>[0] = scenario === "buy"
+      ? { cash: 10_000, includeCandidate: true, research: marketRegime("healthy-trend", 0.8, "601988") }
+      : { positions: [position()], research: marketRegime("trend-deterioration", 0.8),
+          adaptiveRouting: routing({ regime: "risk-off", positionPosture: "reduce", allowNewPositions: false }) };
+    if (scenario === "blocked") request.positions = [];
+    const original = build(request);
+    const economic = (plan: ReturnType<typeof build>) => ({
+      capitalPlan: plan.capitalPlan,
+      qualitySummary: plan.qualitySummary,
+      operations: plan.operations.map(({ strategy: _label, ...operation }) => operation),
+    });
+    if (scenario === "buy") expect(original.operations.some(item => item.action === "paper-buy-plan")).toBe(true);
+    if (scenario === "sell") expect(original.operations.some(item => item.action === "paper-sell-plan")).toBe(true);
+    expect(economic(build({ ...request, leaderboard: { entries: [] } as unknown as StrategyLeaderboardReport }))).toEqual(economic(original));
+    expect(economic(build({ ...request, leaderboard: { ...leaderboard(), entries: [...leaderboard().entries].reverse() } }))).toEqual(economic(original));
+  });
   it("reduces half of an available position when real history shows deterioration", () => {
     const plan = build({
       positions: [position()],

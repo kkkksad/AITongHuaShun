@@ -1,5 +1,7 @@
 # 系统架构
 
+真实行情Paper计划直接使用真实历史路由，不运行或等待合成参数榜；兼容研究说明标记not-requested、不记作完成研究。独立排行榜和Mock演示保持，页面在轻量候选完成后独立加载计划，见[0050](../decisions/0050-real-paper-plans-independent-of-synthetic-ranking.md)。
+
 桥接historyScheduler.timing只读提供历史limiter最近/本进程最大排队和工作区间，单调毫秒、缺样本null。工作含fetcher内executor等待与SDK网络，排除后续normalize/HTTP/策略；无新任务或列表，原并发不变，见[0049](../decisions/0049-history-queue-and-work-timing.md)。
 
 历史缓存冷读通过asyncio.shield共享Task，单个等待者取消/超时只退出本次等待，原读取及调度预算保持至完成，失败可重试；来源时间/缓存TTL不变。主HTTP批次原本不主动取消子任务，显式clear和底层线程取消仍按原行为，精确边界见[0048](../decisions/0048-history-shared-task-cancellation.md)。

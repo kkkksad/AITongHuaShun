@@ -28,7 +28,7 @@ import {
   buildUnavailableRealResearchDataFeed,
 } from "./realResearchData";
 import type { RealResearchDataFeed } from "./realResearchData";
-import { buildUnavailableStrategyLeaderboard } from "./strategyLeaderboard";
+import { buildUnavailableStrategyLeaderboard, buildUnrequestedStrategyLeaderboard } from "./strategyLeaderboard";
 import { buildCachedStrategyLeaderboard } from "./strategyLeaderboardService";
 import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 import type { InMemoryResearchStore } from "./researchStore";
@@ -231,16 +231,18 @@ async function buildPaperResearchContext(input: {
       : PAPER_RESEARCH_CACHE_TTL_MS,
     async () => {
       const coreResearch = Promise.all([
-        buildCachedStrategyLeaderboard({
-          system: input.system,
-          snapshot: input.snapshot,
-          bars: input.leaderboardBars,
-        }).catch((error) => buildUnavailableStrategyLeaderboard(
-          input.snapshot,
-          input.system.marketDataProvider,
-          input.leaderboardBars,
-          error instanceof Error ? error.message : "策略研究暂时不可用",
-        )),
+        input.system.marketDataProvider === "akshare"
+          ? buildUnrequestedStrategyLeaderboard(input.snapshot, input.system.marketDataProvider, input.leaderboardBars)
+          : buildCachedStrategyLeaderboard({
+              system: input.system,
+              snapshot: input.snapshot,
+              bars: input.leaderboardBars,
+            }).catch((error) => buildUnavailableStrategyLeaderboard(
+              input.snapshot,
+              input.system.marketDataProvider,
+              input.leaderboardBars,
+              error instanceof Error ? error.message : "策略研究暂时不可用",
+            )),
         withResearchDeadline({
           task: buildMarketRegimeResearch({
             bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
@@ -398,7 +400,9 @@ export async function buildCurrentPaperTradingPlan(input: {
   });
 
   input.researchStore?.recordMarketSnapshot(snapshot, input.system.marketDataProvider);
-  input.researchStore?.recordStrategyLeaderboard(leaderboard);
+  if (leaderboard.evaluationStatus !== "not-requested") {
+    input.researchStore?.recordStrategyLeaderboard(leaderboard);
+  }
   input.researchStore?.recordDailyCandidates(candidates);
   input.researchStore?.recordDailyQualityStocks(qualityStocks);
 

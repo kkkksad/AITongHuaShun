@@ -31,6 +31,8 @@ export interface StrategyLeaderboardEntry {
 
 export interface StrategyLeaderboardReport {
   generatedAt: string;
+  /** Legacy reports omit this field. A skipped study is not a failed study. */
+  evaluationStatus?: "completed" | "unavailable" | "not-requested";
   /** 随机种子，保证排行榜可复现 */
   seed: number;
   source: {
@@ -487,6 +489,7 @@ export async function buildStrategyLeaderboard(
 
   return {
     generatedAt: new Date().toISOString(),
+    evaluationStatus: "completed",
     seed,
     source: {
       provider: marketDataProvider,
@@ -538,6 +541,7 @@ export function buildUnavailableStrategyLeaderboard(
   );
   return {
     generatedAt: new Date().toISOString(),
+    evaluationStatus: "unavailable",
     seed,
     source: {
       provider: marketDataProvider,
@@ -564,5 +568,28 @@ export function buildUnavailableStrategyLeaderboard(
       "真实订单执行保持关闭，任何券商接入必须经过独立审批和风控网关。",
     ],
     entries: [],
+  };
+}
+
+/** Preserve the response shape without running synthetic optimization in the real-history path. */
+export function buildUnrequestedStrategyLeaderboard(
+  snapshot: MarketSnapshot,
+  marketDataProvider: string,
+  bars = 90,
+): StrategyLeaderboardReport {
+  const report = buildUnavailableStrategyLeaderboard(snapshot, marketDataProvider, bars);
+  return {
+    ...report,
+    evaluationStatus: "not-requested",
+    dataQuality: {
+      ...report.dataQuality,
+      summary: "本次真实历史交易计划未运行合成参数研究；可通过独立策略排行榜查看。",
+    },
+    guardrails: [
+      "本次计划使用真实历史形态与市场状态路由，未运行合成参数排名。",
+      "合成参数排行榜保留独立研究入口，不决定本次买卖资格、数量或费用。",
+      "未运行研究不代表没有行情、没有交易机会或策略失效。",
+      "真实订单执行保持关闭，当前仅为本地模拟交易。",
+    ],
   };
 }

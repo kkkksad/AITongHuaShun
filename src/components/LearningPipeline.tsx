@@ -99,8 +99,9 @@ export default function LearningPipeline() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   });
-  const researchFoundationReady =
-    leaderboardQuery.isFetched && candidatesQuery.isFetched;
+  // Stagger the heavy plan after the lightweight scanner, independently of
+  // synthetic optimization. Real-history planning does not use that study.
+  const researchFoundationReady = candidatesQuery.isFetched;
   const paperPlanQuery = useQuery({
     ...paperTradingPlanQueryOptions(),
     enabled: researchFoundationReady,
@@ -750,7 +751,8 @@ export default function LearningPipeline() {
                 </div>
               </dl>
               <small>
-                当前策略 {paperPlan.topStrategy?.strategyName ?? "资金盾牌"} · 允许策略{" "}
+                当前参考策略 {paperPlan.topStrategy?.strategyName ??
+                  ((paperPlan.adaptiveRouting.strategyPlaybook.primaryStrategyKeys ?? []).map(adaptiveStrategyLabel).join("、") || "等待路由确认")} · 允许策略{" "}
                 {paperPlan.adaptiveRouting.eligibleStrategyKeys.length} 个 ·
                 {paperPlan.adaptiveRouting.allowNewPositions ? " 可新增 paper 仓位" : " 停止新增仓位"}
               </small>

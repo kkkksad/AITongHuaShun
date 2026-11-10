@@ -1209,7 +1209,7 @@ export async function buildTradingApp(
       tags: ["研究"],
       summary: "获取今日纸面交易计划",
       description:
-        "基于当前行情快照、策略排行榜、今日候选和账户状态生成本地 paper 操作计划。结果只用于模拟观察，不会连接真实券商。",
+        "基于行情快照、今日候选和账户状态生成本地 paper 计划；真实行情使用真实历史路由，Mock使用合成研究。不会连接真实券商。",
     },
   }, async () => {
     const { plan } = await buildCurrentPaperTradingPlan({

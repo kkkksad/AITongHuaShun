@@ -3,7 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildDailyMarketReview } from "../../server/research/dailyMarketReview";
-import { fetchDailyMarketReview, fetchPaperTradingPlan, fetchStrategyLeaderboard } from "../lib/tradingApi";
+import { fetchDailyCandidates, fetchDailyMarketReview, fetchPaperTradingPlan, fetchStrategyLeaderboard } from "../lib/tradingApi";
+import { buildDailyCandidates } from "../../server/research/dailyCandidates";
 import LearningPipeline from "./LearningPipeline";
 
 vi.mock("../lib/tradingApi", async (importOriginal) => ({
@@ -40,6 +41,7 @@ describe("daily review independent loading", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.mocked(fetchDailyMarketReview).mockReset();
+    vi.mocked(fetchDailyCandidates).mockReset().mockImplementation(() => new Promise(() => {}));
     vi.mocked(fetchPaperTradingPlan).mockClear();
     vi.mocked(fetchStrategyLeaderboard).mockReset().mockImplementation(() => new Promise(() => {}));
     container = document.createElement("div");
@@ -69,6 +71,19 @@ describe("daily review independent loading", () => {
     expect(client.getQueryState(["strategy-leaderboard", 120])?.status).toBe("pending");
     expect(client.getQueryState(["daily-candidates", 24])?.status).toBe("pending");
     expect(fetchPaperTradingPlan).not.toHaveBeenCalled();
+  });
+
+  it("starts the paper plan after candidate loading even while the synthetic leaderboard remains pending", async () => {
+    const candidates = buildDailyCandidates({
+      mode: "paper", sequence: 1, marketTime: "2026-11-10T08:00:00Z", quotes: [],
+    }, "akshare", 24);
+    vi.mocked(fetchDailyCandidates).mockResolvedValue({
+      ...candidates, source: { ...candidates.source, provider: "akshare" },
+    });
+    vi.mocked(fetchDailyMarketReview).mockResolvedValue(review());
+    await render();
+    expect(client.getQueryState(["strategy-leaderboard", 120])?.status).toBe("pending");
+    expect(fetchPaperTradingPlan).toHaveBeenCalledWith(expect.any(AbortSignal));
   });
 
   it("shows the daily request's own failure when strategy research has failed or is still pending", async () => {

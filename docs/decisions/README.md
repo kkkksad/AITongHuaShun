@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0050：真实行情Paper计划不等待合成参数榜](0050-real-paper-plans-independent-of-synthetic-ranking.md)
+
 - [0049：历史调度的排队与工作耗时](0049-history-queue-and-work-timing.md)
 
 - [0048：历史共享读取与调用方取消隔离](0048-history-shared-task-cancellation.md)
