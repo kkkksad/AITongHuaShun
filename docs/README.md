@@ -7,6 +7,8 @@
 | 主题 | 文档 | 回答的问题 |
 | --- | --- | --- |
 | 当前状态 | [status/current-state.md](status/current-state.md) | 现在实际有哪些文件，哪些能力可运行？ |
+| 11月11日夜间交付 | [research/2026-11-11-overnight-delivery.md](research/2026-11-11-overnight-delivery.md) | 最新上线的策略、性能、诊断与资金保留结果，以及仍未实现的事项？ |
+| 最终固定策略复核 | [research/2026-11-11-final-fixed-strategy-review.md](research/2026-11-11-final-fixed-strategy-review.md) | 修复后代码的1224次固定真实历史实验与费用后闭合分母？ |
 | 当前历史覆盖研究 | [research/2026-11-11-adaptive-coverage-and-bank-concentration.md](research/2026-11-11-adaptive-coverage-and-bank-concentration.md) | 模糊形态为何覆盖不足，银行相关性和固定策略的费用后证据如何？ |
 | 11月10日夜间交付 | [research/2026-11-10-overnight-delivery.md](research/2026-11-10-overnight-delivery.md) | 本轮实际上线了什么、为什么仍需盘中验证、哪些仍未实现？ |
 | 产品范围 | [product/overview.md](product/overview.md) | 产品要解决什么问题，包含和不包含什么？ |
