@@ -23,6 +23,30 @@ function validCandle(bar: HistoricalBar): boolean {
     (bar.amount === null || finite(bar.amount) && bar.amount >= 0);
 }
 
+/** Shared complete A-share daily observations; no symbol or strategy permission. */
+export function validateCompletedDailyBars(input: HistoricalBar[], options: Pick<StrategyHistoryOptions, "asOf" | "maxBars">) {
+  const cutoff = options.asOf.getTime();
+  if (!Number.isFinite(cutoff)) throw new Error("历史证据校验缺少有效时间上限");
+  if (!Array.isArray(input)) throw new Error("历史证据校验缺少日线列表");
+  const maxBars = Math.min(500, Math.max(1, Math.floor(options.maxBars ?? 500)));
+  const dateCounts = new Map<string, number>();
+  for (const bar of input) {
+    if (bar && civilDate(bar.date)) dateCounts.set(bar.date, (dateCounts.get(bar.date) ?? 0) + 1);
+  }
+  const bars: HistoricalBar[] = [];
+  let invalidBars = 0, futureBars = 0, duplicateBars = 0;
+  for (const bar of input) {
+    if (!bar || !civilDate(bar.date)) { invalidBars += 1; continue; }
+    if (dateCounts.get(bar.date) !== 1) { duplicateBars += 1; continue; }
+    if (!validCandle(bar)) { invalidBars += 1; continue; }
+    if (Date.parse(`${bar.date}T15:00:00+08:00`) > cutoff) { futureBars += 1; continue; }
+    bars.push({ ...bar });
+  }
+  bars.sort((left, right) => left.date.localeCompare(right.date));
+  return { bars: bars.slice(-maxBars), invalidBars, futureBars, duplicateBars,
+    trimmedBars: Math.max(0, bars.length - maxBars) };
+}
+
 export function validateStrategyHistory(seriesList: HistoricalSeries[], options: StrategyHistoryOptions) {
   const cutoff = options.asOf.getTime();
   if (!Number.isFinite(cutoff)) throw new Error("历史证据校验缺少有效时间上限");
@@ -48,21 +72,12 @@ export function validateStrategyHistory(seriesList: HistoricalSeries[], options:
       excludedSeries += 1;
       continue;
     }
-    const dateCounts = new Map<string, number>();
-    for (const bar of item.bars) {
-      if (bar && civilDate(bar.date)) dateCounts.set(bar.date, (dateCounts.get(bar.date) ?? 0) + 1);
-    }
-    const bars: HistoricalBar[] = [];
-    for (const bar of item.bars) {
-      if (!bar || !civilDate(bar.date)) { invalidBars += 1; continue; }
-      if (dateCounts.get(bar.date) !== 1) { duplicateBars += 1; continue; }
-      if (!validCandle(bar)) { invalidBars += 1; continue; }
-      if (Date.parse(`${bar.date}T15:00:00+08:00`) > cutoff) { futureBars += 1; continue; }
-      bars.push({ ...bar });
-    }
-    bars.sort((left, right) => left.date.localeCompare(right.date));
-    trimmedBars += Math.max(0, bars.length - maxBars);
-    series.push({ ...item, source: item.source.trim(), bars: bars.slice(-maxBars) });
+    const checked = validateCompletedDailyBars(item.bars, { asOf: options.asOf, maxBars });
+    invalidBars += checked.invalidBars;
+    futureBars += checked.futureBars;
+    duplicateBars += checked.duplicateBars;
+    trimmedBars += checked.trimmedBars;
+    series.push({ ...item, source: item.source.trim(), bars: checked.bars });
   }
   const removed = excludedSeries + invalidBars + futureBars + duplicateBars + trimmedBars;
   return {

@@ -3,6 +3,7 @@ import { bridgeErrorMessage, fetchBridgeJson } from "./bridgeRequest";
 import { historyBridgeTimeoutMs } from "./historyRequestPolicy";
 import { isTechnologySector } from "./sectorPulse";
 import { validateStrategyHistory } from "./strategyHistoryEvidence";
+import { validateSectorHistory } from "./sectorHistoryEvidence";
 
 export interface HistoricalBar {
   date: string;
@@ -174,6 +175,7 @@ export interface AnalyzeMarketRegimeInput {
   sectorHistory: HistoricalBarsResponse;
   stockHistory: HistoricalBarsResponse;
   stockNames: Map<string, string>;
+  requestedSectors?: SectorSnapshot[];
 }
 
 export interface BuildMarketRegimeResearchInput {
@@ -627,15 +629,16 @@ export function analyzeMarketRegimeData(
       : validateStrategyHistory(input.stockHistory.series, {
           asOf, requestedSymbols: new Set(input.stockNames.keys()), maxBars: days,
         });
-  const historyByName = new Map(
-    input.sectorHistory.series.map((series) => [series.name || series.symbol, series]),
-  );
-  for (const series of input.sectorHistory.series) {
-    historyByName.set(series.symbol, series);
-  }
-  const sectorOutlooks = input.sectorResponse.sectors
+  const requestedSectors = input.requestedSectors ?? input.sectorResponse.sectors;
+  const checkedSectors = input.sectorHistory?.provider !== "akshare"
+    ? { series: [], warnings: ["行业历史证据校验：返回供应方不是AkShare，不用于真实市场路由。"] }
+    : !Array.isArray(input.sectorHistory.series)
+      ? { series: [], warnings: ["行业历史证据校验：缺少有效序列列表，不用于真实市场路由。"] }
+      : validateSectorHistory(input.sectorHistory.series, { asOf, requestedSectors, maxBars: days });
+  const historyBySymbol = new Map(checkedSectors.series.map(series => [series.symbol, series]));
+  const sectorOutlooks = requestedSectors
     .flatMap((sector) => {
-      const series = historyByName.get(sector.name) ?? historyByName.get(sector.symbol);
+      const series = historyBySymbol.get(sector.symbol);
       if (!series || series.bars.length <= MINIMUM_BARS) return [];
       return [scoreSectorOutlook(sector, series.bars)];
     })
@@ -665,9 +668,10 @@ export function analyzeMarketRegimeData(
 
   const warnings = warningList(
     input.sectorResponse.warning,
-    input.sectorHistory.warning,
+    input.sectorHistory?.warning,
     input.stockHistory?.warning,
     ...checkedStocks.warnings,
+    ...checkedSectors.warnings,
   );
   if (sectorOutlooks.length === 0) warnings.push("没有板块具备至少 61 根有效日线。");
   const usableStockCount = stockRegimes.filter(
@@ -686,11 +690,11 @@ export function analyzeMarketRegimeData(
     sourceStatus,
     source: {
       sectorSource: input.sectorResponse.source,
-      sectorHistorySource: input.sectorHistory.source,
+      sectorHistorySource: [...new Set(checkedSectors.series.map(series => series.source))].sort().join(" + ") || "unavailable",
       stockHistorySource: [...new Set(checkedStocks.series.map(series => series.source))].sort().join(" + ") || "unavailable",
       fetchedAt:
         input.stockHistory?.fetchedAt ||
-        input.sectorHistory.fetchedAt ||
+        input.sectorHistory?.fetchedAt ||
         input.sectorResponse.fetchedAt ||
         null,
       days,
@@ -871,8 +875,8 @@ export async function buildMarketRegimeResearch(
     };
   }
 
-  const sectorNames = selectSectorUniverse(sectorResponse.sectors, input.sectorLimit)
-    .map((sector) => sector.name);
+  const requestedSectors = selectSectorUniverse(sectorResponse.sectors, input.sectorLimit);
+  const sectorNames = requestedSectors.map((sector) => sector.name);
   const stockLimit = Math.max(1, Math.min(input.stockLimit, 12));
   const preferredStocks = (input.preferredStocks ?? [])
     .filter((stock) => /^\d{6}$/.test(stock.symbol))
@@ -941,6 +945,7 @@ export async function buildMarketRegimeResearch(
     sectorHistory,
     stockHistory,
     stockNames,
+    requestedSectors,
   });
   return { ...report, generatedAt: now.toISOString() };
 }

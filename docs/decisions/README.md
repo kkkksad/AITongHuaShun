@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0057：行业历史身份与时间](0057-sector-history-identity-and-time-boundary.md)：唯一请求行业、名称/代码一致、none复权及共享完整日线校验，冲突不覆盖。
+
 - [0056：个股形态历史入口](0056-stock-regime-history-evidence-boundary.md)：真实交易先校验来源、前复权、请求股票和完整日线，Paper缓存按日线完成日期隔离。
 
 - [0055：遗传搜索协作调度](0055-genetic-search-cooperative-scheduling.md)：正常、失败和缓存个体以及繁殖循环按单调切片放行宏任务，经济输出保持。
