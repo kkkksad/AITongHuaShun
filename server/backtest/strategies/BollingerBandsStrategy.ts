@@ -56,8 +56,9 @@ export class BollingerBandsStrategy implements BacktestStrategy {
     const position = context.positions.find((item) => item.symbol === quote.symbol);
     const inPosition = (position?.quantity ?? 0) > 0;
 
-    // 触及下轨买入
-    if (!inPosition && price <= bb.lower) {
+    // 无真实价格区间时，下轨等号不是超卖；已有仓位的退出仍独立判断。
+    const hasPriceRange = this.prices.slice(-this.period).some((value) => value !== price);
+    if (!inPosition && hasPriceRange && bb.upper > bb.lower && price <= bb.lower) {
       return [
         {
           symbol: quote.symbol,

@@ -67,6 +67,38 @@ function feed(strategy: BollingerBandsStrategy, prices: number[], positions: Pos
 }
 
 describe("BollingerBandsStrategy actual holdings", () => {
+  it("does not churn a real account on a fully unchanged price series", () => {
+    const { engine, signals } = createRun(new BollingerBandsStrategy(3, 1, 0.5), snapshots(Array(12).fill(10)));
+    const report = engine.run();
+    expect(signals.every((output) => output.length === 0)).toBe(true);
+    expect(report.orders).toEqual([]);
+    expect(report.trades).toEqual([]);
+    expect(report.finalPositions).toEqual([]);
+    expect(report.finalAccount.cash).toBe(10_000);
+    expect(report.metrics.totalCommission).toBe(0);
+  });
+
+  it.each([0.1, 10.1, 10.01])("does not treat decimal rounding as a range at price %s", (price) => {
+    const output = feed(new BollingerBandsStrategy(20, 0.5), Array(25).fill(price));
+    expect(output.every((signals) => signals.length === 0)).toBe(true);
+  });
+
+  it("keeps the existing-position middle-band exit available in a flat window", () => {
+    expect(feed(new BollingerBandsStrategy(3, 1), [10, 10, 10], [position()])[2])
+      .toEqual([{ symbol, side: "sell", type: "market", quantity: 300 }]);
+  });
+
+  it("can enter again when genuine variation resumes after a flat window", () => {
+    const output = feed(new BollingerBandsStrategy(3, 1, 0.42), [10, 10, 10, 9]);
+    expect(output.slice(0, 3)).toEqual([[], [], []]);
+    expect(output[3]).toEqual([{ symbol, side: "buy", type: "market", targetWeight: 0.42 }]);
+  });
+
+  it("preserves a real small range without an arbitrary minimum-volatility cutoff", () => {
+    expect(feed(new BollingerBandsStrategy(2, 1, 0.42), [10 + 1e-8, 10])[1])
+      .toEqual([{ symbol, side: "buy", type: "market", targetWeight: 0.42 }]);
+  });
+
   it("retries a lower-band buy after a fee rejection when the next price becomes affordable", () => {
     const { engine, contexts, signals } = createRun(
       new BollingerBandsStrategy(3, 1, 1),
@@ -205,12 +237,10 @@ describe("BollingerBandsStrategy actual holdings", () => {
   });
 
   it("keeps the period warmup, lower-band equality and middle-band equality", () => {
-    const flat = snapshots([10, 10, 10]);
-    const strategy = new BollingerBandsStrategy(3, 1, 0.42);
-    expect(flat.map((market, index) => strategy.onBar(context(market, index))))
-      .toEqual([[], [], [{ symbol, side: "buy", type: "market", targetWeight: 0.42 }]]);
-    strategy.reset();
-    expect(feed(strategy, [9, 11, 10], [position()]))
+    const strategy = new BollingerBandsStrategy(2, 1, 0.42);
+    expect(feed(strategy, [11, 9]))
+      .toEqual([[], [{ symbol, side: "buy", type: "market", targetWeight: 0.42 }]]);
+    expect(feed(new BollingerBandsStrategy(3, 1, 0.42), [9, 11, 10], [position()]))
       .toEqual([[], [], [{ symbol, side: "sell", type: "market", quantity: 300 }]]);
   });
 
