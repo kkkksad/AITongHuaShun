@@ -47,6 +47,61 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it("ignores defensive evidence after the supplied planning time", async () => {
+    const request = input();
+    vi.spyOn(request.system.store, "listAudit").mockReturnValue([{
+      id: "future", category: "system", timestamp: "2026-11-09T02:00:00.001Z",
+      action: "paper-auto-execution.run", message: "fixture", data: {
+        tradingDate: "2026-11-09", session: "open", sourceStatus: "live-read-only", regime: "risk-off",
+      },
+    }]);
+    const result = await buildCurrentPaperTradingPlan(request);
+    expect(result.adaptiveRouting.regime).toBe("unclear");
+    expect(result.adaptiveRouting.stability.status).toBe("direct");
+  });
+
+  it("captures a single default cutoff before asynchronous research advances the clock", async () => {
+    const request = input();
+    vi.spyOn(request.system.store, "listAudit").mockReturnValue([{
+      id: "future", category: "system", timestamp: "2026-11-09T02:00:00.500Z",
+      action: "paper-auto-execution.run", message: "fixture", data: {
+        tradingDate: "2026-11-09", session: "open", sourceStatus: "live-read-only", regime: "risk-off",
+      },
+    }]);
+    builders.core.mockImplementationOnce(async value => {
+      vi.setSystemTime(new Date(date.getTime() + 1000));
+      return buildUnavailableMarketRegimeResearch(value, "fixture");
+    });
+    const result = await buildCurrentPaperTradingPlan({ system: request.system, config: request.config });
+    expect(result.adaptiveRouting.regime).toBe("unclear");
+  });
+
+  it("rejects an invalid planning clock before starting external research", async () => {
+    const request = input();
+    await expect(buildCurrentPaperTradingPlan({ ...request, now: new Date(NaN) }))
+      .rejects.toThrow("Invalid Paper plan clock");
+    expect(builders.core).not.toHaveBeenCalled();
+    expect(builders.news).not.toHaveBeenCalled();
+    expect(request.system.broker.getOrders()).toEqual([]);
+  });
+
+  it("shares the entry audit snapshot across routing and usage instead of rereading after research", async () => {
+    const request = input();
+    const read = vi.spyOn(request.system.store, "listAudit").mockReturnValue([]);
+    builders.core.mockImplementationOnce(async value => {
+      read.mockReturnValue([{
+        id: "late-import", category: "system", timestamp: "2026-11-09T01:59:59Z",
+        action: "paper-auto-execution.run", message: "fixture", data: {
+          tradingDate: "2026-11-09", session: "open", sourceStatus: "live-read-only", regime: "risk-off",
+        },
+      }]);
+      return buildUnavailableMarketRegimeResearch(value, "fixture");
+    });
+    const result = await buildCurrentPaperTradingPlan(request);
+    expect(result.adaptiveRouting.regime).toBe("unclear");
+    expect(read).toHaveBeenCalledOnce();
+  });
+
   it("does not start synthetic optimization for real-history plans even if the builder would hang", async () => {
     builders.leaderboard.mockImplementation(() => new Promise(() => {}));
     let result: Awaited<ReturnType<typeof buildCurrentPaperTradingPlan>> | undefined;

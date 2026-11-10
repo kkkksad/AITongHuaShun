@@ -1,5 +1,7 @@
 # 系统架构
 
+Paper计划进入时复制asOf并只读一次有界审计快照，策略频次采用有限七日闭区间，防守延续要求实际北京时间日期/元数据一致且不晚于asOf、按实际毫秒择新。异步等待后不混入新证据，不改信号/额度，见[0053](../decisions/0053-paper-plan-audit-evidence-cutoff.md)。
+
 Paper计划在原初始金额计算上增加只读newPositionFunnel，分开双扫描去重/前12、持仓/新标的和最终买单；不增加历史请求或改变经济操作。诊断进入现有运行审计，本模块未接SQLite漏斗白名单，旧页面响应不造0，见[0052](../decisions/0052-new-position-candidate-funnel.md)。
 
 Paper执行器每轮记录单调总耗时及研究/通知/订单准备提交三个阶段，未运行为null、错误任务仍保留耗时；最终运行审计写盘不在总耗时内。SQLite/有界摘要/Node解码沿固定字段传递，页面最多显示20条，旧或无效样本未知。合并签名不含耗时，不能用持久记录推断所有运行的P95，见[0051](../decisions/0051-paper-run-monotonic-stage-timing.md)。

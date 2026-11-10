@@ -4,7 +4,7 @@
 
 ## 当前事实与缺口
 
-主系统只有一个A股Paper账户：PAPER-CN-01，当前本金与现金20000元。两个Store固定该身份，OrderRequest/OrderRecord/PositionSnapshot没有账户或市场路由；TradingSystem也只组装一套Store/Broker/Risk。JSON账户身份已按[0046](../decisions/0046-single-account-paper-ledger-binding.md)严格检查。这些事实不能解释为已经支持多个账户。
+主系统只有一个A股Paper账户：PAPER-CN-01，本金20000元；设计时空仓现金20000元是历史状态，11月10日收盘后为现金11722元、四持仓四成交单，当前资金以原账本为准。两个Store固定该身份，OrderRequest/OrderRecord/PositionSnapshot没有账户或市场路由；TradingSystem也只组装一套Store/Broker/Risk。JSON账户身份已按[0046](../decisions/0046-single-account-paper-ledger-binding.md)严格检查。这些事实不能解释为已经支持多个账户。
 
 当前主账本是单进程JSON，不具备跨进程锁或数据库事务。既有SQLite是[只读长期归档](../operations/paper-history.md)，其有界摘要供网站读取；它不能完整捕捉两次轮询之间的所有事件，也不能用来重建任意历史账户或替代主账本。
 

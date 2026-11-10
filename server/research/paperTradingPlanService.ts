@@ -112,17 +112,28 @@ export function buildPreferredHistoricalStocks(input: {
 export function findLatestConfirmedRestrictiveRouting(
   audits: AuditEvent[],
   tradingDate: string,
+  asOf = new Date(),
 ): ConfirmedRestrictiveRouting | null {
-  const event = audits
-    .filter((audit) => (
+  const cutoff = asOf.getTime();
+  if (!Number.isFinite(cutoff)) return null;
+  let event: AuditEvent | null = null;
+  let latestTime = -Infinity;
+  for (const audit of audits) {
+    const time = Date.parse(audit.timestamp);
+    if (
+      Number.isFinite(time) && time <= cutoff && time > latestTime &&
       audit.action === "paper-auto-execution.run" &&
       audit.data?.tradingDate === tradingDate &&
+      resolveChinaTradingDate(new Date(time)) === tradingDate &&
       audit.data?.session === "open" &&
       audit.data?.sourceStatus === "live-read-only" &&
       (audit.data?.regime === "risk-off" ||
         audit.data?.regime === "risk-off-recovery")
-    ))
-    .sort((left, right) => right.timestamp.localeCompare(left.timestamp))[0];
+    ) {
+      event = audit;
+      latestTime = time;
+    }
+  }
   if (!event) return null;
   return {
     regime: event.data!.regime as ConfirmedRestrictiveRouting["regime"],
@@ -160,13 +171,16 @@ export function summarizeRecentPaperStrategyUsage(
   now = new Date(),
   lookbackDays = 7,
 ): Record<string, number> {
-  const cutoff = now.getTime() - Math.max(1, lookbackDays) * 24 * 60 * 60_000;
+  const upperBound = now.getTime();
+  if (!Number.isFinite(upperBound) || !Number.isFinite(lookbackDays)) return {};
+  const cutoff = upperBound - Math.max(1, lookbackDays) * 24 * 60 * 60_000;
   const usage: Record<string, number> = {};
   for (const audit of audits) {
+    const time = Date.parse(audit.timestamp);
     if (
       audit.action !== "paper-auto-execution.decision" ||
       audit.data?.status !== "filled" ||
-      Date.parse(audit.timestamp) < cutoff
+      !Number.isFinite(time) || time < cutoff || time > upperBound
     ) continue;
     const strategyKey = strategyKeyFromDecision(audit);
     if (!strategyKey) continue;
@@ -343,7 +357,11 @@ export async function buildCurrentPaperTradingPlan(input: {
   activityTargetActive?: boolean;
   activityMode?: PaperTradingActivityMode;
 }): Promise<CurrentPaperTradingPlanResult> {
+  // Freeze one evidence boundary and one audit snapshot before any shared async work.
+  const asOf = new Date(input.now?.getTime() ?? Date.now());
+  if (!Number.isFinite(asOf.getTime())) throw new Error("Invalid Paper plan clock");
   const executionRevision = input.system.store.getExecutionRevision();
+  const auditEvidence = input.system.store.listAudit(10_000);
   const snapshot = input.system.market.getSnapshot();
   const account = input.system.broker.getAccount(snapshot);
   const positions = input.system.broker.getPositions(snapshot);
@@ -394,8 +412,9 @@ export async function buildCurrentPaperTradingPlan(input: {
     current: observedAdaptiveRouting,
     sourceStatus: marketRegimeResearch.sourceStatus,
     previousConfirmed: findLatestConfirmedRestrictiveRouting(
-      input.system.store.listAudit(10_000),
-      resolveChinaTradingDate(input.now ?? new Date()),
+      auditEvidence,
+      resolveChinaTradingDate(asOf),
+      asOf,
     ),
   });
 
@@ -434,8 +453,8 @@ export async function buildCurrentPaperTradingPlan(input: {
     activityTargetActive: input.activityTargetActive,
     activityMode: input.activityMode,
     strategyUsage: summarizeRecentPaperStrategyUsage(
-      input.system.store.listAudit(10_000),
-      input.now ?? new Date(),
+      auditEvidence,
+      asOf,
     ),
   });
 
