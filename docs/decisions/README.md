@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0074：洗盘恢复实际持仓](0074-washout-recovery-actual-holdings.md)：绑定单股，拒单/T+1后按实际均价与可卖整手评估，保留量比/趋势门槛。
+
 - [0073：合成榜闭合样本分母](0073-synthetic-leaderboard-closed-samples.md)：未平仓/空榜/旧坏样本未知，盈利/闭合分母与成交单数分开，不改评分或排序。
 
 - [0072：回测单根账户复用](0072-backtest-same-bar-account-reuse.md)：复用私有撮合后账户，空信号少重建，有信号仍重读，无跨bar缓存。

@@ -32,8 +32,7 @@ export class KairosWashoutRecoveryStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
   private readonly volumes: number[] = [];
-  private inPosition = false;
-  private entryPrice = 0;
+  private boundSymbol?: string;
 
   constructor(
     private readonly trendPeriod = 60,
@@ -53,13 +52,15 @@ export class KairosWashoutRecoveryStrategy implements BacktestStrategy {
   reset(): void {
     this.prices.length = 0;
     this.volumes.length = 0;
-    this.inPosition = false;
-    this.entryPrice = 0;
+    this.boundSymbol = undefined;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = firstTradableQuote(context);
+    const quote = this.boundSymbol === undefined
+      ? firstTradableQuote(context)
+      : context.snapshot.quotes.find((item) => item.symbol === this.boundSymbol && item.tradable && item.price > 0);
     if (!quote) return [];
+    this.boundSymbol ??= quote.symbol;
 
     this.prices.push(quote.price);
     this.volumes.push(Math.max(quote.volume, 1));
@@ -75,21 +76,23 @@ export class KairosWashoutRecoveryStrategy implements BacktestStrategy {
     const currentVolumeRatio = volumeRatio(this.volumes);
     if ([trendMa, previousTrendMa, currentVolumeRatio].some(Number.isNaN)) return [];
 
-    if (this.inPosition) {
-      const entryReturn = price / this.entryPrice - 1;
+    const position = context.positions.find((item) => item.symbol === quote.symbol);
+    if (position && position.quantity > 0) {
+      const entryReturn = position.averagePrice > 0 ? price / position.averagePrice - 1 : NaN;
       const trendFailed = price < trendMa * 0.97 || trendMa < previousTrendMa;
       if (
         entryReturn >= this.takeProfitPercent ||
         entryReturn <= -this.stopLossPercent ||
         trendFailed
       ) {
-        this.inPosition = false;
-        this.entryPrice = 0;
+        const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+        const quantity = Math.floor(sellable / 100) * 100;
+        if (quantity <= 0) return [];
         return [{
           symbol: quote.symbol,
           side: "sell",
           type: "market",
-          targetWeight: 1,
+          quantity,
         }];
       }
       return [];
@@ -111,8 +114,6 @@ export class KairosWashoutRecoveryStrategy implements BacktestStrategy {
       quote.changePercent < 5;
 
     if (trendIntact && controlledPullback && quietPullback && reboundConfirmed) {
-      this.inPosition = true;
-      this.entryPrice = price;
       return [{
         symbol: quote.symbol,
         side: "buy",

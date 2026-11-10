@@ -1,5 +1,7 @@
 # 系统架构
 
+KairosWashoutRecoveryStrategy回测绑定单股，用实际均价和可卖整手处理退出，拒单/T+1不清虚构状态；量比/趋势/反弹和暖机保持，线上同名候选实现独立，见[0074](../decisions/0074-washout-recovery-actual-holdings.md)。
+
 合成排行榜从best.metrics白名单投影费用后winningMatches/closedMatches；页面检查有界整数关系和winRate一致性，旧/坏分母未知、零闭合不显示0%且成交单数分开。原评分/参数/查询缓存保持，见[0073](../decisions/0073-synthetic-leaderboard-closed-samples.md)。
 
 私有历史BacktestEngine逐根复用markToMarket返回的撮合后账户，空信号曲线直接使用，有任何信号仍重读；无跨bar/订单账户缓存，不改生产Broker，回调观察复制/费用/每日风控保持，见[0072](../decisions/0072-backtest-same-bar-account-reuse.md)。
