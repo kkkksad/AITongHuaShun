@@ -24,6 +24,15 @@ function timestamp(value: string): string {
   return new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false });
 }
 
+function elapsed(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value < 0) return "未知";
+  return value >= 1000 ? `${(value / 1000).toFixed(3)} 秒` : `${value} 毫秒`;
+}
+const sessionLabels: Record<string, string> = {
+  open: "盘中", "pre-market": "盘前", "lunch-break": "午休", "after-hours": "盘后",
+  weekend: "周末", holiday: "休市", "calendar-unavailable": "日历未知",
+};
+
 export function PaperHistoryArchiveContent({ report, isFetching, onRefresh }: {
   report: PaperHistoryArchiveReport; isFetching: boolean; onRefresh: () => void;
 }) {
@@ -54,6 +63,19 @@ export function PaperHistoryArchiveContent({ report, isFetching, onRefresh }: {
         <div><strong>记录的门槛阻塞</strong><ul>{data.blockers.map((item) => <li key={item.code}>{blockerLabels[item.code]}：{item.count} 次</li>)}{data.blockers.length === 0 && <li>未保留可确认的门槛计数，不能解释为没有阻塞。</li>}</ul></div>
         <div><strong>研究输入问题</strong><ul>{data.issues.map((item) => <li key={item.code}>{issueLabels[item.code]}：{item.count} 条运行</li>)}{data.issues.length === 0 && <li>未保留输入问题代码，不能解释为全部数据可用。</li>}</ul></div>
       </div>
+      {data.latestRuns.length > 0 && <>
+        <div className="compare-ranking-table-wrapper paper-history-table-wrapper">
+          <table><caption>最近运行耗时（最多20条保留记录）</caption>
+            <thead><tr><th>北京时间</th><th>会话</th><th>总耗时</th><th>研究</th><th>通知</th><th>准备/提交</th></tr></thead>
+            <tbody>{data.latestRuns.slice(0, 20).map((run, index) => <tr key={`${run.occurredAt}-${index}`}>
+              <td>{timestamp(run.occurredAt)}</td><td>{run.session ? sessionLabels[run.session] : "未知"}</td>
+              <td>{elapsed(run.timing?.totalMs)}</td><td>{elapsed(run.timing?.researchMs)}</td>
+              <td>{elapsed(run.timing?.notificationMs)}</td><td>{elapsed(run.timing?.executionMs)}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <p className="empty-copy">耗时按单调时钟记录，区别于两条记录间隔；总耗时不含最终运行审计写盘。研究可能命中缓存，准备/提交包含预检且不代表成交，通知耗时不代表发送成功。旧记录、未运行阶段或无效样本为未知；合并后的样本不代表完整分布。</p>
+      </>}
       <p className="empty-copy">采集周期约一分钟；只统计已持久化的运行记录，无变化轮次可能合并。规则次数可能重复涉及同一候选，并非拒单数；归档不是完整事件日志，不计算胜率或当前市值收益。</p>
     </>}
   </section>;

@@ -32,6 +32,22 @@ function setup(value: unknown = model()) {
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 
 describe("bounded Paper archive read model", () => {
+  const timing = { clock: "monotonic", scope: "run-before-audit", unit: "ms", totalMs: 1234.5,
+    researchMs: 1200, notificationMs: null, executionMs: 0 };
+  it("passes measured stage times and strips unknown nested fields", async () => {
+    const value = model();
+    const result = await setup({ ...value, latestRuns: [{ ...value.latestRuns[0], timing: { ...timing, token: "DO_NOT_PUBLISH" } }] }).read();
+    expect(result).toMatchObject({ state: "ready", data: { latestRuns: [{ timing }] } });
+    expect(JSON.stringify(result)).not.toContain("DO_NOT_PUBLISH");
+  });
+  it.each([null, undefined, { ...timing, totalMs: -1 }, { ...timing, totalMs: 86_400_001 },
+    { ...timing, researchMs: 2000 }, { ...timing, executionMs: true }, { ...timing, scope: "DO_NOT_PUBLISH" },
+    { clock: "monotonic" }])("keeps invalid or absent timing unknown while serving valid evidence (%j)", async timingValue => {
+      const value = model();
+      const result = await setup({ ...value, latestRuns: [{ ...value.latestRuns[0], timing: timingValue }] }).read();
+      expect(result.state).toBe("ready");
+      expect(result.data?.latestRuns[0]).toHaveProperty("timing", null);
+    });
   it("returns current evidence without exposing its epoch or unknown extra fields", async () => {
     const { file, read } = setup({ ...model(), token: "DO_NOT_PUBLISH" });
     const before = readFileSync(file, "utf8");

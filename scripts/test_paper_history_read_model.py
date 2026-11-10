@@ -1,9 +1,11 @@
 import datetime as dt
-from contextlib import redirect_stdout
+from contextlib import closing, redirect_stdout
 from io import StringIO
 import json
 import pathlib
 import tempfile
+import sqlite3
+from paper_history_contract import safe_timing
 import unittest
 from unittest.mock import patch
 
@@ -13,6 +15,43 @@ from test_paper_history import state, NOW, EPOCH, OTHER_EPOCH
 
 
 class PaperHistoryReadModelTests(unittest.TestCase):
+    def test_optional_timing_handles_bad_numeric_types_and_oversized_numbers_without_raising(self):
+        base = dict(clock='monotonic', scope='run-before-audit', unit='ms', totalMs=10,
+                    researchMs=0, notificationMs=None, executionMs=0)
+        for sample in [True, False, -1, 86_400_001, 10 ** 400, float('nan'), float('inf'), '10', [], {}]:
+            with self.subTest(sample=sample):
+                self.assertIsNone(safe_timing(dict(base, totalMs=sample)))
+        self.assertEqual(safe_timing(dict(base, token='DO_NOT_PUBLISH')), base)
+
+    def test_monotonic_timing_survives_sqlite_and_projection_with_only_allowed_fields(self):
+        timing = dict(clock='monotonic', scope='run-before-audit', unit='ms', totalMs=1234.5,
+                      researchMs=1200, notificationMs=None, executionMs=0)
+        self.input['auditEvents'] = [self.run_record('timed', '2026-11-09T14:00:00Z',
+            timing=dict(timing, token='DO_NOT_PUBLISH'))]
+        self.archive()
+        with closing(sqlite3.connect(self.database)) as conn:
+            stored = json.loads(conn.execute('SELECT details_json FROM execution_runs').fetchone()[0])
+        self.assertEqual(stored.get('timing'), timing)
+        self.assertNotIn('DO_NOT_PUBLISH', json.dumps(stored))
+        self.assertEqual(self.build()['latestRuns'][0].get('timing'), timing)
+
+    def test_missing_or_invalid_timing_stays_unknown_without_discarding_run_evidence(self):
+        for index, timing in enumerate([None, {}, dict(clock='wall'),
+                dict(clock='monotonic', scope='run-before-audit', unit='ms', totalMs=10,
+                     researchMs=11, notificationMs=None, executionMs=None),
+                dict(clock='monotonic', scope='run-before-audit', unit='ms', totalMs=True,
+                     researchMs=None, notificationMs=None, executionMs=None)]):
+            with self.subTest(timing=timing):
+                self.input['auditEvents'] = [self.run_record('bad-' + str(index), '2026-11-09T14:00:00Z',
+                    session='open', timing=timing)]
+                self.archive()
+        runs = self.build()['latestRuns']
+        self.assertEqual(len(runs), 5)
+        for run in runs:
+            self.assertIn('timing', run)
+            self.assertIsNone(run['timing'])
+            self.assertEqual(run['session'], 'open')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

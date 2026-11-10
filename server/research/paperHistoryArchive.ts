@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
+import { PAPER_EXECUTION_TIMING_MAX_MS } from "../../shared/paperExecutionTiming";
 import {
   PAPER_HISTORY_BLOCKERS, PAPER_HISTORY_ISSUES, PAPER_HISTORY_PHASES,
   PAPER_HISTORY_QUALITIES, PAPER_HISTORY_REGIMES, PAPER_HISTORY_SESSIONS, PAPER_HISTORY_SOURCES,
@@ -9,6 +10,12 @@ import {
 } from "../../shared/paperHistory";
 
 const MAX_BYTES = 128 * 1024;
+const elapsed = z.number().finite().min(0).max(PAPER_EXECUTION_TIMING_MAX_MS).nullable();
+const timingSchema = z.object({
+  clock: z.literal("monotonic"), scope: z.literal("run-before-audit"), unit: z.literal("ms"),
+  totalMs: elapsed, researchMs: elapsed, notificationMs: elapsed, executionMs: elapsed,
+}).refine(value => value.totalMs === null ||
+  (value.researchMs ?? 0) + (value.notificationMs ?? 0) + (value.executionMs ?? 0) <= value.totalMs + 0.003);
 const count = z.number().int().min(0).max(20_000_000_000);
 const runs = z.number().int().min(0).max(20_000);
 const time = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
@@ -27,6 +34,7 @@ const modelSchema = z.object({
   blockers: z.array(z.object({ code: z.enum(PAPER_HISTORY_BLOCKERS), count })).max(PAPER_HISTORY_BLOCKERS.length),
   issues: z.array(z.object({ code: z.enum(PAPER_HISTORY_ISSUES), count: runs })).max(PAPER_HISTORY_ISSUES.length),
   latestRuns: z.array(z.object({
+    timing: timingSchema.nullable().catch(null),
     occurredAt: time, session: z.enum(PAPER_HISTORY_SESSIONS).nullable(), phase: z.enum(PAPER_HISTORY_PHASES).nullable(),
     regime: z.enum(PAPER_HISTORY_REGIMES).nullable(), planQuality: z.enum(PAPER_HISTORY_QUALITIES).nullable(),
     sourceStatus: z.enum(PAPER_HISTORY_SOURCES).nullable(), submittedOrders: count.nullable(), skippedOperations: count.nullable(),

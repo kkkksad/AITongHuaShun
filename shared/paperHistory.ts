@@ -1,3 +1,5 @@
+import type { PaperExecutionTiming } from "./paperExecutionTiming";
+
 export const PAPER_HISTORY_SESSIONS = ["open", "pre-market", "lunch-break", "after-hours", "weekend", "holiday", "calendar-unavailable"] as const;
 export const PAPER_HISTORY_PHASES = ["opening", "morning-confirmation", "afternoon-confirmation", "closing-risk-review", "closed"] as const;
 export const PAPER_HISTORY_REGIMES = ["trend-up-low-volatility", "trend-up-high-volatility", "range-low-volatility", "range-high-volatility", "risk-off-recovery", "risk-off", "unclear"] as const;
@@ -16,6 +18,7 @@ export interface PaperHistoryDay {
 }
 
 export interface PaperHistoryRun {
+  timing?: PaperExecutionTiming | null;
   occurredAt: string;
   session: typeof PAPER_HISTORY_SESSIONS[number] | null;
   phase: typeof PAPER_HISTORY_PHASES[number] | null;

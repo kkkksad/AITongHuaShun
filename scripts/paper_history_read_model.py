@@ -8,7 +8,7 @@ import re
 import sqlite3
 import uuid
 
-from paper_history_contract import BLOCKERS, ISSUES, RUN_ENUMS
+from paper_history_contract import BLOCKERS, ISSUES, RUN_ENUMS, safe_timing
 
 MAX_RUNS = 20000
 MAX_MODEL_BYTES = 128 * 1024
@@ -41,6 +41,7 @@ def safe_run(value):
     diagnostics = value.get('researchDiagnostics', {})
     result['issues'] = list(dict.fromkeys(code for code in diagnostics.get('issues', [])
                                          if isinstance(code, str) and code in ISSUES))
+    result['timing'] = safe_timing(value.get('timing'))
     return result
 
 

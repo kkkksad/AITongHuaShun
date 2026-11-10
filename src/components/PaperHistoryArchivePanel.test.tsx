@@ -16,6 +16,26 @@ const render = (state: PaperHistoryArchiveReport["state"], data: PaperHistoryEvi
   renderToStaticMarkup(createElement(PaperHistoryArchiveContent, { report: { state, data }, isFetching: false, onRefresh() {} }));
 
 describe("Paper archive evidence presentation", () => {
+  it("shows bounded recent run timings and keeps zero distinct from an unmeasured stage", () => {
+    const html = render("ready", { ...evidence, latestRuns: [{ occurredAt: "2026-11-09T14:00:00Z", session: "open",
+      phase: null, regime: null, planQuality: null, sourceStatus: null, submittedOrders: 0, skippedOperations: 1,
+      blockers: {}, issues: [], timing: { clock: "monotonic", scope: "run-before-audit", unit: "ms",
+        totalMs: 1234, researchMs: 1200, notificationMs: null, executionMs: 0 } }] });
+    expect(html).toContain("最近运行耗时");
+    expect(html).toContain("1.234 秒");
+    expect(html).toContain("0 毫秒");
+    expect(html).toContain("未知");
+    expect(html).toContain("记录间隔");
+  });
+  it("does not reconstruct old timings from record timestamps", () => {
+    const html = render("stale", { ...evidence, latestRuns: [{ occurredAt: "2026-11-09T14:00:00Z", session: null,
+      phase: null, regime: null, planQuality: null, sourceStatus: null, submittedOrders: null, skippedOperations: null,
+      blockers: {}, issues: [] }] });
+    expect(html).toContain("最近运行耗时");
+    expect(html).toContain("未知");
+    expect(html).not.toContain("0 毫秒");
+    expect(html).toContain("归档已过期");
+  });
   it("shows the actual window, coverage and submission evidence without calling attempts fills", () => {
     const html = render("ready");
     expect(html).toContain("2026-11-03 — 2026-11-09");

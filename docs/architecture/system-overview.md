@@ -1,6 +1,6 @@
 # 系统架构
 
-Paper执行器每轮记录单调总耗时及研究/通知/订单准备提交三个阶段，未运行为null、错误任务仍保留耗时；最终运行审计写盘不在总耗时内。合并签名不含耗时，不能用持久记录推断所有运行的P95，见[0051](../decisions/0051-paper-run-monotonic-stage-timing.md)。SQLite/页面接入按执行计划分批验收。
+Paper执行器每轮记录单调总耗时及研究/通知/订单准备提交三个阶段，未运行为null、错误任务仍保留耗时；最终运行审计写盘不在总耗时内。SQLite/有界摘要/Node解码沿固定字段传递，页面最多显示20条，旧或无效样本未知。合并签名不含耗时，不能用持久记录推断所有运行的P95，见[0051](../decisions/0051-paper-run-monotonic-stage-timing.md)。
 
 真实行情Paper计划直接使用真实历史路由，不运行或等待合成参数榜；兼容研究说明标记not-requested、不记作完成研究。独立排行榜和Mock演示保持，页面在轻量候选完成后独立加载计划，见[0050](../decisions/0050-real-paper-plans-independent-of-synthetic-ranking.md)。
 
