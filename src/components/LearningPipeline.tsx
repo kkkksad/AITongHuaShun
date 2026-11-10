@@ -105,10 +105,7 @@ export default function LearningPipeline() {
     ...paperTradingPlanQueryOptions(),
     enabled: researchFoundationReady,
   });
-  const dailyReviewQuery = useQuery({
-    ...dailyMarketReviewQueryOptions(),
-    enabled: researchFoundationReady,
-  });
+  const dailyReviewQuery = useQuery(dailyMarketReviewQueryOptions());
   const weeklyPaperReviewQuery = useQuery(weeklyPaperReviewQueryOptions(weeklyPeriod));
   const selfOptimizationQuery = useQuery({
     queryKey: ["self-optimization-status"],
