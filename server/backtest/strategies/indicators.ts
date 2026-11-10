@@ -66,6 +66,49 @@ export interface MACDResult {
   histogram: number;
 }
 
+/** Same first-price-seeded EMA recurrence as macd(), with bounded per-stream state. */
+export class MacdAccumulator {
+  private samples = 0;
+  private fastEma = 0;
+  private slowEma = 0;
+  private signalEma = 0;
+  private readonly fastK: number;
+  private readonly slowK: number;
+  private readonly signalK: number;
+
+  constructor(fastPeriod = 12, private readonly slowPeriod = 26, private readonly signalPeriod = 9) {
+    this.fastK = 2 / (fastPeriod + 1);
+    this.slowK = 2 / (slowPeriod + 1);
+    this.signalK = 2 / (signalPeriod + 1);
+  }
+
+  reset(): void {
+    this.samples = 0;
+    this.fastEma = 0;
+    this.slowEma = 0;
+    this.signalEma = 0;
+  }
+
+  update(price: number): MACDResult {
+    if (this.samples === 0) {
+      this.fastEma = price;
+      this.slowEma = price;
+      this.signalEma = this.fastEma - this.slowEma;
+    } else {
+      this.fastEma = price * this.fastK + this.fastEma * (1 - this.fastK);
+      this.slowEma = price * this.slowK + this.slowEma * (1 - this.slowK);
+      const line = this.fastEma - this.slowEma;
+      this.signalEma = line * this.signalK + this.signalEma * (1 - this.signalK);
+    }
+    this.samples += 1;
+    if (this.samples < this.slowPeriod + this.signalPeriod) {
+      return { macd: NaN, signal: NaN, histogram: NaN };
+    }
+    const line = this.fastEma - this.slowEma;
+    return { macd: line, signal: this.signalEma, histogram: line - this.signalEma };
+  }
+}
+
 export function macd(
   prices: number[],
   fastPeriod = 12,

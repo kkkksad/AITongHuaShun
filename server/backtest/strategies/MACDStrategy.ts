@@ -3,7 +3,7 @@ import type {
   StrategyContext,
   StrategySignal,
 } from "../../../shared/backtest";
-import { macd } from "./indicators";
+import { MacdAccumulator } from "./indicators";
 
 /**
  * MACD 金叉死叉策略 —— 基于 MACD 线与信号线的交叉信号。
@@ -20,7 +20,7 @@ import { macd } from "./indicators";
  */
 export class MACDStrategy implements BacktestStrategy {
   readonly name: string;
-  private readonly prices: number[] = [];
+  private readonly indicator: MacdAccumulator;
   private prevHistogram: number | null = null;
   private boundSymbol?: string;
 
@@ -31,13 +31,14 @@ export class MACDStrategy implements BacktestStrategy {
     private readonly targetWeight = 0.5,
     customName?: string,
   ) {
+    this.indicator = new MacdAccumulator(this.fastPeriod, this.slowPeriod, this.signalPeriod);
     this.name =
       customName ??
       `MACD(${fastPeriod},${slowPeriod},${signalPeriod})`;
   }
 
   reset(): void {
-    this.prices.length = 0;
+    this.indicator.reset();
     this.prevHistogram = null;
     this.boundSymbol = undefined;
   }
@@ -49,17 +50,7 @@ export class MACDStrategy implements BacktestStrategy {
     if (!quote) return [];
     this.boundSymbol ??= quote.symbol;
 
-    this.prices.push(quote.price);
-
-    const minLen = this.slowPeriod + this.signalPeriod;
-    if (this.prices.length < minLen) return [];
-
-    const { histogram } = macd(
-      this.prices,
-      this.fastPeriod,
-      this.slowPeriod,
-      this.signalPeriod,
-    );
+    const { histogram } = this.indicator.update(quote.price);
 
     if (isNaN(histogram)) return [];
 

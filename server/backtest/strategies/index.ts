@@ -39,6 +39,7 @@ export {
   ema,
   rsi,
   macd,
+  MacdAccumulator,
   bollingerBands,
   atr,
   highest,
