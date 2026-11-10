@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0063：低波趋势实际持仓](0063-low-vol-trend-actual-holdings.md)：绑定单股，拒单/T+1后读取实际仓位，以滑点后均价和可卖整手判断。
+
 - [0062：每日基线数值日界](0062-trading-day-baseline-numeric-membership.md)：一次UTC+8日界替代逐成交日期格式化，账务与风控结果保持，不缓存账户。
 
 - [0061：布林带平价新仓边界](0061-bollinger-flat-entry-boundary.md)：完全平价或重合轨道不新买，原持仓退出纪律保持，真实微小变化不设任意门槛。
