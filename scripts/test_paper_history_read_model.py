@@ -5,7 +5,7 @@ import json
 import pathlib
 import tempfile
 import sqlite3
-from paper_history_contract import safe_timing
+from paper_history_contract import safe_timing, safe_new_position_funnel
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +15,47 @@ from test_paper_history import state, NOW, EPOCH, OTHER_EPOCH
 
 
 class PaperHistoryReadModelTests(unittest.TestCase):
+    def test_funnel_count_contract_preserves_zero_and_rejects_inconsistent_evidence(self):
+        base = dict(scope='ranked-top-12', scannerCandidateCount=0, consideredCandidateCount=0,
+                    existingPositionCount=0, newSymbolCount=0, eligibleNewSymbolCount=0,
+                    individuallySizedNewSymbolCount=0, plannedBuyCount=0, allowNewPositions=False)
+        self.assertEqual(safe_new_position_funnel(dict(base, token='DO_NOT_PUBLISH')), base)
+        for key, sample in [('scannerCandidateCount', -1), ('scannerCandidateCount', 1_000_001),
+                            ('newSymbolCount', True), ('newSymbolCount', '0'), ('newSymbolCount', 0.5),
+                            ('newSymbolCount', 13), ('existingPositionCount', 1), ('consideredCandidateCount', 1),
+                            ('eligibleNewSymbolCount', 1), ('individuallySizedNewSymbolCount', 1),
+                            ('plannedBuyCount', 1), ('allowNewPositions', 0), ('scope', 'other')]:
+            with self.subTest(key=key, sample=sample):
+                self.assertIsNone(safe_new_position_funnel(dict(base, **{key: sample})))
+
+    def test_new_position_funnel_survives_sqlite_projection_with_only_allowed_fields(self):
+        funnel = dict(scope='ranked-top-12', scannerCandidateCount=18, consideredCandidateCount=12,
+                      existingPositionCount=4, newSymbolCount=8, eligibleNewSymbolCount=5,
+                      individuallySizedNewSymbolCount=2, plannedBuyCount=1, allowNewPositions=True)
+        self.input['auditEvents'] = [self.run_record('funnel', '2026-11-09T14:00:00Z',
+            strategyCoverage=dict(newPositionFunnel=dict(funnel, token='DO_NOT_PUBLISH')))]
+        self.archive()
+        with closing(sqlite3.connect(self.database)) as conn:
+            stored = json.loads(conn.execute('SELECT details_json FROM execution_runs').fetchone()[0])
+        self.assertEqual(stored.get('newPositionFunnel'), funnel)
+        self.assertEqual(self.build()['latestRuns'][0].get('newPositionFunnel'), funnel)
+        self.assertNotIn('DO_NOT_PUBLISH', json.dumps(stored))
+
+    def test_missing_or_invalid_funnel_is_unknown_without_losing_run_evidence(self):
+        base = dict(scope='ranked-top-12', scannerCandidateCount=18, consideredCandidateCount=12,
+                    existingPositionCount=4, newSymbolCount=8, eligibleNewSymbolCount=5,
+                    individuallySizedNewSymbolCount=2, plannedBuyCount=1, allowNewPositions=True)
+        for index, funnel in enumerate([None, {}, dict(base, newSymbolCount=9),
+                dict(base, plannedBuyCount=True), dict(base, scannerCandidateCount=1_000_001),
+                dict(base, individuallySizedNewSymbolCount=6), dict(base, allowNewPositions='true')]):
+            self.input['auditEvents'] = [self.run_record('funnel-' + str(index), '2026-11-09T14:00:00Z',
+                session='open', strategyCoverage=dict(newPositionFunnel=funnel))]
+            self.archive()
+        for run in self.build()['latestRuns']:
+            self.assertIn('newPositionFunnel', run)
+            self.assertIsNone(run['newPositionFunnel'])
+            self.assertEqual(run['session'], 'open')
+
     def test_optional_timing_handles_bad_numeric_types_and_oversized_numbers_without_raising(self):
         base = dict(clock='monotonic', scope='run-before-audit', unit='ms', totalMs=10,
                     researchMs=0, notificationMs=None, executionMs=0)

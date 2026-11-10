@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 import sqlite3
 import uuid
-from paper_history_contract import ISSUES, BLOCKERS, RUN_ENUMS, safe_timing
+from paper_history_contract import ISSUES, BLOCKERS, RUN_ENUMS, safe_timing, safe_new_position_funnel
 
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_DATABASE_PAGES = 65536  # 256 MiB at 4096 bytes/page; backups/WAL are additional.
@@ -107,6 +107,9 @@ def _order(value):
 def _run(event):
     data = event["data"]
     result = {}
+    coverage = data.get('strategyCoverage')
+    if isinstance(coverage, dict) and 'newPositionFunnel' in coverage:
+        result['newPositionFunnel'] = safe_new_position_funnel(coverage['newPositionFunnel'])
     if 'timing' in data:
         result['timing'] = safe_timing(data['timing'])
     for key, allowed in RUN_ENUMS.items():

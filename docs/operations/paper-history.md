@@ -1,5 +1,7 @@
 # Paper长期历史归档
 
+新增标的漏斗按[0068](../decisions/0068-new-position-funnel-archive.md)从运行审计进入SQLite和latestRuns只读摘要，固定scope/七项有界计数/布尔许可，不保存股票列表或额外正文。旧/坏样本为null，不重写已归档事件；这是只读数据链路，页面展示另行验收，拟买数不是提交/成交数。
+
 最近20条保留运行现可显示单调总耗时、研究、通知和订单准备/提交耗时，口径见[0051](../decisions/0051-paper-run-monotonic-stage-timing.md)。采集和投影都只保留固定timing字段，未知旧记录/未运行阶段/坏样本显示未知；不根据记录间隔补算，不重写已归档的旧事件。可从后续自然运行积累证据，休市启动样本不能当盘中研究性能。
 
 本模块是[决策0025](../decisions/0025-read-only-sqlite-paper-history.md)中的只读观察副本。安装后的数据从原JSON账本读取；数据库不参与下单、风控和实时权益计算。按[0040](../decisions/0040-paper-history-bounded-read-model.md)，网站通过当前账户世代的有界摘要读取近七日运行证据，仍不替代交易主账本。

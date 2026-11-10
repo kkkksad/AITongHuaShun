@@ -32,6 +32,36 @@ function setup(value: unknown = model()) {
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 
 describe("bounded Paper archive read model", () => {
+  const funnel = { scope: "ranked-top-12", scannerCandidateCount: 18, consideredCandidateCount: 12,
+    existingPositionCount: 4, newSymbolCount: 8, eligibleNewSymbolCount: 5,
+    individuallySizedNewSymbolCount: 2, plannedBuyCount: 1, allowNewPositions: true };
+  it("preserves actual zero funnel counts and a false global permission", async () => {
+    const zero = { scope: "ranked-top-12", scannerCandidateCount: 0, consideredCandidateCount: 0,
+      existingPositionCount: 0, newSymbolCount: 0, eligibleNewSymbolCount: 0,
+      individuallySizedNewSymbolCount: 0, plannedBuyCount: 0, allowNewPositions: false };
+    const value = model();
+    expect(await setup({ ...value, latestRuns: [{ ...value.latestRuns[0], newPositionFunnel: zero }] }).read())
+      .toMatchObject({ state: "ready", data: { latestRuns: [{ newPositionFunnel: zero }] } });
+  });
+  it("passes bounded new-position funnel counts while stripping unlisted fields", async () => {
+    const value = model();
+    const result = await setup({ ...value, latestRuns: [{ ...value.latestRuns[0],
+      newPositionFunnel: { ...funnel, token: "DO_NOT_PUBLISH" } }] }).read();
+    expect(result).toMatchObject({ state: "ready", data: { latestRuns: [{ newPositionFunnel: funnel }] } });
+    expect(JSON.stringify(result)).not.toContain("DO_NOT_PUBLISH");
+  });
+  it.each([undefined, null, {}, { ...funnel, newSymbolCount: 9 }, { ...funnel, scannerCandidateCount: 1_000_001 },
+    { ...funnel, consideredCandidateCount: 13 }, { ...funnel, eligibleNewSymbolCount: 9 },
+    { ...funnel, individuallySizedNewSymbolCount: 6 }, { ...funnel, plannedBuyCount: 9 },
+    { ...funnel, plannedBuyCount: true }, { ...funnel, allowNewPositions: "true" },
+    { ...funnel, scannerCandidateCount: 2 }, { ...funnel, scope: "DO_NOT_PUBLISH" }])(
+    "retains valid run evidence when its optional funnel is absent or invalid (%j)", async newPositionFunnel => {
+      const value = model();
+      const result = await setup({ ...value, latestRuns: [{ ...value.latestRuns[0], newPositionFunnel }] }).read();
+      expect(result.state).toBe("ready");
+      expect(result.data?.latestRuns[0]).toHaveProperty("newPositionFunnel", null);
+    },
+  );
   const timing = { clock: "monotonic", scope: "run-before-audit", unit: "ms", totalMs: 1234.5,
     researchMs: 1200, notificationMs: null, executionMs: 0 };
   it("passes measured stage times and strips unknown nested fields", async () => {

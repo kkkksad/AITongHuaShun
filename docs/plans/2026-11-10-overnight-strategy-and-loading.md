@@ -245,3 +245,17 @@ ASharePullbackConfirmationStrategy同样以发出信号维护inPosition/entryPri
 文件：server/backtest/strategies/ASharePullbackConfirmationStrategy.ts、新增该类.positions.test.ts、新决策和状态/架构；真实固定12股三窗双成本72次差异逐项复核。先以真实Broker/引擎复现拒买/费用重试、T+1/拒卖、实际滑点均价止盈止损、已有仓/部分可卖整手，以及换序/缺失/首次选择/reset。旧版失败后最小修复，目标与完整后端/TS/Vite通过再提交推送部署，实际镜像/原账户核验，不按回测收益方向选择代码。
 
 - S初始18项旧版17失败，两项重试fixture未保留前高，改为三根回撤窗口并重跑旧版仍17失败；最小真实持仓修复后目标三文件65项通过。固定真实72组中43组完整报告相同、29组变动（18组期末收益相同/5高/6低），记录全部变动，拒卖限额仍保持，不把重复检查当成交增加。完整160后端2423项及TS/Vite通过，前端/Python无行为变化沿用F381项，准备独立提交部署与实际镜像/原账户核验。
+- S已推送部署de15bac，UTC21:48:24核验678归档文件/三健康/200与401/双域可信HTTPS/真实关闭，经济摘要与风险检查点保持；上一R版675文件/三镜像/私有材料完整，实际生产镜像无网络/无生产挂载三文件92项通过。UTC21:48资源核对仍有约2.25GiB可用内存/6.1GiB磁盘，无扩并发或清理未知容器。
+
+### 模块T1：新标的漏斗的长期白名单归档（实施前合同）
+
+C的newPositionFunnel已进入run.strategyCoverage，但Python归档未保存，长期网页只能看原阻塞次数。先独立接SQLite→只读摘要→Node合同，页面下一模块消费，避免一次混合三个运行环境与UI。文件：scripts/paper_history_contract.py/paper_history.py/paper_history_read_model.py及测试、shared/paperHistory.ts、server/research/paperHistoryArchive.ts及测试。
+
+从strategyCoverage.newPositionFunnel提取固定scope、七项计数和allowNewPositions布尔值，输出latestRuns[].newPositionFunnel。scanner有界100万，考虑池及后续计数至多12；已有+新股=考虑池、考虑池<=scanner、资格<=新股、独立金额<=资格、拟买<=新股。拟买不等于实际提交/成交，不把allowNewPositions作为自动许可。任何缺失/坏样本整个可选funnel为null，不丢有效运行；剥离额外字段，不存股票名/列表/错误正文，不更改schemaVersion/SQL表或回写旧事件。Python和Node用同一语义但分别校验。
+
+- [ ] SQLite真实临时库/投影回归先失败，Node新旧/坏类型/不一致数量/额外字段回归先失败。
+- [ ] 最小白名单接线，Windows与Linux完整Python、完整后端及TS/Vite，文档。
+- [ ] 独立提交推送部署，Linux生产副本隔离验证/原账本与世代核验；自然归档不强制生产交易。
+
+- T1旧版Python真实SQLite/投影两项失败、Node新增14项失败，修后Node目标36项通过并补真实0/false回归。Windows已35项含两平台跳过；补零/范围后Linux完整36项通过，生产账本私有副本隔离归档349运行/四单，备份和integrity=ok，主账本字节未变，世代摘要741aca77保持。Windows默认python命中系统占位程序未实际运行，已改用应用bundled Python并单独跑旧版红灯，不把占位命令当测试结果。最终完整后端/Windows Python/TS/Vite进行中。
+- T1最终完整160后端2438项及TS/Vite通过，Windows36项含两平台跳过、Linux36项全通过；前端无行为变化沿用F381项。准备独立提交部署与实际镜像/原账户核验，网页还没有新漏斗列。

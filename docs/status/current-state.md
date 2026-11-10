@@ -2,6 +2,8 @@
 
 **核对日期：** 2026-11-11（北京时间）
 
+漏斗归档T1本地完整160后端2438项及TS/Vite通过；Python Windows36项含两平台跳过、Linux36项全通过。strategyCoverage.newPositionFunnel经SQLite/有界投影/Node独立白名单校验，旧/坏样本null且不丢运行，不回填旧事件或存股票列表。真实账本私有副本349运行/四单、备份和integrity=ok，主账本不变；页面待T2，前端沿用F381项，见[0068](../decisions/0068-new-position-funnel-archive.md)及发布流水。
+
 强势回踩S本地完整160后端2423项及TS/Vite通过：实际持仓/均价/可卖整手替代虚拟信号状态，并绑定单股。旧版18项17失败，最终目标65项；真实72组29组报告变动，收益18同/5高/6低，不称胜率提升，详见[复核](../research/2026-11-11-pullback-execution-semantics.md)。线上同名候选参数保持，前端沿用F381项，见[0067](../decisions/0067-pullback-actual-holdings.md)与发布流水。
 
 回测回调R本地完整159后端2405项及TS/Vite通过：生命周期拿到独立观察副本，避免报价/账户/持仓改写污染定量、当根估值与报告。旧版九项全失败，最终目标102项、1224次真实历史经济结果保持；离线全榜中位数7.127→7.466秒（+4.7%隔离成本），排名/参数/指标不变，不称提速。前端沿用F381项，见[0066](../decisions/0066-backtest-callback-observation-copies.md)及发布流水。

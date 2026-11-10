@@ -1,5 +1,7 @@
 # 系统架构
 
+长期归档接收strategyCoverage.newPositionFunnel白名单，Python采集/投影和Node解码分别校验同一有界计数关系，latestRuns输出可选newPositionFunnel，旧或坏值null；不改变SQL表、回写旧事件或提供下单权限，页面后续接入，见[0068](../decisions/0068-new-position-funnel-archive.md)。
+
 ASharePullbackConfirmationStrategy历史回测绑定首个可交易正价格股票，退出读取实际均价和可卖整手；拒单/T+1不再把信号当成交。线上同名Paper候选实现独立，策略门槛未调，见[0067](../decisions/0067-pullback-actual-holdings.md)。
 
 BacktestEngine的onStart/onBar/onEnd统一接收独立可变观察副本，包含逐报价/持仓和账户tradingDayPerformance；引擎定量、估值和报告保持原对象。回调信号仍经Broker，不能把对象隔离当作策略安全沙箱，见[0066](../decisions/0066-backtest-callback-observation-copies.md)。

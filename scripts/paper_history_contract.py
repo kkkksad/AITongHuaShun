@@ -2,6 +2,26 @@
 import math
 
 
+def safe_new_position_funnel(value):
+    """Only bounded count evidence; no symbols, order authority, or inferred history."""
+    if not isinstance(value, dict) or value.get('scope') != 'ranked-top-12' or type(value.get('allowNewPositions')) is not bool:
+        return None
+    result = dict(scope='ranked-top-12', allowNewPositions=value['allowNewPositions'])
+    for key in ('scannerCandidateCount', 'consideredCandidateCount', 'existingPositionCount', 'newSymbolCount',
+                'eligibleNewSymbolCount', 'individuallySizedNewSymbolCount', 'plannedBuyCount'):
+        sample = value.get(key)
+        if type(sample) is not int or sample < 0 or sample > (1_000_000 if key == 'scannerCandidateCount' else 12):
+            return None
+        result[key] = sample
+    if (result['existingPositionCount'] + result['newSymbolCount'] != result['consideredCandidateCount']
+            or result['consideredCandidateCount'] > result['scannerCandidateCount']
+            or result['eligibleNewSymbolCount'] > result['newSymbolCount']
+            or result['individuallySizedNewSymbolCount'] > result['eligibleNewSymbolCount']
+            or result['plannedBuyCount'] > result['newSymbolCount']):
+        return None
+    return result
+
+
 def safe_timing(value):
     """Optional diagnostics cannot invalidate otherwise valid account evidence."""
     if not isinstance(value, dict) or any(value.get(key) != expected for key, expected in (

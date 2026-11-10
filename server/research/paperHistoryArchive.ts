@@ -18,6 +18,15 @@ const timingSchema = z.object({
   (value.researchMs ?? 0) + (value.notificationMs ?? 0) + (value.executionMs ?? 0) <= value.totalMs + 0.003);
 const count = z.number().int().min(0).max(20_000_000_000);
 const runs = z.number().int().min(0).max(20_000);
+const candidateCount = z.number().int().min(0).max(12);
+const funnelSchema = z.object({
+  scope: z.literal("ranked-top-12"), scannerCandidateCount: z.number().int().min(0).max(1_000_000),
+  consideredCandidateCount: candidateCount, existingPositionCount: candidateCount, newSymbolCount: candidateCount,
+  eligibleNewSymbolCount: candidateCount, individuallySizedNewSymbolCount: candidateCount, plannedBuyCount: candidateCount,
+  allowNewPositions: z.boolean(),
+}).refine(value => value.existingPositionCount + value.newSymbolCount === value.consideredCandidateCount &&
+  value.consideredCandidateCount <= value.scannerCandidateCount && value.eligibleNewSymbolCount <= value.newSymbolCount &&
+  value.individuallySizedNewSymbolCount <= value.eligibleNewSymbolCount && value.plannedBuyCount <= value.newSymbolCount);
 const time = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
   .refine((value) => Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -34,6 +43,7 @@ const modelSchema = z.object({
   blockers: z.array(z.object({ code: z.enum(PAPER_HISTORY_BLOCKERS), count })).max(PAPER_HISTORY_BLOCKERS.length),
   issues: z.array(z.object({ code: z.enum(PAPER_HISTORY_ISSUES), count: runs })).max(PAPER_HISTORY_ISSUES.length),
   latestRuns: z.array(z.object({
+    newPositionFunnel: funnelSchema.nullable().catch(null),
     timing: timingSchema.nullable().catch(null),
     occurredAt: time, session: z.enum(PAPER_HISTORY_SESSIONS).nullable(), phase: z.enum(PAPER_HISTORY_PHASES).nullable(),
     regime: z.enum(PAPER_HISTORY_REGIMES).nullable(), planQuality: z.enum(PAPER_HISTORY_QUALITIES).nullable(),
