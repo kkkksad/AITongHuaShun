@@ -8,8 +8,7 @@ import { highest, sma } from "./indicators";
 /**
  * A 股强势回踩确认策略。
  *
- * 设计目标不是预测“必胜”，而是在研究排行榜里提供一个偏高胜率、
- * 交易频率较低、风控边界清晰的候选战法：
+ * 在研究排行榜里提供一个有明确趋势、量能和退出条件的候选战法：
  * - 只在中期均线向上且价格站上趋势均线时考虑买入。
  * - 等待近期高点回撤到可控幅度后，再出现放量反包确认。
  * - 入场后使用固定止盈/止损，避免把回测胜率建立在无限持仓上。
@@ -18,8 +17,7 @@ export class ASharePullbackConfirmationStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
   private readonly volumes: number[] = [];
-  private inPosition = false;
-  private entryPrice = 0;
+  private boundSymbol?: string;
 
   constructor(
     private readonly trendPeriod = 30,
@@ -40,13 +38,14 @@ export class ASharePullbackConfirmationStrategy implements BacktestStrategy {
   reset(): void {
     this.prices.length = 0;
     this.volumes.length = 0;
-    this.inPosition = false;
-    this.entryPrice = 0;
+    this.boundSymbol = undefined;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = context.snapshot.quotes.find((item) => item.tradable);
-    if (!quote || quote.price <= 0) return [];
+    const quote = context.snapshot.quotes.find(item => item.tradable && item.price > 0 &&
+      (this.boundSymbol === undefined || item.symbol === this.boundSymbol));
+    if (!quote) return [];
+    this.boundSymbol ??= quote.symbol;
 
     this.prices.push(quote.price);
     this.volumes.push(Math.max(quote.volume, 1));
@@ -57,20 +56,22 @@ export class ASharePullbackConfirmationStrategy implements BacktestStrategy {
     const price = quote.price;
     const previousPrice = this.prices[this.prices.length - 2];
 
-    if (this.inPosition) {
-      const changeFromEntry = price / this.entryPrice - 1;
+    const position = context.positions.find(item => item.symbol === quote.symbol);
+    if (position && position.quantity > 0) {
+      const changeFromEntry = position.averagePrice > 0 ? price / position.averagePrice - 1 : NaN;
       if (
         changeFromEntry >= this.takeProfitPercent ||
         changeFromEntry <= -this.stopLossPercent
       ) {
-        this.inPosition = false;
-        this.entryPrice = 0;
+        const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+        const quantity = Math.floor(sellable / 100) * 100;
+        if (quantity <= 0) return [];
         return [
           {
             symbol: quote.symbol,
             side: "sell",
             type: "market",
-            targetWeight: 1,
+            quantity,
           },
         ];
       }
@@ -107,8 +108,6 @@ export class ASharePullbackConfirmationStrategy implements BacktestStrategy {
     const volumeConfirmed = quote.volume >= averageVolume * this.volumeMultiplier;
 
     if (hasControlledPullback && reboundConfirmed && volumeConfirmed) {
-      this.inPosition = true;
-      this.entryPrice = price;
       return [
         {
           symbol: quote.symbol,

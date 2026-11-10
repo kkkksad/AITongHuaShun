@@ -1,5 +1,7 @@
 # 系统架构
 
+ASharePullbackConfirmationStrategy历史回测绑定首个可交易正价格股票，退出读取实际均价和可卖整手；拒单/T+1不再把信号当成交。线上同名Paper候选实现独立，策略门槛未调，见[0067](../decisions/0067-pullback-actual-holdings.md)。
+
 BacktestEngine的onStart/onBar/onEnd统一接收独立可变观察副本，包含逐报价/持仓和账户tradingDayPerformance；引擎定量、估值和报告保持原对象。回调信号仍经Broker，不能把对象隔离当作策略安全沙箱，见[0066](../decisions/0066-backtest-callback-observation-copies.md)。
 
 行业快照在构建/分析两入口按unknown规范化，坏HTTP200正文/行业记录不能使独立股票历史研究丢失；可选坏字段保持null并警告，结构有效不证明来源时间新鲜。历史身份/日线和降级交易限制继续独立执行，见[0065](../decisions/0065-sector-snapshot-structure-isolation.md)。
