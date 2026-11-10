@@ -1,5 +1,7 @@
 # 系统架构
 
+KairosVolumePriceBreakoutStrategy历史回测绑定单股，依据实际均价及可卖整手退出，拒单/T+1后重新读取；前高/量比排除当根及其他趋势/日内位置过滤保持，见[0076](../decisions/0076-volume-price-breakout-actual-holdings.md)。
+
 KairosQualityLowVolTrendStrategy历史回测绑定首个可交易正价股票，以实际持仓均价和可卖整手退出；拒单/T+1不把信号当成交。暖机、价格质量过滤及退出阈值保持，不改变线上同名候选，见[0075](../decisions/0075-quality-low-vol-actual-holdings.md)。
 
 KairosWashoutRecoveryStrategy回测绑定单股，用实际均价和可卖整手处理退出，拒单/T+1不清虚构状态；量比/趋势/反弹和暖机保持，线上同名候选实现独立，见[0074](../decisions/0074-washout-recovery-actual-holdings.md)。

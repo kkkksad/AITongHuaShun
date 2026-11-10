@@ -210,8 +210,7 @@ export class KairosVolumePriceBreakoutStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
   private readonly volumes: number[] = [];
-  private inPosition = false;
-  private entryPrice = 0;
+  private boundSymbol?: string;
 
   constructor(
     private readonly breakoutPeriod = 20,
@@ -231,13 +230,15 @@ export class KairosVolumePriceBreakoutStrategy implements BacktestStrategy {
   reset(): void {
     this.prices.length = 0;
     this.volumes.length = 0;
-    this.inPosition = false;
-    this.entryPrice = 0;
+    this.boundSymbol = undefined;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = firstTradableQuote(context);
+    const quote = this.boundSymbol === undefined
+      ? firstTradableQuote(context)
+      : context.snapshot.quotes.find((item) => item.symbol === this.boundSymbol && item.tradable && item.price > 0);
     if (!quote) return [];
+    this.boundSymbol ??= quote.symbol;
 
     const price = quote.price;
     this.prices.push(price);
@@ -251,21 +252,23 @@ export class KairosVolumePriceBreakoutStrategy implements BacktestStrategy {
       return [];
     }
 
-    if (this.inPosition) {
-      const entryReturn = price / this.entryPrice - 1;
+    const heldPosition = context.positions.find((item) => item.symbol === quote.symbol);
+    if (heldPosition && heldPosition.quantity > 0) {
+      const entryReturn = heldPosition.averagePrice > 0 ? price / heldPosition.averagePrice - 1 : NaN;
       const structureFailed = price < fastMa * 0.98 || fastMa < previousFastMa;
       if (
         entryReturn >= this.takeProfitPercent ||
         entryReturn <= -this.stopLossPercent ||
         structureFailed
       ) {
-        this.inPosition = false;
-        this.entryPrice = 0;
+        const sellable = Math.min(heldPosition.quantity, heldPosition.availableQuantity ?? heldPosition.quantity);
+        const quantity = Math.floor(sellable / 100) * 100;
+        if (quantity <= 0) return [];
         return [{
           symbol: quote.symbol,
           side: "sell",
           type: "market",
-          targetWeight: 1,
+          quantity,
         }];
       }
       return [];
@@ -293,8 +296,6 @@ export class KairosVolumePriceBreakoutStrategy implements BacktestStrategy {
       intradayConfirmed &&
       notOverheated
     ) {
-      this.inPosition = true;
-      this.entryPrice = price;
       return [{
         symbol: quote.symbol,
         side: "buy",
