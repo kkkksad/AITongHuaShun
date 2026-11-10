@@ -24,7 +24,11 @@ export interface StrategyLeaderboardEntry {
     | "maxDrawdownPercent"
     | "winRate"
     | "totalTrades"
-  >;
+  > & {
+    /** Fee-adjusted closed FIFO matches; absent in legacy reports. */
+    winningMatches?: number;
+    closedMatches?: number;
+  };
   qualityGate: "pass" | "caution" | "blocked";
   trialCount: number;
 }
@@ -467,6 +471,8 @@ export async function buildStrategyLeaderboard(
       maxDrawdownPercent: report.best.metrics.maxDrawdownPercent,
       winRate: report.best.metrics.winRate,
       totalTrades: report.best.metrics.totalTrades,
+      winningMatches: report.best.metrics.winningTrades,
+      closedMatches: report.best.metrics.winningTrades + report.best.metrics.losingTrades,
     };
 
     entries.push({

@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0073：合成榜闭合样本分母](0073-synthetic-leaderboard-closed-samples.md)：未平仓/空榜/旧坏样本未知，盈利/闭合分母与成交单数分开，不改评分或排序。
+
 - [0072：回测单根账户复用](0072-backtest-same-bar-account-reuse.md)：复用私有撮合后账户，空信号少重建，有信号仍重读，无跨bar缓存。
 
 - [0071：北京时间日期键单槽复用](0071-beijing-date-key-bounded-reuse.md)：缓存不可变日期标签，保留非法/溢出/回拨语义，不缓存账户和风险。

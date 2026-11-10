@@ -40,19 +40,41 @@ function qualityColor(score: number): string {
   return "#ef4444";
 }
 
+function closedMatchEvidence(entry?: StrategyLeaderboardEntry): { rate: number | null; note: string } {
+  if (!entry) return { rate: null, note: "暂无策略样本" };
+  const { winningMatches: wins, closedMatches: total, winRate } = entry.metrics;
+  if (wins === undefined || total === undefined) return { rate: null, note: "未提供闭合分母" };
+  if (!Number.isSafeInteger(wins) || !Number.isSafeInteger(total) || wins < 0 || total < 0 || wins > total ||
+      !Number.isFinite(winRate) || winRate < 0 || winRate > 1 || (total === 0 ? winRate !== 0 : winRate !== wins / total)) {
+    return { rate: null, note: "闭合样本不可核对" };
+  }
+  return total === 0 ? { rate: null, note: "无闭合样本" }
+    : { rate: winRate, note: `盈利 ${wins} / ${total}` };
+}
+
+function ClosedMatchRate({ entry }: { entry: StrategyLeaderboardEntry }) {
+  const evidence = closedMatchEvidence(entry);
+  return <td data-closed-match-rate>
+    <strong>{evidence.rate === null ? "—" : `${(evidence.rate * 100).toFixed(2)}%`}</strong>
+    <span className="table-subline">{evidence.note}</span>
+    <span className="table-subline">成交 {entry.metrics.totalTrades} 单</span>
+  </td>;
+}
+
 export function StrategyLeaderboard() {
   const leaderboardQuery = useQuery(strategyLeaderboardQueryOptions(120));
 
   const report = leaderboardQuery.data;
   const entries = report?.entries ?? [];
   const topStrategy = bestBySuccessRate(entries);
+  const topEvidence = closedMatchEvidence(topStrategy);
 
   return (
     <section className="panel research-leaderboard">
       <div className="panel-header">
         <div>
           <span className="section-kicker">研究排行榜</span>
-          <h2>成功率优先策略搜索</h2>
+          <h2>合成回测策略搜索</h2>
         </div>
         <button
           aria-label="刷新策略排行榜"
@@ -83,11 +105,11 @@ export function StrategyLeaderboard() {
               <small>按胜率、交易次数和风控约束排序</small>
             </article>
             <article>
-              <span>模拟胜率</span>
-              <strong className={topStrategy && topStrategy.metrics.winRate >= 0.5 ? "positive" : "negative"}>
-                {topStrategy ? formatPercent(topStrategy.metrics.winRate) : "0.00%"}
+              <span>闭合片段胜率</span>
+              <strong data-summary-closed-rate className={topEvidence.rate === null ? undefined : topEvidence.rate >= 0.5 ? "positive" : "negative"}>
+                {topEvidence.rate === null ? "—" : `${(topEvidence.rate * 100).toFixed(2)}%`}
               </strong>
-              <small>{topStrategy?.metrics.totalTrades ?? 0} 次模拟交易 · 非真实收益</small>
+              <small>{topEvidence.note} · 成交 {topStrategy?.metrics.totalTrades ?? 0} 单</small>
             </article>
             <article>
               <span>数据质量</span>
@@ -106,6 +128,11 @@ export function StrategyLeaderboard() {
           <div className="research-alert">
             <AlertTriangle size={16} />
             <span>{report.guardrails[0]}</span>
+          </div>
+
+          <div className="research-alert">
+            <ShieldCheck size={16} />
+            <span>胜率按费用后已闭合 FIFO 买卖匹配片段计算；未平仓不计入分母，成交单数另列。合成研究不是未来胜率或真实收益；年化假设每年 252 根日线。</span>
           </div>
 
           {report.dataQuality.score.overall < 70 && (
@@ -131,7 +158,7 @@ export function StrategyLeaderboard() {
                   <th>年化收益</th>
                   <th>夏普</th>
                   <th>最大回撤</th>
-                  <th>胜率</th>
+                  <th>闭合片段胜率</th>
                   <th>约束</th>
                   <th>最佳参数</th>
                 </tr>
@@ -154,10 +181,7 @@ export function StrategyLeaderboard() {
                     <td>{formatPercent(entry.metrics.annualizedReturn)}</td>
                     <td>{formatNumber(entry.metrics.sharpeRatio)}</td>
                     <td className="negative">-{(entry.metrics.maxDrawdownPercent * 100).toFixed(2)}%</td>
-                    <td>
-                      <strong>{formatPercent(entry.metrics.winRate)}</strong>
-                      <span className="table-subline">{entry.metrics.totalTrades} 笔</span>
-                    </td>
+                    <ClosedMatchRate entry={entry} />
                     <td>
                       <span className={`rank-badge gate-${entry.qualityGate}`}>
                         {entry.qualityGate === "pass" && <Target size={13} />}

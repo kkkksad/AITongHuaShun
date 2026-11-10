@@ -109,6 +109,9 @@ export interface StrategyLeaderboardEntry {
     maxDrawdownPercent: number;
     winRate: number;
     totalTrades: number;
+    /** Closed FIFO matches after fees; absent in legacy synthetic reports. */
+    winningMatches?: number;
+    closedMatches?: number;
   };
   qualityGate: "pass" | "caution" | "blocked";
   trialCount: number;
