@@ -95,7 +95,7 @@ export interface BacktestMetrics {
   totalReturn: number;
   /** 总收益率（百分比） */
   totalReturnPercent: number;
-  /** 年化收益率（假设252个交易日） */
+  /** 年化收益率（按实际回放bar数量，假设每年252根日线；不是实际日历年化） */
   annualizedReturn: number;
   /** 年化波动率 */
   annualizedVolatility: number;
@@ -127,7 +127,7 @@ export interface BacktestMetrics {
   totalCommission: number;
   /** 总滑点成本 */
   totalSlippage: number;
-  /** bar数量 */
+  /** 实际回放bar数量，不含权益曲线的初始资金基线点 */
   barCount: number;
   /** 回测起止时间 */
   startTime: string;

@@ -323,7 +323,8 @@ export class BacktestEngine {
     const initial = this.config.initialCapital;
     const final = finalAccount.equity;
     const returns = this.equityCurve.map((p) => p.cumulativeReturn);
-    const barCount = this.equityCurve.length;
+    // 曲线还包含一个初始资金基线；它不是额外的回放bar。
+    const barCount = this.provider.length;
 
     // 总收益
     const totalReturn = (final - initial) / initial;

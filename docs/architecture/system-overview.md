@@ -1,5 +1,7 @@
 # 系统架构
 
+BacktestEngine指标的barCount使用实际回放N根，权益曲线保留初始基准加N点。年化期限按N/252，基准不作为额外交易日；首根费用仍进入收益/波动/回撤。该日线假设不提供不规则日历或日内年化，见[0069](../decisions/0069-backtest-replay-bar-period.md)。
+
 长期归档接收strategyCoverage.newPositionFunnel白名单，Python采集/投影和Node解码分别校验同一有界计数关系，latestRuns输出可选newPositionFunnel，网页独立表最多展示20条、旧或坏值未知；不增加请求，不改变SQL表、回写旧事件或提供下单权限，见[0068](../decisions/0068-new-position-funnel-archive.md)。
 
 ASharePullbackConfirmationStrategy历史回测绑定首个可交易正价格股票，退出读取实际均价和可卖整手；拒单/T+1不再把信号当成交。线上同名Paper候选实现独立，策略门槛未调，见[0067](../decisions/0067-pullback-actual-holdings.md)。
