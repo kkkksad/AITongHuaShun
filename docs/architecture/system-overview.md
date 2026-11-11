@@ -1,5 +1,7 @@
 # 系统架构
 
+Paper核心研究缓存携带创建请求的固定asOf，受约束读取不复用未知或晚于当前请求的已完成/在途上下文；前进时钟仍共享相同池，TTL与最多8项/活跃预算保持。替换不取消旧工作，满载拒绝不破坏原共享，见[0091](../decisions/0091-core-research-cache-asof-upper-bound.md)。
+
 浏览器bootstrap把状态/能力与市场/账户/持仓/最近50订单/风险限额同时读取，仍七个只读GET、相同认证与取消信号、整体成功后返回；现有WebSocket覆盖层和生命周期门保持，不提供多个端点的原子快照，见[0090](../decisions/0090-parallel-bootstrap-status-and-data-reads.md)。
 
 真实形态研究在首次外部await前复制股票池和名称标量，避免等待中的候选变化影响已冻结时点的请求。保留行业快照完成后行业历史优先入队；个股提前预取的共享队列期限反例会损失行业证据，未发布该方案。既有最多12股票、两工作槽/24队列及部分响应预算保持，见[0089](../decisions/0089-regime-stock-universe-before-async-wait.md)。

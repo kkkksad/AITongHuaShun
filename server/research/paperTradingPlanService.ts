@@ -351,6 +351,7 @@ async function buildPaperResearchContext(input: {
       const [leaderboard, marketRegimeResearch] = await coreResearch;
       return { leaderboard, marketRegimeResearch };
     },
+    input.asOf.getTime(),
   );
   // Auxiliary snapshots are read independently of the core cache, so a warm
   // core cannot pin an earlier warming placeholder for its entire TTL.

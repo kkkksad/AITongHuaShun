@@ -47,6 +47,39 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it("does not reuse a later same-day core context after the planning clock moves backwards", async () => {
+    const request = input(); const original = request.system.market.getSnapshot();
+    const snapshot = vi.spyOn(request.system.market, "getSnapshot");
+    for (const time of ["2026-11-09T06:30:10Z", "2026-11-09T06:30:00Z"]) {
+      snapshot.mockReturnValue({ ...original, marketTime: time });
+      const result = await buildCurrentPaperTradingPlan({ ...request, now: new Date(time) });
+      expect(result.marketRegimeResearch.generatedAt).toBe(new Date(time).toISOString());
+    }
+    expect(builders.core).toHaveBeenCalledTimes(2);
+    expect(request.system.broker.getOrders()).toEqual([]);
+  });
+
+  it("does not share a later pending core context with an earlier concurrent request", async () => {
+    const request = input(); const original = request.system.market.getSnapshot();
+    const laterTime = "2026-11-09T06:30:10Z", earlierTime = "2026-11-09T06:30:00Z";
+    const future = deferred<ReturnType<typeof buildUnavailableMarketRegimeResearch>>();
+    builders.core.mockImplementation(value => value.now.toISOString() === new Date(laterTime).toISOString()
+      ? future.promise : buildUnavailableMarketRegimeResearch(value, "earlier"));
+    const snapshot = vi.spyOn(request.system.market, "getSnapshot");
+    snapshot.mockReturnValue({ ...original, marketTime: laterTime });
+    const later = buildCurrentPaperTradingPlan({ ...request, now: new Date(laterTime) });
+    await vi.advanceTimersByTimeAsync(0);
+    snapshot.mockReturnValue({ ...original, marketTime: earlierTime });
+    const earlier = buildCurrentPaperTradingPlan({ ...request, now: new Date(earlierTime) });
+    await vi.advanceTimersByTimeAsync(0);
+    future.resolve(buildUnavailableMarketRegimeResearch(builders.core.mock.calls[0][0], "later"));
+    const [first, second] = await Promise.all([later, earlier]);
+    expect(first.marketRegimeResearch.generatedAt).toBe(new Date(laterTime).toISOString());
+    expect(second.marketRegimeResearch.generatedAt).toBe(new Date(earlierTime).toISOString());
+    expect(builders.core).toHaveBeenCalledTimes(2);
+    expect(request.system.broker.getOrders()).toEqual([]);
+  });
+
   it("returns the core plan immediately while slow auxiliary sources warm, then consumes completed bounded snapshots", async () => {
     const request = input();
     const pending = deferred<ReturnType<typeof buildUnavailableRealResearchDataFeed>>();

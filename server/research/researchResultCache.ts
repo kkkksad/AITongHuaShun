@@ -5,6 +5,7 @@ type CacheEntry<T> = {
   value?: T;
   expiresAt: number;
   settled: boolean;
+  asOfMs?: number;
 };
 
 export interface ResearchResultCacheOptions {
@@ -34,17 +35,26 @@ export class ResearchResultCache<T> {
     key: string,
     ttlMs: ResearchResultCacheTtl<T>,
     create: () => Promise<T> | T,
+    asOfMs?: number,
   ): Promise<T> {
+    if (asOfMs !== undefined && !Number.isFinite(asOfMs)) {
+      return Promise.reject(new Error("Invalid research cache as-of time"));
+    }
     const now = this.now();
     const existing = this.entries.get(key);
-    if (existing && (!existing.settled || existing.expiresAt > now)) {
+    const timeAllowed = asOfMs === undefined ||
+      existing?.asOfMs !== undefined && existing.asOfMs <= asOfMs;
+    if (existing && timeAllowed && (!existing.settled || existing.expiresAt > now)) {
       return existing.promise;
     }
-    if (existing) this.entries.delete(key);
 
     // Cache invalidation does not cancel work. Keep its admission slot until
     // the original Promise settles, including work hidden by clear().
     if (this.activeEntries.size >= this.maxEntries) return Promise.reject(new ResearchCapacityError());
+    // An earlier request may replace later work only after admission. Rejected
+    // replacements must leave the original in-flight work shareable; replaced
+    // work retains its active slot until it actually settles.
+    if (existing) this.entries.delete(key);
 
     while (this.entries.size >= this.maxEntries) {
       const completed = [...this.entries].find(([, entry]) => entry.settled);
@@ -56,6 +66,7 @@ export class ResearchResultCache<T> {
       promise: Promise.resolve().then(create),
       expiresAt: Number.POSITIVE_INFINITY,
       settled: false,
+      asOfMs,
     };
     this.entries.set(key, entry);
     this.activeEntries.add(entry);
