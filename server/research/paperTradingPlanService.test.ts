@@ -13,6 +13,68 @@ import {
 } from "./paperTradingPlanService";
 
 describe("buildPreferredHistoricalStocks", () => {
+  const entryBudget = {
+    cash: 10_000, equity: 20_000, lotSize: 100,
+    maxOrderNotional: 1_000, maxPositionWeight: 0.25,
+    commissionRate: 0.0003, minimumCommission: 5, slippageBps: 0,
+  };
+  const scanners = (rows: Array<{ symbol: string; price: number; action?: string }>) => ({
+    candidates: { candidates: rows.map(row => ({ name: row.symbol, action: "paper-buy", ...row })) } as unknown as DailyCandidateReport,
+    qualityStocks: { stocks: [] } as unknown as DailyQualityStockReport,
+  });
+
+  it("keeps a high-price position first but researches an affordable lot before an impossible new entry", () => {
+    expect(buildPreferredHistoricalStocks({
+      ...scanners([{ symbol: "600010", price: 250 }, { symbol: "600011", price: 10 }]),
+      positions: [{ symbol: "601398", name: "高价持仓" }], limit: 2, entryBudget,
+    }).map(row => row.symbol)).toEqual(["601398", "600011"]);
+  });
+
+  it("lets affordable observation research precede an unaffordable actionable entry without dropping the latter", () => {
+    const request = {
+      ...scanners([{ symbol: "600010", price: 250 }, { symbol: "600011", price: 10, action: "watch" }]),
+      positions: [], entryBudget,
+    };
+    expect(buildPreferredHistoricalStocks({ ...request, limit: 1 }).map(row => row.symbol)).toEqual(["600011"]);
+    expect(buildPreferredHistoricalStocks({ ...request, limit: 12 }).map(row => row.symbol)).toEqual(["600011", "600010"]);
+  });
+
+  it.each([
+    { name: "cash including commission", budget: { cash: 1_004.99 } },
+    { name: "slippage-adjusted notional", budget: { slippageBps: 100 } },
+    { name: "weight after fees", budget: { equity: 1_000, maxPositionWeight: 1 } },
+  ])("uses $name when deciding which candidate can fit one lot", ({ budget }) => {
+    expect(buildPreferredHistoricalStocks({
+      ...scanners([{ symbol: "600010", price: 10 }, { symbol: "600011", price: 9 }]),
+      positions: [], limit: 1, entryBudget: { ...entryBudget, ...budget },
+    }).map(row => row.symbol)).toEqual(["600011"]);
+  });
+
+  it("accepts the exact lot principal plus rounded commission and retains original order among feasible candidates", () => {
+    expect(buildPreferredHistoricalStocks({
+      ...scanners([{ symbol: "600010", price: 10 }, { symbol: "600011", price: 9 }]),
+      positions: [], limit: 1, entryBudget: { ...entryBudget, cash: 1_005 },
+    }).map(row => row.symbol)).toEqual(["600010"]);
+  });
+
+  it("retains scanner interleaving and deduplication within the feasible tier", () => {
+    expect(buildPreferredHistoricalStocks({
+      ...scanners([{ symbol: "600010", price: 250 }, { symbol: "600011", price: 9 }, { symbol: "600012", price: 8 }]),
+      qualityStocks: { stocks: [
+        { symbol: "601000", name: "质量甲", action: "focus", price: 7 },
+        { symbol: "600011", name: "重复", action: "focus", price: 9 },
+      ] } as unknown as DailyQualityStockReport,
+      positions: [], limit: 3, entryBudget,
+    }).map(row => row.symbol)).toEqual(["600011", "601000", "600012"]);
+  });
+
+  it("retains bounded research when no new entry can currently fit a lot", () => {
+    expect(buildPreferredHistoricalStocks({
+      ...scanners([{ symbol: "600010", price: 250 }, { symbol: "600011", price: 10 }]),
+      positions: [], limit: 2, entryBudget: { ...entryBudget, cash: 0 },
+    }).map(row => row.symbol)).toEqual(["600010", "600011"]);
+  });
+
   it("reserves bounded slots for actionable candidates before higher ranked observation rows", () => {
     const candidates = { candidates: [
       { symbol: "600010", name: "观察甲", action: "watch" },

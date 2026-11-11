@@ -35,6 +35,7 @@ import type { InMemoryResearchStore } from "./researchStore";
 import { ResearchResultCache } from "./researchResultCache";
 import { withResearchDeadline } from "./researchDeadline";
 import { assertPaperExecutionRevision } from "../trading/paperExecutionContext";
+import { executionCosts, hasSufficientCash } from "../broker/executionCosts";
 
 const PAPER_RESEARCH_CACHE_TTL_MS = 30_000;
 const PAPER_DEGRADED_RESEARCH_CACHE_TTL_MS = 5_000;
@@ -77,19 +78,42 @@ export interface CurrentPaperTradingPlanResult {
   adaptiveRouting: AdaptiveStrategyRouting;
 }
 
+interface PaperHistoryEntryBudget {
+  cash: number;
+  equity: number;
+  lotSize: number;
+  maxOrderNotional: number;
+  maxPositionWeight: number;
+  commissionRate: number;
+  minimumCommission: number;
+  slippageBps: number;
+}
+
 export function buildPreferredHistoricalStocks(input: {
   positions: Array<Pick<PositionSnapshot, "symbol" | "name">>;
   candidates: DailyCandidateReport;
   qualityStocks: DailyQualityStockReport;
   limit: number;
+  /** An upper bound for research priority; market/strategy sizing still follows history. */
+  entryBudget?: PaperHistoryEntryBudget;
 }): Array<{ symbol: string; name: string }> {
   const positions = input.positions.map((position) => ({
       symbol: position.symbol,
       name: position.name,
     }));
-  const interleave = (candidateAction: "paper-buy" | "watch", qualityAction: "focus" | "watch") => {
-    const candidates = input.candidates.candidates.filter((candidate) => candidate.action === candidateAction);
-    const qualityStocks = input.qualityStocks.stocks.filter((stock) => stock.action === qualityAction);
+  const canFitLot = (price: number): boolean => {
+    const budget = input.entryBudget;
+    if (!budget) return true;
+    if (!Number.isFinite(price) || price <= 0 || budget.lotSize <= 0) return false;
+    const costs = executionCosts({ symbol: "HISTORY", side: "buy", type: "market", quantity: budget.lotSize }, price, budget);
+    const equityAfterFill = budget.equity - costs.cashDebit + price * budget.lotSize;
+    return hasSufficientCash(budget.cash, costs.cashDebit) &&
+      costs.notional <= budget.maxOrderNotional &&
+      costs.notional <= equityAfterFill * budget.maxPositionWeight;
+  };
+  const interleave = (candidateAction: "paper-buy" | "watch", qualityAction: "focus" | "watch", affordable: boolean) => {
+    const candidates = input.candidates.candidates.filter((candidate) => candidate.action === candidateAction && canFitLot(candidate.price) === affordable);
+    const qualityStocks = input.qualityStocks.stocks.filter((stock) => stock.action === qualityAction && canFitLot(stock.price) === affordable);
     const stocks: Array<{ symbol: string; name: string }> = [];
     for (let index = 0; index < Math.max(candidates.length, qualityStocks.length); index += 1) {
       if (candidates[index]) stocks.push({ symbol: candidates[index].symbol, name: candidates[index].name });
@@ -97,8 +121,15 @@ export function buildPreferredHistoricalStocks(input: {
     }
     return stocks;
   };
-  // Observation scores cannot evict a position or an actionable research candidate.
-  const ordered = [...positions, ...interleave("paper-buy", "focus"), ...interleave("watch", "watch")];
+  // Positions always retain risk coverage. An impossible new lot cannot evict
+  // a feasible candidate, but remains available as bounded research backfill.
+  const ordered = [
+    ...positions,
+    ...interleave("paper-buy", "focus", true),
+    ...interleave("watch", "watch", true),
+    ...interleave("paper-buy", "focus", false),
+    ...interleave("watch", "watch", false),
+  ];
   const seen = new Set<string>();
   return ordered
     .filter((stock) => {
@@ -398,6 +429,16 @@ export async function buildCurrentPaperTradingPlan(input: {
     candidates,
     qualityStocks,
     limit: criticalHistoryStockLimit,
+    entryBudget: {
+      cash: Math.max(0, account.cash - Math.max(0, account.equity * input.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO)),
+      equity: account.equity,
+      lotSize: input.system.limits.lotSize,
+      maxOrderNotional: input.system.risk.getEffectiveMaxOrderNotional(),
+      maxPositionWeight: input.system.risk.getEffectiveMaxPositionWeight(),
+      commissionRate: input.config.COMMISSION_RATE,
+      minimumCommission: input.config.MIN_COMMISSION,
+      slippageBps: input.config.SLIPPAGE_BPS,
+    },
   });
   const researchContext = await buildPaperResearchContext({
     asOf,

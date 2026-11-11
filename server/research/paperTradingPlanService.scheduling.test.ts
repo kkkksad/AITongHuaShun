@@ -47,6 +47,25 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it("uses the actual account and effective risk cap to keep impossible high-price entries from occupying all history slots", async () => {
+    const request = input();
+    const original = request.system.market.getSnapshot();
+    const base = original.quotes[0];
+    const quotes = Array.from({ length: 8 }, (_, index) => ({
+      ...base, symbol: `6000${String(index).padStart(2, "0")}`, name: `候选${index}`,
+      price: index === 7 ? 9 : 250 + index, changePercent: 1.5,
+      tradable: true, previousClose: 9, updatedAt: date.toISOString(),
+      amplitude: 2, turnover: 3, amount: 500_000_000, volume: 10_000_000,
+    }));
+    vi.spyOn(request.system.market, "getSnapshot").mockReturnValue({ ...original, quotes });
+    vi.spyOn(request.system.risk, "getEffectiveMaxOrderNotional").mockReturnValue(1_000);
+    await buildCurrentPaperTradingPlan(request);
+    const selected = builders.core.mock.calls[0][0].preferredStocks.map((row: { symbol: string }) => row.symbol);
+    expect(selected).toHaveLength(6);
+    expect(selected[0]).toBe("600007");
+    expect(request.system.broker.getOrders()).toEqual([]);
+  });
+
   it("passes the frozen planning clock to core history research", async () => {
     const request = input();
     await buildCurrentPaperTradingPlan(request);
