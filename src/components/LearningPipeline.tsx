@@ -578,6 +578,35 @@ export default function LearningPipeline() {
                   <li key={reason}>{reason}</li>
                 ))}
               </ul>
+              {dailyReview.entryReview.coverage && (
+                <div className="daily-entry-coverage">
+                  <strong>当日保留盘中运行分布</strong>
+                  <span>
+                    盘中记录 {dailyReview.entryReview.coverage.openRunCount} 条 · 有效漏斗 {dailyReview.entryReview.coverage.validFunnelRunCount} 条 · 漏斗未知 {dailyReview.entryReview.coverage.unknownFunnelRunCount} 条
+                  </span>
+                  {dailyReview.entryReview.coverage.validFunnelRunCount > 0 ? (
+                    <ul>
+                      <li>全局新增许可关闭：{dailyReview.entryReview.coverage.stages.globalPermissionClosed}</li>
+                      <li>候选池没有新标的：{dailyReview.entryReview.coverage.stages.noNewSymbols}</li>
+                      <li>新标的无策略资格：{dailyReview.entryReview.coverage.stages.noEligibleNewSymbols}</li>
+                      <li>资格通过但无独立整手：{dailyReview.entryReview.coverage.stages.noIndividuallySizedNewSymbols}</li>
+                      <li>整手覆盖后无拟买：{dailyReview.entryReview.coverage.stages.noPlannedBuy}</li>
+                      <li>已形成拟买计划：{dailyReview.entryReview.coverage.stages.plannedBuy}</li>
+                    </ul>
+                  ) : (
+                    <span>{dailyReview.entryReview.coverage.openRunCount === 0
+                      ? "没有保留盘中运行，原因分布未知。"
+                      : "盘中记录均缺少有效漏斗，原因分布未知。"}</span>
+                  )}
+                  {dailyReview.entryReview.coverage.firstOpenRunAt && dailyReview.entryReview.coverage.lastOpenRunAt && (
+                    <span>最早/最晚保留盘中记录：{reviewOrderTime(dailyReview.entryReview.coverage.firstOpenRunAt)} / {reviewOrderTime(dailyReview.entryReview.coverage.lastOpenRunAt)}</span>
+                  )}
+                  <span>
+                    同日保留运行共 {dailyReview.entryReview.coverage.retainedRunCount} 条，休市 {dailyReview.entryReview.coverage.outsideSessionRunCount} 条，时段未知 {dailyReview.entryReview.coverage.unknownSessionRunCount} 条。
+                  </span>
+                  <span>分布按有效盘中漏斗互斥计数，仅说明保留记录，不代表完整定时覆盖、独立信号数或成交数；整手覆盖后无拟买的具体原因需查看对应运行。</span>
+                </div>
+              )}
             </div>
           )}
           <p className="empty-copy">委托按提交日统计，成交和费用按实际成交日统计，均截至报告生成时刻；以下为复盘日委托与成交的合并记录，状态以当前记录为准，时间均为北京时间。旧成交记录以最后更新时间兼容。</p>

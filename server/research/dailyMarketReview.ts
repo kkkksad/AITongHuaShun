@@ -9,6 +9,8 @@ import type {
 import { getPaperStrategyProfilePolicy } from "../trading/paperStrategyProfile";
 import { describeResearchInputDiagnostics } from "./researchInputDiagnostics";
 import { describeDailyEntryFunnel } from "./dailyEntryFunnelEvidence";
+import { buildDailyEntryCoverage } from "./dailyEntryCoverage";
+import type { DailyEntryCoverage } from "../../shared/dailyEntryCoverage";
 import { getOrderFillTime } from "../trading/orderFillTime";
 import {
   getAshareTradingDateStatus,
@@ -80,6 +82,7 @@ export interface DailyEntryReview {
   marketRegime: string | null;
   planQuality: string | null;
   cashWasConstraint: boolean;
+  coverage?: DailyEntryCoverage;
 }
 
 export interface DailyMarketReview {
@@ -713,14 +716,14 @@ export function buildDailyMarketReview(
   const rejected = dailyOrders.filter((order) => order.status === "rejected");
   const filledBuys = filled.filter((order) => order.side === "buy");
   const filledSells = filled.filter((order) => order.side === "sell");
-  const entryReview = buildEntryReview({
+  const entryReview = { ...buildEntryReview({
     tradingDate,
     marketTone: tone,
     account: input.account,
     dailyOrders,
     dailyFills: filled,
     auditEvents,
-  });
+  }), coverage: buildDailyEntryCoverage(auditEvents, tradingDate, now) };
   const cashRatio = input.account.equity > 0
     ? input.account.cash / input.account.equity
     : 0;

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { PaperNewPositionFunnel } from "../../shared/paperTradingCoverage";
 
 const count = z.number().int().min(0).max(12);
 const coverageSchema = z.object({
@@ -20,11 +21,16 @@ const coverageSchema = z.object({
     value.plannedBuyCount <= value.newSymbolCount),
 });
 
+/** Only validated, whitelisted diagnostics may enter daily evidence. */
+export function parseDailyEntryFunnel(coverage: unknown): PaperNewPositionFunnel | null {
+  const parsed = coverageSchema.safeParse(coverage);
+  return parsed.success ? parsed.data.newPositionFunnel : null;
+}
+
 /** Describe one run's bounded funnel without inferring account-wide permission. */
 export function describeDailyEntryFunnel(coverage: unknown): string[] {
-  const parsed = coverageSchema.safeParse(coverage);
-  if (!parsed.success) return [];
-  const value = parsed.data.newPositionFunnel;
+  const value = parseDailyEntryFunnel(coverage);
+  if (!value) return [];
   const reasons = [
     `最新有效盘中运行的前12候选池：新标的 ${value.newSymbolCount} 个，策略资格 ${value.eligibleNewSymbolCount} 个，初始预算下独立可成整手 ${value.individuallySizedNewSymbolCount} 个，最终拟买 ${value.plannedBuyCount} 个。`,
   ];

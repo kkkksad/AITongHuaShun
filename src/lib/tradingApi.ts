@@ -16,6 +16,7 @@ import type { ApiPerformanceSnapshot } from "../../shared/systemMonitoring";
 import type { PaperBuyExecutionProjection, PaperTradingPlanSizingDiagnostics } from "../../shared/paperTradingSizing";
 import type { PaperNewPositionFunnel, PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
 import type { PaperCandidatePool } from "../../shared/paperCandidatePool";
+import type { DailyEntryCoverage } from "../../shared/dailyEntryCoverage";
 import { ApiRequestError } from "./apiError";
 
 export interface HealthSnapshot {
@@ -969,6 +970,7 @@ export interface DailyMarketReview {
     marketRegime: string | null;
     planQuality: string | null;
     cashWasConstraint: boolean;
+    coverage?: DailyEntryCoverage;
   };
   strategyReview: {
     profile?: {

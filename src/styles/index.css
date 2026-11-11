@@ -3953,6 +3953,18 @@ select:focus-visible {
   border-left-color: var(--color-positive);
 }
 
+.daily-entry-coverage {
+  display: grid;
+  gap: 7px;
+  margin-top: 5px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 13px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .daily-entry-review.risk-blocked,
 .daily-entry-review.plan-blocked,
 .daily-entry-review.data-unavailable,
