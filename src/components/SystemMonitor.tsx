@@ -106,7 +106,7 @@ export function SystemMonitorContent({
         <div>
           <span className="section-kicker">运行诊断</span>
           <h2>API 性能与数据链路</h2>
-          <p>最近有限样本 · 更新于 {formatTime(report.generatedAt)}</p>
+          <p>最近样本延迟与累计计数 · 更新于 {formatTime(report.generatedAt)}</p>
         </div>
         <div className="system-monitor-header-actions">
           <span className={`system-monitor-state tone-${presentation.tone}`}>
@@ -133,19 +133,19 @@ export function SystemMonitorContent({
           <small>{report.totals.inFlight} 个请求处理中</small>
         </article>
         <article>
-          <span><Gauge size={15} />P95 延迟</span>
+          <span><Gauge size={15} />最近样本 P95</span>
           <strong>{formatMilliseconds(report.totals.p95Ms)}ms</strong>
-          <small>平均 {formatMilliseconds(report.totals.averageMs)}ms</small>
+          <small>累计平均 {formatMilliseconds(report.totals.averageMs)}ms</small>
         </article>
         <article>
-          <span><AlertTriangle size={15} />服务失败率</span>
+          <span><AlertTriangle size={15} />累计服务失败率</span>
           <strong className={report.totals.failures > 0 ? "tone-warning" : "tone-positive"}>
             {formatPercent(report.totals.failureRate)}
           </strong>
-          <small>{report.totals.failures} 次失败 · {report.totals.slowRequests} 次慢请求</small>
+          <small>累计 {report.totals.failures} 次失败 · {report.totals.slowRequests} 次慢请求</small>
         </article>
         <article>
-          <span><Activity size={15} />业务请求</span>
+          <span><Activity size={15} />累计业务请求</span>
           <strong>{report.totals.requests}</strong>
           <small>{report.routes.length} 条路由有样本</small>
         </article>
@@ -198,11 +198,11 @@ export function SystemMonitorContent({
       <div className="system-route-section">
         <div className="system-route-heading">
           <div>
-            <span className="section-kicker">路由窗口</span>
+            <span className="section-kicker">统计范围</span>
             <h3>慢接口与失败定位</h3>
           </div>
           <small>
-            最多 {report.window.maxRoutes} 条路由 · 每路由 {report.window.samplesPerRoute} 个样本
+            最多 {report.window.maxRoutes} 条路由 · 每路由最近 {report.window.samplesPerRoute} 个耗时样本
           </small>
         </div>
 
@@ -221,11 +221,11 @@ export function SystemMonitorContent({
                 <tr>
                   <th>方法</th>
                   <th>路由</th>
-                  <th>请求</th>
-                  <th>平均</th>
-                  <th>P95</th>
-                  <th>失败</th>
-                  <th>最近</th>
+                  <th>累计请求</th>
+                  <th>累计平均</th>
+                  <th>最近 P95</th>
+                  <th>累计失败</th>
+                  <th>最近状态</th>
                 </tr>
               </thead>
               <tbody>
@@ -240,7 +240,7 @@ export function SystemMonitorContent({
 
       <div className="system-monitor-footnote">
         <ShieldCheck size={14} />
-        <span>仅保存路由模板、状态和有限耗时样本，不记录查询值、请求正文、响应正文或凭据</span>
+        <span>P50/P95汇总每条保留路由的最近耗时样本；请求、失败、平均与最高耗时按这些路由的累计记录统计，不是固定时间窗口。重启或路由淘汰后对应累计值清除。仅保存路由模板、状态和有限耗时样本，不记录查询值、请求正文、响应正文或凭据。</span>
       </div>
     </section>
   );

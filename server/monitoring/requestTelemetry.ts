@@ -132,12 +132,12 @@ function recommendations(
   const slow = routes.find((route) => route.slowCount > 0);
   if (failed) {
     items.push(
-      `优先检查 ${failed.method} ${failed.route}，窗口内失败 ${failed.failureCount} 次。`,
+      `优先检查 ${failed.method} ${failed.route}，保留路由累计失败 ${failed.failureCount} 次。`,
     );
   }
   if (slow) {
     items.push(
-      `慢接口 ${slow.method} ${slow.route} 的 P95 为 ${slow.p95Ms.toFixed(0)}ms。`,
+      `慢接口 ${slow.method} ${slow.route} 的最近样本 P95 为 ${slow.p95Ms.toFixed(0)}ms。`,
     );
   }
   if (items.length === 0) {

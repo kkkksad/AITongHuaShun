@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ApiPerformanceSnapshot } from "../../shared/systemMonitoring";
 import { SystemMonitorContent } from "./SystemMonitor";
+import { RequestTelemetry } from "../../server/monitoring/requestTelemetry";
 
 function makeSnapshot(
   overrides: Partial<ApiPerformanceSnapshot> = {},
@@ -65,6 +66,24 @@ function makeSnapshot(
 }
 
 describe("SystemMonitor", () => {
+  it("distinguishes recent percentile samples from retained-route cumulative counters", () => {
+    const telemetry = new RequestTelemetry({ samplesPerRoute: 2 });
+    [1000, 1000, 30, 10, 20].forEach((durationMs, index) => telemetry.record({
+      durationMs, method: "GET", route: "/api/account", statusCode: index === 0 ? 503 : 200,
+    }));
+    const data = telemetry.snapshot();
+    expect(data.totals).toMatchObject({ requests: 5, failures: 1, averageMs: 412, p95Ms: 20 });
+    const html = renderToStaticMarkup(<SystemMonitorContent isFetching={false} onRefresh={() => {}}
+      report={makeSnapshot(data)} />);
+    expect(html).toContain("最近样本 P95");
+    expect(html).toContain("累计平均 412ms");
+    expect(html).toContain("累计服务失败率");
+    expect(html).toContain("累计业务请求");
+    expect(html).toContain("每路由最近 2 个耗时样本");
+    expect(html).toContain("重启或路由淘汰后对应累计值清除");
+    expect(html).not.toContain("窗口内失败");
+    expect(html).not.toContain("最近有限样本 ·");
+  });
   it("renders API health, market quality, and the slowest route", () => {
     const html = renderToStaticMarkup(
       <SystemMonitorContent
