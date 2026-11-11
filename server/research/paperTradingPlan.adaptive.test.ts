@@ -323,6 +323,19 @@ function build(input: {
 }
 
 describe("adaptive paper trading plan", () => {
+  it.each([
+    { scenario: "missing", research: marketRegime("healthy-trend", 0.8, "600519"), text: "未进入本轮真实历史" },
+    { scenario: "insufficient", research: marketRegime("insufficient-data", 0, "601988"), text: "有效历史日线不足" },
+    { scenario: "deteriorating", research: marketRegime("trend-deterioration", 0.8, "601988"), text: "趋势恶化" },
+    { scenario: "unmatched", research: marketRegime("unclear", 0.4, "601988"), text: "已读取历史但未命中" },
+  ])("distinguishes $scenario evidence from an already tested strategy failure", ({ research, text }) => {
+    const plan = build({ cash: 10_000, includeCandidate: true, research });
+    const blocked = plan.operations.find(operation => operation.symbol === "601988")!;
+    expect(blocked.reason).toContain(text);
+    expect(blocked.ruleChecks).toContain("strategy-route: blocked (no-qualified-signal)");
+    expect(plan.operations.some(operation => operation.action === "paper-buy-plan")).toBe(false);
+  });
+
   it("distinguishes a signal matched by an existing holding from a new entry opportunity", () => {
     const stock = { ...qualityStocks(true).stocks[0], symbol: "600519", name: "测试持仓", price: 10 };
     const plan = build({ cash: 7000, positions: [position()], qualityOverride: { stocks: [stock] } as DailyQualityStockReport });

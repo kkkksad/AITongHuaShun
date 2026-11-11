@@ -120,6 +120,8 @@
 
 [0079：Paper辅助研究使用有界后台快照](0079-paper-auxiliary-background-snapshots.md)。
 
+[0080：Paper逐股阻塞说明与有界审计取样](0080-paper-blocker-evidence-sampling.md)。
+
 文件名使用 `NNNN-short-title.md`。
 
 每份记录至少包含：

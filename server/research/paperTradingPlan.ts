@@ -1215,6 +1215,16 @@ export function buildPaperTradingPlan(input: {
     }
 
     if (!candidate.strategyEligible || !candidate.strategyKey) {
+      const history = stockRegimeMap.get(candidate.symbol);
+      const historyReason = !input.marketRegimeResearch
+        ? "当前没有启用逐股历史形态路由，未命中所选策略。"
+        : !history
+          ? "候选未进入本轮真实历史日线观察池，尚无逐股历史资格结论。"
+          : history.regime === "insufficient-data"
+            ? "候选有效历史日线不足，不能形成逐股策略结论。"
+            : history.regime === "trend-deterioration"
+              ? "真实历史形态为趋势恶化，当前策略过滤禁止新增该标的。"
+              : `候选已读取历史但未命中当前可用策略规则（形态 ${history.regime}，形态置信度 ${(history.confidence * 100).toFixed(0)}%，有效日线 ${history.barCount} 根）。`;
       operations.push({
         timestamp: now,
         symbol: candidate.symbol,
@@ -1224,7 +1234,7 @@ export function buildPaperTradingPlan(input: {
         quantity: 0,
         price: candidate.price,
         estimatedNotional: 0,
-        reason: `当前市场状态 ${input.adaptiveRouting?.regime ?? "unclear"} 下，该候选没有同时满足真实历史形态与可用策略规则。`,
+        reason: `当前市场状态 ${input.adaptiveRouting?.regime ?? "unclear"}。${historyReason}`,
         ruleChecks: [
           "paper-only",
           "strategy-route: blocked (no-qualified-signal)",

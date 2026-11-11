@@ -408,6 +408,31 @@ describe("automatic execution quote freshness before creating orders", () => {
 });
 
 describe("paper execution checks the actual submission time", () => {
+  it("persists diverse blocked causes within eight audit rows without altering the complete run", async () => {
+    const fixture = createExecutionFixture({ startedAt: "2026-08-21T09:35:00+08:00", operationCount: 0 });
+    const operation = (index: number, action: "hold" | "blocked", reason: string) => ({
+      timestamp: fixture.snapshot.marketTime, symbol: `600${String(index).padStart(3, "0")}`,
+      name: "fixture", action, strategy: "fixture", quantity: 0, price: 10, estimatedNotional: 0,
+      reason, ruleChecks: ["paper-only"],
+    });
+    fixture.plan.operations = [
+      ...Array.from({ length: 4 }, (_, i) => operation(i, "hold", "healthy holding")),
+      ...Array.from({ length: 9 }, (_, i) => operation(i + 4, "blocked", "no signal")),
+      operation(13, "blocked", "fee and lot cap"),
+    ];
+    fixture.plan.qualitySummary.planQuality = "blocked";
+    const run = await fixture.executor.runOnce();
+    const audit = fixture.system.store.listAudit(20).find(event => event.action === "paper-auto-execution.run")!;
+    const evidence = audit.data?.skippedReasons as Array<{ reason: string }>;
+    expect(evidence).toHaveLength(8);
+    expect(evidence.some(row => row.reason.includes("fee and lot cap"))).toBe(true);
+    expect(audit.data).toMatchObject({ skippedReasonCount: 14, skippedReasonsOmitted: 6 });
+    expect(run.skippedOperations).toHaveLength(14);
+    expect(run.skippedOperations[0].reason).toContain("healthy holding");
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+    expect(fixture.system.broker.getAccount().cash).toBe(10_000);
+  });
+
   it("persists bounded historical evidence with a zero-order run", async () => {
     const fixture = createExecutionFixture({
       startedAt: "2026-08-21T09:35:00+08:00", operationCount: 0,

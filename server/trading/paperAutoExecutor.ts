@@ -46,6 +46,7 @@ import { getOrderFillTime } from "./orderFillTime";
 import { assertPaperExecutionRevision, PaperExecutionContextChangedError } from "./paperExecutionContext";
 import { PaperExecutionTimer } from "./paperExecutionTiming";
 import type { PaperExecutionTiming } from "../../shared/paperExecutionTiming";
+import { selectPaperSkipEvidence } from "./paperSkipEvidence";
 
 export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
 export type PaperAutoExecutionActivityMode =
@@ -1443,6 +1444,7 @@ export class PaperAutoExecutor {
       previousPersistedAt: this.lastPersistedRunAt,
     });
     if (!shouldPersist) return run;
+    const skippedEvidence = selectPaperSkipEvidence(run.skippedOperations);
     this.options.system.store.appendAudit(
       "system",
       "paper-auto-execution.run",
@@ -1498,16 +1500,10 @@ export class PaperAutoExecutor {
           reason: order.reason,
           estimatedNotional: order.estimatedNotional,
         })),
-        skippedReasons: run.skippedOperations.slice(0, 8).map((operation) => ({
-          symbol: operation.symbol,
-          action: operation.action,
-          reason: operation.reason,
-          strategy: operation.strategy,
-          strategyKey: operation.strategyKey,
-          quantity: operation.quantity,
-          price: operation.price,
-          estimatedNotional: operation.estimatedNotional,
-        })),
+        skippedReasons: skippedEvidence.reasons,
+        skippedReasonCount: skippedEvidence.total,
+        skippedReasonsOmitted: skippedEvidence.omitted,
+        skippedReasonSelection: "blocked-first-distinct-reasons-v1",
       },
     );
     this.lastPersistedRunSignature = signature;
