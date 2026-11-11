@@ -108,7 +108,13 @@ export function buildPreferredHistoricalStocks(input: {
   limit: number;
   /** An upper bound for research priority; market/strategy sizing still follows history. */
   entryBudget?: PaperHistoryEntryBudget;
+  /** Optional deterministic exploration of one affordable tail slot; no extra capacity. */
+  rotationSeed?: number;
 }): Array<{ symbol: string; name: string }> {
+  if (input.rotationSeed !== undefined &&
+      (!Number.isSafeInteger(input.rotationSeed) || input.rotationSeed < 0)) {
+    throw new Error("Invalid historical rotation seed");
+  }
   const positions = input.positions.map((position) => ({
       symbol: position.symbol,
       name: position.name,
@@ -135,21 +141,32 @@ export function buildPreferredHistoricalStocks(input: {
   };
   // Positions always retain risk coverage. An impossible new lot cannot evict
   // a feasible candidate, but remains available as bounded research backfill.
-  const ordered = [
-    ...positions,
+  const affordable = [
     ...interleave("paper-buy", "focus", true),
     ...interleave("watch", "watch", true),
+  ];
+  const ordered = [
+    ...positions,
+    ...affordable,
     ...interleave("paper-buy", "focus", false),
     ...interleave("watch", "watch", false),
   ];
   const seen = new Set<string>();
-  return ordered
-    .filter((stock) => {
+  const unique = ordered.filter((stock) => {
       if (!/^\d{6}$/.test(stock.symbol) || seen.has(stock.symbol)) return false;
       seen.add(stock.symbol);
       return true;
-    })
-    .slice(0, Math.max(1, Math.min(input.limit, 12)));
+    });
+  const capacity = Math.max(1, Math.min(input.limit, 12));
+  const selected = unique.slice(0, capacity);
+  if (input.rotationSeed === undefined || selected.length < capacity) return selected;
+  const held = new Set(positions.map(stock => stock.symbol));
+  if (held.has(selected.at(-1)!.symbol)) return selected;
+  const feasible = new Set(affordable.map(stock => stock.symbol));
+  const explorationPool = unique.slice(capacity - 1)
+    .filter(stock => !held.has(stock.symbol) && feasible.has(stock.symbol));
+  if (explorationPool.length < 2) return selected;
+  return [...selected.slice(0, -1), explorationPool[input.rotationSeed % explorationPool.length]];
 }
 
 export function findLatestConfirmedRestrictiveRouting(
@@ -455,6 +472,8 @@ export async function buildCurrentPaperTradingPlan(input: {
     candidates,
     qualityStocks,
     limit: criticalHistoryStockLimit,
+    rotationSeed: executionStrategy === "auto" && input.activityTargetActive === true
+      ? asOf.getUTCHours() * 60 + asOf.getUTCMinutes() : undefined,
     entryBudget: {
       cash: Math.max(0, account.cash - Math.max(0, account.equity * input.config.PAPER_AUTO_EXECUTION_CASH_RESERVE_RATIO)),
       equity: account.equity,

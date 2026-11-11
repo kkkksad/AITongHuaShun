@@ -4,6 +4,8 @@
 
 ## 环境
 
+自动活跃Paper研究的末位按固定asOf的UTC分钟序号轮换可负担候选，前11项和持仓保留；这不会增加每轮12股上限，但新符号可能增加冷读工作。观察时结合漏斗覆盖、研究阶段耗时、historyScheduler排队/拒绝和原始账户拟买，不能仅以轮换名额或信号数衡量效果，见[0092](../decisions/0092-bounded-paper-history-exploration.md)。
+
 调优历史并发前须同时验证共享槽位和批次部分返回期限。独立HTTP并行不等于独立来源容量：12股提前入队可能使稍后的行业历史来不及返回，导致市场路由降级。当前保留行业历史优先与两工作槽/24队列，不根据理想延迟实验提高并发或覆盖上限，见[0089](../decisions/0089-regime-stock-universe-before-async-wait.md)。
 
 桥接健康的historyScheduler.timing提供lastQueueWaitMs/maxQueueWaitMs与lastWorkMs/maxWorkMs，scope为history-limiter、window为process-lifetime、unit为ms；缺样本null。先看pending/rejected与排队区间，再结合工作区间、API事件循环/请求P95和来源年龄定位瓶颈。工作可能包含executor等待与SDK网络，不是纯网络耗时或P95；查询不触发历史读取，见[0049](../decisions/0049-history-queue-and-work-timing.md)。

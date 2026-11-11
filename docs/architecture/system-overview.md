@@ -1,5 +1,7 @@
 # 系统架构
 
+自动活跃Paper历史池在原12名额内保留前11项，用末位按固定asOf的UTC分钟序号轮换后排可负担候选；持仓占满/无可负担溢出、手动或非活跃均保持原选择。无额外后台队列，每轮仍一个股票历史批次且行业历史先入队；实际股票集合进入原缓存键。详情和代价见[0092](../decisions/0092-bounded-paper-history-exploration.md)。
+
 Paper核心研究缓存携带创建请求的固定asOf，受约束读取不复用未知或晚于当前请求的已完成/在途上下文；前进时钟仍共享相同池，TTL与最多8项/活跃预算保持。替换不取消旧工作，满载拒绝不破坏原共享，见[0091](../decisions/0091-core-research-cache-asof-upper-bound.md)。
 
 浏览器bootstrap把状态/能力与市场/账户/持仓/最近50订单/风险限额同时读取，仍七个只读GET、相同认证与取消信号、整体成功后返回；现有WebSocket覆盖层和生命周期门保持，不提供多个端点的原子快照，见[0090](../decisions/0090-parallel-bootstrap-status-and-data-reads.md)。

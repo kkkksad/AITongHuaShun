@@ -47,6 +47,40 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it.each([
+    { executionStrategy: "auto" as const, active: true, rotates: true },
+    { executionStrategy: "rsi" as const, active: true, rotates: false },
+    { executionStrategy: "auto" as const, active: false, rotates: false },
+  ])("uses the frozen minute only for automatic active history exploration: $executionStrategy/$active", async ({ executionStrategy, active, rotates }) => {
+    const request = input();
+    request.system.store.setExecutionStrategy(executionStrategy);
+    const original = request.system.market.getSnapshot();
+    const base = original.quotes[0];
+    const quotes = Array.from({ length: 25 }, (_, i) => ({ ...base,
+      symbol: `6000${String(i).padStart(2, "0")}`, name: `轮换${i}`, price: 9,
+      changePercent: 1.5, previousClose: 8.9, open: 9, high: 9.1, low: 8.9,
+      amplitude: 2, turnover: 3, amount: 500_000_000, volume: 10_000_000,
+      updatedAt: date.toISOString(), tradable: true,
+    }));
+    vi.spyOn(request.system.market, "getSnapshot").mockReturnValue({ ...original, quotes });
+    const run = (offset: number) => buildCurrentPaperTradingPlan({ ...request,
+      activityTargetActive: active, now: new Date(date.getTime() + offset),
+    });
+    await run(0);
+    const first = builders.core.mock.calls.at(-1)![0].preferredStocks;
+    await run(1_000);
+    expect(builders.core.mock.calls.at(-1)![0].preferredStocks).toEqual(first);
+    await run(60_000);
+    const last = builders.core.mock.calls.at(-1)![0].preferredStocks;
+    expect(last).toHaveLength(active ? 12 : 6);
+    expect(last.slice(0, -1)).toEqual(first.slice(0, -1));
+    if (rotates) {
+      expect(last.at(-1)).not.toEqual(first.at(-1));
+      expect(builders.core).toHaveBeenCalledTimes(2);
+    } else expect(last).toEqual(first);
+    expect(request.system.broker.getOrders()).toEqual([]);
+  });
+
   it("does not reuse a later same-day core context after the planning clock moves backwards", async () => {
     const request = input(); const original = request.system.market.getSnapshot();
     const snapshot = vi.spyOn(request.system.market, "getSnapshot");
