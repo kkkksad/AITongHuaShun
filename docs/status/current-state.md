@@ -2,7 +2,9 @@
 
 **核对日期：** 2026-11-12（北京时间；本轮复盘11月11日）
 
-每日复盘同轮证据本地完整172文件2624后端项、58文件395前端项及TS/Vite通过，目标79项；旧版24项新增回归23失败。blocked计划明确为已评估受阻，按合法同轮漏斗区分资格/独立整手/最终拟买，不从正现金推断资金充足，旧坏漏斗未知。四状态×三宽度隔离Chrome通过且窄屏人工核验无横溢，见[0081](../decisions/0081-daily-entry-review-evidence.md)与[执行计划](../plans/2026-11-11-daily-entry-evidence.md)。等待独立发布；Python无改动。
+资金护城河实际持仓模块本地完整173文件2644后端、目标47及TS/Vite通过：20新增回归旧版17失败，绑定单股、按实际均价/可卖整手退出，只有观测清仓才开始冷却；固定72组68报告一致，四组变化完整记录，不按收益方向选实现。等待独立部署，见[0082](../decisions/0082-capital-shield-actual-holdings.md)与[历史对照](../research/2026-11-11-capital-shield-execution-semantics.md)。RiskOffRecovery/TrendHealth的虚拟持仓仍待修复。
+
+每日复盘同轮证据476df55已于UTC18:54推送部署核验717文件/三健康/可信双域HTTPS/匿名401/原账户与检查点及上一材料。完整172文件2624后端项、58文件395前端项及TS/Vite通过，目标79项；旧版24项新增回归23失败。blocked计划明确为已评估受阻，按合法同轮漏斗区分资格/独立整手/最终拟买，不从正现金推断资金充足，旧坏漏斗未知。四状态×三宽度隔离Chrome通过且窄屏人工核验无横溢，见[0081](../decisions/0081-daily-entry-review-evidence.md)与[执行计划](../plans/2026-11-11-daily-entry-evidence.md)。该复盘模块已发布；Python无改动。
 
 本轮已上线：可买整手历史优先`715c960`、辅助后台快照`0471b5a`、逐股与审计阻塞证据`2e82bd0`，均已推送。最新UTC18:35核验713归档文件/三健康/双域可信HTTPS200/匿名401/原账户经济摘要与检查点及上一发布材料；完整171文件2600服务端与TS/Vite通过。分别见[0078](../decisions/0078-affordable-lots-prioritize-paper-history.md)、[0079](../decisions/0079-paper-auxiliary-background-snapshots.md)、[0080](../decisions/0080-paper-blocker-evidence-sampling.md)。辅助受控100ms核心不再额外等4秒；同快照隔离A/B/B/A为4196.79/46.23/9.37/7.95ms，底层缓存共享，不能称生产p95。未来盘中效果待观察。
 
