@@ -1865,8 +1865,10 @@ export async function fetchSystemStatus(signal?: AbortSignal): Promise<SystemSta
 }
 
 export async function fetchTradingBootstrap(signal?: AbortSignal): Promise<TradingBootstrap> {
-  const { health, capabilities } = await fetchSystemStatus(signal);
-  const [market, account, positions, orders, limits] = await Promise.all([
+  // Independent reads share the same authenticated lifecycle and cancellation
+  // signal. Return only the complete bootstrap, after every required read.
+  const [{ health, capabilities }, market, account, positions, orders, limits] = await Promise.all([
+    fetchSystemStatus(signal),
     authApiRequest<MarketSnapshot>("/api/market/snapshot", { signal }),
     authApiRequest<AccountSnapshot>("/api/account", { signal }),
     authApiRequest<PositionSnapshot[]>("/api/positions", { signal }),

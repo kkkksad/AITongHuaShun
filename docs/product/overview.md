@@ -1,5 +1,7 @@
 # 产品范围
 
+首页初始化的账户、持仓等读取不再等待健康和能力查询返回后才开始；仍等全部必需数据完成后展示，错误、取消、认证隔离和实时更新合并保持，详见[0090](../decisions/0090-parallel-bootstrap-status-and-data-reads.md)。受控本机HTTP减少一波等待，不代表已测得生产页面P95。
+
 研究管线的今日盘面与模拟交易复盘独立加载，不等待合成策略排行榜或候选请求；昂贵研究挂起时已有订单仍可查看，沿用原刷新、错误与认证缓存规则。纸面交易计划在轻量候选完成后加载，不再等待独立合成榜；真实行情计划自身也不运行合成网格搜索，当前参考策略来自真实路由，见[0050](../decisions/0050-real-paper-plans-independent-of-synthetic-ranking.md)和[11月10日复盘](../research/2026-11-10-session-strategy-loading-review.md)。
 
 ## 产品目标
