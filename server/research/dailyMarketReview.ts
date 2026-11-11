@@ -324,8 +324,11 @@ function decisionAuditMap(events: AuditEvent[]): Map<string, DecisionAuditData> 
 }
 
 function eventTradingDate(event: AuditEvent): string | null {
+  const timestamp = Date.parse(event.timestamp);
+  if (!Number.isFinite(timestamp)) return null;
+  const actual = getChinaDateKey(new Date(timestamp));
   const explicit = event.data?.tradingDate;
-  return typeof explicit === "string" ? explicit : getChinaDateKey(new Date(event.timestamp));
+  return explicit === undefined || explicit === actual ? actual : null;
 }
 
 function latestAudit(
@@ -334,7 +337,7 @@ function latestAudit(
 ): AuditEvent | undefined {
   return events
     .filter(predicate)
-    .sort((left, right) => right.timestamp.localeCompare(left.timestamp))[0];
+    .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))[0];
 }
 
 function latestEffectiveAutoExecutionRun(events: AuditEvent[]): AuditEvent | undefined {
