@@ -960,6 +960,7 @@ export interface DailyMarketReview {
       | "runtime-gap"
       | "risk-blocked"
       | "cash-constrained"
+      | "plan-blocked"
       | "no-qualified-candidate"
       | "data-unavailable"
       | "not-evaluated";

@@ -8,6 +8,7 @@ import type {
 } from "../../shared/trading";
 import { getPaperStrategyProfilePolicy } from "../trading/paperStrategyProfile";
 import { describeResearchInputDiagnostics } from "./researchInputDiagnostics";
+import { describeDailyEntryFunnel } from "./dailyEntryFunnelEvidence";
 import { getOrderFillTime } from "../trading/orderFillTime";
 import {
   getAshareTradingDateStatus,
@@ -67,6 +68,7 @@ export type DailyEntryReviewStatus =
   | "runtime-gap"
   | "risk-blocked"
   | "cash-constrained"
+  | "plan-blocked"
   | "no-qualified-candidate"
   | "data-unavailable"
   | "not-evaluated";
@@ -476,14 +478,14 @@ function buildEntryReview(input: {
   if (marketRegime === "risk-off" || marketRegime === "risk-off-recovery") {
     const reasons = [
       `最新可审计中期路由为 ${marketRegime}，新增仓位被策略风控关闭。`,
-      `账户仍有 ${input.account.cash.toFixed(2)} 元现金，因此未入场不是资金不足。`,
+      "未记录资金不足拒单；不推断一手可负担性或其他资金约束。",
     ];
     if (input.marketTone === "risk-on") {
       reasons.push("收盘短线盘面转强，但单日反弹尚未完成中期趋势的连续修复确认。");
     }
     return {
       status: "risk-blocked",
-      summary: "当日未买入主要是中期策略风控阻止入场，不是资金不足。",
+      summary: "当日无买入成交，最新可审计中期策略路由关闭新增仓位。",
       reasons,
       marketRegime,
       planQuality,
@@ -491,13 +493,17 @@ function buildEntryReview(input: {
     };
   }
 
-  if (planQuality === "watch-only") {
+  if (planQuality === "blocked" || planQuality === "watch-only") {
+    const funnelReasons = describeDailyEntryFunnel(latestRun?.data?.strategyCoverage);
     return {
-      status: "no-qualified-candidate",
-      summary: "当日计划保持观察，没有候选同时通过策略、历史持续性、费用和仓位准入。",
-      reasons: skippedReasons.length > 0
-        ? skippedReasons.slice(0, 3)
-        : ["最新自动执行计划质量为 watch-only。"],
+      status: planQuality === "blocked" ? "plan-blocked" : "no-qualified-candidate",
+      summary: planQuality === "blocked"
+        ? "当日无买入成交，最新有效盘中计划已评估但被准入规则阻塞。"
+        : "当日无买入成交，最新有效盘中计划保持观察。",
+      reasons: [
+        ...(funnelReasons.length > 0 ? funnelReasons : ["本轮漏斗细节缺失或无效，不能确定资格或金额阶段。"]),
+        ...skippedReasons.slice(0, 3),
+      ],
       marketRegime,
       planQuality,
       cashWasConstraint: false,

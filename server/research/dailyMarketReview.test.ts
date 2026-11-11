@@ -363,7 +363,8 @@ describe("buildDailyMarketReview", () => {
       planQuality: "watch-only",
       cashWasConstraint: false,
     });
-    expect(report.entryReview.summary).toContain("不是资金不足");
+    expect(report.entryReview.summary).toContain("关闭新增仓位");
+    expect(report.entryReview.reasons.join(" ")).toContain("不推断一手可负担性");
     expect(report.entryReview.reasons.join(" ")).toContain("单日反弹");
     expect(report.strategyReview.issues.join(" ")).toContain("中期路由");
     expect(report.strategyReview.nextActions.join(" ")).toContain("连续确认");
