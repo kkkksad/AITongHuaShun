@@ -6,7 +6,7 @@ const ISSUE_LABELS = {
   "history-queue-full": "历史请求队列已满，部分序列等待后续读取。",
   "sector-history-insufficient": "具备足够日线的板块不足两个。",
   "stock-history-insufficient": "缺少具备足够历史日线的个股。",
-  "provider-warning": "研究来源存在其他警告，原始错误未写入交易审计。",
+  "provider-warning": "研究来源存在未分类或未展开的警告，原始错误未写入交易审计。",
 } as const;
 
 type ResearchInputIssue = keyof typeof ISSUE_LABELS;
@@ -28,17 +28,35 @@ export function buildResearchInputDiagnostics(input: {
     (stock) => stock.regime !== "insufficient-data",
   ).length;
   const issues: ResearchInputIssue[] = [];
-  const warnings = input.warnings.slice(0, 8).map((warning) => warning.slice(0, 2_000));
-  const warningText = warnings.join(" ");
-  const isContractWarning = (warning: string) => /unexpected keyword argument|unexpected argument|不支持.*参数/i.test(warning);
-  if (warnings.some(isContractWarning)) issues.push("provider-contract");
-  if (warnings.some((warning) => !isContractWarning(warning) && /超时|\btimeout\b|\btimed out\b/i.test(warning))) issues.push("provider-timeout");
-  if (/预热|冷启动|warming/i.test(warningText)) issues.push("history-warming");
-  if (/队列上限|queue.*(?:full|limit)/i.test(warningText)) issues.push("history-queue-full");
+  const classified = new Set<ResearchInputIssue>();
+  let hasUnexpandedWarning = input.warnings.length > 8;
+  for (const raw of input.warnings.slice(0, 8)) {
+    if (raw.length > 2_000) hasUnexpandedWarning = true;
+    const warning = raw.slice(0, 2_000);
+    const contract = /unexpected keyword argument|unexpected argument|不支持.*参数/i.test(warning);
+    const timeout = !contract && /超时|\btimeout\b|\btimed out\b/i.test(warning);
+    const warming = /预热|冷启动|warming/i.test(warning);
+    const queueFull = /队列上限|queue.*(?:full|limit)/i.test(warning);
+    if (contract) classified.add("provider-contract");
+    if (timeout) classified.add("provider-timeout");
+    if (warming) classified.add("history-warming");
+    if (queueFull) classified.add("history-queue-full");
+    const coverageExplainsWarning =
+      (sectorCount === 0 && warning.trim() === "没有板块具备至少 61 根有效日线。") ||
+      (usableStockCount === 0 && warning.trim() === "没有候选股票具备至少 61 根有效历史日线。");
+    if (!contract && !timeout && !warming && !queueFull && !coverageExplainsWarning) {
+      hasUnexpandedWarning = true;
+    }
+  }
+  for (const issue of ["provider-contract", "provider-timeout", "history-warming", "history-queue-full"] as const) {
+    if (classified.has(issue)) issues.push(issue);
+  }
   if (sectorCount < 2) issues.push("sector-history-insufficient");
   if (usableStockCount === 0) issues.push("stock-history-insufficient");
-  if (input.warnings.length > 0 && issues.length === 0) issues.push("provider-warning");
-  return { sectorCount, stockCount: input.stockRegimes.length, usableStockCount, issues: issues.slice(0, 4) };
+  const boundedIssues = hasUnexpandedWarning
+    ? [...issues.slice(0, 3), "provider-warning" as const]
+    : issues.slice(0, 4);
+  return { sectorCount, stockCount: input.stockRegimes.length, usableStockCount, issues: boundedIssues };
 }
 
 export function describeResearchInputDiagnostics(value: unknown): string[] {
