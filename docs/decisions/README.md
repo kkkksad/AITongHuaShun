@@ -118,6 +118,8 @@
 
 最新补充：[0078：可买整手候选优先取得Paper历史名额](0078-affordable-lots-prioritize-paper-history.md)。
 
+[0079：Paper辅助研究使用有界后台快照](0079-paper-auxiliary-background-snapshots.md)。
+
 文件名使用 `NNNN-short-title.md`。
 
 每份记录至少包含：

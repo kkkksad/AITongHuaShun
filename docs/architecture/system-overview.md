@@ -116,7 +116,7 @@ FastAPI + AkShare :8800
 
 每日基线内部按[0062](../decisions/0062-trading-day-baseline-numeric-membership.md)生成一次北京时间半开日界，已解析成交/来源时间做数值归属判断，保留account-start/unknown和费用语义；不以账户或订单缓存替代即时重建。
 
-Paper核心行业/个股历史先于辅助外盘/新闻启动，核心12秒期限及辅助1.5至4秒期限分别降级；全局桥接并发上限保持，其他API和已在运行的后台任务不受此局部顺序保证。缓存和等待代价见[决策0027](../decisions/0027-core-research-before-auxiliary.md)。
+Paper核心历史先于辅助外盘/新闻启动，核心12秒期限后可降级；辅助改为后台快照，完成时间不晚于计划asOf且60秒内才复用，冷/过期/容量满明确降级，不再阻塞计划。每系统每来源最多8条目/在途，clear不释放旧在途槽，辅助1.5至4秒期限与底层桥接并发保持。其他API和已在途任务不受局部顺序保证，见[0079](../decisions/0079-paper-auxiliary-background-snapshots.md)。
 
 `server/market/dataQuality.ts` 是行情质量的唯一计算入口。它按请求股票池计算有效覆盖，使用整批报价低 10% 分位新鲜度避免单条最新报价掩盖陈旧批次，并把合法主板、创业板、科创板和北交所涨跌停与越界价格异常分开。`/api/market/quality` 只读取当前内存快照，不触发外部抓取；浏览器只在后端连接时轮询该接口。
 

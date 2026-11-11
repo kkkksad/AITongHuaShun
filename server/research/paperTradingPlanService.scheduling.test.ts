@@ -47,6 +47,57 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it("returns the core plan immediately while slow auxiliary sources warm, then consumes completed bounded snapshots", async () => {
+    const request = input();
+    const pending = deferred<ReturnType<typeof buildUnavailableRealResearchDataFeed>>();
+    builders.news.mockReturnValue(pending.promise);
+    builders.external.mockReturnValue(new Promise(() => {}));
+    let result: Awaited<ReturnType<typeof buildCurrentPaperTradingPlan>> | undefined;
+    const first = buildCurrentPaperTradingPlan(request).then(value => { result = value; });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(result).toBeDefined();
+    expect(result?.realResearchDataFeed.news.warning).toContain("后台预热");
+    expect(result?.externalMarketImpact.warnings.join(" ")).toContain("后台预热");
+    pending.resolve({ ...buildUnavailableRealResearchDataFeed(builders.news.mock.calls[0][0], "fixture-source-warning"), sourceStatus: "live-read-only" });
+    await vi.advanceTimersByTimeAsync(1);
+    const second = await buildCurrentPaperTradingPlan({ ...request, now: new Date(date.getTime() + 1) });
+    expect(second.realResearchDataFeed.news.warning).toBe("fixture-source-warning");
+    expect(second.plan.operations).toEqual(result!.plan.operations);
+    expect(second.adaptiveRouting.allowNewPositions).toBe(result!.adaptiveRouting.allowNewPositions);
+    expect(builders.news).toHaveBeenCalledOnce();
+    expect(request.system.broker.getOrders()).toEqual([]);
+    await first;
+  });
+
+  it("finishes a 100ms core plan at 100ms rather than waiting an additional 4000ms for optional sources", async () => {
+    const request = input();
+    builders.core.mockImplementationOnce(async value => {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      return buildUnavailableMarketRegimeResearch(value, "fixture");
+    });
+    builders.news.mockReturnValue(new Promise(() => {}));
+    builders.external.mockReturnValue(new Promise(() => {}));
+    let finishedAt: number | undefined;
+    const started = Date.now();
+    const pending = buildCurrentPaperTradingPlan(request).then(() => { finishedAt = Date.now() - started; });
+    await vi.advanceTimersByTimeAsync(99);
+    expect(finishedAt).toBeUndefined(); expect(builders.news).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(finishedAt).toBe(100); expect(builders.news).toHaveBeenCalledOnce();
+    await pending;
+  });
+
+  it("shares bounded auxiliary work across changing core candidate pools", async () => {
+    const request = input();
+    builders.news.mockReturnValue(new Promise(() => {}));
+    builders.external.mockReturnValue(new Promise(() => {}));
+    await buildCurrentPaperTradingPlan({ ...request, activityTargetActive: false });
+    await buildCurrentPaperTradingPlan({ ...request, activityTargetActive: true });
+    expect(builders.core).toHaveBeenCalledTimes(2);
+    expect(builders.news).toHaveBeenCalledOnce();
+    expect(builders.external).toHaveBeenCalledOnce();
+  });
+
   it("uses the actual account and effective risk cap to keep impossible high-price entries from occupying all history slots", async () => {
     const request = input();
     const original = request.system.market.getSnapshot();
@@ -271,7 +322,7 @@ describe("Paper research resource ordering", () => {
     expect(builders.external).toHaveBeenCalledOnce();
   });
 
-  it("bounds core at twelve seconds then auxiliary at four seconds and observes late rejections", async () => {
+  it("bounds core at twelve seconds, returns before the background deadline, and observes late rejections", async () => {
     const core = deferred<never>();
     const auxiliary = deferred<never>();
     builders.core.mockReturnValueOnce(core.promise);
@@ -284,8 +335,10 @@ describe("Paper research resource ordering", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(builders.news).toHaveBeenCalledOnce();
     expect(builders.external).toHaveBeenCalledOnce();
+    expect(settled).toBe(true);
+    expect((await result).realResearchDataFeed.news.warning).toContain("后台预热");
     await vi.advanceTimersByTimeAsync(3_999);
-    expect(settled).toBe(false);
+    expect(settled).toBe(true);
     await vi.advanceTimersByTimeAsync(1);
     expect(settled).toBe(true);
     expect((await result).marketRegimeResearch.sourceStatus).toBe("degraded");

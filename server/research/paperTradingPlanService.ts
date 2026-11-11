@@ -26,6 +26,7 @@ import type { PaperTradingActivityMode, PaperTradingPlan } from "./paperTradingP
 import {
   buildRealResearchDataFeed,
   buildUnavailableRealResearchDataFeed,
+  selectNewsSymbols,
 } from "./realResearchData";
 import type { RealResearchDataFeed } from "./realResearchData";
 import { buildUnavailableStrategyLeaderboard, buildUnrequestedStrategyLeaderboard } from "./strategyLeaderboard";
@@ -36,6 +37,8 @@ import { ResearchResultCache } from "./researchResultCache";
 import { withResearchDeadline } from "./researchDeadline";
 import { assertPaperExecutionRevision } from "../trading/paperExecutionContext";
 import { executionCosts, hasSufficientCash } from "../broker/executionCosts";
+import { BackgroundResearchCache } from "./backgroundResearchCache";
+import type { BackgroundResearchFallback } from "./backgroundResearchCache";
 
 const PAPER_RESEARCH_CACHE_TTL_MS = 30_000;
 const PAPER_DEGRADED_RESEARCH_CACHE_TTL_MS = 5_000;
@@ -45,8 +48,17 @@ const PAPER_CORE_RESEARCH_TIMEOUT_MS = 12_000;
 interface PaperResearchContext {
   leaderboard: StrategyLeaderboardReport;
   marketRegimeResearch: MarketRegimeResearchReport;
-  realResearchDataFeed: RealResearchDataFeed;
-  externalMarketImpact: ExternalMarketImpactReport;
+}
+
+const auxiliaryCaches = new WeakMap<TradingSystem, {
+  news: BackgroundResearchCache<RealResearchDataFeed>;
+  external: BackgroundResearchCache<ExternalMarketImpactReport>;
+}>();
+
+function auxiliaryWarning(reason: BackgroundResearchFallback): string {
+  if (reason === "capacity") return "辅助上下文后台读取已满，当前无可用快照；核心研究继续。";
+  if (reason === "not-yet-observed" || reason === "invalid-time") return "辅助上下文不在当前计划时点内，保持降级；核心研究继续。";
+  return "辅助上下文正在后台预热，当前无有效快照；核心研究继续。";
 }
 
 const paperResearchCaches = new WeakMap<
@@ -263,7 +275,7 @@ async function buildPaperResearchContext(input: {
   preferredHistoricalStocks: Array<{ symbol: string; name: string }>;
   leaderboardBars: number;
   criticalHistoryStockLimit: number;
-}): Promise<PaperResearchContext> {
+}): Promise<PaperResearchContext & { realResearchDataFeed: RealResearchDataFeed; externalMarketImpact: ExternalMarketImpactReport }> {
   const snapshotTime = Date.parse(input.snapshot.marketTime);
   const cutoff = Math.min(input.asOf.getTime(), snapshotTime);
   // A-share daily candles complete at 07:00 UTC. Keep the TTL shared across
@@ -271,7 +283,7 @@ async function buildPaperResearchContext(input: {
   const historyCutoffDay = Number.isFinite(cutoff) && snapshotTime <= input.asOf.getTime() + 5_000
     ? new Date(cutoff - 7 * 60 * 60_000).toISOString().slice(0, 10)
     : "invalid";
-  return getPaperResearchCache(input.system).getOrCreate(
+  const core = await getPaperResearchCache(input.system).getOrCreate(
     buildPaperResearchCacheKey({
       provider: input.system.marketDataProvider,
       mode: input.config.MARKET_MODE,
@@ -337,57 +349,70 @@ async function buildPaperResearchContext(input: {
       // Optional history can otherwise occupy both workers while the core is
       // still discovering sectors, delaying the stock/sector requests behind it.
       const [leaderboard, marketRegimeResearch] = await coreResearch;
-      const auxiliaryTimeoutMs = resolveAuxiliaryResearchTimeoutMs(
-        input.config.MARKET_DATA_TIMEOUT_MS,
-      );
-      const realResearchInput = {
-        bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
-        bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
-        marketDataProvider: input.system.marketDataProvider,
-        mode: input.config.MARKET_MODE,
-        snapshot: input.snapshot,
-        preferredSymbols: input.positions.map((position) => position.symbol),
-        timeoutMs: auxiliaryTimeoutMs,
-      };
-      const externalMarketInput = {
-        bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
-        bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
-        marketDataProvider: input.system.marketDataProvider,
-        mode: input.config.MARKET_MODE,
-        days: 500,
-        timeoutMs: auxiliaryTimeoutMs,
-      };
-      // Start optional sources after the core result (including its bounded
-      // fallback). Each keeps its independent deadline and degraded evidence.
-      const auxiliaryResearch = Promise.all([
-        withResearchDeadline({
-          task: buildRealResearchDataFeed(realResearchInput),
-          timeoutMs: auxiliaryTimeoutMs,
-          fallback: (reason) => buildUnavailableRealResearchDataFeed(
-            realResearchInput,
-            "真实新闻与全球市场研究超过 " + auxiliaryTimeoutMs + "ms，已降级: " +
-              (reason instanceof Error ? reason.message : "辅助源无响应"),
-          ),
-        }),
-        withResearchDeadline({
-          task: buildExternalMarketImpact(externalMarketInput),
-          timeoutMs: auxiliaryTimeoutMs,
-          fallback: (reason) => buildUnavailableExternalMarketImpact(
-            externalMarketInput,
-            "外部市场研究超过 " + auxiliaryTimeoutMs + "ms，已降级: " +
-              (reason instanceof Error ? reason.message : "辅助源无响应"),
-          ),
-        }),
-      ]);
-      const [realResearchDataFeed, externalMarketImpact] = await auxiliaryResearch;
-      return {
-        leaderboard,
-        marketRegimeResearch,
-        realResearchDataFeed,
-        externalMarketImpact,
-      };
+      return { leaderboard, marketRegimeResearch };
     },
   );
+  // Auxiliary snapshots are read independently of the core cache, so a warm
+  // core cannot pin an earlier warming placeholder for its entire TTL.
+  let caches = auxiliaryCaches.get(input.system);
+  if (!caches) {
+    caches = { news: new BackgroundResearchCache(), external: new BackgroundResearchCache() };
+    auxiliaryCaches.set(input.system, caches);
+  }
+  const auxiliaryTimeoutMs = resolveAuxiliaryResearchTimeoutMs(
+    input.config.MARKET_DATA_TIMEOUT_MS,
+  );
+  const realResearchInput = {
+    bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+    bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
+    marketDataProvider: input.system.marketDataProvider,
+    mode: input.config.MARKET_MODE,
+    snapshot: input.snapshot,
+    preferredSymbols: input.positions.map((position) => position.symbol),
+    timeoutMs: auxiliaryTimeoutMs,
+  };
+  const externalMarketInput = {
+    bridgeUrl: input.config.AKSHARE_BRIDGE_URL,
+    bridgeToken: input.config.AKSHARE_BRIDGE_TOKEN || undefined,
+    marketDataProvider: input.system.marketDataProvider,
+    mode: input.config.MARKET_MODE,
+    days: 500,
+    timeoutMs: auxiliaryTimeoutMs,
+  };
+  // Start optional sources only after core history, never await their snapshots.
+  const key = JSON.stringify([
+    input.config.AKSHARE_BRIDGE_URL, input.config.MARKET_MODE,
+    input.system.marketDataProvider, auxiliaryTimeoutMs, historyCutoffDay,
+  ]);
+  const realResearchDataFeed = caches.news.getOrRefresh(
+    key + JSON.stringify(selectNewsSymbols(input.snapshot, realResearchInput.preferredSymbols)), {
+      asOf: input.asOf.getTime(), ttlMs: 60_000,
+      fallback: reason => buildUnavailableRealResearchDataFeed(realResearchInput, auxiliaryWarning(reason)),
+      create: () => withResearchDeadline({
+        task: buildRealResearchDataFeed(realResearchInput),
+        timeoutMs: auxiliaryTimeoutMs,
+        fallback: (reason) => buildUnavailableRealResearchDataFeed(
+          realResearchInput,
+          "真实新闻与全球市场研究超过 " + auxiliaryTimeoutMs + "ms，已降级: " +
+            (reason instanceof Error ? reason.message : "辅助源无响应"),
+        ),
+      }),
+    },
+  );
+  const externalMarketImpact = caches.external.getOrRefresh(key, {
+    asOf: input.asOf.getTime(), ttlMs: 60_000,
+    fallback: reason => buildUnavailableExternalMarketImpact(externalMarketInput, auxiliaryWarning(reason)),
+    create: () => withResearchDeadline({
+      task: buildExternalMarketImpact(externalMarketInput),
+      timeoutMs: auxiliaryTimeoutMs,
+      fallback: (reason) => buildUnavailableExternalMarketImpact(
+        externalMarketInput,
+        "外部市场研究超过 " + auxiliaryTimeoutMs + "ms，已降级: " +
+          (reason instanceof Error ? reason.message : "辅助源无响应"),
+      ),
+    }),
+  });
+  return { ...core, realResearchDataFeed, externalMarketImpact };
 }
 
 export async function buildCurrentPaperTradingPlan(input: {
