@@ -134,8 +134,8 @@ export class KairosTrendHealthStrategy implements BacktestStrategy {
   readonly name: string;
   private readonly prices: number[] = [];
   private readonly volumes: number[] = [];
-  private inPosition = false;
-  private entryPrice = 0;
+  private boundSymbol?: string;
+  private observedHolding = false;
   private lastExitBar = -Infinity;
 
   constructor(
@@ -154,14 +154,23 @@ export class KairosTrendHealthStrategy implements BacktestStrategy {
   reset(): void {
     this.prices.length = 0;
     this.volumes.length = 0;
-    this.inPosition = false;
-    this.entryPrice = 0;
+    this.boundSymbol = undefined;
+    this.observedHolding = false;
     this.lastExitBar = -Infinity;
   }
 
   onBar(context: StrategyContext): StrategySignal[] {
-    const quote = firstTradableQuote(context);
+    const quote = this.boundSymbol === undefined
+      ? firstTradableQuote(context)
+      : context.snapshot.quotes.find(item => item.symbol === this.boundSymbol && item.tradable && item.price > 0);
     if (!quote) return [];
+    this.boundSymbol ??= quote.symbol;
+
+    const position = context.positions.find(item => item.symbol === quote.symbol);
+    const holding = position !== undefined && position.quantity > 0;
+    // Cooldown starts from observed full exit, not a possibly rejected signal.
+    if (this.observedHolding && !holding) this.lastExitBar = context.barIndex;
+    this.observedHolding = holding;
 
     this.prices.push(quote.price);
     this.volumes.push(Math.max(quote.volume, 1));
@@ -180,8 +189,8 @@ export class KairosTrendHealthStrategy implements BacktestStrategy {
       return [];
     }
 
-    if (this.inPosition) {
-      const entryReturn = price / this.entryPrice - 1;
+    if (position && holding) {
+      const entryReturn = position.averagePrice > 0 ? price / position.averagePrice - 1 : NaN;
       const highVolumeBreakdown =
         price < fastMa * 0.98 &&
         currentVolumeRatio >= this.breakdownVolumeRatio;
@@ -194,14 +203,14 @@ export class KairosTrendHealthStrategy implements BacktestStrategy {
         highVolumeBreakdown ||
         structuralBreakdown
       ) {
-        this.inPosition = false;
-        this.entryPrice = 0;
-        this.lastExitBar = context.barIndex;
+        const sellable = Math.min(position.quantity, position.availableQuantity ?? position.quantity);
+        const quantity = Math.floor(sellable / 100) * 100;
+        if (quantity <= 0) return [];
         return [{
           symbol: quote.symbol,
           side: "sell",
           type: "market",
-          targetWeight: 1,
+          quantity,
         }];
       }
       return [];
@@ -216,8 +225,6 @@ export class KairosTrendHealthStrategy implements BacktestStrategy {
     const orderlyVolume = currentVolumeRatio < this.breakdownVolumeRatio;
     const notOverheated = quote.changePercent >= -1 && quote.changePercent <= 4.5;
     if (healthyTrend && orderlyVolume && notOverheated) {
-      this.inPosition = true;
-      this.entryPrice = price;
       return [{
         symbol: quote.symbol,
         side: "buy",
