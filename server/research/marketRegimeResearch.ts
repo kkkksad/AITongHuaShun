@@ -861,6 +861,24 @@ export async function buildMarketRegimeResearch(
 
   const fetchImpl = input.fetchImpl ?? fetch;
   const baseUrl = trimTrailingSlash(input.bridgeUrl);
+  // Fix this plan's stock universe before any external wait. Keep the sector
+  // history request first below: both history batches share bounded slots and
+  // partial-response budgets, so eager stock prefetch can starve sector evidence.
+  const stockLimit = Math.max(1, Math.min(input.stockLimit, 12));
+  const preferredStocks = (input.preferredStocks ?? [])
+    .filter((stock) => /^\d{6}$/.test(stock.symbol))
+    .map((stock) => ({ symbol: stock.symbol, name: stock.name }));
+  const stockQuotes = [...input.snapshot.quotes]
+    .filter((quote) => quote.tradable && /^\d{6}$/.test(quote.symbol) && quote.price > 0)
+    .sort((a, b) => (b.amount ?? b.price * b.volume) - (a.amount ?? a.price * a.volume))
+    .map((quote) => ({ symbol: quote.symbol, name: quote.name }));
+  const stockUniverse = [...preferredStocks, ...stockQuotes]
+    .filter((stock, index, items) =>
+      items.findIndex((candidate) => candidate.symbol === stock.symbol) === index,
+    )
+    .slice(0, stockLimit);
+  const stockSymbols = stockUniverse.map((stock) => stock.symbol);
+  const stockNames = new Map(stockUniverse.map((stock) => [stock.symbol, stock.name]));
   let sectorResponse: SectorSnapshotResponse;
   try {
     sectorResponse = await fetchBridgeJson<SectorSnapshotResponse>({
@@ -883,21 +901,6 @@ export async function buildMarketRegimeResearch(
   sectorResponse = normalizeSectorSnapshotResponse(sectorResponse);
   const requestedSectors = selectSectorUniverse(sectorResponse.sectors, input.sectorLimit);
   const sectorNames = requestedSectors.map((sector) => sector.name);
-  const stockLimit = Math.max(1, Math.min(input.stockLimit, 12));
-  const preferredStocks = (input.preferredStocks ?? [])
-    .filter((stock) => /^\d{6}$/.test(stock.symbol))
-    .map((stock) => ({ symbol: stock.symbol, name: stock.name }));
-  const stockQuotes = [...input.snapshot.quotes]
-    .filter((quote) => quote.tradable && /^\d{6}$/.test(quote.symbol) && quote.price > 0)
-    .sort((a, b) => (b.amount ?? b.price * b.volume) - (a.amount ?? a.price * a.volume))
-    .map((quote) => ({ symbol: quote.symbol, name: quote.name }));
-  const stockUniverse = [...preferredStocks, ...stockQuotes]
-    .filter((stock, index, items) =>
-      items.findIndex((candidate) => candidate.symbol === stock.symbol) === index,
-    )
-    .slice(0, stockLimit);
-  const stockSymbols = stockUniverse.map((stock) => stock.symbol);
-  const stockNames = new Map(stockUniverse.map((stock) => [stock.symbol, stock.name]));
 
   const sectorUrl = new URL(`${baseUrl}/api/market/sector-history`);
   sectorUrl.searchParams.set("sectors", sectorNames.join(","));

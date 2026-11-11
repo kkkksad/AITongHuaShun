@@ -1,5 +1,7 @@
 # 系统架构
 
+真实形态研究在首次外部await前复制股票池和名称标量，避免等待中的候选变化影响已冻结时点的请求。保留行业快照完成后行业历史优先入队；个股提前预取的共享队列期限反例会损失行业证据，未发布该方案。既有最多12股票、两工作槽/24队列及部分响应预算保持，见[0089](../decisions/0089-regime-stock-universe-before-async-wait.md)。
+
 KairosVolatilityContractionBreakoutStrategy历史回测绑定单股、按实际均价及可卖整手退出，拒单/T+1不清虚构持仓；原历史基准/收缩区间、当前根仅确认和其他门槛保持，见[0077](../decisions/0077-contraction-breakout-actual-holdings.md)。
 
 KairosVolumePriceBreakoutStrategy历史回测绑定单股，依据实际均价及可卖整手退出，拒单/T+1后重新读取；前高/量比排除当根及其他趋势/日内位置过滤保持，见[0076](../decisions/0076-volume-price-breakout-actual-holdings.md)。
