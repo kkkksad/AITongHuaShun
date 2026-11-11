@@ -2,7 +2,9 @@
 
 **核对日期：** 2026-11-12（北京时间；本轮复盘11月11日）
 
-资金护城河实际持仓模块本地完整173文件2644后端、目标47及TS/Vite通过：20新增回归旧版17失败，绑定单股、按实际均价/可卖整手退出，只有观测清仓才开始冷却；固定72组68报告一致，四组变化完整记录，不按收益方向选实现。等待独立部署，见[0082](../decisions/0082-capital-shield-actual-holdings.md)与[历史对照](../research/2026-11-11-capital-shield-execution-semantics.md)。RiskOffRecovery/TrendHealth的虚拟持仓仍待修复。
+风险收缩修复实际持仓本地完整174文件2662后端、目标84及TS/Vite通过，18新增旧版15失败；固定原默认参数72组67经济报告一致、五组实际均价改变退出时点，结果有升有降，未扩展17项固定表。等待独立发布，见[0083](../decisions/0083-risk-off-recovery-actual-holdings.md)。
+
+资金护城河实际持仓2f5948d已UTC19:03推送部署，721文件/三健康/双域可信HTTPS/匿名401/原账户与检查点/上一材料核验通过。完整173文件2644后端、目标47及TS/Vite通过：20新增回归旧版17失败，绑定单股、按实际均价/可卖整手退出，只有观测清仓才开始冷却；固定72组68报告一致，四组变化完整记录，不按收益方向选实现。已上线，见[0082](../decisions/0082-capital-shield-actual-holdings.md)与[历史对照](../research/2026-11-11-capital-shield-execution-semantics.md)。TrendHealth的虚拟持仓仍待修复。
 
 每日复盘同轮证据476df55已于UTC18:54推送部署核验717文件/三健康/可信双域HTTPS/匿名401/原账户与检查点及上一材料。完整172文件2624后端项、58文件395前端项及TS/Vite通过，目标79项；旧版24项新增回归23失败。blocked计划明确为已评估受阻，按合法同轮漏斗区分资格/独立整手/最终拟买，不从正现金推断资金充足，旧坏漏斗未知。四状态×三宽度隔离Chrome通过且窄屏人工核验无横溢，见[0081](../decisions/0081-daily-entry-review-evidence.md)与[执行计划](../plans/2026-11-11-daily-entry-evidence.md)。该复盘模块已发布；Python无改动。
 

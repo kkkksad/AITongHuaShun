@@ -32,7 +32,7 @@ Run: `node node_modules/vitest/vitest.mjs run --dir server --environment node se
 
 - [x] 目标复盘/时间截止/账本回归、完整服务端（两worker）、前端全套、TypeScript、Vite依次通过；同一时刻仅一个Vitest。
 - [x] 记录模块3的已验收部署回执，状态页纠正已发布模块的旧“待发布”措辞。
-- [ ] 先提交推送再部署，核验归档SHA/三健康/可信双域HTTPS/匿名401/原账户经济摘要与检查点/上一发布材料；如远端网络未恢复，明确分开本地、服务器、GitHub状态。
+- [x] 先提交推送再部署，核验归档SHA/三健康/可信双域HTTPS/匿名401/原账户经济摘要与检查点/上一发布材料；如远端网络未恢复，明确分开本地、服务器、GitHub状态。
 
 ## 边界
 
