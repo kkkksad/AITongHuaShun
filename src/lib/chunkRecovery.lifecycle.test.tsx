@@ -51,7 +51,8 @@ function compile(source: string, fileName: string) {
 const documents: { root: Root; container: HTMLDivElement }[] = [];
 
 // Execute the saved main and recovery sources in a fresh module scope for each
-// simulated document. Only app payloads, provider shells and SW network are
+// simulated document. The required app shell is eager; its page chunk remains
+// lazy. Only page payloads, provider shells and SW network are
 // controlled; real React.lazy, Suspense, DOM rendering and ErrorBoundary run.
 function createDocument(storage: ReturnType<typeof session>, options: {
   href?: string;
@@ -60,7 +61,7 @@ function createDocument(storage: ReturnType<typeof session>, options: {
   supportsServiceWorker?: boolean;
 } = {}) {
   const importer = deferred<{ default: () => ReactNode }>();
-  const appImport = vi.fn(() => importer.promise);
+  const pageImport = vi.fn(() => importer.promise);
   const reload = vi.fn();
   const eventWindow = new EventTarget();
   const register = vi.fn(async () => ({ scope: "/" }));
@@ -100,7 +101,6 @@ function createDocument(storage: ReturnType<typeof session>, options: {
     runInNewContext(compile(source, fileName), {
       ...environment, exports,
       require(specifier: string) {
-        if (specifier === "./App") return appImport();
         if (!(specifier in dependencies)) throw new Error(`Unexpected dependency: ${specifier}`);
         return dependencies[specifier];
       },
@@ -109,13 +109,15 @@ function createDocument(storage: ReturnType<typeof session>, options: {
   }
   const recovery = loadModule(recoverySource, "chunkRecovery.ts");
   dependencies["./lib/chunkRecovery"] = recovery;
+  const LazyPage = recovery.lazyWithChunkRecovery(pageImport);
+  dependencies["./App"] = { default: () => <LazyPage /> };
   loadModule(mainSource.replaceAll("import.meta.env.DEV", String(options.development ?? false)), "main.tsx");
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   documents.push({ root, container });
   return {
-    reload, container, appImport, register, unregister, getRegistrations, cacheKeys, cacheDelete,
+    reload, container, pageImport, register, unregister, getRegistrations, cacheKeys, cacheDelete,
     fireLoad: () => eventWindow.dispatchEvent(new Event("load")),
     firePreload() {
       const event = new Event("vite:preloadError", { cancelable: true });
@@ -123,7 +125,7 @@ function createDocument(storage: ReturnType<typeof session>, options: {
       return event;
     },
     async mount() { await act(async () => { root.render(tree); }); },
-    async failImport(error = new Error("Failed to fetch dynamically imported module: /assets/App-old.js")) {
+    async failImport(error = new Error("Failed to fetch dynamically imported module: /assets/Page-old.js")) {
       await act(async () => {
         importer.reject(error);
         await importer.promise.catch(() => {});
@@ -150,7 +152,7 @@ describe("main chunk recovery across document lifecycles", () => {
     const shared = session();
     const first = createDocument(shared);
     await first.mount();
-    expect(first.appImport).toHaveBeenCalledTimes(1);
+    expect(first.pageImport).toHaveBeenCalledTimes(1);
     if (timing === "after-load") first.fireLoad();
     await first.failImport();
     expect(first.reload).toHaveBeenCalledTimes(1);

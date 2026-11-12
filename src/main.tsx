@@ -2,19 +2,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
+import App from "./App";
 import { ThemeProvider } from "./hooks/useTheme";
 import { I18nProvider } from "./i18n";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { shouldRetryQuery } from "./lib/apiError";
 import {
   getChunkRecoveryStorage,
-  lazyWithChunkRecovery,
   recoverFromChunkLoadError,
 } from "./lib/chunkRecovery";
 import "./styles/index.css";
 import "./styles/trading-strategies.css";
-
-const App = lazyWithChunkRecovery(() => import("./App"));
 
 function PageLoader() {
   return (

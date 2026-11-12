@@ -1,5 +1,7 @@
 # 系统架构
 
+每次必需的App随main静态载入，减少根组件的额外脚本波次；各页面/图表继续lazyWithChunkRecovery，原会话检查、错误边界、preload恢复与PWA规则保持，见[0101](../decisions/0101-eager-required-app-shell.md)。入口变大但总JS近似保持，受控实验不代表已登录生产P95。
+
 实际成交周期的可选entryStrategyEvidence持久保存具体Paper买单来源：同源single、不同已知来源mixed、任一缺失unknown；旧字段缺失未知，不从当前策略选项回填。仅实际买入推进，配对覆盖数量必须等于累计买入，卖出不覆盖，闭合后随原512周期保留；嵌套副本/JSON原子回滚隔离且损坏/过期归属先拒绝再裁剪。没有新增交易条件或页面展示，见[0100](../decisions/0100-persistent-cycle-entry-strategy-evidence.md)。
 
 独立GridTradingStrategy的上涨跨级卖单按绑定股票当根实际可卖持仓限制整批整层数；价格层级仍是穿越事件，无拒单补单或成交网格账本。原买入/基准/参数保持，GridTradingRunner与线上Paper同名代理独立未改，见[0099](../decisions/0099-grid-crossing-sellable-position.md)。
