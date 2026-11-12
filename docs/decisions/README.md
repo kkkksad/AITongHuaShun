@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0114：股票指数有限数值](0114-finite-stock-index-quote-fields.md)：核心非有限报价跳行，可选非有限值未知；合法邻股与原来源时间保持。
+
 - [0113：快照单行溢出隔离](0113-quote-row-numeric-overflow-isolation.md)：非法量不阻断合法邻股更新，旧报价时间与全坏失败冷却保持。
 
 - [0112：冻结入场研究单位声明](0112-frozen-entry-volume-declaration.md)：显式手/股及原输入SHA绑定，防止归一化载荷重复乘100，声明不等于来源真实性证明。

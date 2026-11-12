@@ -5,6 +5,7 @@ AkShare 桥接微服务单元测试
 """
 
 import asyncio
+import json
 import sys
 import time
 from datetime import datetime
@@ -13,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
+from starlette.responses import JSONResponse
 
 # Mock akshare before importing main
 sys.modules["akshare"] = MagicMock()
@@ -47,6 +49,7 @@ from main import (
     StockSearchItem,
     StockSearchResponse,
     fetch_a_share_spot_dataframe,
+    fetch_requested_quotes,
     fetch_a_share_index_dataframe,
     fetch_tencent_a_share_index_dataframe,
     fetch_tencent_a_share_spot_dataframe,
@@ -1345,6 +1348,93 @@ class TestSectorAndHistoryEndpoints:
         assert second.status_code == 200
         assert [item["symbol"] for item in second.json()["series"]] == ["999999"]
         assert fetch.call_count == 2
+
+
+class TestQuoteNonfiniteJsonIsolation:
+    @staticmethod
+    def frame(cache_type):
+        return pd.DataFrame([{
+            "代码": "600519" if cache_type is QuoteCache else "sh000001",
+            "名称": "序列化合同", "最新价": 10.0, "昨收": 9.9,
+            "涨跌幅": 1.01, "成交量": 5_000_000, "更新时间": "20261109161440",
+            "今开": 9.95, "最高": 10.1, "最低": 9.8,
+            "成交额": 50_000_000.0, "换手率": 2.3, "振幅": 3.03,
+        }])
+
+    @pytest.mark.parametrize("cache_type", [QuoteCache, IndexCache])
+    def test_optional_nan_cannot_break_strict_json_serialization(self, cache_type):
+        raw = self.frame(cache_type)
+        raw.loc[0, "成交额"] = float("nan")
+        cache = cache_type()
+        cache._parse_dataframe(raw)
+        response = JSONResponse(QuotesResponse(quotes=list(cache._data.values())).model_dump())
+        assert json.loads(response.body)["quotes"][0]["amount"] is None
+
+    @pytest.mark.parametrize("cache_type", [QuoteCache, IndexCache])
+    @pytest.mark.parametrize("field", ["最新价", "昨收", "涨跌幅"])
+    @pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])
+    def test_nonfinite_required_field_isolated_from_valid_neighbor(self, cache_type, field, invalid):
+        raw = pd.concat([self.frame(cache_type), self.frame(cache_type)], ignore_index=True)
+        raw.loc[0, "代码"] = "300750" if cache_type is QuoteCache else "sz399001"
+        raw.loc[0, field] = invalid
+        cache = cache_type()
+        assert cache._parse_dataframe(raw) == 1
+        expected = "600519" if cache_type is QuoteCache else "SH000001"
+        assert set(cache._data) == {expected}
+        payload = QuotesResponse(quotes=list(cache._data.values())).model_dump()
+        assert json.loads(JSONResponse(payload).body)["quotes"][0]["price"] == 10
+
+    @pytest.mark.parametrize("cache_type", [QuoteCache, IndexCache])
+    @pytest.mark.parametrize("invalid", [float("nan"), float("inf"), float("-inf")])
+    def test_optional_nonfinite_fields_stay_unknown_and_json_remains_valid(self, cache_type, invalid):
+        raw = self.frame(cache_type)
+        for field in ["今开", "最高", "最低", "成交额", "换手率", "振幅"]:
+            raw.loc[0, field] = invalid
+        cache = cache_type()
+        assert cache._parse_dataframe(raw) == 1
+        quote = next(iter(cache._data.values()))
+        for field in ["open", "high", "low", "amount", "turnover", "amplitude"]:
+            assert getattr(quote, field) is None
+        assert quote.price == 10 and quote.volume == 5_000_000
+        assert quote.updatedAt == "2026-11-09T08:14:40.000Z"
+        assert quote.tradable is (cache_type is QuoteCache)
+        assert len(json.loads(JSONResponse(QuotesResponse(quotes=[quote]).model_dump()).body)["quotes"]) == 1
+
+    @pytest.mark.parametrize("cache_type", [QuoteCache, IndexCache])
+    def test_finite_values_and_existing_zero_missing_timestamp_semantics_preserved(self, cache_type):
+        raw = self.frame(cache_type)
+        raw.loc[0, "更新时间"] = None
+        raw.loc[0, "今开"] = 0
+        raw.loc[0, "振幅"] = None
+        cache = cache_type()
+        assert cache._parse_dataframe(raw) == 1
+        quote = next(iter(cache._data.values()))
+        assert (quote.high, quote.low, quote.amount) == (10.1, 9.8, 50_000_000)
+        assert quote.open is None and quote.amplitude is None
+        assert quote.price == 10 and quote.previousClose == 9.9 and quote.changePercent == 1.01
+        assert quote.updatedAt == "" and quote.tradable is False
+        assert json.loads(JSONResponse(QuotesResponse(quotes=[quote]).model_dump()).body)["quotes"][0]["volume"] == 5_000_000
+
+    @pytest.mark.parametrize("indices", [False, True])
+    def test_requested_http_quotes_reuse_parser_and_preserve_partial_warning(self, indices):
+        cache_type = IndexCache if indices else QuoteCache
+        raw = pd.concat([self.frame(cache_type), self.frame(cache_type)], ignore_index=True)
+        raw.loc[0, "代码"] = "sz399001" if indices else "300750"
+        raw.loc[0, "最新价"] = float("nan")
+        raw.loc[1, "成交额"] = float("inf")
+        symbols = ("SZ399001", "SH000001") if indices else ("300750", "600519")
+        from requested_quote_cache import RequestedQuoteCache
+        local_cache = RequestedQuoteCache(lambda requested: fetch_requested_quotes(requested, indices=indices), ttl_seconds=10)
+        with patch("main.fetch_tencent_a_share_dataframe", return_value=raw) as fetch, \
+                patch("main.requested_index_cache" if indices else "main.requested_stock_cache", local_cache):
+            response = client.get("/api/market/" + ("indices" if indices else "quotes"), params={"symbols": ",".join(symbols)})
+        assert response.status_code == 200
+        data = response.json()
+        assert [q["symbol"] for q in data["quotes"]] == [symbols[1]]
+        assert data["quotes"][0]["amount"] is None
+        assert data["quotes"][0]["tradable"] is (not indices)
+        assert data["warning"]
+        fetch.assert_called_once()
 
 
 class TestQuoteRowOverflowIsolation:

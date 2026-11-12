@@ -1,5 +1,7 @@
 # 本地开发
 
+股票/指数缓存核心price/previousClose/changePercent非有限时逐行跳过，可选数值非有限为None，避免非法数字进入报价响应；腾讯指定报价复用原parser，见[0114](../decisions/0114-finite-stock-index-quote-fields.md)。30新增涵盖严格JSONResponse和真实HTTP部分返回，本地272/1固定SDK跳过、Ubuntu273通过。价格/金额fixture先显式float才能向pandas列注入inf；旧版隔离测试在相同有效夹具下30项失败。没有新抓取、价格门槛或权限变化。
+
 QuoteCache/IndexCache逐行数值解析同时隔离ValueError/TypeError/OverflowError；单行无限量不可阻断合法邻股更新，坏行原报价时间不重写，全坏仍沿原失败冷却，见[0113](../decisions/0113-quote-row-numeric-overflow-isolation.md)。新增24项（旧版16失败/8控制），本地242/1固定SDK跳过、Ubuntu同版243通过；无新增来源抓取、并发或交易权限。
 
 A股历史主源None/空DataFrame沿原来源链尝试腾讯；非空短历史不额外补抓，两个来源均不可用保留逐股警告，既有部分返回/缓存/容量保持，见[0111](../decisions/0111-empty-stock-history-provider-fallback.md)。新增17项及真实固定SDK空正文传输检查；本地218/1跳过、Linux与已部署a50f81b实际生产桥接219全通过，后端3117/TS/Vite通过。该修复不统一日线量单位或提高并发。

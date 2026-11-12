@@ -653,7 +653,7 @@ class QuoteCache:
             return None
         try:
             v = float(value)
-            if v == 0:
+            if v == 0 or not math.isfinite(v):
                 return None
             return v
         except (ValueError, TypeError):
@@ -672,6 +672,8 @@ class QuoteCache:
                 price = float(row.get("最新价", 0) or 0)
                 previous_close = float(row.get("昨收", 0) or 0)
                 change_pct = float(row.get("涨跌幅", 0) or 0)
+                if not all(math.isfinite(value) for value in (price, previous_close, change_pct)):
+                    continue
                 volume = int(float(row.get("成交量", 0) or 0))
                 source_time = normalize_quote_timestamp(row.get("更新时间"))
 
@@ -801,7 +803,7 @@ class IndexCache:
             return None
         try:
             v = float(value)
-            if v == 0:
+            if v == 0 or not math.isfinite(v):
                 return None
             return v
         except (ValueError, TypeError):
@@ -820,6 +822,8 @@ class IndexCache:
                 price = float(row.get("最新价", 0) or 0)
                 previous_close = float(row.get("昨收", 0) or 0)
                 change_pct = float(row.get("涨跌幅", 0) or 0)
+                if not all(math.isfinite(value) for value in (price, previous_close, change_pct)):
+                    continue
                 volume = int(float(row.get("成交量", 0) or 0))
 
                 new_data[symbol] = MarketQuote(
