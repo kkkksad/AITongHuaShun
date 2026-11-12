@@ -45,7 +45,15 @@ describe("trading stock regime history evidence", () => {
       withDate("2026-08-24", { open: 90, high: 100, low: 80, close: 95 }),
       withDate("2099-01-01", { open: 1, high: 2, low: 0.5, close: 1 }),
     ])]));
-    expect(result.stockRegimes).toEqual(baseline.stockRegimes);
+    const legacy = (stocks: typeof result.stockRegimes) => stocks.map(({ historicalEntryStructure: _structure, ...stock }) => stock);
+    expect(legacy(result.stockRegimes)).toEqual(legacy(baseline.stockRegimes));
+    const baselineStructure = baseline.stockRegimes[0].historicalEntryStructure;
+    if (!baselineStructure?.observed) throw Error("Fixture needs observed completed structure");
+    expect(result.stockRegimes[0].historicalEntryStructure).toMatchObject({
+      breakout: baselineStructure.breakout,
+      contraction: baselineStructure.contraction,
+      pullback: baselineStructure.pullback,
+    });
     expect(result.warnings.join(" ")).toContain("尚未完成或未来日线");
   });
 
@@ -99,13 +107,16 @@ describe("trading stock regime history evidence", () => {
     const before = JSON.stringify(values);
     const result = analyzeMarketRegimeData(input([series(values)]));
     const expected = classifyStockRegime("600010", "请求甲", [...values].reverse());
-    expect(result.stockRegimes[0]).toEqual({ rank: 1, ...expected });
+    const { historicalEntryStructure, ...legacy } = result.stockRegimes[0];
+    expect(legacy).toEqual({ rank: 1, ...expected });
+    expect(historicalEntryStructure).toMatchObject({ breakout: { latestCompletedVolumeRatio20: null } });
     expect(JSON.stringify(values)).toBe(before);
   });
 
   it("caps validated daily observations to the requested budget and reports the actual series source", () => {
     const result = analyzeMarketRegimeData({ ...input(), days: 65 });
     expect(result.stockRegimes[0].barCount).toBe(65);
+    expect(result.stockRegimes[0].historicalEntryStructure?.barCount).toBe(65);
     expect(result.source.stockHistorySource).toBe("tencent-stock-history");
     expect(result.warnings.join(" ")).toContain("请求预算");
   });
@@ -114,7 +125,9 @@ describe("trading stock regime history evidence", () => {
     const value = input([series(), series(bars(), { symbol: "000001" })]);
     value.stockHistory.warning = "保留真实上游警告";
     const result = analyzeMarketRegimeData(value);
-    expect(result.stockRegimes[0]).toEqual({ rank: 1, ...classifyStockRegime("600010", "请求甲", bars()) });
+    const { historicalEntryStructure, ...legacy } = result.stockRegimes[0];
+    expect(legacy).toEqual({ rank: 1, ...classifyStockRegime("600010", "请求甲", bars()) });
+    expect(historicalEntryStructure?.observed).toBe(true);
     expect(result.warnings).toContain("保留真实上游警告");
   });
 

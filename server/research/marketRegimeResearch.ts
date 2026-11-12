@@ -5,6 +5,7 @@ import { isTechnologySector } from "./sectorPulse";
 import { validateStrategyHistory } from "./strategyHistoryEvidence";
 import { validateSectorHistory } from "./sectorHistoryEvidence";
 import { normalizeSectorSnapshotResponse } from "./sectorSnapshotEvidence";
+import { analyzeHistoricalEntryStructure, type HistoricalEntryStructure } from "./historicalEntryStructure";
 
 export interface HistoricalBar {
   date: string;
@@ -136,6 +137,8 @@ export interface StockRegimeResult {
   };
   evidence: string[];
   riskFlags: string[];
+  /** Completed daily structure only; absent on legacy/classifier-only observations. */
+  historicalEntryStructure?: HistoricalEntryStructure;
 }
 
 export interface MarketRegimeResearchReport {
@@ -656,14 +659,17 @@ export function analyzeMarketRegimeData(
     unclear: 2,
     "insufficient-data": 1,
   };
+  const originalStockSeries = new Map((Array.isArray(input.stockHistory?.series) ? input.stockHistory.series : [])
+    .filter(series => series && typeof series.symbol === "string").map(series => [series.symbol, series]));
   const stockRegimes = checkedStocks.series
-    .map((series) =>
-      classifyStockRegime(
+    .map((series) => ({
+      ...classifyStockRegime(
         series.symbol,
         input.stockNames.get(series.symbol) ?? series.name ?? series.symbol,
         series.bars,
       ),
-    )
+      historicalEntryStructure: analyzeHistoricalEntryStructure(originalStockSeries.get(series.symbol)!, asOf, days),
+    }))
     .sort((a, b) => {
       const priority = regimePriority[b.regime] - regimePriority[a.regime];
       return priority || b.confidence - a.confidence;
