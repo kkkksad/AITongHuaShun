@@ -2,7 +2,7 @@
 
 **核对日期：** 2026-11-13（北京时间；11月12日夜间交易与性能优化）
 
-策略入场元数据观察副本修正本地目标45、完整2963后端与TS/Vite通过，待独立部署及生产镜像全套。0102新增嵌套paperEntry后，原浅拷贝onEnd可污染报告时间/来源；九新增旧版八失败/一普通onBar控制通过，现有复制入口补两层复制后通过，见[0104](../decisions/0104-copy-nested-entry-evidence-in-strategy-context.md)。资金/成交未受该元数据问题影响，固定204共享两次/8161逐笔重建及1224独立完整结果保持；前端439/Python177/36未改继承。后续[退出研究](../plans/2026-11-12-strategy-exit-lifecycle-research.md)已预先固定216组，尚未生成结果或启用生产退出；当前发布见[计划](../plans/2026-11-12-strategy-entry-context-isolation.md)。
+策略入场元数据观察副本修正09ef58c已UTC19:02推送部署，809文件/全部发布保护通过；实际生产API镜像禁网隔离186文件2963后端于UTC19:06通过。本地目标45、完整2963后端与TS/Vite通过。0102新增嵌套paperEntry后，原浅拷贝onEnd可污染报告时间/来源；九新增旧版八失败/一普通onBar控制通过，现有复制入口补两层复制后通过，见[0104](../decisions/0104-copy-nested-entry-evidence-in-strategy-context.md)。资金/成交未受该元数据问题影响，固定204共享两次/8161逐笔重建及1224独立完整结果保持；前端439/Python177/36未改继承。后续[退出研究](../plans/2026-11-12-strategy-exit-lifecycle-research.md)已预先固定216组，尚未生成结果或启用生产退出；回执见[计划](../plans/2026-11-12-strategy-entry-context-isolation.md)。
 
 持仓风险显示007b4c0已UTC18:52推送部署，806文件/三健康/可信双域HTTPS/匿名401、动态经济摘要与完整风险检查点/上一364c7cd材料通过，API/桥接已测容器镜像严格保持。持仓内个股HHI按股票市值构成归一化，现金不稀释、无样本/坏市值未知，明确不反映行业/相关性；原账户权重与交易条件保持。图下正常流图例列名称/代码/比例，前七/其他按完整市值，修复长名称裁切/浮动图例重叠，见[0103](../decisions/0103-holdings-concentration-and-readable-allocation.md)。首批13旧版全失败，最终14新增/目标28、完整439前端及TS/Vite通过，Chrome六场景×390/1440共12组无横溢/图例几何及人工截图通过、零fetch。后端/Python无改继承2954/177/36；文档回执与下一观察副本审计见[计划](../plans/2026-11-12-portfolio-risk-display.md)。
 
