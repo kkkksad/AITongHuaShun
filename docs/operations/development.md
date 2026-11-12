@@ -1,5 +1,7 @@
 # 本地开发
 
+完成日线入场对照仅离线执行scripts/research-completed-entry-history.ts，72组固定代理/结构假设的复现命令与全部不利结果见[报告](../research/2026-11-12-completed-entry-hypothesis-review.md)。东财原生日线手仅在绝对快照门槛×100为股，原序列不改；未知来源拒绝。scripts/verify-completed-entry-history.cjs独立重建结构、逐笔费用/资金/FIFO/T+1/库存/终值/观察回撤。本研究没有连接生产执行器或改变线上准入。
+
 固定退出研究只离线读取冻结历史，不连接生产执行器；命令与216组完整结果见[退出对照报告](../research/2026-11-12-strategy-exit-lifecycle-review.md)。独立核验器scripts/verify-strategy-exit-history.cjs重建逐笔费用、FIFO、T+1、库存、权益及观察回撤，并检查72组native完整保持；不能把该研究命令当线上调参入口。
 
 指定股票/指数行情现使用腾讯真实来源时间与独立两线程通道，每种缓存一批在途、无待执行队列，条目上限256/32。完成后10秒复用、失败/缺失20秒冷却，冷读最多等待6秒；`/health.requestedQuotes`提供source及stocks/indices各自缓存/活跃/失败计数。全市场名称搜索按需后台预热，服务启动不等待全市场扫描；详见[0038](../decisions/0038-requested-quotes-independent-of-discovery-and-history.md)。

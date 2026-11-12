@@ -13,5 +13,5 @@
     "resolveJsonModule": true,
     "types": ["node"]
   },
-  "include": ["server", "shared", "scripts/setup-auth.ts", "scripts/research-fixed-strategy-history.ts", "scripts/research-adaptive-coverage-history.ts", "scripts/research-shared-capital-history.ts", "scripts/research-entry-structure-history.ts", "scripts/research-strategy-exits-history.ts"]
+  "include": ["server", "shared", "scripts/setup-auth.ts", "scripts/research-fixed-strategy-history.ts", "scripts/research-adaptive-coverage-history.ts", "scripts/research-shared-capital-history.ts", "scripts/research-entry-structure-history.ts", "scripts/research-strategy-exits-history.ts", "scripts/research-completed-entry-history.ts"]
 }
