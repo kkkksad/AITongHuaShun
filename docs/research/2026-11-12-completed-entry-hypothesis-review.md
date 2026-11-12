@@ -17,10 +17,14 @@
 最终72组两次逐字节一致，输出SHA256 `e1898b6e6d4f8cd4cc4ac5c84d39535c2c69490c9929b1d603afc0c3f452b4ee`。独立脚本从原OHLC重建18,000组结构/时点，对原rank函数重新计算18,000代理资格，并重建全部2367笔/1229买入的次开价格、费用、现金、FIFO/T+1、共同固定退出、库存、终值和开/收盘观察回撤。最小逐笔现金约52元，无负现金；正逆顺序不是独立统计样本。输出含父提交/dirty及实际源码哈希，不将父提交当最终源码提交。
 
 ```powershell
-node node_modules/tsx/dist/cli.mjs scripts/research-completed-entry-history.ts runtime/bank-portfolio-history-attempt1.json runtime/2026-11-12-entry-hypothesis-a.json
-node node_modules/tsx/dist/cli.mjs scripts/research-completed-entry-history.ts runtime/bank-portfolio-history-attempt1.json runtime/2026-11-12-entry-hypothesis-b.json
-node scripts/verify-completed-entry-history.cjs runtime/bank-portfolio-history-attempt1.json runtime/2026-11-12-entry-hypothesis-a.json runtime/2026-11-12-entry-hypothesis-b.json runtime/2026-11-12-entry-hypothesis
+node node_modules/tsx/dist/cli.mjs scripts/research-completed-entry-history.ts runtime/bank-portfolio-history-attempt1.json runtime/2026-11-12-frozen-volume-a.json docs/research/2026-11-12-entry-history-volume-contract.json
+node node_modules/tsx/dist/cli.mjs scripts/research-completed-entry-history.ts runtime/bank-portfolio-history-attempt1.json runtime/2026-11-12-frozen-volume-b.json docs/research/2026-11-12-entry-history-volume-contract.json
+node scripts/verify-completed-entry-history.cjs runtime/bank-portfolio-history-attempt1.json runtime/2026-11-12-frozen-volume-a.json runtime/2026-11-12-frozen-volume-b.json runtime/2026-11-12-frozen-volume docs/research/2026-11-12-entry-history-volume-contract.json
 ```
+
+后续[0112](../decisions/0112-frozen-entry-volume-declaration.md)要求上述显式单位声明，输入字节SHA与声明绑定，避免将已转股载荷再次乘100；不是仅按来源名称猜单位。上文e1898b6e为17d1dfc阶段原结果的历史SHA，工具校验升级后的新元数据输出另存，不回写原文件。哈希不证明人工声明正确；原样本仍非新样本外。
+
+单位绑定升级后的两次输出字节一致SHA256 `c6aa0fca92f828d0a017f87f06ecb8bf9de073d49cdcbb0d5bcf2b0b585cac60`，2367逐笔/18000结构和代理独立核验通过；全部72组经济结果/资格/窗口与原e1898b6e输出完全保持。另将旧输入仅历史volume×100生成受控副本（SHA31979bb8b63daf6ac1f8a01ea81cec91014bd7952567f60288bcec5260599d3a），声明为shares后72组同样保持；此项仅验证单位等价，不是新增市场样本或样本外验证。原始输入字节未改，原不利结论保持。
 
 ## 汇总
 

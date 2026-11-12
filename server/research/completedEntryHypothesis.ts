@@ -7,10 +7,11 @@ export const COMPLETED_ENTRY_KEYS = ["kairosVolumePriceBreakout", "kairosVolatil
 export type CompletedEntryKey = typeof COMPLETED_ENTRY_KEYS[number];
 export type EntryHypothesisState = "confirmed" | "not-confirmed" | "unknown";
 
-/** This frozen experiment supports the verified Eastmoney lots contract only. */
-export function completedDailyQuoteVolumeShares(source: string, volume: number): number {
-  const shares = volume * 100;
-  if (source !== "eastmoney-stock-history" || !Number.isFinite(volume) || volume < 0 || !Number.isSafeInteger(shares)) {
+/** Offline Eastmoney input needs an explicit unit; the CLI binds it to frozen bytes. */
+export function completedDailyQuoteVolumeShares(source: string, volume: number, unit: "lots" | "shares"): number {
+  const shares = unit === "lots" ? volume * 100 : volume;
+  if (source !== "eastmoney-stock-history" || (unit !== "lots" && unit !== "shares") ||
+    !Number.isFinite(volume) || volume < 0 || !Number.isSafeInteger(shares)) {
     throw Error("入场研究缺少已核实的成交量单位或有效股数");
   }
   return shares;

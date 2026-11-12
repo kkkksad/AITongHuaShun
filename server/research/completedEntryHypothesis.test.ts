@@ -11,16 +11,22 @@ function history(): HistoricalSeries {
 const asOf = new Date("2025-04-01T00:00:00Z");
 function breakout() { const input = history(); Object.assign(input.bars.at(-1)!, { high: 10.3, close: 10.2, volume: 150 }); return input; }
 describe("completed daily entry hypotheses (offline only)", () => {
+  it("keeps explicitly normalized daily shares from being multiplied a second time", () => {
+    expect(completedDailyQuoteVolumeShares("eastmoney-stock-history", 5_000_000, "shares")).toBe(5_000_000);
+  });
+  it.each([undefined, null, "unknown", "contracts"])("rejects missing or unknown volume unit %s", unit => {
+    expect(() => completedDailyQuoteVolumeShares("eastmoney-stock-history", 50_000, unit as never)).toThrow();
+  });
   it("converts verified Eastmoney daily lots to quote shares once without changing raw history", () => {
-    expect(completedDailyQuoteVolumeShares("eastmoney-stock-history", 50000)).toBe(5000000);
-    expect(completedDailyQuoteVolumeShares("eastmoney-stock-history", 0)).toBe(0);
+    expect(completedDailyQuoteVolumeShares("eastmoney-stock-history", 50000, "lots")).toBe(5000000);
+    expect(completedDailyQuoteVolumeShares("eastmoney-stock-history", 0, "lots")).toBe(0);
   });
   it.each(["unknown", "tencent-stock-history"])("rejects an unverified or version-dependent %s volume contract", source => {
-    expect(() => completedDailyQuoteVolumeShares(source, 50000)).toThrow();
+    expect(() => completedDailyQuoteVolumeShares(source, 50000, "lots")).toThrow();
   });
   it("rejects invalid or overflowing daily volume rather than fabricating liquidity", () => {
     for (const volume of [NaN, Infinity, -1, Number.MAX_SAFE_INTEGER, 0.001]) {
-      expect(() => completedDailyQuoteVolumeShares("eastmoney-stock-history", volume)).toThrow();
+      expect(() => completedDailyQuoteVolumeShares("eastmoney-stock-history", volume, "lots")).toThrow();
     }
   });
   it("requires a closing breakout rather than a high-only excursion or equality", () => {

@@ -6,7 +6,7 @@ A股历史主源None/空DataFrame沿原来源链尝试腾讯；非空短历史�
 
 A股发现快照仅在fetch_a_share_spot_dataframe的eastmoney成功分支把原成交量手转股；新浪及现有腾讯parser已经是股，勿重复换算。原供应方DataFrame不变、量外字段/时间保持，非法量按原解析器跳行，见[0110](../decisions/0110-discovery-spot-volume-in-shares.md)。日线仍按各来源原单位。新增25项；本地201通过/1项固定SDK合同跳过，Ubuntu1.20.34与已部署bddfc42实际生产桥接202项全部通过，原已测API/网页容器保持。
 
-完成日线入场对照仅离线执行scripts/research-completed-entry-history.ts，72组固定代理/结构假设的复现命令与全部不利结果见[报告](../research/2026-11-12-completed-entry-hypothesis-review.md)。东财原生日线手仅在绝对快照门槛×100为股，原序列不改；未知来源拒绝。scripts/verify-completed-entry-history.cjs独立重建结构、逐笔费用/资金/FIFO/T+1/库存/终值/观察回撤。本研究没有连接生产执行器或改变线上准入。
+完成日线入场对照仅离线执行scripts/research-completed-entry-history.ts，必需第三参数为与原输入SHA绑定的单位声明文件，显式lots或shares，无默认，见[0112](../decisions/0112-frozen-entry-volume-declaration.md)。只在绝对快照门槛手×100为股或保持已转股，原序列不改；未知来源拒绝。scripts/verify-completed-entry-history.cjs针对原生手冻结样本独立重建结构、逐笔费用/资金/FIFO/T+1/库存/终值/观察回撤，必需第五参数声明。72组复现命令与不利结果见[报告](../research/2026-11-12-completed-entry-hypothesis-review.md)；没有连接生产执行器或改变线上准入。
 
 固定退出研究只离线读取冻结历史，不连接生产执行器；命令与216组完整结果见[退出对照报告](../research/2026-11-12-strategy-exit-lifecycle-review.md)。独立核验器scripts/verify-strategy-exit-history.cjs重建逐笔费用、FIFO、T+1、库存、权益及观察回撤，并检查72组native完整保持；不能把该研究命令当线上调参入口。
 

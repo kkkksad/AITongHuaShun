@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { analyzeMarketRegimeData, type HistoricalBarsResponse, type HistoricalSeries } from "../server/research/marketRegimeResearch";
@@ -9,6 +9,7 @@ import { rankAdaptiveCandidateStrategies } from "../server/research/adaptiveCand
 import { evaluateCompletedEntryHypothesis, COMPLETED_ENTRY_KEYS, createCompletedEntryResearchStrategy,
   completedDailyQuoteVolumeShares, type CompletedEntryKey, type CompletedEntryObservation } from "../server/research/completedEntryHypothesis";
 import { observeAdaptivePrefix } from "./research-adaptive-coverage-history";
+import { parseFrozenEntryVolumeContract, type FrozenDailyVolumeUnit } from "../server/research/frozenEntryVolumeContract";
 import { validateStrategyHistory } from "../server/research/strategyHistoryEvidence";
 import { buildAlignedHistoricalSnapshots, splitChronologicalWindows } from "../server/research/strategyRobustness";
 import { runNextOpenPortfolioResearch, SHARED_CAPITAL_RESEARCH_LIMITS } from "../server/research/nextOpenPortfolioResearch";
@@ -24,7 +25,7 @@ function unknownRouting(asOf: Date) {
     days: 500, sectorResponse: { ...empty, sectors: [] }, sectorHistory: empty, stockHistory: empty, stockNames: new Map() }));
 }
 
-export function researchCompletedEntries(inputSeries: HistoricalSeries[], asOf: Date) {
+export function researchCompletedEntries(inputSeries: HistoricalSeries[], asOf: Date, volumeUnit: FrozenDailyVolumeUnit) {
   const valid = validateStrategyHistory(inputSeries, { asOf, maxBars: 500 });
   if (valid.warnings.length || valid.series.length < 2 || valid.series.length > 12) throw Error("入场研究要求2至12份干净冻结历史");
   const snapshots = buildAlignedHistoricalSnapshots(valid.series, "paper", asOf);
@@ -44,7 +45,7 @@ export function researchCompletedEntries(inputSeries: HistoricalSeries[], asOf: 
       const observed = index >= 120 ? observeAdaptivePrefix(item.symbol, item.name, item.bars, index) : null;
       for (const key of COMPLETED_ENTRY_KEYS) {
         const hypothesis = evaluateCompletedEntryHypothesis({ ...item, bars: item.bars.slice(0, index + 1) }, key, decisionTime);
-        const quoteVolume = completedDailyQuoteVolumeShares(item.source, item.bars[index].volume);
+        const quoteVolume = completedDailyQuoteVolumeShares(item.source, item.bars[index].volume, volumeUnit);
         const proxyEligible = observed !== null && rankAdaptiveCandidateStrategies({ quote: { ...observed.quote, volume: quoteVolume },
           stockRegime: observed.stock, routing, executionStrategy: key, candidateScore: 80 }).some(signal => signal.strategyKey === key);
         const row: CompletedEntryObservation = { symbol: item.symbol, closeTime, proxyEligible, structure: hypothesis.state };
@@ -92,8 +93,8 @@ export function researchCompletedEntries(inputSeries: HistoricalSeries[], asOf: 
     evaluationUnit: "one-shared-20000-account-per-entry-key-mode-window-cost-order", fixedCashReserve: 0,
     decisionAndExecution: "completed-close-confirmation-next-observed-open", stockClassificationBoundary: "strictly-before-decision-day",
     structureBoundary: "through-decision-completed-close", candidateScore: 80, targetWeight: 0.20,
-    quoteVolume: "verified-eastmoney-daily-lots-times-100-to-shares-only-for-quote-absolute-thresholds",
-    unchangedHistoryVolume: "source-native-lots-for-within-series-relative-ratios-and-original-backtest-input",
+    quoteVolume: volumeUnit === "lots" ? "explicit-daily-lots-times-100-for-quote-absolute-thresholds" : "explicit-daily-shares-no-second-conversion",
+    unchangedHistoryVolume: "declared-input-unit-preserved-for-relative-ratios-and-original-backtest-input",
     thresholds: { volumePrice: { volumeRatio: 1.5, closingAbovePrior20High: true },
       contraction: { volumeRatio: 1.4, meanRange20To40: 0.62, closingAbovePrior20High: true },
       pullback: { maxPriorLowDrawdown: 0.07, minimumRecoveryFromLow: 0.008, quietLowVolumeRatio: 1,
@@ -112,10 +113,14 @@ export function researchCompletedEntries(inputSeries: HistoricalSeries[], asOf: 
 }
 
 function main() {
-  const [inputPath, outputPath] = process.argv.slice(2);
-  if (!inputPath || !outputPath || resolve(inputPath) === resolve(outputPath)) throw Error("Expected distinct frozen input/output paths");
+  const [inputPath, outputPath, contractPath] = process.argv.slice(2);
+  if (!inputPath || !outputPath || !contractPath || new Set([inputPath, outputPath, contractPath].map(p => resolve(p))).size !== 3) {
+    throw Error("Expected distinct frozen input, output and volume declaration paths");
+  }
   const bytes = readFileSync(inputPath);
   if (bytes.length > 5 * 1024 * 1024) throw Error("Frozen input exceeds 5 MiB");
+  if (statSync(contractPath).size > 4096) throw Error("Volume declaration exceeds 4096 bytes");
+  const volumeContract = parseFrozenEntryVolumeContract(bytes, readFileSync(contractPath));
   const input = JSON.parse(bytes.toString("utf8").replace(/^\uFEFF/, "")) as {
     observedAt: string; requestedSymbols: string[]; snapshot: MarketSnapshot; history: HistoricalBarsResponse };
   const cutoff = Math.min(Date.parse(input.observedAt), Date.parse(input.snapshot.marketTime));
@@ -126,8 +131,9 @@ function main() {
   const asOf = new Date(cutoff);
   const valid = validateStrategyHistory(input.history.series, { asOf, requestedSymbols: new Set(input.requestedSymbols), maxBars: 500 });
   if (valid.warnings.length) throw Error("Entry comparison requires clean frozen histories");
-  const result = researchCompletedEntries(valid.series, asOf);
+  const result = researchCompletedEntries(valid.series, asOf, volumeContract.volumeUnit);
   const sourcePaths = [...new Set(["scripts/research-completed-entry-history.ts", "scripts/verify-completed-entry-history.cjs",
+    "server/research/frozenEntryVolumeContract.ts",
     "scripts/research-adaptive-coverage-history.ts", "server/research/completedEntryHypothesis.ts",
     "server/research/historicalEntryStructure.ts", "server/research/marketRegimeResearch.ts", "server/research/adaptiveCandidateStrategy.ts",
     "server/research/adaptiveStrategyRouter.ts", "server/research/nextOpenPortfolioResearch.ts",
@@ -138,7 +144,7 @@ function main() {
     workingTreeDirty: execFileSync("git", ["status", "--porcelain"], {encoding:"utf8"}).trim().length > 0,
     sourceSha256: Object.fromEntries(sourcePaths.map(p => [p,createHash("sha256").update(readFileSync(p)).digest("hex")])),
     inputSha256: createHash("sha256").update(bytes).digest("hex"), asOf: asOf.toISOString(), observedAt: input.observedAt,
-    source: input.history.source, fetchedAt: input.history.fetchedAt, sourceWarning: input.history.warning,
+    source: input.history.source, fetchedAt: input.history.fetchedAt, sourceWarning: input.history.warning, volumeContract,
     validationWarnings: valid.warnings, ...result };
   writeFileSync(outputPath, JSON.stringify(output, null, 2));
   console.log(JSON.stringify({groups:result.results.length,observations:result.evidenceRows.length,inputSha256:output.inputSha256,windows:result.windows}));

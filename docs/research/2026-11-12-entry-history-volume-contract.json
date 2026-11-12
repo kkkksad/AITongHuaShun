@@ -1,0 +1,6 @@
+{
+  "inputSha256": "32fc7da6789ebcd55660f7b031d036ad070e09b3baa8d919c8391350f9963d01",
+  "source": "eastmoney-stock-history",
+  "volumeUnit": "lots",
+  "evidence": "This previously frozen 12-stock input contains native Eastmoney daily lots. Verified against the AkShare stock_zh_a_hist unit documentation and inspected production 1.20.34 implementation. This declaration applies only to the exact input bytes identified by inputSha256; later normalized payloads require a new declaration."
+}
