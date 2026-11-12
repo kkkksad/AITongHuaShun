@@ -3,6 +3,7 @@ import { open } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { PAPER_EXECUTION_TIMING_MAX_MS } from "../../shared/paperExecutionTiming";
+import { copyStockHistoryCoverage } from "./stockHistoryCoverage";
 import {
   PAPER_HISTORY_BLOCKERS, PAPER_HISTORY_ISSUES, PAPER_HISTORY_PHASES,
   PAPER_HISTORY_QUALITIES, PAPER_HISTORY_REGIMES, PAPER_HISTORY_SESSIONS, PAPER_HISTORY_SOURCES,
@@ -43,13 +44,17 @@ const modelSchema = z.object({
   blockers: z.array(z.object({ code: z.enum(PAPER_HISTORY_BLOCKERS), count })).max(PAPER_HISTORY_BLOCKERS.length),
   issues: z.array(z.object({ code: z.enum(PAPER_HISTORY_ISSUES), count: runs })).max(PAPER_HISTORY_ISSUES.length),
   latestRuns: z.array(z.object({
+    stockHistoryCoverage: z.unknown().optional().transform(value => copyStockHistoryCoverage(value) ?? null),
     newPositionFunnel: funnelSchema.nullable().catch(null),
     timing: timingSchema.nullable().catch(null),
     occurredAt: time, session: z.enum(PAPER_HISTORY_SESSIONS).nullable(), phase: z.enum(PAPER_HISTORY_PHASES).nullable(),
     regime: z.enum(PAPER_HISTORY_REGIMES).nullable(), planQuality: z.enum(PAPER_HISTORY_QUALITIES).nullable(),
     sourceStatus: z.enum(PAPER_HISTORY_SOURCES).nullable(), submittedOrders: count.nullable(), skippedOperations: count.nullable(),
     blockers: z.partialRecord(z.enum(PAPER_HISTORY_BLOCKERS), count), issues: z.array(z.enum(PAPER_HISTORY_ISSUES)).max(PAPER_HISTORY_ISSUES.length),
-  })).max(20),
+  }).transform(run => ({ ...run,
+    stockHistoryCoverage: run.stockHistoryCoverage && Date.parse(run.stockHistoryCoverage.asOf) <= Date.parse(run.occurredAt)
+      ? run.stockHistoryCoverage : null,
+  }))).max(20),
 });
 
 function validTotals(model: z.infer<typeof modelSchema>): boolean {

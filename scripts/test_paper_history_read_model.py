@@ -5,7 +5,7 @@ import json
 import pathlib
 import tempfile
 import sqlite3
-from paper_history_contract import safe_timing, safe_new_position_funnel
+from paper_history_contract import safe_timing, safe_new_position_funnel, safe_stock_history_coverage
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +15,83 @@ from test_paper_history import state, NOW, EPOCH, OTHER_EPOCH
 
 
 class PaperHistoryReadModelTests(unittest.TestCase):
+    def identity(self):
+        return dict(scope='regime-stock-history', asOf='2026-11-09T13:59:00.000Z',
+                    selectedSymbols=['600010', '600011'], returnedSymbols=['600011'],
+                    acceptedSymbols=['600011'], usableSymbols=[])
+
+    def test_stock_history_identities_survive_sqlite_and_read_model_without_raw_fields(self):
+        coverage = self.identity()
+        self.input['auditEvents'] = [self.run_record('identity', '2026-11-09T14:00:00Z',
+            session='open', submittedOrders=0, researchDiagnostics=dict(stockCount=1, usableStockCount=0,
+                issues=[], stockHistoryCoverage=dict(coverage, token='DO_NOT_PUBLISH')))]
+        self.archive()
+        with closing(sqlite3.connect(self.database)) as conn:
+            stored = json.loads(conn.execute('SELECT details_json FROM execution_runs').fetchone()[0])
+        self.assertEqual(stored['researchDiagnostics'].get('stockHistoryCoverage'), coverage)
+        self.assertEqual(self.build()['latestRuns'][0].get('stockHistoryCoverage'), coverage)
+        self.assertNotIn('DO_NOT_PUBLISH', json.dumps(stored))
+        self.assertEqual(self.build()['runCount'], 1)
+        self.assertEqual(self.build()['submittedAttempts'], 0)
+        self.archive()
+        self.assertEqual(self.build()['runCount'], 1)
+
+    def test_invalid_optional_stock_identities_do_not_discard_valid_runs(self):
+        base = self.identity()
+        bad = [None, {}, dict(base, scope='other'), dict(base, selectedSymbols=['bad']),
+               dict(base, asOf='2026-11-09T14:00:00.001Z'), dict(base, asOf='2026-02-30T13:59:00.000Z'),
+               dict(base, acceptedSymbols=[]), dict(base, usableSymbols=['600011']),
+               dict(base, selectedSymbols=['600011', '600011']), dict(base, returnedSymbols=['000001']),
+               dict(base, selectedSymbols=['6000%02d' % i for i in range(13)])]
+        for index, coverage in enumerate(bad):
+            self.input['auditEvents'] = [self.run_record('bad-identity-' + str(index), '2026-11-09T14:00:00Z',
+                session='open', submittedOrders=0, researchDiagnostics=dict(stockCount=1, usableStockCount=0,
+                    issues=['provider-timeout'], stockHistoryCoverage=coverage))]
+            self.archive()
+        for run in self.build()['latestRuns']:
+            self.assertIsNone(run.get('stockHistoryCoverage'))
+            self.assertEqual(run['session'], 'open')
+            self.assertEqual(run['issues'], ['provider-timeout'])
+        self.assertEqual(self.build()['runCount'], len(bad))
+
+    def test_rechecks_identity_evidence_already_stored_in_database(self):
+        self.input['auditEvents'] = [self.run_record('identity', '2026-11-09T14:00:00Z',
+            session='open', researchDiagnostics=dict(stockCount=1, usableStockCount=0, issues=[]))]
+        self.archive()
+        with closing(sqlite3.connect(self.database)) as conn:
+            stored = json.loads(conn.execute('SELECT details_json FROM execution_runs').fetchone()[0])
+            stored['researchDiagnostics']['stockHistoryCoverage'] = dict(self.identity(), asOf='2099-01-01T00:00:00.000Z')
+            conn.execute('UPDATE execution_runs SET details_json=?', (json.dumps(stored),))
+            conn.commit()
+        result = self.build()
+        self.assertIsNone(result['latestRuns'][0]['stockHistoryCoverage'])
+        self.assertEqual(result['runCount'], 1)
+        self.assertEqual(result['latestRuns'][0]['session'], 'open')
+
+    def test_full_twelve_stock_evidence_stays_bounded_to_twenty_latest_runs(self):
+        symbols = ['6000%02d' % i for i in range(12)]
+        coverage = dict(scope='regime-stock-history', asOf='2026-11-09T13:59:00.000Z',
+            selectedSymbols=symbols, returnedSymbols=symbols, acceptedSymbols=symbols, usableSymbols=symbols)
+        self.input['auditEvents'] = [self.run_record('identity-' + str(i), '2026-11-09T14:00:%02dZ' % i,
+            researchDiagnostics=dict(stockCount=12, usableStockCount=12, issues=[], stockHistoryCoverage=coverage)) for i in range(21)]
+        self.archive()
+        result = self.build()
+        self.assertEqual(result['runCount'], 21)
+        self.assertEqual(len(result['latestRuns']), 20)
+        self.assertTrue(all(run['stockHistoryCoverage'] == coverage for run in result['latestRuns']))
+        self.assertLess(len(json.dumps(result).encode('utf8')), 128 * 1024)
+
+    def test_identity_contract_preserves_observed_zero_and_copies_without_inventing_legacy_selection(self):
+        zero = dict(scope='regime-stock-history', asOf='2026-11-09T14:00:00.000Z',
+                    selectedSymbols=[], returnedSymbols=[], acceptedSymbols=[], usableSymbols=[])
+        self.assertEqual(safe_stock_history_coverage(zero, zero['asOf'], 0, 0), zero)
+        original = self.identity()
+        result = safe_stock_history_coverage(original, zero['asOf'], 1, 0)
+        original['selectedSymbols'].clear()
+        self.assertEqual(result['selectedSymbols'], ['600010', '600011'])
+        self.assertIsNone(safe_stock_history_coverage(None, zero['asOf'], 0, 0))
+        self.assertIsNone(safe_stock_history_coverage(zero, zero['asOf'], False, 0))
+
     def test_funnel_count_contract_preserves_zero_and_rejects_inconsistent_evidence(self):
         base = dict(scope='ranked-top-12', scannerCandidateCount=0, consideredCandidateCount=0,
                     existingPositionCount=0, newSymbolCount=0, eligibleNewSymbolCount=0,

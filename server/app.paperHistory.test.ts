@@ -34,6 +34,31 @@ async function setup(auth = false) {
 }
 
 describe("Paper history HTTP boundary", () => {
+  it("returns bounded identities only through the authenticated read model without changing the ledger", async () => {
+    const { app, file, ledger } = await setup(true);
+    const before = readFileSync(ledger, "utf8");
+    const value = JSON.parse(readFileSync(file, "utf8"));
+    const identity = { scope: "regime-stock-history", asOf: "2026-11-09T14:59:59.000Z",
+      selectedSymbols: ["600010", "600011"], returnedSymbols: ["600011"], acceptedSymbols: ["600011"], usableSymbols: [] };
+    value.runCount = value.openSessionRuns = value.submissionEvidenceRuns = 1;
+    Object.assign(value.days.at(-1), { runs: 1, openRuns: 1, submissionEvidenceRuns: 1 });
+    value.latestRuns = [{ occurredAt: now().toISOString(), session: "open", phase: "morning-confirmation",
+      regime: null, planQuality: "watch-only", sourceStatus: "degraded", submittedOrders: 0,
+      skippedOperations: 0, blockers: {}, issues: [], stockHistoryCoverage: { ...identity, token: "DO_NOT_PUBLISH" } }];
+    writeFileSync(file, JSON.stringify(value));
+    expect((await app.inject("/api/research/paper-history")).statusCode).toBe(401);
+    const login = await app.inject({ method: "POST", url: "/api/auth/login", payload: {
+      username: "archive-reader", password: "fixture-archive-password" } });
+    const response = await app.inject({ url: "/api/research/paper-history", headers: {
+      cookie: String(login.headers["set-cookie"]).split(";")[0] } });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toContain("no-store");
+    expect(response.json()).toMatchObject({ state: "ready", data: { runCount: 1,
+      latestRuns: [{ stockHistoryCoverage: identity }] } });
+    expect(response.body).not.toContain("DO_NOT_PUBLISH");
+    expect(response.json().data).not.toHaveProperty("accountEpoch");
+    expect(readFileSync(ledger, "utf8")).toBe(before);
+  });
   it("protects the archive behind the existing session and sends no-store", async () => {
     const { app, system } = await setup(true);
     const getEpoch = vi.spyOn(system.store, "getAccountEpoch");

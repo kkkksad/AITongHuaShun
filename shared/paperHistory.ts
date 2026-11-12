@@ -1,5 +1,6 @@
 import type { PaperExecutionTiming } from "./paperExecutionTiming";
 import type { PaperNewPositionFunnel } from "./paperTradingCoverage";
+import type { StockHistoryCoverage } from "./stockHistoryCoverage";
 
 export const PAPER_HISTORY_SESSIONS = ["open", "pre-market", "lunch-break", "after-hours", "weekend", "holiday", "calendar-unavailable"] as const;
 export const PAPER_HISTORY_PHASES = ["opening", "morning-confirmation", "afternoon-confirmation", "closing-risk-review", "closed"] as const;
@@ -19,6 +20,7 @@ export interface PaperHistoryDay {
 }
 
 export interface PaperHistoryRun {
+  stockHistoryCoverage?: StockHistoryCoverage | null;
   newPositionFunnel?: PaperNewPositionFunnel | null;
   timing?: PaperExecutionTiming | null;
   occurredAt: string;

@@ -8,7 +8,7 @@ import re
 import sqlite3
 import uuid
 
-from paper_history_contract import BLOCKERS, ISSUES, RUN_ENUMS, safe_timing, safe_new_position_funnel
+from paper_history_contract import BLOCKERS, ISSUES, RUN_ENUMS, safe_timing, safe_new_position_funnel, safe_stock_history_coverage
 
 MAX_RUNS = 20000
 MAX_MODEL_BYTES = 128 * 1024
@@ -29,7 +29,7 @@ def nonnegative_count(value):
     return type(value) is int and 0 <= value <= 1_000_000
 
 
-def safe_run(value):
+def safe_run(value, occurred_at):
     if not isinstance(value, dict):
         raise ValueError('invalid archived run')
     result = {key: value.get(key) if value.get(key) in allowed else None
@@ -43,6 +43,8 @@ def safe_run(value):
                                          if isinstance(code, str) and code in ISSUES))
     result['timing'] = safe_timing(value.get('timing'))
     result['newPositionFunnel'] = safe_new_position_funnel(value.get('newPositionFunnel'))
+    result['stockHistoryCoverage'] = safe_stock_history_coverage(diagnostics.get('stockHistoryCoverage'), occurred_at,
+        diagnostics.get('stockCount'), diagnostics.get('usableStockCount'))
     return result
 
 
@@ -74,7 +76,7 @@ def build_read_model(database, account_id, epoch, now=None):
             runs=0, openRuns=0, unknownSessionRuns=0, submittedAttempts=0, submissionEvidenceRuns=0) for index in range(7)}
     blockers, issues, latest = Counter(), Counter(), []
     for occurred_at, body in rows:
-        run = safe_run(json.loads(body))
+        run = safe_run(json.loads(body), occurred_at)
         date = dt.datetime.fromisoformat(occurred_at.replace('Z', '+00:00')).astimezone(CHINA).date()
         day = days[str(date)]
         day['runs'] += 1

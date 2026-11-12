@@ -1,12 +1,5 @@
-/** Response identities are not proof of a fresh upstream request or a buy signal. */
-export interface StockHistoryCoverage {
-  scope: "regime-stock-history";
-  asOf: string;
-  selectedSymbols: string[];
-  returnedSymbols: string[];
-  acceptedSymbols: string[];
-  usableSymbols: string[];
-}
+import type { StockHistoryCoverage } from "../../shared/stockHistoryCoverage";
+export type { StockHistoryCoverage } from "../../shared/stockHistoryCoverage";
 
 const fields = ["selectedSymbols", "returnedSymbols", "acceptedSymbols", "usableSymbols"] as const;
 function symbols(value: unknown): value is string[] {

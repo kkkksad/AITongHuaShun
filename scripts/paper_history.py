@@ -12,7 +12,7 @@ from pathlib import Path
 import re
 import sqlite3
 import uuid
-from paper_history_contract import ISSUES, BLOCKERS, RUN_ENUMS, safe_timing, safe_new_position_funnel
+from paper_history_contract import ISSUES, BLOCKERS, RUN_ENUMS, safe_timing, safe_new_position_funnel, safe_stock_history_coverage
 
 MAX_SOURCE_BYTES = 16 * 1024 * 1024
 MAX_DATABASE_PAGES = 65536  # 256 MiB at 4096 bytes/page; backups/WAL are additional.
@@ -140,6 +140,10 @@ def _run(event):
             for key in ("sectorCount", "stockCount", "usableStockCount") if key in diagnostics}
         result["researchDiagnostics"]["issues"] = list(dict.fromkeys(
             code for code in diagnostics.get("issues", [])[:4] if isinstance(code, str) and code in ISSUES))
+        identities = safe_stock_history_coverage(diagnostics.get('stockHistoryCoverage'), _time(event['timestamp']),
+            diagnostics.get('stockCount'), diagnostics.get('usableStockCount'))
+        if identities is not None:
+            result['researchDiagnostics']['stockHistoryCoverage'] = identities
     return (_code(event["id"]), _time(event["timestamp"]), _json(result))
 
 

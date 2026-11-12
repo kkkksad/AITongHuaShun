@@ -1,6 +1,6 @@
 # 系统架构
 
-MarketRegimeResearchReport可选stockHistoryCoverage沿原ResearchInputDiagnostics进入Paper运行审计，保存≤12股选择/响应身份/校验接纳/足够完成日线代码及原分析asOf。严格嵌套、有界白名单复制；缓存复用保留原时点，外层回退/旧记录未知，不新增请求或交易条件。现有长期Python压缩归档不保留此身份字段，详见[0107](../decisions/0107-stock-history-identity-evidence.md)。
+MarketRegimeResearchReport可选stockHistoryCoverage沿原ResearchInputDiagnostics进入Paper运行审计，保存≤12股选择/响应身份/校验接纳/足够完成日线代码及原分析asOf。严格嵌套、有界白名单复制；缓存复用保留原时点，外层回退/旧记录未知，不新增请求或交易条件，详见[0107](../decisions/0107-stock-history-identity-evidence.md)。后续[0108](../decisions/0108-archived-stock-history-identities.md)沿既有SQLite和认证七日摘要保存/再校验有限身份，不改变数据库模式、行数/字节上限或只读权限，发布状态见对应计划。
 
 getAshareMarketSession按北京日内整数毫秒判断午/晚收盘端点，getChinaMinutes的整数语义与日期日历保持。原执行器多处复核和通知共享统一门禁，收盘后1ms不再误作open；精确收盘点与历史日线15:00保持，见[0106](../decisions/0106-exact-market-session-endpoints.md)。
 

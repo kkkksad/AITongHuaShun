@@ -32,6 +32,41 @@ function setup(value: unknown = model()) {
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 
 describe("bounded Paper archive read model", () => {
+  const identity = { scope: "regime-stock-history", asOf: "2026-11-09T14:59:00.000Z",
+    selectedSymbols: ["600010", "600011"], returnedSymbols: ["600011"], acceptedSymbols: ["600011"], usableSymbols: [] };
+  it("preserves bounded archived stock identities while stripping arbitrary nested fields", async () => {
+    const value = model();
+    const result = await setup({ ...value, latestRuns: [{ ...value.latestRuns[0],
+      stockHistoryCoverage: { ...identity, token: "DO_NOT_PUBLISH" } }] }).read();
+    expect(result).toMatchObject({ state: "ready", data: { latestRuns: [{ stockHistoryCoverage: identity }] } });
+    expect(JSON.stringify(result)).not.toContain("DO_NOT_PUBLISH");
+  });
+  it("does not erase a valid run because its optional identity cutoff is later than the run", async () => {
+    const value = model();
+    const result = await setup({ ...value, latestRuns: [{ ...value.latestRuns[0],
+      stockHistoryCoverage: { ...identity, asOf: "2026-11-09T15:00:00.001Z" } }] }).read();
+    expect(result.state).toBe("ready");
+    expect(result.data?.latestRuns[0]).toHaveProperty("stockHistoryCoverage", null);
+  });
+  it.each([undefined, null, {}, { ...identity, selectedSymbols: ["bad"] },
+    { ...identity, selectedSymbols: ["600011", "600011"] },
+    { ...identity, selectedSymbols: Array.from({ length: 13 }, (_, i) => `6000${String(i).padStart(2, "0")}`) },
+    { ...identity, returnedSymbols: ["000001"] }, { ...identity, usableSymbols: ["600010"] },
+    { ...identity, asOf: "2026-02-30T14:59:00.000Z" }])(
+    "keeps missing or invalid archived identities unknown without losing other run data (%j)", async stockHistoryCoverage => {
+      const value = model();
+      const result = await setup({ ...value, latestRuns: [{ ...value.latestRuns[0], stockHistoryCoverage }] }).read();
+      expect(result.state).toBe("ready");
+      expect(result.data?.latestRuns[0]).toHaveProperty("stockHistoryCoverage", null);
+      expect(result.data?.runCount).toBe(1);
+    });
+  it("preserves observed zero identity lists at the exact original run time", async () => {
+    const value = model();
+    const zero = { scope: "regime-stock-history", asOf: now.toISOString(),
+      selectedSymbols: [], returnedSymbols: [], acceptedSymbols: [], usableSymbols: [] };
+    expect(await setup({ ...value, latestRuns: [{ ...value.latestRuns[0], stockHistoryCoverage: zero }] }).read())
+      .toMatchObject({ state: "ready", data: { latestRuns: [{ stockHistoryCoverage: zero }] } });
+  });
   const funnel = { scope: "ranked-top-12", scannerCandidateCount: 18, consideredCandidateCount: 12,
     existingPositionCount: 4, newSymbolCount: 8, eligibleNewSymbolCount: 5,
     individuallySizedNewSymbolCount: 2, plannedBuyCount: 1, allowNewPositions: true };

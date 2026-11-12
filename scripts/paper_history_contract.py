@@ -1,5 +1,42 @@
 """Public diagnostic codes shared by archive ingestion and its bounded read model."""
 import math
+import datetime as dt
+import re
+
+
+def safe_stock_history_coverage(value, occurred_at, stock_count, usable_stock_count):
+    """Optional identity evidence cannot invalidate the original run or add authority."""
+    if not isinstance(value, dict) or value.get('scope') != 'regime-stock-history':
+        return None
+    as_of = value.get('asOf')
+    pattern = r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z'
+    if not isinstance(as_of, str) or not re.fullmatch(pattern, as_of):
+        return None
+    if not isinstance(occurred_at, str) or not re.fullmatch(pattern, occurred_at):
+        return None
+    try:
+        cutoff = dt.datetime.fromisoformat(as_of.replace('Z', '+00:00'))
+        occurred = dt.datetime.fromisoformat(occurred_at.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if cutoff > occurred:
+        return None
+    result = dict(scope='regime-stock-history', asOf=as_of)
+    previous = None
+    for key in ('selectedSymbols', 'returnedSymbols', 'acceptedSymbols', 'usableSymbols'):
+        sample = value.get(key)
+        if (not isinstance(sample, list) or len(sample) > 12
+                or any(not isinstance(symbol, str) or not re.fullmatch(r'[0-9]{6}', symbol) for symbol in sample)
+                or len(set(sample)) != len(sample)):
+            return None
+        if previous is not None and [symbol for symbol in previous if symbol in sample] != sample:
+            return None
+        result[key] = list(sample)
+        previous = sample
+    if (type(stock_count) is not int or type(usable_stock_count) is not int
+            or len(result['acceptedSymbols']) != stock_count or len(result['usableSymbols']) != usable_stock_count):
+        return None
+    return result
 
 
 def safe_new_position_funnel(value):
