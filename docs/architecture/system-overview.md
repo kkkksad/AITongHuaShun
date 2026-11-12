@@ -1,5 +1,7 @@
 # 系统架构
 
+独立GridTradingStrategy的上涨跨级卖单按绑定股票当根实际可卖持仓限制整批整层数；价格层级仍是穿越事件，无拒单补单或成交网格账本。原买入/基准/参数保持，GridTradingRunner与线上Paper同名代理独立未改，见[0099](../decisions/0099-grid-crossing-sellable-position.md)。
+
 既有MarketRegimeResearchReport个股结果附加可选historicalEntryStructure，复用本轮原始qfq历史与显式asOf/请求days；坏/重复记录未知，不因分类入口先清理而丢失问题。前高/完成日线量比/波幅比与有先后的回踩日期只读，不新增数据请求、路由/候选资格或订单权限；旧响应缺字段表示未接入，详见[0098](../decisions/0098-completed-daily-entry-structure.md)。页面尚无新结构卡。
 
 已认证首页的DailyTaskCenter同时启动原执行器状态、Paper计划与日复盘只读查询，不再等待status的isFetched。仍按实际可用份数展示，状态缺失为未知；原认证/缓存/共享/取消/轮询保持，不提供跨接口原子快照，见[0093](../decisions/0093-task-center-independent-read-start.md)。

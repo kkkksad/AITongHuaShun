@@ -16,14 +16,15 @@ import type {
  * 规则：
  * - 价格下跌穿过网格线 → 买入 lotsPerGrid 股
  * - 价格上涨穿过网格线 → 卖出 lotsPerGrid 股
+ * - 卖出整层数不超过当前本股实际可卖持仓，T+1 仍由 Broker 兜底
  * - 在极端位置留有一定余量，不追涨杀跌
+ * - 层级记录是行情穿越而非成交确认，拒单或不可卖的穿越不补单
  */
 export class GridTradingStrategy implements BacktestStrategy {
   readonly name: string;
-  private readonly prices: number[] = [];
   private basePrice: number | null = null;
   private boundSymbol?: string;
-  /** 上次成交时价格所在的网格层级 */
+  /** 上次可交易报价所在层级；不把发信号视为已经成交。 */
   private lastBuyLevel: number | null = null;
   private lastSellLevel: number | null = null;
 
@@ -38,7 +39,6 @@ export class GridTradingStrategy implements BacktestStrategy {
   }
 
   reset(): void {
-    this.prices.length = 0;
     this.basePrice = null;
     this.boundSymbol = undefined;
     this.lastBuyLevel = null;
@@ -63,7 +63,6 @@ export class GridTradingStrategy implements BacktestStrategy {
     const quote = context.snapshot.quotes.find((q) => q.symbol === this.boundSymbol && q.tradable);
     if (!quote || this.basePrice === null) return [];
 
-    this.prices.push(quote.price);
     const signals: StrategySignal[] = [];
 
     // 计算当前价格所在的网格层级
@@ -91,7 +90,15 @@ export class GridTradingStrategy implements BacktestStrategy {
 
     // 卖出：价格上涨穿过网格线（层级减少）
     if (this.lastSellLevel !== null && clampedLevel < this.lastSellLevel) {
-      const levelsToSell = this.lastSellLevel - clampedLevel;
+      const position = context.positions.find((item) => item.symbol === quote.symbol);
+      const sellable = position
+        ? Math.min(position.quantity, position.availableQuantity ?? position.quantity)
+        : 0;
+      const availableGrids = Number.isFinite(sellable) && Number.isFinite(this.lotsPerGrid) && this.lotsPerGrid > 0
+        ? Math.floor(Math.max(0, sellable) / this.lotsPerGrid)
+        : 0;
+      // Reserve the whole batch against the observed position, not once per signal.
+      const levelsToSell = Math.min(this.lastSellLevel - clampedLevel, availableGrids);
       for (let i = 0; i < levelsToSell; i++) {
         signals.push({
           symbol: quote.symbol,
