@@ -9,6 +9,7 @@ import { classifyStockRegime, type HistoricalBar, type HistoricalBarsResponse, t
 import { routeAdaptiveStrategies, type AdaptiveMarketRegime } from "../server/research/adaptiveStrategyRouter";
 import { rankAdaptiveCandidateStrategies } from "../server/research/adaptiveCandidateStrategy";
 import { validateStrategyHistory } from "../server/research/strategyHistoryEvidence";
+import { buildHistoricalCorrelations } from "../server/research/historicalCorrelation";
 import { PAPER_EXECUTION_STRATEGY_OPTIONS, type MarketQuote, type MarketSnapshot } from "../shared/trading";
 
 const COSTS = [
@@ -89,17 +90,10 @@ interface Aggregate {
   costs: Record<string, { observed: number; positive: number; netReturnSum: number; unknown: Record<string, number> }>;
 }
 
-function correlation(left: number[], right: number[]) {
-  if (left.length < 2 || left.length !== right.length) return null;
-  const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
-  const a = mean(left), b = mean(right);
-  const covariance = left.reduce((sum, value, i) => sum + (value - a) * (right[i] - b), 0);
-  const variance = Math.sqrt(left.reduce((sum, value) => sum + (value - a) ** 2, 0) *
-    right.reduce((sum, value) => sum + (value - b) ** 2, 0));
-  return variance > 0 ? covariance / variance : null;
-}
-
-export function researchAdaptiveCoverage(series: HistoricalSeries[]) {
+/** Both coverage and correlation respect the same explicit completed-history boundary. */
+export function researchAdaptiveCoverage(input: HistoricalSeries[], asOf: Date) {
+  const series = validateStrategyHistory(input, { asOf, maxBars: 500 }).series;
+  const { pairs, ...correlationEvidence } = buildHistoricalCorrelations(input, asOf);
   const regimes: AdaptiveMarketRegime[] = ["trend-up-low-volatility", "trend-up-high-volatility",
     "range-low-volatility", "range-high-volatility", "risk-off-recovery", "risk-off", "unclear"];
   const rows: Array<{ symbol: string; date: string; historyDate: string | null; window: string;
@@ -165,13 +159,6 @@ export function researchAdaptiveCoverage(series: HistoricalSeries[]) {
     }
     transitions.push({ symbol: item.symbol, observations: sequence.length, changes, reversionsWithin3 });
   }
-  const returns = series.map(item => ({ symbol: item.symbol, values: new Map(item.bars.slice(1)
-    .map((bar, index) => [bar.date, bar.close / item.bars[index].close - 1])) }));
-  const pairs = returns.flatMap((left, index) => returns.slice(index + 1).map(right => {
-    const dates = commonDates.slice(-120).filter(date => left.values.has(date) && right.values.has(date));
-    return { left: left.symbol, right: right.symbol, samples: dates.length,
-      correlation: correlation(dates.map(date => left.values.get(date)!), dates.map(date => right.values.get(date)!)) };
-  }));
   return { methodology: { evaluationUnit: "overlapping-conditional-observation-not-trade-win-rate",
     historyCutoff: "strictly-before-observation-day", candidateScore: 70,
     marketRouting: "seven-controlled-scenarios-times-normal-and-validation-probe-not-reconstructed",
@@ -182,7 +169,7 @@ export function researchAdaptiveCoverage(series: HistoricalSeries[]) {
       late: { first: boundary, last: observationDates.at(-1) } },
     states, opportunities, aggregates: [...aggregates.values()].sort((a, b) =>
       JSON.stringify([a.window, a.scenario, a.stockRegime, a.strategy]).localeCompare(JSON.stringify([b.window, b.scenario, b.stockRegime, b.strategy]))),
-    transitions, pairs, rows };
+    transitions, correlationEvidence, pairs, rows };
 }
 
 async function main() {
@@ -203,10 +190,12 @@ async function main() {
     requestedSymbols: new Set(input.requestedSymbols), maxBars: 500 });
   const eligible = valid.series.filter(item => item.bars.length >= 300);
   if (eligible.length < 2) throw Error("At least two eligible series required");
-  const result = researchAdaptiveCoverage(eligible);
+  // Keep original rejected dates for interval evidence while limiting the coverage universe.
+  const eligibleSymbols = new Set(eligible.map(item => item.symbol));
+  const result = researchAdaptiveCoverage(input.history.series.filter(item => item && eligibleSymbols.has(item.symbol)), new Date(cutoff));
   const sourcePaths = ["scripts/research-adaptive-coverage-history.ts", "server/research/adaptiveCandidateStrategy.ts",
     "server/research/adaptiveStrategyRouter.ts", "server/research/marketRegimeResearch.ts",
-    "server/research/strategyHistoryEvidence.ts", "server/broker/executionCosts.ts"];
+    "server/research/strategyHistoryEvidence.ts", "server/research/historicalCorrelation.ts", "server/broker/executionCosts.ts"];
   const output = { codeCommit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
     workingTreeDirty: execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim().length > 0,
     sourceSha256: Object.fromEntries(sourcePaths.map(path => [path,

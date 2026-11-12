@@ -11,6 +11,30 @@ function bars(): HistoricalBar[] {
   });
 }
 const cost = { commissionRate: 0.0003, minimumCommission: 5, slippageBps: 5 };
+const asOf = new Date("2025-12-31T08:00:00Z");
+
+function correlationSeries(symbol: string, missing: number[] = []) {
+  return { symbol, name: "sample", source: "test", adjustment: "qfq" as const,
+    bars: bars().slice(0, 80).filter((_, index) => !missing.includes(index)) };
+}
+
+describe("pairwise historical risk evidence", () => {
+  it("matches both ends of the return interval when a stock is missing a candle", () => {
+    const report = researchAdaptiveCoverage([correlationSeries("600001"), correlationSeries("600002", [40])], asOf);
+    // The two unmatched intervals around the missing candle cannot count as daily pairs.
+    expect(report.pairs[0].samples).toBe(77);
+    expect(report.pairs[0].correlation).toBeCloseTo(1, 12);
+  });
+
+  it("does not let a third stock with shorter history change an existing pair", () => {
+    const original = [correlationSeries("600001"), correlationSeries("600002")];
+    const before = researchAdaptiveCoverage(original, asOf).pairs[0];
+    const third = correlationSeries("600003"); third.bars = third.bars.slice(10);
+    const after = researchAdaptiveCoverage([...original, third], asOf).pairs[0];
+    expect(before.samples).toBe(79);
+    expect(after).toEqual(before);
+  });
+});
 
 describe("offline adaptive prefix evidence", () => {
   it("does not use current or future candles to classify the prior-history setup", () => {
@@ -52,7 +76,7 @@ describe("offline adaptive prefix evidence", () => {
     const report = researchAdaptiveCoverage(["600001", "600002"].map(symbol => ({
       symbol, name: "sample", source: "test", adjustment: "qfq", bars: bars().map(bar =>
         ({ ...bar, high: bar.close + 0.01, low: bar.close - 0.2 })),
-    })));
+    })), asOf);
     expect(report.rows).toHaveLength(40);
     expect(report.windows.early.last! < report.windows.late.first).toBe(true);
     expect(Object.keys(report.rows[0].scenarioSignals)).toHaveLength(14);
