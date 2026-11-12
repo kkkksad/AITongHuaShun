@@ -691,7 +691,7 @@ class QuoteCache:
                     turnover=self._safe_float(row.get("换手率")),
                     amplitude=self._safe_float(row.get("振幅")),
                 )
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, OverflowError):
                 continue
 
         if new_data:
@@ -837,7 +837,7 @@ class IndexCache:
                     amount=self._safe_float(row.get("成交额")),
                     amplitude=self._safe_float(row.get("振幅")),
                 )
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, OverflowError):
                 continue
 
         if new_data:

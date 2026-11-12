@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0113：快照单行溢出隔离](0113-quote-row-numeric-overflow-isolation.md)：非法量不阻断合法邻股更新，旧报价时间与全坏失败冷却保持。
+
 - [0112：冻结入场研究单位声明](0112-frozen-entry-volume-declaration.md)：显式手/股及原输入SHA绑定，防止归一化载荷重复乘100，声明不等于来源真实性证明。
 
 - [0111：空历史正文继续回退](0111-empty-stock-history-provider-fallback.md)：主源None/零行尝试既有腾讯，逐股部分返回/警告与有界容量保持。

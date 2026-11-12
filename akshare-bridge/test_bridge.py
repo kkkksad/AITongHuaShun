@@ -1347,6 +1347,59 @@ class TestSectorAndHistoryEndpoints:
         assert fetch.call_count == 2
 
 
+class TestQuoteRowOverflowIsolation:
+    @staticmethod
+    def frame(cache_type, invalid, bad_first=True):
+        good = {"代码": "600519" if cache_type is QuoteCache else "sh000001",
+                "名称": "合法邻股", "最新价": 10, "昨收": 9.9,
+                "涨跌幅": 1.01, "成交量": 5_000_000, "更新时间": "20261109161440"}
+        bad = {**good, "代码": "300750" if cache_type is QuoteCache else "sz399001", "成交量": invalid}
+        return pd.DataFrame([bad, good] if bad_first else [good, bad])
+
+    @pytest.mark.parametrize("cache_type", [QuoteCache, IndexCache])
+    @pytest.mark.parametrize("bad_first", [True, False])
+    @pytest.mark.parametrize("invalid", [float("inf"), float("-inf"), "1e400", float("nan"), "bad"])
+    def test_bad_volume_row_does_not_abort_valid_neighbor(self, cache_type, bad_first, invalid):
+        cache = cache_type()
+        assert cache._parse_dataframe(self.frame(cache_type, invalid, bad_first)) == 1
+        good_symbol = "600519" if cache_type is QuoteCache else "SH000001"
+        assert set(cache._data) == {good_symbol}
+        assert cache._data[good_symbol].volume == 5_000_000
+        assert cache._data[good_symbol].updatedAt == "2026-11-09T08:14:40.000Z"
+        assert cache._data[good_symbol].tradable is (cache_type is QuoteCache)
+
+    @pytest.mark.parametrize("cache_type,fetch_name", [(QuoteCache, "fetch_a_share_spot_dataframe"), (IndexCache, "fetch_a_share_index_dataframe")])
+    def test_refresh_commits_valid_partial_data_and_keeps_existing_bad_stock_stale(self, cache_type, fetch_name):
+        cache = cache_type(ttl_sec=3)
+        bad_symbol = "300750" if cache_type is QuoteCache else "SZ399001"
+        old = MarketQuote(symbol=bad_symbol, name="旧观察", tradable=cache_type is QuoteCache,
+                          price=9, previousClose=9, changePercent=0, volume=10, updatedAt="2026-11-06T07:00:00.000Z")
+        cache._data[bad_symbol] = old
+        with patch("main." + fetch_name, return_value=self.frame(cache_type, float("inf"))):
+            asyncio.run(cache.refresh())
+        assert cache.count == 2
+        assert cache.last_error is None
+        assert cache._data[bad_symbol] is old
+        assert cache._data[bad_symbol].updatedAt == "2026-11-06T07:00:00.000Z"
+        assert cache._needs_refresh() is False
+
+    @pytest.mark.parametrize("cache_type,fetch_name,error", [(QuoteCache, "fetch_a_share_spot_dataframe", "股票行情源返回空结果"),
+                                                           (IndexCache, "fetch_a_share_index_dataframe", "指数行情源返回空结果")])
+    def test_only_invalid_rows_keep_original_cache_and_failure_cooldown(self, cache_type, fetch_name, error):
+        cache = cache_type(ttl_sec=3)
+        symbol = "600519" if cache_type is QuoteCache else "SH000001"
+        old = MarketQuote(symbol=symbol, name="旧观察", tradable=False, price=9,
+                          previousClose=9, changePercent=0, volume=10, updatedAt="")
+        cache._data[symbol] = old
+        raw = self.frame(cache_type, float("inf")).iloc[:1]
+        with patch("main." + fetch_name, return_value=raw):
+            asyncio.run(cache.refresh())
+        assert cache.count == 1 and cache._data[symbol] is old
+        assert cache.last_error == error
+        assert cache._last_update == 0
+        assert cache._needs_refresh() is False
+
+
 class TestEmptyStockHistoryFallback:
     @staticmethod
     def frame():
