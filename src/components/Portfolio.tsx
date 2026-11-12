@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   Cell,
-  Legend,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -60,9 +59,12 @@ export function Portfolio({ positions, market, equity }: PortfolioProps) {
   }, [positions, sortBy]);
 
   const pieData = useMemo(() => {
-    const totalValue = positions.reduce((sum, p) => sum + p.marketValue, 0);
+    if (positions.some(position => !Number.isFinite(position.marketValue) || position.marketValue < 0)) return [];
+    const valuedPositions = positions.filter(position => position.marketValue > 0);
+    const totalValue = valuedPositions.reduce((sum, p) => sum + p.marketValue, 0);
+    if (!Number.isFinite(totalValue) || totalValue <= 0) return [];
     // Show top 7 positions, rest grouped as "其他"
-    const sortedByValue = [...positions].sort((a, b) => b.marketValue - a.marketValue);
+    const sortedByValue = [...valuedPositions].sort((a, b) => b.marketValue - a.marketValue);
     const top = sortedByValue.slice(0, 7);
     const rest = sortedByValue.slice(7);
     const restValue = rest.reduce((sum, p) => sum + p.marketValue, 0);
@@ -96,10 +98,11 @@ export function Portfolio({ positions, market, equity }: PortfolioProps) {
   const lossCount = positions.filter((p) => p.unrealizedPnl < 0).length;
 
   const concentration = useMemo(() => {
-    if (positions.length === 0) return 0;
-    const weights = positions.map((p) => p.weight);
-    // Herfindahl-Hirschman Index (scaled 0-1)
-    return weights.reduce((sum, w) => sum + w * w, 0);
+    if (positions.some(position => !Number.isFinite(position.marketValue) || position.marketValue < 0)) return null;
+    const heldValue = positions.reduce((sum, position) => sum + position.marketValue, 0);
+    if (!Number.isFinite(heldValue) || heldValue <= 0) return null;
+    // HHI within stock holdings; cash must not dilute stock concentration.
+    return positions.reduce((sum, position) => sum + (position.marketValue / heldValue) ** 2, 0);
   }, [positions]);
 
   return (
@@ -137,10 +140,11 @@ export function Portfolio({ positions, market, equity }: PortfolioProps) {
         <div className="summary-card">
           <Zap size={20} />
           <div>
-            <span>集中度 (HHI)</span>
-            <strong className={concentration > 0.25 ? "negative" : "positive"}>
-              {(concentration * 100).toFixed(1)}%
+            <span title="各股票占持仓总市值比例的平方和；不含现金。">持仓内个股集中度</span>
+            <strong className={concentration === null ? undefined : concentration > 0.25 ? "negative" : "positive"}>
+              {concentration === null ? "—" : `${(concentration * 100).toFixed(1)}%`}
             </strong>
+            <small className="table-subline">不反映行业及相关性</small>
           </div>
         </div>
       </div>
@@ -163,11 +167,9 @@ export function Portfolio({ positions, market, equity }: PortfolioProps) {
                     data={pieData}
                     dataKey="value"
                     innerRadius={55}
-                    label={({ name, weight }) =>
-                      weight > 5 ? `${name} ${weight.toFixed(1)}%` : ""
-                    }
+                    label={false}
                     labelLine={false}
-                    nameKey="label"
+                    nameKey="name"
                     outerRadius={110}
                     paddingAngle={2}
                   >
@@ -188,19 +190,24 @@ export function Portfolio({ positions, market, equity }: PortfolioProps) {
                     }}
                     formatter={(value: number) => [money(value), "市值"]}
                   />
-                  <Legend
-                    formatter={(value: string) => (
-                      <span style={{ fontSize: 11, color: "#5a6270" }}>{value}</span>
-                    )}
-                    iconType="circle"
-                    wrapperStyle={{ fontSize: 11 }}
-                  />
                 </PieChart>
               </ResponsiveContainer>
+              <ul className="portfolio-allocation-legend" aria-label="持仓市值构成">
+                {pieData.map((item, index) => (
+                  <li key={item.name}>
+                    <span className="portfolio-allocation-color" aria-hidden="true" style={{ background: COLORS[index % COLORS.length] }} />
+                    <span className="portfolio-allocation-name">
+                      {item.label}
+                      {item.name !== "其他" && <small>{item.name}</small>}
+                    </span>
+                    <span className="portfolio-allocation-value">{item.weight.toFixed(1)}%</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           ) : (
             <div className="empty-copy" style={{ padding: "3rem 0", textAlign: "center" }}>
-              暂无持仓数据
+              {positions.length ? "暂无有效持仓市值" : "暂无持仓数据"}
             </div>
           )}
         </div>

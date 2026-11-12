@@ -3629,6 +3629,45 @@ select:focus-visible {
   margin-top: 8px;
 }
 
+.portfolio-allocation-legend {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.portfolio-allocation-legend li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.portfolio-allocation-color {
+  flex: 0 0 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+}
+
+.portfolio-allocation-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.portfolio-allocation-name small {
+  display: block;
+  color: var(--text-muted);
+}
+
+.portfolio-allocation-value {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .portfolio-table-section {
   background: var(--bg-panel);
   border: 1px solid var(--border-default);
