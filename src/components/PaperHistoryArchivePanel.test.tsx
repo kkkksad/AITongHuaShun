@@ -22,6 +22,54 @@ describe("Paper archive evidence presentation", () => {
   const funnel = { scope: "ranked-top-12" as const, scannerCandidateCount: 18, consideredCandidateCount: 12,
     existingPositionCount: 4, newSymbolCount: 8, eligibleNewSymbolCount: 5,
     individuallySizedNewSymbolCount: 2, plannedBuyCount: 1, allowNewPositions: false };
+  const coverage = { scope: "regime-stock-history" as const, asOf: "2026-11-09T13:45:00.000Z",
+    selectedSymbols: ["601398", "601288", "601166", "000001"], returnedSymbols: ["601398", "601288", "601166"],
+    acceptedSymbols: ["601398", "601288"], usableSymbols: ["601398"] };
+  function coverageTable(html: string) {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    return [...doc.querySelectorAll("table")].find(t => t.caption?.textContent?.includes("最近个股历史覆盖"));
+  }
+  it("separates history coverage counts, original evidence time and four disjoint symbol groups", () => {
+    const html = render("ready", { ...evidence, latestRuns: [{ ...run, stockHistoryCoverage: coverage, newPositionFunnel: funnel }] });
+    const table = coverageTable(html)!;
+    const cells = [...table.querySelectorAll("tbody td")];
+    expect(cells.slice(2, 6).map(c => c.textContent)).toEqual(["4", "3", "2", "1"]);
+    expect(cells[0].textContent).toContain("22:00:00");
+    expect(cells[1].textContent).toContain("21:45:00");
+    expect([...table.querySelectorAll("dd")].map(c => c.textContent)).toEqual(["000001", "601166", "601288", "601398"]);
+    expect(html).toContain("原研究证据时间");
+    expect(html).toContain("不同于新增标的漏斗的排序前12只");
+    expect(html).toContain("不代表本轮重新抓取");
+    expect(html).toContain("不代表入场信号、拟买或成交");
+  });
+  it("keeps missing identities unknown while preserving genuine empty history selections", () => {
+    const empty = { ...coverage, selectedSymbols: [], returnedSymbols: [], acceptedSymbols: [], usableSymbols: [] };
+    const html = render("stale", { ...evidence, latestRuns: [run, { ...run, stockHistoryCoverage: empty }] });
+    const rows = [...coverageTable(html)!.querySelectorAll("tbody tr")];
+    expect([...rows[0].querySelectorAll("td")].slice(1).map(c => c.textContent)).toEqual(["未知", "未知", "未知", "未知", "未知", "身份未知"]);
+    expect([...rows[1].querySelectorAll("td")].slice(2, 6).map(c => c.textContent)).toEqual(["0", "0", "0", "0"]);
+    expect([...rows[1].querySelectorAll("dd")].map(c => c.textContent)).toEqual(["无", "无", "无", "无"]);
+    expect(html).toContain("归档已过期");
+  });
+  it("uses a compact unknown explanation for legacy runs instead of an all-unknown table", () => {
+    const html = render("ready", { ...evidence, latestRuns: [run, { ...run, stockHistoryCoverage: null }] });
+    expect(coverageTable(html)).toBeUndefined();
+    expect(html).toContain("最近保留运行未记录逐股历史身份，覆盖未知");
+  });
+  it("bounds history display to the same twenty runs and hides previous-account identities", () => {
+    const data = { ...evidence, latestRuns: Array.from({ length: 21 }, (_, i) => ({ ...run,
+      stockHistoryCoverage: { ...coverage, asOf: i === 20 ? "2026-11-09T13:46:00.000Z" : coverage.asOf } })) };
+    const table = coverageTable(render("ready", data))!;
+    expect(table.querySelectorAll("tbody tr")).toHaveLength(20);
+    expect(table.textContent).not.toContain("21:46:00");
+    for (const state of ["waiting-for-account", "unavailable", "disabled"] as const) {
+      const html = render(state, data);
+      expect(coverageTable(html)).toBeUndefined();
+      expect(html).not.toContain("601398");
+    }
+    const lastOnly = { ...data, latestRuns: [...Array.from({ length: 20 }, () => run), data.latestRuns[20]] };
+    expect(coverageTable(render("ready", lastOnly))).toBeUndefined();
+  });
   it("shows separate recorded new-symbol funnel counts and the global permission", () => {
     const html = render("ready", { ...evidence, latestRuns: [{ ...run, newPositionFunnel: funnel }] });
     expect(html).toContain("最近新增标的漏斗");

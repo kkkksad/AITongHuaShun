@@ -5001,6 +5001,12 @@ select:focus-visible {
 .paper-history-table-wrapper caption { padding-block: 10px; text-align: left; color: var(--text-secondary); }
 .paper-history-table-wrapper th,
 .paper-history-table-wrapper td { padding: 10px 12px; border-bottom: 1px solid var(--border-default); text-align: left; font-size: 13px; white-space: nowrap; }
+.paper-history-symbols { min-width: 150px; max-width: 300px; }
+.paper-history-symbols summary { cursor: pointer; }
+.paper-history-symbols dl { min-width: 220px; margin: 10px 0 0; white-space: normal; }
+.paper-history-symbols dl > div + div { margin-top: 8px; }
+.paper-history-symbols dt { color: var(--text-secondary); }
+.paper-history-symbols dd { margin: 3px 0 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 
 .robustness-table {
   min-width: 1320px;

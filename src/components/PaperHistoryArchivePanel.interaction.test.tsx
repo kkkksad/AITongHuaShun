@@ -40,6 +40,34 @@ describe("archive loading and retry", () => {
     await act(async () => { root.render(null); });
     expect(signal.aborted).toBe(true);
   });
+  it("expands archived identities locally and refreshes only through the existing query", async () => {
+    const data = {
+      schemaVersion: 1 as const, accountId: "PAPER-CN-01", generatedAt: "2026-11-09T15:00:00Z",
+      firstObservedAt: "2026-11-09T14:00:00Z", lastObservedAt: "2026-11-09T15:00:00Z",
+      window: { fromDate: "2026-11-03", toDate: "2026-11-09" }, runCount: 1, openSessionRuns: 1,
+      unknownSessionRuns: 0, submittedAttempts: 0, submissionEvidenceRuns: 1,
+      days: [], blockers: [], issues: [], latestRuns: [{ occurredAt: "2026-11-09T14:00:00Z", session: "open" as const,
+        phase: null, regime: null, planQuality: null, sourceStatus: null, submittedOrders: 0, skippedOperations: 0,
+        blockers: {}, issues: [], stockHistoryCoverage: { scope: "regime-stock-history" as const,
+          asOf: "2026-11-09T13:45:00.000Z", selectedSymbols: ["601398"], returnedSymbols: ["601398"],
+          acceptedSymbols: ["601398"], usableSymbols: ["601398"] } }],
+    };
+    vi.mocked(fetchPaperHistoryArchive).mockResolvedValue({ state: "ready", data });
+    await mount();
+    const details = container.querySelector("details")!;
+    expect(details.open).toBe(false);
+    await act(async () => { details.querySelector("summary")!.click(); });
+    expect(details.open).toBe(true);
+    expect(details.textContent).toContain("601398");
+    expect(fetchPaperHistoryArchive).toHaveBeenCalledTimes(1);
+    await act(async () => { details.querySelector("summary")!.click(); });
+    expect(details.open).toBe(false);
+    expect(fetchPaperHistoryArchive).toHaveBeenCalledTimes(1);
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="刷新长期 Paper 归档"]')!.click(); });
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(fetchPaperHistoryArchive).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(fetchPaperHistoryArchive).mock.calls.every(([signal]) => signal instanceof AbortSignal)).toBe(true);
+  });
   it("marks a failed refresh without inventing a three-minute archive delay", async () => {
     const evidence = {
       schemaVersion: 1 as const, accountId: "PAPER-CN-01", generatedAt: "2026-11-09T15:00:00Z",

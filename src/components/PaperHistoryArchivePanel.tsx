@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
-import type { PaperHistoryArchiveReport } from "../../shared/paperHistory";
+import type { PaperHistoryArchiveReport, PaperHistoryEvidence } from "../../shared/paperHistory";
+import type { StockHistoryCoverage } from "../../shared/stockHistoryCoverage";
 import { paperHistoryArchiveQueryOptions } from "../lib/researchQueries";
 import { ResearchQueryState } from "./ResearchQueryState";
 
@@ -32,6 +33,43 @@ const sessionLabels: Record<string, string> = {
   open: "盘中", "pre-market": "盘前", "lunch-break": "午休", "after-hours": "盘后",
   weekend: "周末", holiday: "休市", "calendar-unavailable": "日历未知",
 };
+
+function HistorySymbols({ coverage }: { coverage: StockHistoryCoverage }) {
+  const groups = [
+    ["未出现在响应", coverage.selectedSymbols.filter(symbol => !coverage.returnedSymbols.includes(symbol))],
+    ["响应后未接纳", coverage.returnedSymbols.filter(symbol => !coverage.acceptedSymbols.includes(symbol))],
+    ["接纳后日线不足", coverage.acceptedSymbols.filter(symbol => !coverage.usableSymbols.includes(symbol))],
+    ["日线足够", coverage.usableSymbols],
+  ] as const;
+  return <details className="paper-history-symbols">
+    <summary>查看代码</summary>
+    <dl>{groups.map(([label, symbols]) => <div key={label}><dt>{label}</dt><dd>{symbols.join("、") || "无"}</dd></div>)}</dl>
+  </details>;
+}
+
+function HistoryCoverage({ runs }: { runs: PaperHistoryEvidence["latestRuns"] }) {
+  const recent = runs.slice(0, 20);
+  if (!recent.some(run => run.stockHistoryCoverage)) {
+    return <p className="empty-copy">最近保留运行未记录逐股历史身份，覆盖未知；旧记录不补造为零。</p>;
+  }
+  return <>
+    <div className="compare-ranking-table-wrapper paper-history-table-wrapper">
+      <table><caption>最近个股历史覆盖（最多20条保留记录）</caption>
+        <thead><tr><th>运行北京时间</th><th>原研究证据时间（北京）</th><th>已选择</th><th>响应标的</th><th>历史接纳</th><th>日线足够</th><th>股票代码</th></tr></thead>
+        <tbody>{recent.map((run, index) => {
+          const coverage = run.stockHistoryCoverage;
+          return <tr key={`${run.occurredAt}-${index}`}>
+            <td>{timestamp(run.occurredAt)}</td><td>{coverage ? timestamp(coverage.asOf) : "未知"}</td>
+            <td>{coverage?.selectedSymbols.length ?? "未知"}</td><td>{coverage?.returnedSymbols.length ?? "未知"}</td>
+            <td>{coverage?.acceptedSymbols.length ?? "未知"}</td><td>{coverage?.usableSymbols.length ?? "未知"}</td>
+            <td>{coverage ? <HistorySymbols coverage={coverage} /> : "身份未知"}</td>
+          </tr>;
+        })}</tbody>
+      </table>
+    </div>
+    <p className="empty-copy">本表为历史分析选择的最多12只股票，不同于新增标的漏斗的排序前12只。原研究证据时间随复用保留，不代表本轮重新抓取；响应标的仅表示来源中出现身份，历史接纳仍可能日线不足。日线足够不代表入场信号、拟买或成交，也不能用于估计胜率。各组代码按原选择顺序展示，旧记录身份未知。</p>
+  </>;
+}
 
 export function PaperHistoryArchiveContent({ report, isFetching, onRefresh }: {
   report: PaperHistoryArchiveReport; isFetching: boolean; onRefresh: () => void;
@@ -89,6 +127,7 @@ export function PaperHistoryArchiveContent({ report, isFetching, onRefresh }: {
           </table>
         </div>
         <p className="empty-copy">扫描去重后的本轮排序前12只，分开已有持仓与新标的；策略资格和独立金额只统计新标的。独立金额按初始预算逐只计算，不代表同批资金充足；拟买不是提交或成交，全局许可仍需逐笔风控。旧记录或无效漏斗为未知，未补造为零。</p>
+        <HistoryCoverage runs={data.latestRuns} />
       </>}
       <p className="empty-copy">采集周期约一分钟；只统计已持久化的运行记录，无变化轮次可能合并。规则次数可能重复涉及同一候选，并非拒单数；归档不是完整事件日志，不计算胜率或当前市值收益。</p>
     </>}
