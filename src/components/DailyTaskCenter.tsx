@@ -57,15 +57,8 @@ export function DailyTaskCenter({
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
-  const taskCenterFoundationReady = executionQuery.isFetched;
-  const planQuery = useQuery({
-    ...paperTradingPlanQueryOptions(),
-    enabled: taskCenterFoundationReady,
-  });
-  const reviewQuery = useQuery({
-    ...dailyMarketReviewQueryOptions(),
-    enabled: taskCenterFoundationReady,
-  });
+  const planQuery = useQuery(paperTradingPlanQueryOptions());
+  const reviewQuery = useQuery(dailyMarketReviewQueryOptions());
   const model = buildDailyTaskCenterModel({
     plan: planQuery.data,
     review: reviewQuery.data,
