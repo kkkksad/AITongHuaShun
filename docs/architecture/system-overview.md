@@ -1,5 +1,7 @@
 # 系统架构
 
+strategyExitResearch仅供离线六profile的固定退出假设，native直接返回原类、另两模式在独立回调副本上推进原状态并校验意图，按实际周期、完成日线与可卖整手替换退出。原生产计划/路由/执行器及六类保持；共享资金216组不代表线上自适应路由或kairosRangeRotation回放，见[0105](../decisions/0105-offline-strategy-family-exit-research.md)。
+
 BacktestEngine既有策略观察副本同时复制PositionSnapshot.paperEntry及其strategy，避免onEnd或保留引用改写最终报告的入场时间/来源；缺字段保持，行情/账户/资金与原信号流程不变。共享次开子策略经同一入口保护，见[0104](../decisions/0104-copy-nested-entry-evidence-in-strategy-context.md)。
 
 PositionSnapshot沿既有GET/WebSocket追加可选paperEntry，投影当前实际周期的首笔成交时间与单一/混合/未知策略；缺完整周期时间null、缺来源/覆盖不足未知，深复制，不读当前选项或回填旧仓。持仓页原标的单元格显示来源，不增加网络请求或改变退出，见[0102](../decisions/0102-open-position-entry-evidence.md)。

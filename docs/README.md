@@ -7,6 +7,7 @@
 | 主题 | 文档 | 回答的问题 |
 | --- | --- | --- |
 | 当前状态 | [status/current-state.md](status/current-state.md) | 现在实际有哪些文件，哪些能力可运行？ |
+| 固定分策略退出研究 | [research/2026-11-12-strategy-exit-lifecycle-review.md](research/2026-11-12-strategy-exit-lifecycle-review.md) | 216组共享资金/次开退出的费用、闭合分母、回撤及失败假设，哪些尚未上线？ |
 | 11月11日夜间交付 | [research/2026-11-11-overnight-delivery.md](research/2026-11-11-overnight-delivery.md) | 最新上线的策略、性能、诊断与资金保留结果，以及仍未实现的事项？ |
 | 最终固定策略复核 | [research/2026-11-11-final-fixed-strategy-review.md](research/2026-11-11-final-fixed-strategy-review.md) | 修复后代码的1224次固定真实历史实验与费用后闭合分母？ |
 | 当前历史覆盖研究 | [research/2026-11-11-adaptive-coverage-and-bank-concentration.md](research/2026-11-11-adaptive-coverage-and-bank-concentration.md) | 模糊形态为何覆盖不足，银行相关性和固定策略的费用后证据如何？ |
