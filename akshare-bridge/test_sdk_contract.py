@@ -23,6 +23,7 @@ import main
 
 assert ak.get_timeout() == main.HISTORY_PROVIDER_TIMEOUT_SEC
 seen = []
+empty_primary = False
 def transport(method, url, **kwargs):
     assert kwargs["timeout"] == main.HISTORY_PROVIDER_TIMEOUT_SEC
     assert method == "get"
@@ -31,7 +32,7 @@ def transport(method, url, **kwargs):
     response.status_code = 200
     if "eastmoney.com" in url:
         assert kwargs["params"]["fqt"] == "1"
-        response.json.return_value = {"data": {"klines": [
+        response.json.return_value = {"data": None} if empty_primary else {"data": {"klines": [
             "2026-11-06,10,11,12,9,100,110000,30,10,1,2",
         ]}}
     else:
@@ -56,6 +57,14 @@ with patch("requests.request", side_effect=transport):
     assert len(series.bars) == 1 and series.bars[0].close == 11
     assert series.adjustment == "qfq"
 assert len(seen) == 2
+empty_primary = True
+with patch("requests.request", side_effect=transport):
+    with patch.dict(ak.stock_zh_a_hist_tx.__globals__, {"get_tx_start_year": lambda symbol: "20250101"}):
+        frame, source = main.fetch_stock_history_dataframe("600036", "20260101", "20261109")
+assert source == "tencent-stock-history"
+assert len(frame) == 1
+assert len(seen) == 4
+assert "eastmoney.com" in seen[2][0] and "qq.com" in seen[3][0]
 print("real SDK contracts and network timeouts verified")
 '''
     result = subprocess.run(

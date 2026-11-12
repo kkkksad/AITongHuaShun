@@ -4,6 +4,8 @@
 
 ## 索引
 
+- [0111：空历史正文继续回退](0111-empty-stock-history-provider-fallback.md)：主源None/零行尝试既有腾讯，逐股部分返回/警告与有界容量保持。
+
 - [0110：发现快照成交量股单位](0110-discovery-spot-volume-in-shares.md)：东财手仅转换一次，新浪/腾讯保持，缺时点不可交易；日线另案。
 
 - [0077：波动收缩突破实际持仓](0077-contraction-breakout-actual-holdings.md)：历史区间和量价门槛保持，按实际均价/可卖整手退出。

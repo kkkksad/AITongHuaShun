@@ -1,5 +1,7 @@
 # 本地开发
 
+A股历史主源None/空DataFrame沿原来源链尝试腾讯；非空短历史不额外补抓，两个来源均不可用保留逐股警告，既有部分返回/缓存/容量保持，见[0111](../decisions/0111-empty-stock-history-provider-fallback.md)。新增TestEmptyStockHistoryFallback17项及真实固定SDK空正文传输检查；本地218/1跳过、Linux219、后端3117/TS/Vite通过，实际生产镜像验证待发布后执行。该修复不统一日线量单位或提高并发。
+
 A股发现快照仅在fetch_a_share_spot_dataframe的eastmoney成功分支把原成交量手转股；新浪及现有腾讯parser已经是股，勿重复换算。原供应方DataFrame不变、量外字段/时间保持，非法量按原解析器跳行，见[0110](../decisions/0110-discovery-spot-volume-in-shares.md)。日线仍按各来源原单位。新增25项；本地201通过/1项固定SDK合同跳过，Ubuntu1.20.34与已部署bddfc42实际生产桥接202项全部通过，原已测API/网页容器保持。
 
 完成日线入场对照仅离线执行scripts/research-completed-entry-history.ts，72组固定代理/结构假设的复现命令与全部不利结果见[报告](../research/2026-11-12-completed-entry-hypothesis-review.md)。东财原生日线手仅在绝对快照门槛×100为股，原序列不改；未知来源拒绝。scripts/verify-completed-entry-history.cjs独立重建结构、逐笔费用/资金/FIFO/T+1/库存/终值/观察回撤。本研究没有连接生产执行器或改变线上准入。

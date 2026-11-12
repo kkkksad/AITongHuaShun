@@ -1347,6 +1347,62 @@ class TestSectorAndHistoryEndpoints:
         assert fetch.call_count == 2
 
 
+class TestEmptyStockHistoryFallback:
+    @staticmethod
+    def frame():
+        return pd.DataFrame([{
+            "日期": "2026-11-09", "开盘": 10, "最高": 11,
+            "最低": 9, "收盘": 10.5, "成交量": 50_000,
+        }])
+
+    @pytest.mark.parametrize("primary", [None, pd.DataFrame()])
+    @pytest.mark.parametrize("symbol,prefixed", [("600519", "sh600519"), ("000001", "sz000001"), ("920001", "bj920001")])
+    def test_empty_primary_tries_same_bounded_forward_adjusted_fallback(self, primary, symbol, prefixed):
+        expected = self.frame()
+        with patch("main.ak.stock_zh_a_hist", return_value=primary), \
+                patch("main.ak.stock_zh_a_hist_tx", return_value=expected) as fallback:
+            frame, source = fetch_stock_history_dataframe(symbol, "20250101", "20261109")
+        assert frame is expected
+        assert source == "tencent-stock-history"
+        fallback.assert_called_once_with(symbol=prefixed, start_date="20250101", end_date="20261109", adjust="qfq")
+
+    def test_nonempty_primary_stays_original_even_with_short_history(self):
+        expected = self.frame()
+        with patch("main.ak.stock_zh_a_hist", return_value=expected), \
+                patch("main.ak.stock_zh_a_hist_tx") as fallback:
+            frame, source = fetch_stock_history_dataframe("600519", "20250101", "20261109")
+        assert frame is expected
+        assert source == "eastmoney-stock-history"
+        fallback.assert_not_called()
+        assert len(frame) == 1 and frame.iloc[0]["成交量"] == 50_000
+
+    @pytest.mark.parametrize("primary", [None, pd.DataFrame(), RuntimeError("primary offline")])
+    @pytest.mark.parametrize("secondary", [None, pd.DataFrame(), RuntimeError("secondary offline")])
+    def test_both_unavailable_preserve_last_explicit_error(self, primary, secondary):
+        with patch("main.ak.stock_zh_a_hist", **({"side_effect": primary} if isinstance(primary, Exception) else {"return_value": primary})), \
+                patch("main.ak.stock_zh_a_hist_tx", **({"side_effect": secondary} if isinstance(secondary, Exception) else {"return_value": secondary})):
+            with pytest.raises((RuntimeError, ValueError), match="secondary offline" if isinstance(secondary, Exception) else "返回空结果"):
+                fetch_stock_history_dataframe("600519", "20250101", "20261109")
+
+    def test_endpoint_keeps_partial_fallback_and_only_caches_successful_stock(self):
+        def tencent(symbol, **kwargs):
+            return self.frame() if symbol == "sh600519" else pd.DataFrame()
+
+        with patch("main.ak.stock_zh_a_hist", return_value=pd.DataFrame()) as primary, \
+                patch("main.ak.stock_zh_a_hist_tx", side_effect=tencent) as fallback:
+            first = client.get("/api/market/stock-history?symbols=600519,000001&days=180")
+            second = client.get("/api/market/stock-history?symbols=600519,000001&days=180")
+        assert first.status_code == second.status_code == 200
+        for response in [first, second]:
+            data = response.json()
+            assert [item["symbol"] for item in data["series"]] == ["600519"]
+            assert data["series"][0]["source"] == "tencent-stock-history"
+            assert data["series"][0]["bars"][0]["volume"] == 50_000
+            assert "000001" in data["warning"] and "返回空结果" in data["warning"]
+        assert sorted(call.kwargs["symbol"] for call in primary.call_args_list) == ["000001", "000001", "600519"]
+        assert sorted(call.kwargs["symbol"] for call in fallback.call_args_list) == ["sh600519", "sz000001", "sz000001"]
+
+
 class TestDiscoverySpotVolumeUnits:
     @staticmethod
     def frame(volume=50_000, timestamp="20261109161440"):
@@ -1898,6 +1954,7 @@ class TestQuoteCache:
 
     def test_stock_history_falls_back_to_tencent_with_market_prefix(self):
         fallback_df = MagicMock()
+        fallback_df.__len__.return_value = 1
         with patch(
             "main.ak.stock_zh_a_hist",
             side_effect=RuntimeError("eastmoney offline"),

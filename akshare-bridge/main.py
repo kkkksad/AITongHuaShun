@@ -1707,7 +1707,10 @@ def fetch_stock_history_dataframe(
     last_error: Exception | None = None
     for provider_name, provider in providers:
         try:
-            return provider(), provider_name
+            dataframe = provider()
+            if dataframe is None or len(dataframe) == 0:
+                raise ValueError("返回空结果")
+            return dataframe, provider_name
         except Exception as exc:
             last_error = exc
             logger.warning("股票历史源 %s 失败，尝试下一个来源: %s", provider_name, exc)
