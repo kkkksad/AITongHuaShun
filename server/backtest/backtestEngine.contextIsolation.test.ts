@@ -25,6 +25,43 @@ function run(onBar?: BacktestStrategy["onBar"], onEnd?: BacktestStrategy["onEnd"
 }
 
 describe("BacktestEngine strategy callback input ownership", () => {
+  it.each(["cycle-time", "origin-object", "origin-status"])("keeps onEnd nested entry %s edits out of the final report", (field) => {
+    const buyOnly = (context: StrategyContext) => context.barIndex === 0 ? signals(0) : [];
+    const expected = run(buyOnly);
+    expect(expected.finalPositions[0].paperEntry?.strategy).toEqual({ status: "unknown" });
+    const report = run(buyOnly, context => {
+      const entry = context.positions[0].paperEntry!;
+      if (field === "cycle-time") entry.openedAt = "2099-01-01T00:00:00.000Z";
+      else if (field === "origin-object") entry.strategy = { status: "single", strategyKey: "rsi" };
+      else entry.strategy.status = "mixed";
+    });
+    expect(report).toEqual(expected);
+  });
+
+  it("keeps retained final entry objects independent after the report has returned", () => {
+    let retained: StrategyContext | undefined;
+    const buyOnly = (context: StrategyContext) => context.barIndex === 0 ? signals(0) : [];
+    const engine = new BacktestEngine(history(), strategy(buyOnly, context => { retained = context; }), config);
+    const report = engine.run(), expected = run(buyOnly);
+    expect(report).toEqual(expected);
+    retained!.positions[0].paperEntry!.openedAt = null;
+    retained!.positions[0].paperEntry!.strategy.status = "mixed";
+    expect(report).toEqual(expected);
+    expect(engine.run()).toEqual(expected);
+  });
+
+  it("keeps ordinary onBar nested edits away from later valuations and fresh evidence", () => {
+    const buyOnly = (context: StrategyContext) => context.barIndex === 0 ? signals(0) : [];
+    const expected = run(buyOnly);
+    expect(run(context => {
+      if (context.positions[0]?.paperEntry) {
+        context.positions[0].paperEntry.openedAt = null;
+        context.positions[0].paperEntry.strategy.status = "mixed";
+      }
+      return buyOnly(context);
+    })).toEqual(expected);
+  });
+
   it("keeps changed quote prices out of current-bar valuations and final metrics", () => {
     const expected = run();
     const result = run(context => {

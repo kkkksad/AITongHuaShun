@@ -19,6 +19,33 @@ const cost = { commissionRate: 0.0003, minimumCommission: 5, slippageBps: 0 };
 const asOf = new Date("2025-12-31T08:00:00Z");
 
 describe("shared-capital next-open fixed strategy research", () => {
+  it.each(["cycle-time", "origin-object", "origin-status"])("isolates a child's final entry %s edits from the shared report", field => {
+    const makeChild = () => child("600001", ({ barIndex }) => barIndex === 0
+      ? [{ symbol: "600001", side: "buy", type: "market", quantity: 100 }] : []);
+    const expected = runNextOpenPortfolioResearch(daily(), new Map([["600001", makeChild()]]), cost, asOf);
+    const altered = makeChild();
+    altered.onEnd = context => {
+      const entry = context.positions[0].paperEntry!;
+      if (field === "cycle-time") entry.openedAt = null;
+      else if (field === "origin-object") entry.strategy = { status: "single", strategyKey: "rsi" };
+      else entry.strategy.status = "mixed";
+    };
+    expect(runNextOpenPortfolioResearch(daily(), new Map([["600001", altered]]), cost, asOf)).toEqual(expected);
+  });
+
+  it("keeps a child's retained final evidence from changing a returned shared report", () => {
+    let retained: StrategyContext | undefined;
+    const makeChild = () => child("600001", ({ barIndex }) => barIndex === 0
+      ? [{ symbol: "600001", side: "buy", type: "market", quantity: 100 }] : []);
+    const expected = runNextOpenPortfolioResearch(daily(), new Map([["600001", makeChild()]]), cost, asOf);
+    const altered = makeChild(); altered.onEnd = context => { retained = context; };
+    const result = runNextOpenPortfolioResearch(daily(), new Map([["600001", altered]]), cost, asOf);
+    expect(result).toEqual(expected);
+    retained!.positions[0].paperEntry!.openedAt = null;
+    retained!.positions[0].paperEntry!.strategy.status = "mixed";
+    expect(result).toEqual(expected);
+  });
+
   it("fills a completed-close signal at the following open, never that close", () => {
     const input = daily([10, 12, 11]); input[1].quotes[0].open = 13; input[1].quotes[0].high = 13;
     const result = runNextOpenPortfolioResearch(input, new Map([["600001", child("600001", ({ barIndex }) =>

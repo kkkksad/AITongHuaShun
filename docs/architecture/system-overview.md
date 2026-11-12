@@ -1,5 +1,7 @@
 # 系统架构
 
+BacktestEngine既有策略观察副本同时复制PositionSnapshot.paperEntry及其strategy，避免onEnd或保留引用改写最终报告的入场时间/来源；缺字段保持，行情/账户/资金与原信号流程不变。共享次开子策略经同一入口保护，见[0104](../decisions/0104-copy-nested-entry-evidence-in-strategy-context.md)。
+
 PositionSnapshot沿既有GET/WebSocket追加可选paperEntry，投影当前实际周期的首笔成交时间与单一/混合/未知策略；缺完整周期时间null、缺来源/覆盖不足未知，深复制，不读当前选项或回填旧仓。持仓页原标的单元格显示来源，不增加网络请求或改变退出，见[0102](../decisions/0102-open-position-entry-evidence.md)。
 
 每次必需的App随main静态载入，减少根组件的额外脚本波次；各页面/图表继续lazyWithChunkRecovery，原会话检查、错误边界、preload恢复与PWA规则保持，见[0101](../decisions/0101-eager-required-app-shell.md)。入口变大但总JS近似保持，受控实验不代表已登录生产P95。

@@ -28,7 +28,12 @@ function copyStrategyContext<T extends Omit<StrategyContext, "barIndex" | "total
     account: { ...context.account, ...(context.account.tradingDayPerformance === undefined ? {} : {
       tradingDayPerformance: { ...context.account.tradingDayPerformance },
     }) },
-    positions: context.positions.map(position => ({ ...position })),
+    positions: context.positions.map(position => ({
+      ...position,
+      ...(position.paperEntry === undefined ? {} : {
+        paperEntry: { ...position.paperEntry, strategy: { ...position.paperEntry.strategy } },
+      }),
+    })),
   };
 }
 
