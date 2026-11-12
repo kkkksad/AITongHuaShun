@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { MarketQuote, MarketSnapshot, OrderSide, RiskLimits } from "../../shared/trading";
+import type { MarketQuote, MarketSnapshot, OrderProvenance, OrderSide, RiskLimits } from "../../shared/trading";
 import { PaperBroker } from "../broker/paperBroker";
 import type { MarketDataProvider } from "../contracts/MarketDataProvider";
 import type { TradingStore } from "../contracts/TradingStore";
@@ -47,9 +47,9 @@ function fixture(backend: "memory" | "json", seed = false) {
   return { market, directory, get store() { return store; }, get broker() { return broker; },
     nextDay() { time = new Date(time.getTime() + 86_400_000); },
     reload() { store = load(); broker = brokerFor(); },
-    fill(side: OrderSide, quantity = 100, price = market.price, symbol = "600001") {
+    fill(side: OrderSide, quantity = 100, price = market.price, symbol = "600001", provenance?: OrderProvenance) {
       market.price = price;
-      const order = broker.submitOrder({ symbol, side, type: "market", quantity });
+      const order = broker.submitOrder({ symbol, side, type: "market", quantity }, provenance);
       expect(order.status, order.rejectionReason).toBe("filled");
       return order;
     } };
@@ -61,6 +61,197 @@ afterEach(() => {
         !path.basename(directory).startsWith("kairos-cycle-")) throw new Error("Unexpected fixture directory");
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+function latestCompleteCycle(f: ReturnType<typeof fixture>) {
+  const result = f.store.getPaperFillLedger().results.at(-1);
+  if (result?.evidence !== "complete") throw Error("Expected an actual complete cycle");
+  expect(result.entryStrategyBoughtQuantity).toBe(result.boughtQuantity);
+  return result;
+}
+
+describe.each(["memory", "json"] as const)("persistent cycle entry strategy: %s", (backend) => {
+  it("preserves the actual buy strategy, not the strategy used to close it", () => {
+    const f = fixture(backend);
+    f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    f.nextDay(); f.fill("sell", 100, 11, "600001", { strategyKey: "momentum" });
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "single", strategyKey: "rsi" });
+    expect(latestCompleteCycle(f).netPnl).toBe(90);
+  });
+
+  it("preserves a single strategy through same-strategy adds and partial sells", () => {
+    const f = fixture(backend);
+    f.fill("buy", 200, 10, "600001", { strategyKey: "kairosTrendHealth" });
+    f.nextDay(); f.fill("sell", 100, 12, "600001", { strategyKey: "rsi" });
+    f.fill("buy", 100, 8, "600001", { strategyKey: "kairosTrendHealth" });
+    f.nextDay(); f.fill("sell", 200, 9);
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "single", strategyKey: "kairosTrendHealth" });
+    expect(latestCompleteCycle(f).netPnl).toBe(180);
+  });
+
+  it("marks different actual buy strategies as mixed and cannot later repair that with another known add", () => {
+    const f = fixture(backend);
+    for (const strategyKey of ["rsi", "momentum", "rsi"]) f.fill("buy", 100, 10, "600001", { strategyKey });
+    f.nextDay(); f.fill("sell", 300);
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "mixed" });
+  });
+
+  it.each(["unknown-first", "unknown-add", "mixed-then-unknown"])("retains incomplete attribution after %s", (kind) => {
+    const f = fixture(backend);
+    const strategies = kind === "unknown-first" ? [undefined, "rsi"]
+      : kind === "unknown-add" ? ["rsi", undefined, "rsi"] : ["rsi", "momentum", undefined, "rsi"];
+    for (const strategyKey of strategies) f.fill("buy", 100, 10, "600001", { strategyKey });
+    f.nextDay(); f.fill("sell", strategies.length * 100);
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "unknown" });
+  });
+
+  it.each(["auto", "inventedStrategy", "", "rsi "])("does not treat untrusted or non-specific key %j as a single strategy", (strategyKey) => {
+    const f = fixture(backend);
+    f.fill("buy", 100, 10, "600001", { strategyKey, strategy: "RSI label is not an identity" });
+    f.nextDay(); f.fill("sell");
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "unknown" });
+  });
+
+  it("starts a new strategy cycle only after the prior holding actually becomes flat", () => {
+    const f = fixture(backend);
+    f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    f.nextDay(); f.fill("sell");
+    f.fill("buy", 100, 10, "600001", { strategyKey: "momentum" });
+    f.nextDay(); f.fill("sell");
+    const evidence = f.store.getPaperFillLedger().results.map(cycle => cycle.evidence === "complete" && cycle.entryStrategyEvidence);
+    expect(evidence).toEqual([{ status: "single", strategyKey: "rsi" }, { status: "single", strategyKey: "momentum" }]);
+  });
+
+  it("ignores rejected and cancelled buys from a different strategy", () => {
+    const f = fixture(backend);
+    f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    const rejected = f.broker.submitOrder({ symbol: "600001", side: "buy", type: "market", quantity: 1_000_000 }, { strategyKey: "momentum" });
+    expect(rejected.status).toBe("rejected");
+    const pending = f.broker.submitOrder({ symbol: "600001", side: "buy", type: "limit", quantity: 100, limitPrice: 9 }, { strategyKey: "momentum" });
+    expect(pending.status).toBe("pending"); f.broker.cancelOrder(pending.id);
+    f.nextDay(); f.fill("sell");
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "single", strategyKey: "rsi" });
+  });
+
+  it("attributes a pending buy only when it fills, retaining its original server strategy", () => {
+    const f = fixture(backend);
+    const pending = f.broker.submitOrder({ symbol: "600001", side: "buy", type: "limit", quantity: 100, limitPrice: 9 }, { strategyKey: "rsi" });
+    expect(pending.status).toBe("pending");
+    expect(f.broker.getPositions()).toEqual([]);
+    f.store.setExecutionStrategy("momentum");
+    f.market.price = 9; f.broker.markToMarket();
+    expect(f.store.findOrderById(pending.id)?.status).toBe("filled");
+    f.nextDay(); f.fill("sell");
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "single", strategyKey: "rsi" });
+  });
+
+  it("does not invent entry attribution for seeded positions even after a known add", () => {
+    const f = fixture(backend, true);
+    f.fill("buy", 100, 10, "600519", { strategyKey: "rsi" });
+    f.nextDay(); f.fill("sell", 200, 10, "600519");
+    const cycle = f.store.getPaperFillLedger().results[0];
+    expect(cycle.evidence).toBe("missing-entry");
+    expect(cycle).not.toHaveProperty("entryStrategyEvidence");
+  });
+
+  it("returns isolated nested evidence for closed cycles", () => {
+    const f = fixture(backend);
+    f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    f.nextDay(); f.fill("sell");
+    const cycle = latestCompleteCycle(f);
+    if (cycle.entryStrategyEvidence?.status !== "single") throw Error("Expected single attribution");
+    cycle.entryStrategyEvidence.strategyKey = "momentum";
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "single", strategyKey: "rsi" });
+  });
+});
+
+describe("JSON entry strategy evidence boundary", () => {
+  it("survives open/partial cycles, order pruning and multiple restarts", () => {
+    const f = fixture("json");
+    f.fill("buy", 200, 10, "600001", { strategyKey: "kairosQuietPullback" });
+    f.nextDay(); f.fill("sell", 100, 11); f.reload();
+    f.nextDay(); f.nextDay(); f.reload();
+    expect(f.store.listOrders()).toEqual([]);
+    f.fill("sell", 100, 9); f.reload();
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "single", strategyKey: "kairosQuietPullback" });
+    expect(latestCompleteCycle(f).netPnl).toBe(-15);
+  });
+
+  it("does not backfill a legacy cycle from retained orders or current execution settings", () => {
+    const f = fixture("json");
+    f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    const file = path.join(f.directory!, "paper-trading-state.json");
+    const state = JSON.parse(fs.readFileSync(file, "utf8"));
+    delete state.positions[0].paperCycle.entryStrategyEvidence;
+    delete state.positions[0].paperCycle.entryStrategyBoughtQuantity;
+    state.executionStrategy = "momentum";
+    fs.writeFileSync(file, JSON.stringify(state));
+    f.reload();
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).positions[0].paperCycle.entryStrategyEvidence).toBeUndefined();
+    f.fill("buy", 100, 10, "600001", { strategyKey: "momentum" });
+    f.nextDay(); f.fill("sell", 200);
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "unknown" });
+  });
+
+  it("does not promote attribution from a failed atomic fill", () => {
+    const f = fixture("json");
+    f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    const order = f.store.createOrder({ symbol: "600001", side: "buy", type: "market", quantity: 100 }, 10, "600001", { strategyKey: "momentum" });
+    const file = path.join(f.directory!, "paper-trading-state.json");
+    const diskBefore = fs.readFileSync(file, "utf8");
+    fs.mkdirSync(`${file}.tmp`);
+    expect(() => f.store.fillOrder(order, "600001", 10, 5)).toThrow();
+    expect(fs.readFileSync(file, "utf8")).toBe(diskBefore);
+    fs.rmdirSync(`${file}.tmp`);
+    f.nextDay(); f.fill("sell", 100);
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "single", strategyKey: "rsi" });
+  });
+
+  it.each([null, [], "rsi", {}, { status: "single" }, { status: "single", strategyKey: "auto" },
+    { status: "unknown", strategyKey: "rsi" }, { status: "mixed", strategyKey: "rsi" },
+    { status: "single", strategyKey: "rsi", extra: true }])("rejects malformed open attribution before pruning: %j", (invalid) => {
+    const f = fixture("json"); f.fill("buy");
+    const file = path.join(f.directory!, "paper-trading-state.json");
+    const state = JSON.parse(fs.readFileSync(file, "utf8"));
+    state.positions[0].paperCycle.entryStrategyEvidence = invalid;
+    const text = JSON.stringify(state); fs.writeFileSync(file, text);
+    f.nextDay(); f.nextDay();
+    expect(() => f.reload()).toThrow(/strategy|cycle/i);
+    expect(fs.readFileSync(file, "utf8")).toBe(text);
+  });
+
+  it("rejects corrupt closed attribution before rewriting the ledger", () => {
+    const f = fixture("json"); f.fill("buy"); f.nextDay(); f.fill("sell");
+    const file = path.join(f.directory!, "paper-trading-state.json");
+    const state = JSON.parse(fs.readFileSync(file, "utf8"));
+    state.paperFillLedger.results[0].entryStrategyEvidence = { status: "single", strategyKey: "unknown" };
+    const text = JSON.stringify(state); fs.writeFileSync(file, text);
+    expect(() => f.reload()).toThrow(/strategy|cycle/i);
+    expect(fs.readFileSync(file, "utf8")).toBe(text);
+  });
+
+  it.each([undefined, 0, -1, 100.5, 100])("rejects missing or stale strategy coverage quantity %j before pruning", (invalid) => {
+    const f = fixture("json");
+    f.fill("buy", 200, 10, "600001", { strategyKey: "rsi" });
+    const file = path.join(f.directory!, "paper-trading-state.json");
+    const state = JSON.parse(fs.readFileSync(file, "utf8"));
+    state.positions[0].paperCycle.entryStrategyBoughtQuantity = invalid;
+    const text = JSON.stringify(state); fs.writeFileSync(file, text);
+    f.nextDay(); f.nextDay();
+    expect(() => f.reload()).toThrow(/strategy|cycle/i);
+    expect(fs.readFileSync(file, "utf8")).toBe(text);
+  });
+
+  it("rejects a missing-entry cycle that claims strategy attribution", () => {
+    const f = fixture("json", true);
+    f.nextDay(); f.fill("sell", 100, 10, "600519");
+    const file = path.join(f.directory!, "paper-trading-state.json");
+    const state = JSON.parse(fs.readFileSync(file, "utf8"));
+    state.paperFillLedger.results[0].entryStrategyEvidence = { status: "single", strategyKey: "rsi" };
+    const text = JSON.stringify(state); fs.writeFileSync(file, text);
+    expect(() => f.reload()).toThrow(/strategy|cycle/i);
+    expect(fs.readFileSync(file, "utf8")).toBe(text);
+  });
 });
 
 describe.each(["memory", "json"] as const)("paper position cycles: %s", (backend) => {

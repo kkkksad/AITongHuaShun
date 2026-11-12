@@ -1,5 +1,7 @@
 # 系统架构
 
+实际成交周期的可选entryStrategyEvidence持久保存具体Paper买单来源：同源single、不同已知来源mixed、任一缺失unknown；旧字段缺失未知，不从当前策略选项回填。仅实际买入推进，配对覆盖数量必须等于累计买入，卖出不覆盖，闭合后随原512周期保留；嵌套副本/JSON原子回滚隔离且损坏/过期归属先拒绝再裁剪。没有新增交易条件或页面展示，见[0100](../decisions/0100-persistent-cycle-entry-strategy-evidence.md)。
+
 独立GridTradingStrategy的上涨跨级卖单按绑定股票当根实际可卖持仓限制整批整层数；价格层级仍是穿越事件，无拒单补单或成交网格账本。原买入/基准/参数保持，GridTradingRunner与线上Paper同名代理独立未改，见[0099](../decisions/0099-grid-crossing-sellable-position.md)。
 
 既有MarketRegimeResearchReport个股结果附加可选historicalEntryStructure，复用本轮原始qfq历史与显式asOf/请求days；坏/重复记录未知，不因分类入口先清理而丢失问题。前高/完成日线量比/波幅比与有先后的回踩日期只读，不新增数据请求、路由/候选资格或订单权限；旧响应缺字段表示未接入，详见[0098](../decisions/0098-completed-daily-entry-structure.md)。页面尚无新结构卡。

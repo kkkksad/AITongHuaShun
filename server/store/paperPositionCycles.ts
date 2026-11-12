@@ -1,4 +1,26 @@
-import type { OrderRecord } from "../../shared/trading";
+import { PAPER_EXECUTION_STRATEGY_KEYS, type OrderRecord, type PaperManualExecutionStrategy } from "../../shared/trading";
+
+export type PaperCycleEntryStrategyEvidence =
+  | { status: "single"; strategyKey: PaperManualExecutionStrategy }
+  | { status: "mixed" }
+  | { status: "unknown" };
+
+const entryStrategyKeys = new Set<string>(PAPER_EXECUTION_STRATEGY_KEYS);
+
+function filledBuyStrategy(order: OrderRecord): PaperCycleEntryStrategyEvidence {
+  return typeof order.strategyKey === "string" && entryStrategyKeys.has(order.strategyKey)
+    ? { status: "single", strategyKey: order.strategyKey as PaperManualExecutionStrategy }
+    : { status: "unknown" };
+}
+
+function addedBuyStrategy(
+  previous: PaperCycleEntryStrategyEvidence | undefined, current: PaperCycleEntryStrategyEvidence,
+): PaperCycleEntryStrategyEvidence {
+  // A later known add cannot repair a missing earlier buy identity.
+  if (!previous || previous.status === "unknown" || current.status === "unknown") return { status: "unknown" };
+  if (previous.status === "mixed" || current.status === "mixed" || previous.strategyKey !== current.strategyKey) return { status: "mixed" };
+  return { ...previous };
+}
 
 /** Internal evidence, separate from averagePrice and account-wide realized PnL. */
 export interface OpenPaperPositionCycle {
@@ -10,6 +32,10 @@ export interface OpenPaperPositionCycle {
   buyFees: number;
   sellNotional: number;
   sellFees: number;
+  /** Actual filled buy origins; legacy absence is unknown, not the current selection. */
+  entryStrategyEvidence?: PaperCycleEntryStrategyEvidence;
+  /** Coverage guard: older writers must not silently preserve stale single attribution after adding shares. */
+  entryStrategyBoughtQuantity?: number;
 }
 
 interface ClosedCycleIdentity {
@@ -37,7 +63,14 @@ export function emptyPaperFillLedger(): PaperFillLedger {
 }
 
 export function copyPaperFillLedger(ledger: PaperFillLedger): PaperFillLedger {
-  return { lastSequence: ledger.lastSequence, results: ledger.results.map((result) => ({ ...result })) };
+  return { lastSequence: ledger.lastSequence, results: ledger.results.map((result) =>
+    result.evidence === "complete" ? copyOpenPaperCycle(result) : { ...result }) };
+}
+
+export function copyOpenPaperCycle<T extends OpenPaperPositionCycle>(cycle: T): T {
+  return { ...cycle, ...(cycle.entryStrategyEvidence === undefined ? {} : {
+    entryStrategyEvidence: { ...cycle.entryStrategyEvidence },
+  }) };
 }
 
 export function advancePaperPositionCycle(input: {
@@ -52,10 +85,13 @@ export function advancePaperPositionCycle(input: {
     const cycle = previous ?? { openingOrderId: order.id, openedAt: filledAt, boughtQuantity: 0,
       soldQuantity: 0, buyNotional: 0, buyFees: 0, sellNotional: 0, sellFees: 0 };
     return { openCycle: { ...cycle, boughtQuantity: cycle.boughtQuantity + order.quantity,
-      buyNotional: cycle.buyNotional + notional, buyFees: cycle.buyFees + commission } };
+      buyNotional: cycle.buyNotional + notional, buyFees: cycle.buyFees + commission,
+      entryStrategyBoughtQuantity: cycle.boughtQuantity + order.quantity,
+      entryStrategyEvidence: previous
+        ? addedBuyStrategy(previous.entryStrategyEvidence, filledBuyStrategy(order)) : filledBuyStrategy(order) } };
   }
   if (previousQuantity <= 0 || order.quantity > previousQuantity) return {};
-  const cycle = previous && { ...previous, soldQuantity: previous.soldQuantity + order.quantity,
+  const cycle = previous && { ...copyOpenPaperCycle(previous), soldQuantity: previous.soldQuantity + order.quantity,
     sellNotional: previous.sellNotional + notional, sellFees: previous.sellFees + commission };
   if (order.quantity < previousQuantity) return { openCycle: cycle };
   const identity = { symbol: order.symbol, closingOrderId: order.id, closedAt: filledAt };
@@ -74,7 +110,8 @@ export function appendPaperCycleResult(
   result: Omit<ClosedPaperPositionCycle, "sequence">,
 ): void {
   ledger.lastSequence += 1;
-  ledger.results.push({ ...result, sequence: ledger.lastSequence } as ClosedPaperPositionCycle);
+  const recorded = { ...result, sequence: ledger.lastSequence } as ClosedPaperPositionCycle;
+  ledger.results.push(recorded.evidence === "complete" ? copyOpenPaperCycle(recorded) : { ...recorded });
   if (ledger.results.length > PAPER_CYCLE_RESULT_LIMIT) ledger.results.shift();
 }
 
@@ -94,6 +131,14 @@ function nonnegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+function validEntryStrategyEvidence(value: unknown): boolean {
+  if (!record(value)) return false;
+  if (value.status === "single") {
+    return Object.keys(value).length === 2 && typeof value.strategyKey === "string" && entryStrategyKeys.has(value.strategyKey);
+  }
+  return (value.status === "unknown" || value.status === "mixed") && Object.keys(value).length === 1;
+}
+
 export function validateOpenPaperCycle(value: unknown, quantity: number): asserts value is OpenPaperPositionCycle {
   if (!record(value) || !validId(value.openingOrderId) || !validDate(value.openedAt) ||
       !Number.isSafeInteger(value.boughtQuantity) || Number(value.boughtQuantity) <= 0 ||
@@ -101,7 +146,9 @@ export function validateOpenPaperCycle(value: unknown, quantity: number): assert
       Number(value.boughtQuantity) - Number(value.soldQuantity) !== quantity ||
       ![value.buyNotional, value.buyFees, value.sellNotional, value.sellFees].every(nonnegative) ||
       Number(value.buyNotional) <= 0 || (value.soldQuantity === 0 && (value.sellNotional !== 0 || value.sellFees !== 0)) ||
-      (Number(value.soldQuantity) > 0 && Number(value.sellNotional) <= 0)) {
+      (Number(value.soldQuantity) > 0 && Number(value.sellNotional) <= 0) ||
+      ((value.entryStrategyEvidence !== undefined || value.entryStrategyBoughtQuantity !== undefined) &&
+        (!validEntryStrategyEvidence(value.entryStrategyEvidence) || value.entryStrategyBoughtQuantity !== value.boughtQuantity))) {
     throw new Error("Invalid persisted Paper position cycle.");
   }
 }
@@ -122,7 +169,8 @@ export function validatePaperFillLedger(value: unknown): asserts value is PaperF
     }
     closingIds.add(result.closingOrderId);
     if (result.evidence === "missing-entry") {
-      if (result.netPnl !== null || result.openingOrderId !== null || result.openedAt !== null) {
+      if (result.netPnl !== null || result.openingOrderId !== null || result.openedAt !== null ||
+          result.entryStrategyEvidence !== undefined || result.entryStrategyBoughtQuantity !== undefined) {
         throw new Error("Invalid persisted Paper missing-entry cycle.");
       }
     } else if (result.evidence === "complete") {

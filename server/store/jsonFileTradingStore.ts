@@ -18,7 +18,7 @@ import type { TradingStore } from "../contracts/TradingStore";
 import { hasSufficientCash } from "../broker/executionCosts";
 import { calculateTradingDayPerformance } from "./tradingDayPerformance";
 import { copyPaperRiskCheckpoint, validatePaperRiskCheckpoint, type PaperRiskCheckpoint } from "../risk/paperRiskCheckpoint";
-import { advancePaperPositionCycle, appendPaperCycleResult, copyPaperFillLedger, emptyPaperFillLedger,
+import { advancePaperPositionCycle, appendPaperCycleResult, copyOpenPaperCycle, copyPaperFillLedger, emptyPaperFillLedger,
   validateOpenPaperCycle, validatePaperFillLedger, type OpenPaperPositionCycle, type PaperFillLedger } from "./paperPositionCycles";
 
 interface MutablePosition {
@@ -723,7 +723,7 @@ export class JsonFileTradingStore implements TradingStore {
     const previousExecutionRevision = this.executionRevision;
     const previous = this.persistedState();
     previous.positions = previous.positions.map((position) => ({ ...position,
-      ...(position.paperCycle ? { paperCycle: { ...position.paperCycle } } : {}) }));
+      ...(position.paperCycle ? { paperCycle: copyOpenPaperCycle(position.paperCycle) } : {}) }));
     previous.orders = previous.orders.map((order) => ({ ...order }));
     previous.auditEvents = previous.auditEvents.slice();
     previous.paperFillLedger = copyPaperFillLedger(this.paperFillLedger);
