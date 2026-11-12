@@ -892,6 +892,14 @@ def fetch_a_share_spot_dataframe():
             df = provider()
             if df is None or len(df) == 0:
                 raise ValueError("返回空结果")
+            if provider_name == "eastmoney":
+                # Eastmoney spot volume is lots; Sina and our Tencent parser
+                # already provide shares. Do not mutate a provider-owned frame.
+                df = df.copy()
+                volume = pd.to_numeric(df["成交量"], errors="coerce").astype(float) * 100
+                # Share counts are integral; round after validation to avoid
+                # truncating binary noise (for example 0.29 lots to 28 shares).
+                df["成交量"] = volume.where(volume.ge(0) & volume.map(math.isfinite)).round(0)
             logger.info(
                 "行情源 %s 返回 %d 行，耗时 %.1fs",
                 provider_name,

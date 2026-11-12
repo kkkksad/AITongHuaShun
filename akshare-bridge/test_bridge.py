@@ -1347,6 +1347,94 @@ class TestSectorAndHistoryEndpoints:
         assert fetch.call_count == 2
 
 
+class TestDiscoverySpotVolumeUnits:
+    @staticmethod
+    def frame(volume=50_000, timestamp="20261109161440"):
+        frame = pd.DataFrame([{
+            "代码": "600519", "名称": "单位合同", "最新价": 10,
+            "昨收": 9.9, "涨跌幅": 1.01, "成交量": volume,
+            "成交额": 50_000_000, "换手率": 2.3,
+            "今开": 9.95, "最高": 10.1, "最低": 9.8,
+            "更新时间": timestamp,
+        }])
+        frame.attrs["source"] = "fixture-provider"
+        return frame
+
+    @pytest.mark.parametrize("provider", ["eastmoney", "sina", "tencent"])
+    def test_same_liquidity_reaches_cache_in_shares_for_every_provider(self, provider):
+        raw = self.frame(50_000 if provider == "eastmoney" else 5_000_000)
+        with patch("main.ak.stock_zh_a_spot_em", **(
+            {"return_value": raw} if provider == "eastmoney" else {"side_effect": RuntimeError("offline")}
+        )), patch("main.ak.stock_zh_a_spot", **(
+            {"return_value": raw} if provider == "sina" else {"side_effect": RuntimeError("offline")}
+        )), patch("main.fetch_tencent_a_share_spot_dataframe", return_value=raw):
+            frame = fetch_a_share_spot_dataframe()
+        cache = QuoteCache()
+        assert cache._parse_dataframe(frame) == 1
+        quote = cache._data["600519"]
+        assert quote.volume == 5_000_000
+        assert quote.price == 10
+        assert quote.amount == 50_000_000
+        assert quote.turnover == 2.3
+        assert quote.updatedAt == "2026-11-09T08:14:40.000Z"
+        assert quote.tradable is True
+        if provider != "eastmoney":
+            assert frame is raw
+
+    def test_eastmoney_copy_preserves_every_other_field_and_does_not_multiply_twice(self):
+        raw = self.frame()
+        original = raw.copy(deep=True)
+        with patch("main.ak.stock_zh_a_spot_em", return_value=raw) as eastmoney, \
+                patch("main.ak.stock_zh_a_spot") as fallback:
+            first = fetch_a_share_spot_dataframe()
+            second = fetch_a_share_spot_dataframe()
+        assert first is not raw and second is not raw and first is not second
+        pd.testing.assert_frame_equal(raw, original)
+        pd.testing.assert_frame_equal(first, second)
+        pd.testing.assert_frame_equal(first.drop(columns="成交量"), raw.drop(columns="成交量"))
+        assert first.attrs == raw.attrs
+        assert first.iloc[0]["成交量"] == 5_000_000
+        assert eastmoney.call_count == 2
+        fallback.assert_not_called()
+
+    @pytest.mark.parametrize("lots,shares", [(0, 0), ("50000", 5_000_000), (123.45, 12_345), (0.01, 1), (0.29, 29), (2**62, 2**62 * 100)])
+    def test_eastmoney_numeric_lots_are_converted_before_integer_cache_parse(self, lots, shares):
+        with patch("main.ak.stock_zh_a_spot_em", return_value=self.frame(lots)):
+            frame = fetch_a_share_spot_dataframe()
+        cache = QuoteCache()
+        assert cache._parse_dataframe(frame) == 1
+        assert cache._data["600519"].volume == shares
+
+    @pytest.mark.parametrize("invalid", [None, "", "bad", float("nan"), pd.NA, -1, -0.001, float("inf"), float("-inf"), 1e308, "1e400"])
+    def test_invalid_eastmoney_volume_cannot_create_liquidity_or_discard_valid_neighbor(self, invalid):
+        raw = pd.concat([self.frame(invalid), self.frame(50_000)], ignore_index=True)
+        raw.loc[1, "代码"] = "300750"
+        with patch("main.ak.stock_zh_a_spot_em", return_value=raw):
+            frame = fetch_a_share_spot_dataframe()
+        cache = QuoteCache()
+        assert cache._parse_dataframe(frame) == 1
+        assert set(cache._data) == {"300750"}
+        assert cache._data["300750"].volume == 5_000_000
+
+    def test_eastmoney_missing_volume_column_uses_original_fallback(self):
+        fallback = self.frame(5_000_000)
+        with patch("main.ak.stock_zh_a_spot_em", return_value=self.frame().drop(columns="成交量")), \
+                patch("main.ak.stock_zh_a_spot", return_value=fallback) as sina:
+            assert fetch_a_share_spot_dataframe() is fallback
+        sina.assert_called_once_with()
+
+    @pytest.mark.parametrize("timestamp", [None, "", "bad"])
+    def test_unit_conversion_does_not_invent_missing_source_time(self, timestamp):
+        with patch("main.ak.stock_zh_a_spot_em", return_value=self.frame(timestamp=timestamp)):
+            frame = fetch_a_share_spot_dataframe()
+        cache = QuoteCache()
+        assert cache._parse_dataframe(frame) == 1
+        quote = cache._data["600519"]
+        assert quote.volume == 5_000_000
+        assert quote.updatedAt == ""
+        assert quote.tradable is False
+
+
 class TestQuoteCache:
     @pytest.mark.parametrize("cache_type", [QuoteCache, IndexCache])
     @pytest.mark.parametrize("timestamp", [None, "", "not-a-time", "20260230153000", float("nan"), pd.NA])
