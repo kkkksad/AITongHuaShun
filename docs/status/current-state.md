@@ -2,7 +2,7 @@
 
 **核对日期：** 2026-11-13（北京时间；11月12日夜间交易与性能优化）
 
-开放持仓入场证据本地完整2954后端/425前端、TS/Vite通过，待独立发布保护及实际API镜像全套。现有持仓GET/WebSocket追加可选paperEntry，并在原标的格显示单一/混合/未知来源；缺字段/旧周期不回填，首笔时间不是持有交易日，资金/退出条件保持，见[0102](../decisions/0102-open-position-entry-evidence.md)。28新增后端/14前端（首批25/11旧版全失败），固定共享204组两次一致/8161成交独立重建及独立1224完整结果保持，四组隔离Chrome标签可读且零fetch，见[控制报告](../research/2026-11-12-open-entry-evidence-controls.md)。旧四仓没有可信持久来源仍未知，不称生产分策略退出已实现；发布接续[计划](../plans/2026-11-12-open-position-entry-evidence.md)。
+开放持仓入场证据c39906c已UTC18:35推送部署，803文件/三健康/可信双域HTTPS/匿名401、动态经济及完整风险检查点/上一69ac223材料通过，实际生产API镜像禁网隔离186文件2954后端通过。现有持仓GET/WebSocket追加可选paperEntry，并在原标的格显示单一/混合/未知来源；缺字段/旧周期不回填，首笔时间不是持有交易日，资金/退出条件保持，见[0102](../decisions/0102-open-position-entry-evidence.md)。28新增后端/14前端（首批25/11旧版全失败），本地完整2954后端/425前端/TS/Vite、204共享两次/8161逐笔重建及1224独立结果保持，四组隔离Chrome标签可读且零fetch，见[控制报告](../research/2026-11-12-open-entry-evidence-controls.md)。已上线纯函数只读原周期独立验证四仓均时间保留/来源unknown，账户文件字节保持；不是已登录HTTP验收。分策略退出尚未实现，文档回执与下一显示修复接续[计划](../plans/2026-11-12-open-position-entry-evidence.md)。
 
 必需App入口优化2c46385已UTC18:20推送部署，799文件/三健康/可信双域HTTPS/匿名401、动态经济摘要与完整风险检查点/上一92ce65c源码三镜像私有导出全部核验，API/桥接已测容器镜像保持。main静态导入App，各页面/图表继续懒加载；入口约199→268KB、总代码近似保持，固定80ms完整构建390/1440各ABBA表单中位619→319ms，不代表生产P95或FCP改善，见[0101](../decisions/0101-eager-required-app-shell.md)与[测量](../research/2026-11-12-required-app-entry-loading.md)。上线后四次匿名表单2345/1477/1195/1183ms、四JS且无横溢，真实网络小样本不宣称提速百分比。完整411前端、恢复目标18和TS/Vite通过；首轮旧生命周期夹具5失败，调整壳内lazy边界后原15行为断言保持。后端/Python无改，2926/177/36为继承，文档回执接续[计划](../plans/2026-11-12-research-wait-and-page-measurement.md)。
 
