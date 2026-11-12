@@ -2,7 +2,7 @@
 
 **核对日期：** 2026-11-13（北京时间；11月12日夜间交易与性能优化）
 
-必需App入口优化本地完整61文件411前端、恢复目标18及TS/Vite通过，待本模块独立提交部署与保护。main静态导入App，各页面/图表继续懒加载；入口约199→268KB、总代码近似保持，固定80ms完整构建390/1440各ABBA表单中位619→319ms，不代表生产P95或FCP改善，见[0101](../decisions/0101-eager-required-app-shell.md)与[测量](../research/2026-11-12-required-app-entry-loading.md)。首轮旧生命周期夹具5失败，按新壳内lazy边界调整后原15行为断言通过。后端/Python无改，2926/177/36为继承，实际生产镜像保持须另核验。[发布进度](../plans/2026-11-12-research-wait-and-page-measurement.md)。
+必需App入口优化2c46385已UTC18:20推送部署，799文件/三健康/可信双域HTTPS/匿名401、动态经济摘要与完整风险检查点/上一92ce65c源码三镜像私有导出全部核验，API/桥接已测容器镜像保持。main静态导入App，各页面/图表继续懒加载；入口约199→268KB、总代码近似保持，固定80ms完整构建390/1440各ABBA表单中位619→319ms，不代表生产P95或FCP改善，见[0101](../decisions/0101-eager-required-app-shell.md)与[测量](../research/2026-11-12-required-app-entry-loading.md)。上线后四次匿名表单2345/1477/1195/1183ms、四JS且无横溢，真实网络小样本不宣称提速百分比。完整411前端、恢复目标18和TS/Vite通过；首轮旧生命周期夹具5失败，调整壳内lazy边界后原15行为断言保持。后端/Python无改，2926/177/36为继承，文档回执接续[计划](../plans/2026-11-12-research-wait-and-page-measurement.md)。
 
 持久入场策略证据源码6d51660已UTC17:58推送部署，796归档文件/三健康/可信双域HTTPS/匿名401/动态原账户经济摘要及完整风险检查点、上一4288a7f材料核验；实际生产API镜像禁网隔离186文件2926后端通过。实际买入周期保留有限Paper策略键的单一/混合/未知归属及累计买入覆盖数量，旧字段缺失不回填，卖出不覆盖来源；严格校验、嵌套副本和原子恢复保持，见[0100](../decisions/0100-persistent-cycle-entry-strategy-evidence.md)。首批39新增旧版全失败，最终49新增、目标163、完整2926后端/61文件411前端及TS/Vite通过；Python177/36未改继承。冻结共享204组两次一致、8161成交及独立1224组完整结果均与网格修正基线保持，见[对照](../research/2026-11-12-entry-strategy-evidence-controls.md)。这是内部证据，尚无页面、开放持仓来源合同或分策略退出，不改变旧四仓的实际归属/交易规则，回执见[计划](../plans/2026-11-12-persistent-entry-strategy-evidence.md)。下一项按[等待测量计划](../plans/2026-11-12-research-wait-and-page-measurement.md)定位实际瓶颈后再改动，自动化仍ACTIVE。
 
