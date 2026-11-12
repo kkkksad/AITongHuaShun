@@ -248,6 +248,17 @@ export interface MarketSnapshot {
   quotes: MarketQuote[];
 }
 
+export type PaperCycleEntryStrategyEvidence =
+  | { status: "single"; strategyKey: PaperManualExecutionStrategy }
+  | { status: "mixed" }
+  | { status: "unknown" };
+
+export interface PaperPositionEntryEvidence {
+  /** First actual fill of the still-open cycle; not a trading-day holding duration. */
+  openedAt: string | null;
+  strategy: PaperCycleEntryStrategyEvidence;
+}
+
 export interface PositionSnapshot {
   symbol: string;
   name: string;
@@ -262,6 +273,8 @@ export interface PositionSnapshot {
   unrealizedPnl: number;
   realizedPnl: number;
   weight: number;
+  /** Read-only actual buy-cycle evidence; absent in older responses, never the current selection. */
+  paperEntry?: PaperPositionEntryEvidence;
 }
 
 export interface TradingDayPerformance {

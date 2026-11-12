@@ -10,7 +10,7 @@ import type { TradingStore } from "../contracts/TradingStore";
 import { RiskEngine } from "../risk/riskEngine";
 import { InMemoryTradingStore } from "./inMemoryTradingStore";
 import { JsonFileTradingStore } from "./jsonFileTradingStore";
-import { PAPER_CYCLE_RESULT_LIMIT } from "./paperPositionCycles";
+import { PAPER_CYCLE_RESULT_LIMIT, projectPaperPositionEntry } from "./paperPositionCycles";
 
 const directories: string[] = [];
 const limits: RiskLimits = { maxOrderNotional: 1_000_000, maxPositionWeight: 1,
@@ -69,6 +69,125 @@ function latestCompleteCycle(f: ReturnType<typeof fixture>) {
   expect(result.entryStrategyBoughtQuantity).toBe(result.boughtQuantity);
   return result;
 }
+
+describe.each(["memory", "json"] as const)("open position entry projection: %s", (backend) => {
+  it("projects the actual first fill and source while preserving economics and T+1", () => {
+    const f = fixture(backend);
+    const order = f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    f.store.setExecutionStrategy("momentum");
+    const cash = f.store.getCash(), ledger = f.store.getPaperFillLedger(), orders = f.store.listOrders();
+    const position = f.broker.getPositions()[0];
+    expect(position.paperEntry).toEqual({ openedAt: order.filledAt, strategy: { status: "single", strategyKey: "rsi" } });
+    expect(position).toMatchObject({ quantity: 100, availableQuantity: 0, t1LockedQuantity: 100,
+      averagePrice: 10, marketValue: 1000, unrealizedPnl: 0 });
+    expect(f.store.getCash()).toBe(cash); expect(f.store.getPaperFillLedger()).toEqual(ledger);
+    expect(f.store.listOrders()).toEqual(orders);
+    f.nextDay();
+    expect(f.broker.getPositions()[0]).toMatchObject({ availableQuantity: 100,
+      paperEntry: { openedAt: order.filledAt, strategy: { status: "single", strategyKey: "rsi" } } });
+  });
+
+  it("preserves first opening and single source through adds and partial sells", () => {
+    const f = fixture(backend);
+    const first = f.fill("buy", 200, 10, "600001", { strategyKey: "rsi" });
+    f.nextDay(); f.fill("sell", 100, 11, "600001", { strategyKey: "momentum" });
+    f.fill("buy", 100, 9, "600001", { strategyKey: "rsi" });
+    expect(f.broker.getPositions()[0].paperEntry).toEqual({ openedAt: first.filledAt,
+      strategy: { status: "single", strategyKey: "rsi" } });
+  });
+
+  it.each([
+    { keys: ["rsi", "momentum", "rsi"], status: "mixed" },
+    { keys: [undefined, "rsi"], status: "unknown" },
+    { keys: ["rsi", undefined, "rsi"], status: "unknown" },
+    { keys: ["auto"], status: "unknown" },
+    { keys: ["made-up-key"], status: "unknown" },
+  ])("projects $status for $keys without guessing the current option", ({ keys, status }) => {
+    const f = fixture(backend);
+    const first = f.fill("buy", 100, 10, "600001", { strategyKey: keys[0] });
+    for (const strategyKey of keys.slice(1)) f.fill("buy", 100, 10, "600001", { strategyKey });
+    f.store.setExecutionStrategy("rsi");
+    expect(f.broker.getPositions()[0].paperEntry).toEqual({ openedAt: first.filledAt, strategy: { status } });
+  });
+
+  it("keeps seeded holdings unknown even after a known add", () => {
+    const f = fixture(backend, true);
+    expect(f.broker.getPositions().find(p => p.symbol === "600519")?.paperEntry).toEqual({ openedAt: null, strategy: { status: "unknown" } });
+    f.fill("buy", 100, 10, "600519", { strategyKey: "rsi" });
+    expect(f.broker.getPositions().find(p => p.symbol === "600519")?.paperEntry).toEqual({ openedAt: null, strategy: { status: "unknown" } });
+  });
+
+  it("cannot mutate stored attribution through returned snapshots", () => {
+    const f = fixture(backend);
+    const first = f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    const entry = f.broker.getPositions()[0].paperEntry!;
+    expect(entry).toBeDefined();
+    if (entry.strategy.status !== "single") throw Error("Expected actual single source");
+    entry.strategy.strategyKey = "momentum"; entry.openedAt = null;
+    expect(f.broker.getPositions()[0].paperEntry).toEqual({ openedAt: first.filledAt, strategy: { status: "single", strategyKey: "rsi" } });
+    f.nextDay(); f.fill("sell");
+    expect(latestCompleteCycle(f).entryStrategyEvidence).toEqual({ status: "single", strategyKey: "rsi" });
+  });
+
+  it("ignores rejected or pending origins until an actual buy fills", () => {
+    const f = fixture(backend);
+    const first = f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    const rejected = f.broker.submitOrder({ symbol: "600001", side: "buy", type: "market", quantity: 1_000_000 }, { strategyKey: "momentum" });
+    expect(rejected.status).toBe("rejected");
+    const pending = f.broker.submitOrder({ symbol: "600001", side: "buy", type: "limit", quantity: 100, limitPrice: 9 }, { strategyKey: "momentum" });
+    expect(pending.status).toBe("pending");
+    expect(f.broker.getPositions()[0].paperEntry).toEqual({ openedAt: first.filledAt, strategy: { status: "single", strategyKey: "rsi" } });
+    f.market.price = 9; f.broker.markToMarket();
+    expect(f.broker.getPositions()[0].paperEntry).toEqual({ openedAt: first.filledAt, strategy: { status: "mixed" } });
+  });
+
+  it("starts new entry evidence after flat rather than retaining the previous cycle", () => {
+    const f = fixture(backend);
+    f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    f.nextDay(); f.fill("sell"); expect(f.broker.getPositions()).toEqual([]);
+    const first = f.fill("buy", 100, 11, "600001", { strategyKey: "momentum" });
+    expect(f.broker.getPositions()[0].paperEntry).toEqual({ openedAt: first.filledAt, strategy: { status: "single", strategyKey: "momentum" } });
+  });
+});
+
+describe("JSON open entry projection compatibility", () => {
+  it.each([undefined, 0, 99])("does not project uncovered source when bought coverage is %j", (coverage) => {
+    const f = fixture("memory");
+    const first = f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    f.nextDay(); f.fill("sell");
+    const cycle = latestCompleteCycle(f);
+    cycle.entryStrategyBoughtQuantity = coverage;
+    expect(projectPaperPositionEntry(cycle)).toEqual({ openedAt: first.filledAt, strategy: { status: "unknown" } });
+  });
+
+  it("survives order pruning without reading recent orders or changing the file", () => {
+    const f = fixture("json");
+    const first = f.fill("buy", 200, 10, "600001", { strategyKey: "kairosQuietPullback" });
+    f.nextDay(); f.fill("sell", 100); f.nextDay(); f.nextDay(); f.reload();
+    expect(f.store.listOrders()).toEqual([]);
+    const file = path.join(f.directory!, "paper-trading-state.json");
+    const before = fs.readFileSync(file, "utf8");
+    expect(f.broker.getPositions()[0].paperEntry).toEqual({ openedAt: first.filledAt,
+      strategy: { status: "single", strategyKey: "kairosQuietPullback" } });
+    expect(fs.readFileSync(file, "utf8")).toBe(before);
+  });
+
+  it.each(["legacy-source", "missing-cycle"])("keeps %s unknown despite retained orders", (kind) => {
+    const f = fixture("json"); const first = f.fill("buy", 100, 10, "600001", { strategyKey: "rsi" });
+    const file = path.join(f.directory!, "paper-trading-state.json");
+    const state = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (kind === "missing-cycle") delete state.positions[0].paperCycle;
+    else {
+      delete state.positions[0].paperCycle.entryStrategyEvidence;
+      delete state.positions[0].paperCycle.entryStrategyBoughtQuantity;
+    }
+    state.executionStrategy = "rsi"; fs.writeFileSync(file, JSON.stringify(state)); f.reload();
+    const before = fs.readFileSync(file, "utf8");
+    expect(f.broker.getPositions()[0].paperEntry).toEqual({ openedAt: kind === "missing-cycle" ? null : first.filledAt,
+      strategy: { status: "unknown" } });
+    expect(fs.readFileSync(file, "utf8")).toBe(before);
+  });
+});
 
 describe.each(["memory", "json"] as const)("persistent cycle entry strategy: %s", (backend) => {
   it("preserves the actual buy strategy, not the strategy used to close it", () => {

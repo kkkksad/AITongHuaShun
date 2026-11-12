@@ -1,5 +1,7 @@
 # 系统架构
 
+PositionSnapshot沿既有GET/WebSocket追加可选paperEntry，投影当前实际周期的首笔成交时间与单一/混合/未知策略；缺完整周期时间null、缺来源/覆盖不足未知，深复制，不读当前选项或回填旧仓。持仓页原标的单元格显示来源，不增加网络请求或改变退出，见[0102](../decisions/0102-open-position-entry-evidence.md)。
+
 每次必需的App随main静态载入，减少根组件的额外脚本波次；各页面/图表继续lazyWithChunkRecovery，原会话检查、错误边界、preload恢复与PWA规则保持，见[0101](../decisions/0101-eager-required-app-shell.md)。入口变大但总JS近似保持，受控实验不代表已登录生产P95。
 
 实际成交周期的可选entryStrategyEvidence持久保存具体Paper买单来源：同源single、不同已知来源mixed、任一缺失unknown；旧字段缺失未知，不从当前策略选项回填。仅实际买入推进，配对覆盖数量必须等于累计买入，卖出不覆盖，闭合后随原512周期保留；嵌套副本/JSON原子回滚隔离且损坏/过期归属先拒绝再裁剪。没有新增交易条件或页面展示，见[0100](../decisions/0100-persistent-cycle-entry-strategy-evidence.md)。

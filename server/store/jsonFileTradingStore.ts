@@ -18,7 +18,7 @@ import type { TradingStore } from "../contracts/TradingStore";
 import { hasSufficientCash } from "../broker/executionCosts";
 import { calculateTradingDayPerformance } from "./tradingDayPerformance";
 import { copyPaperRiskCheckpoint, validatePaperRiskCheckpoint, type PaperRiskCheckpoint } from "../risk/paperRiskCheckpoint";
-import { advancePaperPositionCycle, appendPaperCycleResult, copyOpenPaperCycle, copyPaperFillLedger, emptyPaperFillLedger,
+import { advancePaperPositionCycle, appendPaperCycleResult, copyOpenPaperCycle, copyPaperFillLedger, emptyPaperFillLedger, projectPaperPositionEntry,
   validateOpenPaperCycle, validatePaperFillLedger, type OpenPaperPositionCycle, type PaperFillLedger } from "./paperPositionCycles";
 
 interface MutablePosition {
@@ -291,6 +291,7 @@ export class JsonFileTradingStore implements TradingStore {
         unrealizedPnl: (currentPrice - position.averagePrice) * position.quantity,
         realizedPnl: position.realizedPnl,
         weight: 0,
+        paperEntry: projectPaperPositionEntry(position.paperCycle),
       };
     });
     const marketValue = raw.reduce(

@@ -9,6 +9,17 @@ import {
 } from "recharts";
 import { CircleDollarSign, PieChartIcon, TrendingUp, Zap } from "lucide-react";
 import type { PositionSnapshot, MarketSnapshot } from "../../shared/trading";
+import { PAPER_EXECUTION_STRATEGY_OPTIONS } from "../../shared/trading";
+
+const entryStrategyLabels = new Map(PAPER_EXECUTION_STRATEGY_OPTIONS.map(option => [option.key, option.label]));
+
+function entryStrategyLabel(position: PositionSnapshot): string {
+  const entry = position.paperEntry;
+  if (!entry || typeof entry.openedAt !== "string" || !Number.isFinite(Date.parse(entry.openedAt)) ||
+      new Date(entry.openedAt).toISOString() !== entry.openedAt) return "未知";
+  if (entry.strategy?.status === "mixed") return "混合策略";
+  return entry.strategy?.status === "single" ? entryStrategyLabels.get(entry.strategy.strategyKey) ?? "未知" : "未知";
+}
 
 const COLORS = [
   "#2563eb", "#0891b2", "#7c3aed", "#db2777",
@@ -256,6 +267,9 @@ export function Portfolio({ positions, market, equity }: PortfolioProps) {
                       <td className="symbol-cell">
                         <strong>{pos.name}</strong>
                         <small className="table-subline">{pos.symbol}</small>
+                        <small className="table-subline" title="本轮持仓的实际买入来源；不同策略加仓显示混合，记录不足显示未知。">
+                          入场：{entryStrategyLabel(pos)}
+                        </small>
                       </td>
                       <td>{pos.quantity.toLocaleString("zh-CN")}</td>
                       <td>¥{pos.averagePrice.toFixed(2)}</td>

@@ -1,9 +1,7 @@
-import { PAPER_EXECUTION_STRATEGY_KEYS, type OrderRecord, type PaperManualExecutionStrategy } from "../../shared/trading";
+import { PAPER_EXECUTION_STRATEGY_KEYS, type OrderRecord, type PaperManualExecutionStrategy,
+  type PaperCycleEntryStrategyEvidence, type PaperPositionEntryEvidence } from "../../shared/trading";
 
-export type PaperCycleEntryStrategyEvidence =
-  | { status: "single"; strategyKey: PaperManualExecutionStrategy }
-  | { status: "mixed" }
-  | { status: "unknown" };
+export type { PaperCycleEntryStrategyEvidence } from "../../shared/trading";
 
 const entryStrategyKeys = new Set<string>(PAPER_EXECUTION_STRATEGY_KEYS);
 
@@ -71,6 +69,14 @@ export function copyOpenPaperCycle<T extends OpenPaperPositionCycle>(cycle: T): 
   return { ...cycle, ...(cycle.entryStrategyEvidence === undefined ? {} : {
     entryStrategyEvidence: { ...cycle.entryStrategyEvidence },
   }) };
+}
+
+export function projectPaperPositionEntry(cycle?: OpenPaperPositionCycle): PaperPositionEntryEvidence {
+  return {
+    openedAt: cycle?.openedAt ?? null,
+    strategy: cycle?.entryStrategyEvidence && cycle.entryStrategyBoughtQuantity === cycle.boughtQuantity
+      ? { ...cycle.entryStrategyEvidence } : { status: "unknown" },
+  };
 }
 
 export function advancePaperPositionCycle(input: {

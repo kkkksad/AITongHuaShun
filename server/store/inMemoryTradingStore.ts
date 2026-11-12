@@ -15,7 +15,7 @@ import type { TradingStore } from "../contracts/TradingStore";
 import { hasSufficientCash } from "../broker/executionCosts";
 import { calculateTradingDayPerformance } from "./tradingDayPerformance";
 import { copyPaperRiskCheckpoint, validatePaperRiskCheckpoint, type PaperRiskCheckpoint } from "../risk/paperRiskCheckpoint";
-import { advancePaperPositionCycle, appendPaperCycleResult, copyPaperFillLedger, emptyPaperFillLedger,
+import { advancePaperPositionCycle, appendPaperCycleResult, copyPaperFillLedger, emptyPaperFillLedger, projectPaperPositionEntry,
   type OpenPaperPositionCycle, type PaperFillLedger } from "./paperPositionCycles";
 
 interface MutablePosition {
@@ -253,6 +253,7 @@ export class InMemoryTradingStore implements TradingStore {
         unrealizedPnl: (currentPrice - position.averagePrice) * position.quantity,
         realizedPnl: position.realizedPnl,
         weight: 0,
+        paperEntry: projectPaperPositionEntry(position.paperCycle),
       };
     });
 
