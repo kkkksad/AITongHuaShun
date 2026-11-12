@@ -408,6 +408,44 @@ describe("automatic execution quote freshness before creating orders", () => {
 });
 
 describe("paper execution checks the actual submission time", () => {
+  it.each([
+    ["fee", "blocked", "round-trip-fee-ratio: blocked (1.20% > 1.00%)", "entry-discipline"],
+    ["history", "blocked", "entry-persistence: blocked (history-not-covered)", "entry-discipline"],
+    ["defense", "blocked", "defensive-score: blocked (40 < 50)", "entry-discipline"],
+    ["sizing", "blocked", "plan-sizing: blocked", "order-sizing"],
+    ["cash observation", "observe", "plan-sizing-constrained", "order-sizing"],
+    ["permission", "observe", "adaptive-new-position: blocked", "new-position-permission"],
+    ["actual buy", "paper-buy-plan", "cash-check: pass", "execution"],
+    ["actual exit", "paper-sell-plan", "T+1: pass", "execution"],
+  ] as const)("persists %s evidence after eight different signal failures without changing the run", async (_name, action, ruleCheck, stage) => {
+    const fixture = createExecutionFixture({ startedAt: "2026-11-12T10:30:00+08:00", operationCount: 0 });
+    fixture.plan.operations = [
+      ...Array.from({ length: 8 }, (_, index) => ({
+        timestamp: fixture.snapshot.marketTime, symbol: `600${String(index + 10).padStart(3, "0")}`,
+        name: "fixture", action: "blocked" as const, strategy: "市场策略路由", quantity: 0,
+        price: 10, estimatedNotional: 0, reason: `distinct no signal ${index}`,
+        ruleChecks: ["paper-only", "strategy-route: blocked (no-qualified-signal)"],
+      })),
+      { timestamp: fixture.snapshot.marketTime, symbol: action === "observe" ? "CASH" : "600099",
+        name: "fixture", action, strategy: "fixture", quantity: action.startsWith("paper-") ? 100 : 0,
+        price: 10, estimatedNotional: action.startsWith("paper-") ? 1000 : 0,
+        reason: "specific downstream gate", ruleChecks: ["paper-only", ruleCheck] },
+    ];
+    fixture.plan.qualitySummary.planQuality = action.startsWith("paper-") ? "actionable" : "blocked";
+    const run = await fixture.executor.runOnce();
+    const audit = fixture.system.store.listAudit(20).find(event => event.action === "paper-auto-execution.run")!;
+    const evidence = audit.data?.skippedReasons as Array<{ symbol: string; blockerStage?: string }>;
+    expect(evidence).toHaveLength(8);
+    expect(evidence[0]).toMatchObject({ symbol: action === "observe" ? "CASH" : "600099", blockerStage: stage });
+    expect(audit.data).toMatchObject({ skippedReasonCount: 9, skippedReasonsOmitted: 1 });
+    expect(run.skippedOperations).toHaveLength(9);
+    expect(run.skippedOperations[0].symbol).toBe("600010");
+    expect(run.skippedOperations[8]).toMatchObject({ blockerStage: stage });
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+    expect(fixture.system.broker.getAccount().cash).toBe(10_000);
+    expect(fixture.system.broker.getOrders()).toHaveLength(0);
+  });
+
   it("persists diverse blocked causes within eight audit rows without altering the complete run", async () => {
     const fixture = createExecutionFixture({ startedAt: "2026-08-21T09:35:00+08:00", operationCount: 0 });
     const operation = (index: number, action: "hold" | "blocked", reason: string) => ({

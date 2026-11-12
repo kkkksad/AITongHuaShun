@@ -46,7 +46,7 @@ import { getOrderFillTime } from "./orderFillTime";
 import { assertPaperExecutionRevision, PaperExecutionContextChangedError } from "./paperExecutionContext";
 import { PaperExecutionTimer } from "./paperExecutionTiming";
 import type { PaperExecutionTiming } from "../../shared/paperExecutionTiming";
-import { selectPaperSkipEvidence } from "./paperSkipEvidence";
+import { derivePaperSkipBlockerStage, selectPaperSkipEvidence, type PaperSkipBlockerStage } from "./paperSkipEvidence";
 
 export type PaperAutoExecutionTrigger = "timer" | "manual" | "startup";
 export type PaperAutoExecutionActivityMode =
@@ -111,6 +111,7 @@ export interface PaperAutoExecutionSkip {
   quantity?: number;
   price?: number;
   estimatedNotional?: number;
+  blockerStage?: PaperSkipBlockerStage;
 }
 
 export interface PaperAutoExecutionResearchContext {
@@ -420,6 +421,7 @@ export function paperAutoExecutionAuditSignature(
       quantity: operation.quantity ?? null,
       price: operation.price ?? null,
       estimatedNotional: operation.estimatedNotional ?? null,
+      ...(operation.blockerStage ? { blockerStage: operation.blockerStage } : {}),
     })),
   });
 }
@@ -488,6 +490,7 @@ function paperAutoExecutionSkip(
   operation: PaperTradingOperation,
   reason: string,
 ): PaperAutoExecutionSkip {
+  const blockerStage = derivePaperSkipBlockerStage(operation);
   return {
     symbol: operation.symbol,
     action: operation.action,
@@ -497,6 +500,7 @@ function paperAutoExecutionSkip(
     quantity: operation.quantity,
     price: operation.price,
     estimatedNotional: Math.max(0, operation.estimatedNotional),
+    ...(blockerStage ? { blockerStage } : {}),
   };
 }
 
@@ -1503,7 +1507,7 @@ export class PaperAutoExecutor {
         skippedReasons: skippedEvidence.reasons,
         skippedReasonCount: skippedEvidence.total,
         skippedReasonsOmitted: skippedEvidence.omitted,
-        skippedReasonSelection: "blocked-first-distinct-reasons-v1",
+        skippedReasonSelection: "execution-and-gate-first-distinct-reasons-v2",
       },
     );
     this.lastPersistedRunSignature = signature;
