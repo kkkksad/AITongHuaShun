@@ -81,6 +81,8 @@ Node使用已配置的bundled runtime；生产前后经济摘要单独保存并�
 
 ## 最终交付
 
+补录夜间最终发布：模块19 e0505fcffaf9579c6b8716f7491598aea281986b已UTC11月12日01:09按用户补发要求部署，763归档文件/三健康/可信双域HTTPS/匿名401/原现金13992与三持仓五单及风险检查点保持、上一c7e7d7a材料核验。证书续期timer active/enabled，归档SQLite quick_check=ok且三份备份可读；旧kairos自动化已删除。11月12日用户随后新授权的实际成交亏损复盘独立记[新计划](2026-11-12-trade-loss-and-strategy-review.md)，不重启本夜间任务。
+
 - UTC19:47：模块8 ec346b1已推送部署核验735文件/三健康/可信双域HTTPS/匿名401/原经济摘要与检查点及上一a32792e材料，实际API镜像隔离完整2699项通过；本地176文件2699后端/59文件399前端及TS/Vite通过。模块9复盘时间选择八新增旧版六失败，修复日期冲突和ISO偏移排序；目标76通过，生产254条run白名单投影新旧entryReview完全相同，非当天无买入已证实根因。见[时间一致性计划](2026-11-11-daily-audit-time-selection.md)。
 
 - UTC19:58：模块10只读固定历史复核完成；7f643f1代码与冻结输入SHA一致，17策略×12股×3窗×双成本两次1224组逐字节一致。相对旧报告31组变化（TrendHealth 27：9高/18低；CapitalShield 4：2高/2低），其余保持；不按收益方向挑结果、不声称真实Paper胜率改善。见[固定复核计划](2026-11-11-updated-fixed-strategy-review.md)和[研究报告](../research/2026-11-11-updated-fixed-strategy-review.md)。

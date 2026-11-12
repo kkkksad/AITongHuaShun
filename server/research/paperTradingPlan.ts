@@ -716,8 +716,12 @@ export function buildPaperTradingPlan(input: {
     const available = position.availableQuantity ??
       Math.max(0, position.quantity - (position.t1LockedQuantity ?? 0));
     const historicalRegime = stockRegimeMap.get(position.symbol);
+    // Price drawdown is measured against actual entry cost, not the shrinking
+    // current market value. Display PnL fields may describe an older quote.
     const hardStop =
-      position.unrealizedPnl / Math.max(1, position.marketValue) <= -0.03;
+      Number.isFinite(position.averagePrice) && position.averagePrice > 0 &&
+      Number.isFinite(price) && price > 0 &&
+      hasSufficientCash(position.averagePrice * 0.97, price);
     const adaptiveReduction =
       input.adaptiveRouting?.positionPosture === "reduce" &&
       historicalRegime?.regime === "trend-deterioration" &&
@@ -755,8 +759,8 @@ export function buildPaperTradingPlan(input: {
         quantity,
         price,
         estimatedNotional: Number((quantity * price).toFixed(2)),
-        reason: "持仓浮亏超过 3%，纳入纸面减仓观察；不会触发真实下单。",
-        ruleChecks: ["paper-only", "T+1: pass", "manual-review-required"],
+        reason: "当前标价相对实际持仓均价下跌达到 3%（不含费用），按可卖整手生成 Paper 退出计划。",
+        ruleChecks: ["paper-only", "T+1: pass", "stop-basis: average-fill-price", "stop-price-return: at-or-below -3%", "manual-review-required"],
       });
     } else if (adaptiveReduction && !ordinaryReductionAllowed) {
       operations.push({

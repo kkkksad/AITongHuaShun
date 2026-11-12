@@ -452,9 +452,10 @@ describe("adaptive paper trading plan", () => {
   it("allows the hard stop to override the daily adaptive reduction limit", () => {
     const losingPosition = {
       ...position(),
-      currentPrice: 9,
-      marketValue: 2_700,
-      unrealizedPnl: -270,
+      averagePrice: 11,
+      currentPrice: 10,
+      marketValue: 3_000,
+      unrealizedPnl: -300,
     };
     const plan = build({
       positions: [losingPosition],
