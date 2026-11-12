@@ -374,6 +374,16 @@ describe("shouldRunScheduledPaperAutoExecution", () => {
         },
       }),
     })).toBe(true);
+    const identityRun = run({ researchContext: { ...diagnosticRun.researchContext!, researchDiagnostics: {
+      ...diagnosticRun.researchContext!.researchDiagnostics!,
+      stockHistoryCoverage: { scope: "regime-stock-history", asOf: "2026-07-17T01:39:00.000Z",
+        selectedSymbols: ["600001", "600002", "600003", "600004"],
+        returnedSymbols: ["600001", "600002", "600003", "600004"],
+        acceptedSymbols: ["600001", "600002", "600003", "600004"], usableSymbols: [] },
+    } } });
+    const changed = structuredClone(identityRun);
+    changed.researchContext!.researchDiagnostics!.stockHistoryCoverage!.selectedSymbols.push("600005");
+    expect(paperAutoExecutionAuditSignature(identityRun)).not.toBe(paperAutoExecutionAuditSignature(changed));
   });
 
   it("treats a changed plan snapshot as a material audit change", () => {

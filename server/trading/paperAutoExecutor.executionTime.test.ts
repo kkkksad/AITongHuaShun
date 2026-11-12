@@ -528,6 +528,24 @@ describe("paper execution checks the actual submission time", () => {
     expect(fixture.system.broker.getAccount().cash).toBe(10_000);
   });
 
+  it("preserves bounded stock identities in the existing zero-order run audit without raw payloads", async () => {
+    const fixture = createExecutionFixture({ startedAt: "2026-08-21T09:35:00+08:00", operationCount: 0 });
+    const coverage = { scope: "regime-stock-history" as const, asOf: "2026-08-21T01:34:00.000Z",
+      selectedSymbols: ["600001", "600002"], returnedSymbols: ["600002"], acceptedSymbols: [], usableSymbols: [] };
+    fixture.marketRegimeResearch.stockHistoryCoverage = coverage;
+    const run = await fixture.executor.runOnce();
+    const audit = fixture.system.store.listAudit(20).find(event => event.action === "paper-auto-execution.run");
+    expect(run.researchContext?.researchDiagnostics?.stockHistoryCoverage).toEqual(coverage);
+    const persisted = JSON.parse(JSON.stringify(audit?.data?.researchDiagnostics));
+    expect(persisted.stockHistoryCoverage).toEqual(coverage);
+    coverage.selectedSymbols[0] = "000001";
+    expect(persisted.stockHistoryCoverage.selectedSymbols).toEqual(["600001", "600002"]);
+    expect(run.researchContext?.researchDiagnostics?.stockHistoryCoverage?.selectedSymbols).toEqual(["600001", "600002"]);
+    expect(run.submittedOrders).toEqual([]);
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+    expect(fixture.system.broker.getAccount().cash).toBe(10_000);
+  });
+
   it.each([
     ["lunch break", "2026-08-21T11:29:59+08:00", "2026-08-21T11:31:01+08:00", "lunch-break"],
     ["market close", "2026-08-21T14:59:59+08:00", "2026-08-21T15:01:01+08:00", "after-hours"],

@@ -1,5 +1,7 @@
 # 系统架构
 
+MarketRegimeResearchReport可选stockHistoryCoverage沿原ResearchInputDiagnostics进入Paper运行审计，保存≤12股选择/响应身份/校验接纳/足够完成日线代码及原分析asOf。严格嵌套、有界白名单复制；缓存复用保留原时点，外层回退/旧记录未知，不新增请求或交易条件。现有长期Python压缩归档不保留此身份字段，详见[0107](../decisions/0107-stock-history-identity-evidence.md)。
+
 getAshareMarketSession按北京日内整数毫秒判断午/晚收盘端点，getChinaMinutes的整数语义与日期日历保持。原执行器多处复核和通知共享统一门禁，收盘后1ms不再误作open；精确收盘点与历史日线15:00保持，见[0106](../decisions/0106-exact-market-session-endpoints.md)。
 
 strategyExitResearch仅供离线六profile的固定退出假设，native直接返回原类、另两模式在独立回调副本上推进原状态并校验意图，按实际周期、完成日线与可卖整手替换退出。原生产计划/路由/执行器及六类保持；共享资金216组不代表线上自适应路由或kairosRangeRotation回放，见[0105](../decisions/0105-offline-strategy-family-exit-research.md)。

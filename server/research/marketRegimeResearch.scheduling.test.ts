@@ -123,6 +123,8 @@ describe("market regime stock universe and source ordering", () => {
     expect(result.sourceStatus).toBe("degraded");
     expect(result.warnings.join(" ")).toContain("股票历史日线暂不可用");
     expect(result.warnings.join(" ")).toContain("HTTP 503");
+    expect(result.stockHistoryCoverage).toEqual({ scope: "regime-stock-history", asOf: now.toISOString(),
+      selectedSymbols: ["600010"], returnedSymbols: [], acceptedSymbols: [], usableSymbols: [] });
   });
 
   it.each(["snapshot", "history"])("keeps independent stock evidence after sector %s fails", async failure => {
@@ -145,6 +147,7 @@ describe("market regime stock universe and source ordering", () => {
     expect(source.started.some(row => row.path.endsWith("/stock-history"))).toBe(false);
     expect(source.fetchImpl).toHaveBeenCalledTimes(2);
     expect(result.warnings).toContain("当前快照没有可查询股票。");
+    expect(result.stockHistoryCoverage?.selectedSymbols).toEqual([]);
   });
 
   it("shares all three source requests across simultaneous identical readers", async () => {
@@ -168,5 +171,8 @@ describe("market regime stock universe and source ordering", () => {
     const result = await pending;
     expect(source.started.find(row => row.path.endsWith("/stock-history"))?.search).toContain("600010");
     expect(result.stockRegimes[0]).toMatchObject({ symbol: "600010", name: "请求甲" });
+    expect(result.stockHistoryCoverage).toEqual({ scope: "regime-stock-history", asOf: now.toISOString(),
+      selectedSymbols: ["600010"], returnedSymbols: ["600010"], acceptedSymbols: ["600010"], usableSymbols: ["600010"] });
+    expect(source.fetchImpl).toHaveBeenCalledTimes(3);
   });
 });

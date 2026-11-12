@@ -1,3 +1,5 @@
+import { copyStockHistoryCoverage, type StockHistoryCoverage } from "./stockHistoryCoverage";
+
 /** Bounded audit evidence; raw provider errors may contain URLs or credentials. */
 const ISSUE_LABELS = {
   "provider-contract": "历史接口参数与供应商SDK不兼容。",
@@ -16,12 +18,15 @@ export interface ResearchInputDiagnostics {
   stockCount: number;
   usableStockCount: number;
   issues: ResearchInputIssue[];
+  stockHistoryCoverage?: StockHistoryCoverage;
 }
 
 export function buildResearchInputDiagnostics(input: {
   sectorOutlooks: readonly unknown[];
   stockRegimes: ReadonlyArray<{ regime: string }>;
   warnings: readonly string[];
+  stockHistoryCoverage?: unknown;
+  generatedAt?: string;
 }): ResearchInputDiagnostics {
   const sectorCount = input.sectorOutlooks.length;
   const usableStockCount = input.stockRegimes.filter(
@@ -56,7 +61,15 @@ export function buildResearchInputDiagnostics(input: {
   const boundedIssues = hasUnexpandedWarning
     ? [...issues.slice(0, 3), "provider-warning" as const]
     : issues.slice(0, 4);
-  return { sectorCount, stockCount: input.stockRegimes.length, usableStockCount, issues: boundedIssues };
+  const coverage = copyStockHistoryCoverage(input.stockHistoryCoverage);
+  const cutoffFitsReport = input.generatedAt === undefined ||
+    Number.isFinite(Date.parse(input.generatedAt)) && coverage !== undefined &&
+      Date.parse(coverage.asOf) <= Date.parse(input.generatedAt);
+  const stockHistoryCoverage = coverage && coverage.acceptedSymbols.length === input.stockRegimes.length &&
+    coverage.usableSymbols.length === usableStockCount && cutoffFitsReport ? coverage : undefined;
+  return { sectorCount, stockCount: input.stockRegimes.length, usableStockCount, issues: boundedIssues,
+    ...(stockHistoryCoverage ? { stockHistoryCoverage } : {}),
+  };
 }
 
 export function describeResearchInputDiagnostics(value: unknown): string[] {

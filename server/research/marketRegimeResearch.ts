@@ -6,6 +6,7 @@ import { validateStrategyHistory } from "./strategyHistoryEvidence";
 import { validateSectorHistory } from "./sectorHistoryEvidence";
 import { normalizeSectorSnapshotResponse } from "./sectorSnapshotEvidence";
 import { analyzeHistoricalEntryStructure, type HistoricalEntryStructure } from "./historicalEntryStructure";
+import { buildStockHistoryCoverage, type StockHistoryCoverage } from "./stockHistoryCoverage";
 
 export interface HistoricalBar {
   date: string;
@@ -168,6 +169,8 @@ export interface MarketRegimeResearchReport {
   stockRegimes: StockRegimeResult[];
   warnings: string[];
   guardrails: string[];
+  /** Original analysis cutoff and bounded identities; absent means unknown. */
+  stockHistoryCoverage?: StockHistoryCoverage;
 }
 
 export interface AnalyzeMarketRegimeInput {
@@ -693,12 +696,20 @@ export function analyzeMarketRegimeData(
     sectorOutlooks.length >= 2 && usableStockCount > 0
       ? "live-read-only"
       : "degraded";
+  const stockHistoryCoverage = input.provider === "akshare" ? buildStockHistoryCoverage({
+    asOf,
+    selectedSymbols: [...input.stockNames.keys()],
+    stockHistory: input.stockHistory,
+    acceptedSymbols: checkedStocks.series.map(series => series.symbol),
+    usableSymbols: stockRegimes.filter(stock => stock.regime !== "insufficient-data").map(stock => stock.symbol),
+  }) : undefined;
 
   return {
     generatedAt: asOf.toISOString(),
     mode: input.mode,
     provider: input.provider,
     sourceStatus,
+    ...(stockHistoryCoverage ? { stockHistoryCoverage } : {}),
     source: {
       sectorSource: sectorResponse.source,
       sectorHistorySource: [...new Set(checkedSectors.series.map(series => series.source))].sort().join(" + ") || "unavailable",
@@ -758,7 +769,7 @@ function emptyBridgeResponses(): {
 
 function unavailableReport(input: BuildMarketRegimeResearchInput): MarketRegimeResearchReport {
   const empty = emptyBridgeResponses();
-  const report = analyzeMarketRegimeData({
+  const { stockHistoryCoverage: _unobservedCoverage, ...report } = analyzeMarketRegimeData({
     asOf: input.now,
     mode: input.mode,
     provider: input.marketDataProvider,

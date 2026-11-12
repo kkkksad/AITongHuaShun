@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MarketSnapshot } from "../../shared/trading";
 import { clearBridgeRequestCache } from "./bridgeRequest";
 import {
-  analyzeMarketRegimeData, buildMarketRegimeResearch, classifyStockRegime,
+  analyzeMarketRegimeData, buildMarketRegimeResearch, buildUnavailableMarketRegimeResearch, classifyStockRegime,
   type AnalyzeMarketRegimeInput, type HistoricalBar, type HistoricalSeries,
 } from "./marketRegimeResearch";
 
@@ -37,6 +37,76 @@ function withDate(date: string, fields: Partial<HistoricalBar> = {}): Historical
 }
 
 afterEach(() => { clearBridgeRequestCache(); vi.useRealTimers(); });
+
+describe("bounded stock history identity evidence", () => {
+  const expected = (returnedSymbols: string[], acceptedSymbols = returnedSymbols, usableSymbols = acceptedSymbols) => ({
+    scope: "regime-stock-history", asOf: asOf.toISOString(),
+    selectedSymbols: ["600010", "600011"], returnedSymbols, acceptedSymbols, usableSymbols,
+  });
+
+  it("distinguishes selected identities from a partial response and never adds an unselected identity", () => {
+    const report = analyzeMarketRegimeData(input([series(), series(bars(), { symbol: "000001" })]));
+    expect(report).toHaveProperty("stockHistoryCoverage", expected(["600010"]));
+    expect(report.source.stockCount).toBe(1);
+    expect(report.stockRegimes.map(row => row.symbol)).toEqual(["600010"]);
+  });
+
+  it.each([{ adjustment: "hfq" }, { source: " " }])("separates an identifiable response from rejected metadata %j", fields => {
+    expect(analyzeMarketRegimeData(input([series(bars(), fields)])))
+      .toHaveProperty("stockHistoryCoverage", expected(["600010"], [], []));
+  });
+
+  it("does not count either duplicate as accepted and keeps selection order independent of response sorting", () => {
+    expect(analyzeMarketRegimeData(input([series(bars(), { symbol: "600011" }), series(), series()])))
+      .toHaveProperty("stockHistoryCoverage", expected(["600010", "600011"], ["600011"], ["600011"]));
+  });
+
+  it("counts accepted but insufficient completed history without using a future bar for the threshold", () => {
+    expect(analyzeMarketRegimeData(input([series([...bars(60), withDate("2099-01-01")]) ])))
+      .toHaveProperty("stockHistoryCoverage", expected(["600010"], ["600010"], []));
+  });
+
+  it("keeps an accepted empty series distinct from a missing response identity", () => {
+    expect(analyzeMarketRegimeData(input([series([])])))
+      .toHaveProperty("stockHistoryCoverage", expected(["600010"], ["600010"], []));
+    expect(analyzeMarketRegimeData(input([])))
+      .toHaveProperty("stockHistoryCoverage", expected([], [], []));
+  });
+
+  it("records no matching identities for a malformed or non-AkShare response", () => {
+    const malformed = input(); malformed.stockHistory.series = null as unknown as HistoricalSeries[];
+    expect(analyzeMarketRegimeData(malformed)).toHaveProperty("stockHistoryCoverage", expected([], [], []));
+    const wrongProvider = input(); wrongProvider.stockHistory.provider = "mock";
+    expect(analyzeMarketRegimeData(wrongProvider)).toHaveProperty("stockHistoryCoverage", expected([], [], []));
+  });
+
+  it("does not fabricate a complete selected set when the analysis caller exceeds twelve identities", () => {
+    const request = input();
+    request.stockNames = new Map(Array.from({ length: 13 }, (_, i) => [`6000${String(i).padStart(2, "0")}`, "name"]));
+    expect(analyzeMarketRegimeData(request)).not.toHaveProperty("stockHistoryCoverage");
+  });
+
+  it.each(["akshare", "mock"])("keeps outer unavailable selection unknown for %s", provider => {
+    const report = buildUnavailableMarketRegimeResearch({ now: asOf, marketDataProvider: provider, mode: "paper",
+      bridgeUrl: "http://unused.test", timeoutMs: 1_000, days: 180, stockLimit: 12, sectorLimit: 6,
+      snapshot: { mode: "paper", sequence: 1, marketTime: asOf.toISOString(), quotes: [] },
+      preferredStocks: [{ symbol: "600010", name: "unknown selection" }] }, "core timed out");
+    expect(report).not.toHaveProperty("stockHistoryCoverage");
+    expect(report.provider).toBe(provider);
+    expect(report.sourceStatus).toBe(provider === "akshare" ? "degraded" : "mock-disabled");
+  });
+
+  it("uses the exact snapshot evidence cutoff and does not expose raw response names or errors", () => {
+    const request = input();
+    request.stockNames = new Map(request.stockNames);
+    request.stockHistory.warning = "https://provider.test/?token=SECRET";
+    const result = analyzeMarketRegimeData(request) as unknown as { stockHistoryCoverage: unknown };
+    expect(result.stockHistoryCoverage).toEqual(expected(["600010"]));
+    expect(JSON.stringify(result.stockHistoryCoverage)).not.toMatch(/SECRET|provider\.test|供应商名称/);
+    request.stockNames.clear(); request.stockHistory.series.length = 0;
+    expect(result.stockHistoryCoverage).toEqual(expected(["600010"]));
+  });
+});
 
 describe("trading stock regime history evidence", () => {
   it("does not let unfinished or future daily bars change stock shape or validation", () => {

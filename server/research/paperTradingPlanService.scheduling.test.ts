@@ -7,6 +7,7 @@ import { buildUnavailableRealResearchDataFeed } from "./realResearchData";
 import { buildUnavailableExternalMarketImpact } from "./externalMarketImpact";
 import { buildUnavailableStrategyLeaderboard } from "./strategyLeaderboard";
 import { InMemoryResearchStore } from "./researchStore";
+import { buildResearchInputDiagnostics } from "./researchInputDiagnostics";
 
 const builders = vi.hoisted(() => ({ core: vi.fn(), news: vi.fn(), external: vi.fn(), leaderboard: vi.fn() }));
 vi.mock("./marketRegimeResearch", async (original) => ({
@@ -47,6 +48,24 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it("retains the original identity evidence cutoff when a later plan shares the core cache", async () => {
+    const request = input();
+    const coverage = { scope: "regime-stock-history" as const, asOf: date.toISOString(),
+      selectedSymbols: ["600010"], returnedSymbols: [], acceptedSymbols: [], usableSymbols: [] };
+    builders.core.mockImplementation(async value => ({ ...buildUnavailableMarketRegimeResearch(value, "fixture"),
+      stockHistoryCoverage: coverage }));
+    const first = await buildCurrentPaperTradingPlan(request);
+    const second = await buildCurrentPaperTradingPlan({ ...request, now: new Date(date.getTime() + 1_000) });
+    expect(builders.core).toHaveBeenCalledOnce();
+    expect(second.marketRegimeResearch.stockHistoryCoverage).toEqual(coverage);
+    expect(second.marketRegimeResearch.generatedAt).toBe(first.marketRegimeResearch.generatedAt);
+    const diagnostic = buildResearchInputDiagnostics(second.marketRegimeResearch);
+    expect(diagnostic.stockHistoryCoverage?.asOf).toBe(date.toISOString());
+    expect(second.plan.operations).toEqual(first.plan.operations);
+    expect(second.adaptiveRouting).toEqual(first.adaptiveRouting);
+    expect(request.system.broker.getOrders()).toEqual([]);
+  });
+
   it.each([
     { executionStrategy: "auto" as const, active: true, rotates: true },
     { executionStrategy: "rsi" as const, active: true, rotates: false },
