@@ -166,6 +166,41 @@ function createExecutionFixture(input: {
   return { executor, system, plan, notifier, submitOrder, orderReads, findByClientOrderId, marketRegimeResearch, snapshot };
 }
 
+describe("subminute market close execution boundaries", () => {
+  it.each(["11:30:00.001", "15:00:00.001"])("does not start research, notifications or orders after %s", async time => {
+    const fixture = createExecutionFixture({ startedAt: `2026-11-12T${time}+08:00` });
+    const run = await fixture.executor.runOnce();
+    expect(run.session).toBe(time.startsWith("11") ? "lunch-break" : "after-hours");
+    expect(paperPlans.buildCurrentPaperTradingPlan).not.toHaveBeenCalled();
+    expect(fixture.notifier.notify).not.toHaveBeenCalled();
+    expect(fixture.notifier.notifyOrderEvents).not.toHaveBeenCalled();
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+    expect(fixture.system.broker.getOrders()).toEqual([]);
+  });
+
+  it.each(["research", "notification"])("stops orders when %s finishes 1ms after the endpoint", async wait => {
+    const fixture = createExecutionFixture({ startedAt: "2026-11-12T11:29:59.999+08:00",
+      ...(wait === "research" ? { researchFinishedAt: "2026-11-12T11:30:00.001+08:00" }
+        : { notificationFinishedAt: "2026-11-12T11:30:00.001+08:00" }) });
+    const run = await fixture.executor.runOnce();
+    expect(run.submittedOrders).toEqual([]);
+    expect(fixture.submitOrder).not.toHaveBeenCalled();
+    expect(fixture.system.broker.getOrders()).toEqual([]);
+    expect(run.skippedOperations.some(operation => /lunch-break/.test(operation.reason))).toBe(true);
+  });
+
+  it("preserves the first actual fill and stops the next after closing +1ms", async () => {
+    const fixture = createExecutionFixture({ startedAt: "2026-11-12T14:59:59.999+08:00", operationCount: 2,
+      afterFirstOrderAt: "2026-11-12T15:00:00.001+08:00" });
+    const run = await fixture.executor.runOnce();
+    expect(run.submittedOrders).toHaveLength(1);
+    expect(fixture.submitOrder).toHaveBeenCalledTimes(1);
+    expect(fixture.system.broker.getOrders()).toHaveLength(1);
+    expect(fixture.system.broker.getPositions()).toMatchObject([{ symbol: "600001", quantity: 100 }]);
+    expect(run.skippedOperations.some(operation => /after-hours/.test(operation.reason))).toBe(true);
+  });
+});
+
 describe("persisted monotonic paper run timing", () => {
   it("measures research, both notifications and two actual fills despite a wall-clock reversal", async () => {
     let elapsed = 0;

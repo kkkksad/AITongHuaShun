@@ -1,5 +1,7 @@
 # 系统架构
 
+getAshareMarketSession按北京日内整数毫秒判断午/晚收盘端点，getChinaMinutes的整数语义与日期日历保持。原执行器多处复核和通知共享统一门禁，收盘后1ms不再误作open；精确收盘点与历史日线15:00保持，见[0106](../decisions/0106-exact-market-session-endpoints.md)。
+
 strategyExitResearch仅供离线六profile的固定退出假设，native直接返回原类、另两模式在独立回调副本上推进原状态并校验意图，按实际周期、完成日线与可卖整手替换退出。原生产计划/路由/执行器及六类保持；共享资金216组不代表线上自适应路由或kairosRangeRotation回放，见[0105](../decisions/0105-offline-strategy-family-exit-research.md)。
 
 BacktestEngine既有策略观察副本同时复制PositionSnapshot.paperEntry及其strategy，避免onEnd或保留引用改写最终报告的入场时间/来源；缺字段保持，行情/账户/资金与原信号流程不变。共享次开子策略经同一入口保护，见[0104](../decisions/0104-copy-nested-entry-evidence-in-strategy-context.md)。

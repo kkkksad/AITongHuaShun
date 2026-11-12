@@ -207,11 +207,11 @@ export function getAshareMarketSession(value = new Date()): AshareMarketSession 
   if (dayStatus.reason === "weekend") return "weekend";
   if (dayStatus.reason === "holiday") return "holiday";
 
-  const minutes = getChinaMinutes(value);
-  if (minutes < 9 * 60 + 30) return "pre-market";
-  if (minutes <= 11 * 60 + 30) return "open";
-  if (minutes < 13 * 60) return "lunch-break";
-  if (minutes <= 15 * 60) return "open";
+  const milliseconds = getChinaMinutes(value) * 60_000 + value.getUTCSeconds() * 1_000 + value.getUTCMilliseconds();
+  if (milliseconds < (9 * 60 + 30) * 60_000) return "pre-market";
+  if (milliseconds <= (11 * 60 + 30) * 60_000) return "open";
+  if (milliseconds < 13 * 60 * 60_000) return "lunch-break";
+  if (milliseconds <= 15 * 60 * 60_000) return "open";
   return "after-hours";
 }
 

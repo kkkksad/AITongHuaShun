@@ -63,6 +63,33 @@ describe("A-share trading calendar", () => {
       .toBe("2026-09-30");
   });
 
+  it.each([
+    ["2026-11-12T11:30:00.001+08:00", "lunch-break"],
+    ["2026-11-12T11:30:01+08:00", "lunch-break"],
+    ["2026-11-12T11:30:59.999+08:00", "lunch-break"],
+    ["2026-11-12T15:00:00.001+08:00", "after-hours"],
+    ["2026-11-12T15:00:01+08:00", "after-hours"],
+    ["2026-11-12T15:00:59.999+08:00", "after-hours"],
+    ["2026-11-12T03:30:00.001Z", "lunch-break"],
+    ["2026-11-12T07:00:00.001Z", "after-hours"],
+  ] as const)("closes the session immediately after its actual endpoint: %s", (value, session) => {
+    expect(getAshareMarketSession(new Date(value))).toBe(session);
+    expect(isAshareTradingTime(new Date(value))).toBe(false);
+  });
+
+  it.each([
+    ["2026-11-12T09:29:59.999+08:00", "pre-market"],
+    ["2026-11-12T09:30:00.000+08:00", "open"],
+    ["2026-11-12T11:29:59.999+08:00", "open"],
+    ["2026-11-12T11:30:00.000+08:00", "open"],
+    ["2026-11-12T12:59:59.999+08:00", "lunch-break"],
+    ["2026-11-12T13:00:00.000+08:00", "open"],
+    ["2026-11-12T14:59:59.999+08:00", "open"],
+    ["2026-11-12T15:00:00.000+08:00", "open"],
+  ] as const)("preserves the precise opening and closing point contract: %s", (value, session) => {
+    expect(getAshareMarketSession(new Date(value))).toBe(session);
+  });
+
   it("uses Beijing time for date and minute boundaries", () => {
     expect(getChinaDateKey(new Date("2026-10-07T16:30:00.000Z")))
       .toBe("2026-10-08");

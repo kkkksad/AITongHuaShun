@@ -558,6 +558,16 @@ describe("PaperPlanNotifier", () => {
     expect(afterClose.sender.send).not.toHaveBeenCalled();
   });
 
+  it.each(["11:30:00.001", "11:30:01", "15:00:00.001", "15:00:59.999"])(
+    "never calls the sender after the precise session endpoint at %s", async time => {
+      const plan = createPlan();
+      const { notifier, sender } = createNotifier({ now: new Date(`2026-07-17T${time}+08:00`) });
+      await expect(notifier.notify(plan, context(plan))).resolves.toEqual({ status: "outside-session" });
+      expect(getPaperPlanBriefingSlot(new Date(`2026-07-17T${time}+08:00`))).toBeNull();
+      expect(sender.send).not.toHaveBeenCalled();
+    },
+  );
+
   it("still sends an honest briefing on risky or degraded days", async () => {
     const plan = createPlan();
     const { notifier, sender, store } = createNotifier();
