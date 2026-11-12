@@ -1025,6 +1025,9 @@ def fetch_tencent_a_share_dataframe(symbols: tuple[str, ...], source: str):
         previous_close = _parse_tencent_number(fields[4])
         if price <= 0 or previous_close <= 0:
             continue
+        volume = max(0, _parse_tencent_number(fields[6]) * 100)
+        if not math.isfinite(volume):
+            continue
         rows.append({
             "代码": match.group(1),
             "名称": re.sub(r"\s+", "", fields[1]) or normalized,
@@ -1034,7 +1037,7 @@ def fetch_tencent_a_share_dataframe(symbols: tuple[str, ...], source: str):
             "最高": _parse_tencent_number(fields[33]),
             "最低": _parse_tencent_number(fields[34]),
             "涨跌幅": _parse_tencent_number(fields[32]),
-            "成交量": int(max(0, _parse_tencent_number(fields[6]) * 100)),
+            "成交量": int(volume),
             "成交额": _parse_tencent_number(fields[37]) * 10_000,
             "换手率": max(0, _parse_tencent_number(fields[38])),
             "振幅": _parse_tencent_number(fields[43]),

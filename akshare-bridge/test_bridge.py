@@ -252,6 +252,110 @@ class TestTencentTurnover:
         assert parser._data["000001"].price == 10
 
 
+class TestTencentConvertedVolumeIsolation:
+    @staticmethod
+    def line(symbol, volume, timestamp="20261109161500"):
+        fields = [""] * 88
+        for index, value in {
+            1: "报价换算夹具", 3: "10", 4: "9.9", 5: "9.95", 6: volume,
+            30: timestamp, 32: "1.01", 33: "10.1", 34: "9.9",
+            37: "12345", 38: "0.62", 43: "2.02",
+        }.items():
+            fields[index] = value
+        return f'v_{symbol}="{"~".join(fields)}";'
+
+    @staticmethod
+    def session(payload):
+        response = MagicMock()
+        response.content = payload.encode("gbk")
+        session = MagicMock()
+        session.get.return_value = response
+        return session
+
+    @pytest.mark.parametrize("indices", [False, True])
+    @pytest.mark.parametrize("bad_first", [False, True])
+    @pytest.mark.parametrize("volume", ["1e308", "1.7976931348623157e308"])
+    def test_finite_lots_overflow_drops_only_that_text_row(self, indices, bad_first, volume):
+        import main
+        good, bad = ("sh000001", "sz399001") if indices else ("sh600519", "sz000001")
+        lines = [self.line(good, "50000"), self.line(bad, volume)]
+        session = self.session("".join(reversed(lines) if bad_first else lines))
+        with patch("main.requests.Session", return_value=session):
+            frame = main.fetch_tencent_a_share_dataframe((good, bad), "腾讯换算夹具")
+        assert frame["代码"].tolist() == [good]
+        assert frame.iloc[0]["成交量"] == 5_000_000
+        assert frame.iloc[0]["更新时间"] == "20261109161500"
+        assert frame.iloc[0]["成交额"] == 123_450_000
+        session.get.assert_called_once()
+        session.close.assert_called_once()
+        assert session.get.call_args.kwargs["timeout"] == 8
+        assert session.trust_env is False
+
+    @pytest.mark.parametrize("indices", [False, True])
+    @pytest.mark.parametrize("volume", ["1e308", "1.7976931348623157e308"])
+    def test_real_requested_http_keeps_valid_neighbor_and_partial_warning(self, indices, volume):
+        import main
+        cache = main.requested_index_cache if indices else main.requested_stock_cache
+        good, bad = ("sh000001", "sz399001") if indices else ("sh600519", "sz000001")
+        symbols = "SH000001,SZ399001" if indices else "600519,000001"
+        path = "indices" if indices else "quotes"
+        cache.clear()
+        try:
+            with patch("main.requests.Session", return_value=self.session(self.line(bad, volume) + self.line(good, "50000"))):
+                response = client.get(f"/api/market/{path}?symbols={symbols}")
+            assert response.status_code == 200
+            payload = response.json()
+            assert [q["symbol"] for q in payload["quotes"]] == ["SH000001" if indices else "600519"]
+            quote = payload["quotes"][0]
+            assert quote["volume"] == 5_000_000
+            assert quote["updatedAt"] == "2026-11-09T08:15:00.000Z"
+            assert quote["tradable"] is (not indices)
+            assert payload["warning"] and payload["source"] == "tencent-quote-text"
+            JSONResponse(payload)
+        finally:
+            cache.clear()
+
+    @pytest.mark.parametrize("volume,expected", [("50000", 5_000_000), ("0", 0), ("-1", 0), ("NaN", 0), ("--", 0)])
+    def test_existing_normal_and_unknown_volume_semantics_remain(self, volume, expected):
+        import main
+        with patch("main.requests.Session", return_value=self.session(self.line("sh600519", volume))):
+            frame = main.fetch_tencent_a_share_dataframe(("600519",), "腾讯换算夹具")
+        assert frame.iloc[0]["成交量"] == expected
+        assert frame.iloc[0]["更新时间"] == "20261109161500"
+
+    @pytest.mark.parametrize("indices", [False, True])
+    def test_all_overflow_rows_keep_explicit_unavailable_result(self, indices):
+        import main
+        symbol = "sh000001" if indices else "sh600519"
+        with patch("main.requests.Session", return_value=self.session(self.line(symbol, "1e308"))):
+            with pytest.raises(ValueError, match="返回空或不可解析结果"):
+                main.fetch_tencent_a_share_dataframe((symbol,), "腾讯换算夹具")
+
+    def test_refresh_keeps_bad_stocks_old_source_time_and_original_cooldown(self):
+        import main
+        from requested_quote_cache import RequestedQuoteCache
+
+        async def scenario():
+            now = [0.0]
+            quotes = RequestedQuoteCache(main.fetch_requested_quotes, clock=lambda: now[0])
+            first = self.session(self.line("sh600519", "50000") + self.line("sz000001", "50000"))
+            second = self.session(self.line("sz000001", "1e308") + self.line("sh600519", "50000", "20261109161600"))
+            with patch("main.requests.Session", side_effect=[first, second]) as transport:
+                original = await quotes.get(("600519", "000001"))
+                now[0] = 11
+                await quotes.get(("600519", "000001"))
+                await quotes.wait_idle()
+                result = await quotes.get(("600519", "000001"))
+                assert result["600519"].updatedAt == "2026-11-09T08:16:00.000Z"
+                assert result["000001"].updatedAt == original["000001"].updatedAt == "2026-11-09T08:15:00.000Z"
+                assert quotes.stats()["failedBatches"] == 0
+                assert quotes.stats()["missingSymbols"] == 1
+                now[0] = 30
+                await quotes.get(("000001",))
+                assert transport.call_count == 2
+        asyncio.run(scenario())
+
+
 class TestHealthEndpoint:
     def test_history_timing_is_public_read_only_unknown_before_a_sample(self):
         from research_cache import HistoryFetchLimiter
