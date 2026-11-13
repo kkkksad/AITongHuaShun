@@ -47,6 +47,21 @@ function ownContext(context: StrategyContext, symbol: string): StrategyContext {
     }) }, positions: context.positions.filter(position => position.symbol === symbol).map(position => ({ ...position })) };
 }
 
+function copyChildSignals(raw: unknown, symbol: string): StrategySignal[] {
+  const error = "逐股研究仅接受本股市价及有效方向和定量意图";
+  if (!Array.isArray(raw)) throw Error(error);
+  return Array.from(raw, item => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) throw Error(error);
+    const signal = { ...item } as StrategySignal;
+    if (signal.symbol !== symbol || signal.type !== "market" ||
+      (signal.side !== "buy" && signal.side !== "sell") ||
+      (signal.quantity !== undefined && (!Number.isFinite(signal.quantity) || signal.quantity < 0)) ||
+      (signal.targetWeight !== undefined && (!Number.isFinite(signal.targetWeight) || signal.targetWeight < 0 || signal.targetWeight > 1)) ||
+      (signal.quantity === undefined && signal.targetWeight === undefined)) throw Error(error);
+    return signal;
+  });
+}
+
 /** Input comes from validated aligned history. This is not the online plan/executor or a live feed. */
 export function runNextOpenPortfolioResearch(
   daily: MarketSnapshot[], strategies: ReadonlyMap<string, BacktestStrategy>, costs: ExecutionCostOptions, asOf: Date,
@@ -93,11 +108,8 @@ export function runNextOpenPortfolioResearch(
             strategy.onStart?.(ownContext(context, symbol));
             started.add(symbol);
           }
-          const signals = strategy.onBar(ownContext(context, symbol));
-          if (!Array.isArray(signals) || signals.some(signal => !signal || signal.symbol !== symbol || signal.type !== "market")) {
-            throw Error("逐股研究仅允许本股市价意图");
-          }
-          pending.push(...signals.map(signal => ({ ...signal })));
+          const signals = copyChildSignals(strategy.onBar(ownContext(context, symbol)), symbol);
+          pending.push(...signals);
           generatedSignals += signals.length;
         } catch {
           failures.push(`${symbol}:${Math.floor(context.barIndex / 2)}`);

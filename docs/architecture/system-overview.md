@@ -1,5 +1,7 @@
 # 系统架构
 
+离线下一开盘共享资金研究在完成收盘回调后复制并校验整批本股market意图：buy/sell、显式数量有限非负、显式权重0至1且至少一种定量。坏批次不进入pending，最终沿原failures使研究失败；零值、quantity=0权重回退、整手和合法风险拒单保持。线上计划和普通BacktestEngine容错政策不变，见[0127](../decisions/0127-native-next-open-research-intent-contract.md)。
+
 内部Paper订单side/type由shared/orderDiscriminators.ts同时供Broker和RiskEngine校验。Broker保留幂等返回优先，坏枚举在行情/费用/创建订单前只审计并抛错，不写非法订单。HTTP原Zod校验保持，合法执行流程不变，见[0126](../decisions/0126-paper-order-runtime-discriminators.md)。
 
 验证策略费用有效最小整手的内部目标覆盖参考本金和统一舍入执行本金中的较大值，再受原最终cap约束。最终数量仍复核完整现金、费用后权益及策略/费用资格；普通策略不新增计算，见[0125](../decisions/0125-validation-minimum-rounded-execution-principal.md)。
