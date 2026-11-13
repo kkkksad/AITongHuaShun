@@ -1,4 +1,5 @@
 import { getPaperExecutionStrategyOption } from "../../shared/trading";
+import { PAPER_POSITION_EXIT_POLICY } from "../../shared/paperPositionExitPolicy";
 import type {
   PaperBuyExecutionProjection,
   PaperTradingPlanSizingConstraint,
@@ -721,11 +722,11 @@ export function buildPaperTradingPlan(input: {
     const hardStop =
       Number.isFinite(position.averagePrice) && position.averagePrice > 0 &&
       Number.isFinite(price) && price > 0 &&
-      hasSufficientCash(position.averagePrice * 0.97, price);
+      hasSufficientCash(position.averagePrice * PAPER_POSITION_EXIT_POLICY.stopPriceMultiplier, price);
     const adaptiveReduction =
       input.adaptiveRouting?.positionPosture === "reduce" &&
       historicalRegime?.regime === "trend-deterioration" &&
-      historicalRegime.confidence >= 0.65;
+      historicalRegime.confidence >= PAPER_POSITION_EXIT_POLICY.trendDeteriorationConfidence;
     const ordinaryReductionAllowed = !alreadyReducedToday.has(position.symbol);
 
     if (
@@ -782,7 +783,7 @@ export function buildPaperTradingPlan(input: {
     } else if (adaptiveReduction && available >= input.lotSize) {
       const targetQuantity = Math.max(
         input.lotSize,
-        roundLot(position.quantity * 0.5, input.lotSize),
+        roundLot(position.quantity * PAPER_POSITION_EXIT_POLICY.ordinaryReductionFraction, input.lotSize),
       );
       const quantity = roundLot(
         Math.min(available, targetQuantity),

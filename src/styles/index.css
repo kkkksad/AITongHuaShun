@@ -3676,6 +3676,31 @@ select:focus-visible {
   min-width: 0;
 }
 
+.paper-position-exit-rules {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.paper-position-exit-rules summary {
+  width: fit-content;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.paper-position-exit-rules > div {
+  min-width: 220px;
+  max-width: 360px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+
+.paper-position-exit-rules p {
+  margin: 6px 0;
+}
+
 .sort-tabs {
   display: flex;
   gap: 4px;

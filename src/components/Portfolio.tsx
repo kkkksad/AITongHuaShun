@@ -9,6 +9,7 @@ import {
 import { CircleDollarSign, PieChartIcon, TrendingUp, Zap } from "lucide-react";
 import type { PositionSnapshot, MarketSnapshot } from "../../shared/trading";
 import { PAPER_EXECUTION_STRATEGY_OPTIONS } from "../../shared/trading";
+import { PaperPositionExitRules } from "./PaperPositionExitRules";
 
 const entryStrategyLabels = new Map(PAPER_EXECUTION_STRATEGY_OPTIONS.map(option => [option.key, option.label]));
 
@@ -277,6 +278,7 @@ export function Portfolio({ positions, market, equity }: PortfolioProps) {
                         <small className="table-subline" title="本轮持仓的实际买入来源；不同策略加仓显示混合，记录不足显示未知。">
                           入场：{entryStrategyLabel(pos)}
                         </small>
+                        <PaperPositionExitRules averagePrice={pos.averagePrice} />
                       </td>
                       <td>{pos.quantity.toLocaleString("zh-CN")}</td>
                       <td>¥{pos.averagePrice.toFixed(2)}</td>
