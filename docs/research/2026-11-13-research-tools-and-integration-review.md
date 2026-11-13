@@ -14,6 +14,8 @@
 
 ## 本次新增授权与实际验收
 
+UTC18:57接续用户授权，重新读取官方plugins/skills/MCP正文并查询39项curated目录；已有四类工具及原验收记录覆盖当前浏览器、文档和离线研究用途，没有重复安装。本会话仍未暴露Context7/DevTools原生调用，先前独立stdio实际验收与原生热加载严格区分。没有专用逐股资金流/论坛技能可直接补齐合同，未将get_cash_flow误作主力流入；未新增生产依赖或付费服务。只读来源时间、SHA与结论见runtime/2026-11-13-plugin-followup.json；工具支持研究和排障，不证明策略盈利。
+
 用户再次明确允许下载获取有用插件。复核[官方插件](https://developers.openai.com/codex/plugins)、[技能](https://developers.openai.com/codex/skills)及[MCP文档](https://developers.openai.com/codex/mcp)正文；当前会话没有插件安装工具，采用官方技能安装器及Codex MCP配置命令，区分技能包、外部工具和生产能力。
 
 - **Jupyter研究技能**：官方`openai/skills`固定提交`77963424cd7687fd52e5fcfdd3f08d826ab9b1ab`，`skills/.curated/jupyter-notebook`；安装后12个文件与固定源逐字节一致，格式校验通过。独立用户工具环境安装固定`nbformat 5.11.1`、`nbclient 0.11.0`、`ipykernel 7.4.0`，顶层许可证BSD-3-Clause，36个完整依赖版本及下载哈希留存；未修改项目或服务器依赖。官方模板生成实验笔记后，使用已有冻结结果执行全部两段代码，验证216组完整结果保持和两次输出字节一致。没有新增收益结论；Windows运行有兼容/本地内核提示但无执行错误，内核随执行结束退出，不启动公开Notebook服务。

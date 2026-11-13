@@ -346,9 +346,16 @@ function candidatePlanQuantity(
   // The percentage is a target inside an already risk-scaled final cap. For
   // small paper accounts, a second shrink can make every valid lot impossible.
   // Admit only the smallest fee-efficient lot when it still fits that cap.
+  // Both reference and rounded execution principal must fit the same target.
+  const minimumPrincipal = minimumQuantity > 0
+    ? Math.max(
+      minimumQuantity * candidate.price,
+      projectedBuyCosts(candidate.price, minimumQuantity, commissionRate, minimumCommission, projection.slippageBps).notional,
+    )
+    : 0;
   const budgetedOrderLimit = Math.min(
     maxSingleOrderNotional,
-    Math.max(maxSingleOrderNotional * budgetRatio, minimumQuantity * candidate.price),
+    Math.max(maxSingleOrderNotional * budgetRatio, minimumPrincipal),
   );
   const candidateOrderQuantity = candidateQuantity(
     candidate,

@@ -1,5 +1,7 @@
 # 系统架构
 
+验证策略费用有效最小整手的内部目标覆盖参考本金和统一舍入执行本金中的较大值，再受原最终cap约束。最终数量仍复核完整现金、费用后权益及策略/费用资格；普通策略不新增计算，见[0125](../decisions/0125-validation-minimum-rounded-execution-principal.md)。
+
 Paper计划在本次调用内按候选对象复用排序和独立可负担筛选的初始定量，最终逐笔仍按重新选择的策略、剩余现金及费用后权益计算。无跨请求缓存、响应字段或交易条件变化，见[0124](../decisions/0124-paper-ranking-initial-sizing-reuse.md)。
 
 完成日线结构由既有服务端historicalEntryStructure生成，前端以可选unknown字段在CompletedPriceStructure内核验身份、时间和各项内部一致性后展示两个独立观察。保留原asOf，复用MarketRegimePanel既有查询与缓存，不新增数据源、评分或订单门槛，见[0122](../decisions/0122-completed-price-structure-observations.md)。
