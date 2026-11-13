@@ -7,6 +7,8 @@ import { validateSectorHistory } from "./sectorHistoryEvidence";
 import { normalizeSectorSnapshotResponse } from "./sectorSnapshotEvidence";
 import { analyzeHistoricalEntryStructure, type HistoricalEntryStructure } from "./historicalEntryStructure";
 import { buildStockHistoryCoverage, type StockHistoryCoverage } from "./stockHistoryCoverage";
+import { buildStockCorrelationEvidence } from "./stockCorrelationEvidence";
+import type { StockCorrelationEvidence } from "../../shared/paperPortfolioRisk";
 
 export interface HistoricalBar {
   date: string;
@@ -171,6 +173,7 @@ export interface MarketRegimeResearchReport {
   guardrails: string[];
   /** Original analysis cutoff and bounded identities; absent means unknown. */
   stockHistoryCoverage?: StockHistoryCoverage;
+  stockCorrelations?: StockCorrelationEvidence;
 }
 
 export interface AnalyzeMarketRegimeInput {
@@ -710,6 +713,9 @@ export function analyzeMarketRegimeData(
     provider: input.provider,
     sourceStatus,
     ...(stockHistoryCoverage ? { stockHistoryCoverage } : {}),
+    ...(input.provider === "akshare" ? { stockCorrelations: buildStockCorrelationEvidence({
+      history: input.stockHistory, selectedSymbols: [...input.stockNames.keys()], asOf, maxBars: days,
+    }) } : {}),
     source: {
       sectorSource: sectorResponse.source,
       sectorHistorySource: [...new Set(checkedSectors.series.map(series => series.source))].sort().join(" + ") || "unavailable",
@@ -769,7 +775,7 @@ function emptyBridgeResponses(): {
 
 function unavailableReport(input: BuildMarketRegimeResearchInput): MarketRegimeResearchReport {
   const empty = emptyBridgeResponses();
-  const { stockHistoryCoverage: _unobservedCoverage, ...report } = analyzeMarketRegimeData({
+  const { stockHistoryCoverage: _unobservedCoverage, stockCorrelations: _unobservedCorrelations, ...report } = analyzeMarketRegimeData({
     asOf: input.now,
     mode: input.mode,
     provider: input.marketDataProvider,

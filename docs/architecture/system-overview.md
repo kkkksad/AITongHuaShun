@@ -1,5 +1,7 @@
 # 系统架构
 
+原市场研究从原始响应生成可选stockCorrelations（≤12身份/66对），复用historicalCorrelation的完成日线及拒绝日期边界。Paper计划服务在原计划之后使用已读账户/持仓投影portfolioRisk，分开估值时点与缓存historyAsOf；页面复用同一响应，不增加请求或策略输入。当前只诊断已成交持仓，行业/相关性硬风控未接入，见[0119](../decisions/0119-filled-portfolio-common-risk-evidence.md)。
+
 A股日线输出volume统一为股，桥接仅将实际eastmoney-stock-history原生手转换，腾讯固定SDK已经输出股，其余市场不套用A股换算。缓存保存转换后序列、不改供应商frame；旧冻结数据必须继续携带与原SHA绑定的单位声明，见[0117](../decisions/0117-a-share-daily-volume-in-shares.md)。
 
 MarketRegimeResearchReport可选stockHistoryCoverage沿原ResearchInputDiagnostics进入Paper运行审计，保存≤12股选择/响应身份/校验接纳/足够完成日线代码及原分析asOf。严格嵌套、有界白名单复制；缓存复用保留原时点，外层回退/旧记录未知，不新增请求或交易条件，详见[0107](../decisions/0107-stock-history-identity-evidence.md)。后续[0108](../decisions/0108-archived-stock-history-identities.md)沿既有SQLite和认证七日摘要保存/再校验有限身份，不改变数据库模式、行数/字节上限或只读权限，发布状态见对应计划。

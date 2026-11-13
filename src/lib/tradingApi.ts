@@ -17,6 +17,7 @@ import type { PaperBuyExecutionProjection, PaperTradingPlanSizingDiagnostics } f
 import type { PaperNewPositionFunnel, PaperTradingStrategyCoverageMode } from "../../shared/paperTradingCoverage";
 import type { PaperCandidatePool } from "../../shared/paperCandidatePool";
 import type { DailyEntryCoverage } from "../../shared/dailyEntryCoverage";
+import type { PaperPortfolioRiskEvidence, StockCorrelationEvidence } from "../../shared/paperPortfolioRisk";
 import { ApiRequestError } from "./apiError";
 
 export interface HealthSnapshot {
@@ -722,6 +723,7 @@ export interface PaperTradingPlan {
   qualitySummary: PaperTradingPlanQualitySummary;
   operations: PaperTradingOperation[];
   candidatePool?: PaperCandidatePool;
+  portfolioRisk?: PaperPortfolioRiskEvidence;
   guardrails: string[];
 }
 
@@ -1144,6 +1146,7 @@ export interface StockRegimeResult {
 }
 
 export interface MarketRegimeResearchReport {
+  stockCorrelations?: StockCorrelationEvidence;
   generatedAt: string;
   mode: TradingMode;
   provider: string;

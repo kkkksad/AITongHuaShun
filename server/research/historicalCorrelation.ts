@@ -1,5 +1,6 @@
 import type { HistoricalSeries } from "./marketRegimeResearch";
 import { validateStrategyHistory } from "./strategyHistoryEvidence";
+import type { HistoricalCorrelationReport } from "../../shared/paperPortfolioRisk";
 
 const SAMPLE_LIMIT = 120;
 const MINIMUM_SAMPLES = 60;
@@ -22,8 +23,11 @@ function pearson(left: number[], right: number[]): number | null {
 }
 
 /** Read-only historical evidence, never a trade permission or a diversification guarantee. */
-export function buildHistoricalCorrelations(input: HistoricalSeries[], asOf: Date) {
-  const checked = validateStrategyHistory(input, { asOf, maxBars: 500 });
+export function buildHistoricalCorrelations(input: HistoricalSeries[], asOf: Date, options: {
+  requestedSymbols?: ReadonlySet<string>;
+  maxBars?: number;
+} = {}): HistoricalCorrelationReport {
+  const checked = validateStrategyHistory(input, { asOf, maxBars: 500, ...options });
   const histories = checked.series.map(item => {
     const validDates = new Set(item.bars.map(bar => bar.date));
     // Preserve known rejected dates so removal cannot manufacture a longer return sample.

@@ -39,6 +39,7 @@ import { assertPaperExecutionRevision } from "../trading/paperExecutionContext";
 import { executionCosts, hasSufficientCash } from "../broker/executionCosts";
 import { BackgroundResearchCache } from "./backgroundResearchCache";
 import type { BackgroundResearchFallback } from "./backgroundResearchCache";
+import { buildPaperPortfolioRisk } from "./paperPortfolioRisk";
 
 const PAPER_RESEARCH_CACHE_TTL_MS = 30_000;
 const PAPER_DEGRADED_RESEARCH_CACHE_TTL_MS = 5_000;
@@ -559,7 +560,10 @@ export async function buildCurrentPaperTradingPlan(input: {
   });
 
   return {
-    plan,
+    plan: { ...plan, portfolioRisk: buildPaperPortfolioRisk({
+      positions, equity: account.equity, valuationAsOf: snapshot.marketTime, asOf,
+      correlations: marketRegimeResearch.stockCorrelations,
+    }) },
     leaderboard,
     candidates,
     qualityStocks,

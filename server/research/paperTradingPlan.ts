@@ -41,6 +41,7 @@ import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 import { executionCosts, hasSufficientCash } from "../broker/executionCosts";
 import type { PaperCandidatePool } from "../../shared/paperCandidatePool";
 import { buildPaperCandidatePool } from "./paperCandidatePool";
+import type { PaperPortfolioRiskEvidence } from "../../shared/paperPortfolioRisk";
 
 export type PaperTradingOperationAction =
   | "observe"
@@ -162,6 +163,7 @@ export interface PaperTradingPlan {
   qualitySummary: PaperTradingPlanQualitySummary;
   operations: PaperTradingOperation[];
   candidatePool?: PaperCandidatePool;
+  portfolioRisk?: PaperPortfolioRiskEvidence;
   guardrails: string[];
 }
 

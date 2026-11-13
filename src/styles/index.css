@@ -2911,6 +2911,10 @@ select:focus-visible {
 .paper-candidate-table th:first-child { min-width: 125px; }
 .paper-candidate-table td { min-width: 180px; max-width: 360px; }
 .paper-candidate-table small { display: block; margin-bottom: 3px; color: var(--text-muted); font-size: 10px; }
+.paper-portfolio-risk { min-width: 0; }
+.paper-portfolio-risk details { min-width: 0; }
+.paper-portfolio-risk summary { cursor: pointer; margin-bottom: 10px; }
+.paper-portfolio-risk .paper-candidate-table + .paper-candidate-table { margin-top: 12px; }
 
 .learning-run-list article {
   display: flex;

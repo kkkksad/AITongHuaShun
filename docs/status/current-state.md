@@ -2,6 +2,8 @@
 
 **核对日期：** 2026-11-13（北京时间；新一轮截止11月14日08:00）
 
+持仓共同风险[0119](../decisions/0119-filled-portfolio-common-risk-evidence.md)本地验证通过、待发布：复用已请求原始完成日线及当前账户，区分股票市值/权益与持仓内比例，显示≤12股/66对历史相关性、原历史截止和未知原因。新增33后端/8前端，完整3191后端、460前端、TS/Vite及24组隔离Chrome通过；32组新旧市场报告与原计划运行源码保持。仅解释已成交持仓，不含挂单/拟买，行业与相关性硬限额仍未启用，没有新数据请求或收益/速度改善结论；验收见[子计划](../plans/2026-11-13-portfolio-common-risk-evidence.md)。
+
 新增[进取档与七市况覆盖核查](../research/2026-11-13-allocation-and-regime-coverage-review.md)：实际growth/auto、零固定留存，单股25%、单笔名义100000；当前四股成本7088/初始20000=35.44%，不冒充最新市值占比。自动低/高波震荡缩放0.45/0.25且不重复加仓，风险恢复虽列策略名仍禁新增；未认定经济最优或改默认。新增H/I/J已进入[夜间计划](../plans/2026-11-13-overnight-strategy-lifecycle-optimization.md)与原ACTIVE自动化。四项[技能及工具](../research/2026-11-13-research-tools-and-integration-review.md)已落地/验证，Playwright0.1.24浏览器公开登录页冒烟通过；未安装新行情MCP、Qlib/VeighNa或调用外部模型，没有交易收益/速度改善结论。
 
 隔夜持续性拒绝细项[0118](../decisions/0118-entry-persistence-failed-subconditions.md)源码a08d719已推送部署：保持原放行/主要ruleCheck，只给已拒绝候选解释实际未过的历史数量、置信度/样本、区间和均线子条件；旧11轮未保留数值仍未知。新增21项、15360确定性原布尔对照和原函数文本比较、完整192文件3158后端与TS/Vite通过；实际生产API镜像禁网3158及866文件/全部发布保护/动态经济和风险摘要/上一af44f22材料通过，桥接保持。行业来源[初查](../research/2026-11-13-industry-source-contract-review.md)确认固定SDK可读当前f127但缺分类生效日，本地四股有界读取仅工商身份/行业成功，其余HTTP失败保持未知；[固定历史六对相关性](../research/2026-11-13-held-stock-correlation-review.md)工商/农业为0.8605，属止于11月10日旧样本，不是实时相关性。行业/相关性硬上限仍未接入。

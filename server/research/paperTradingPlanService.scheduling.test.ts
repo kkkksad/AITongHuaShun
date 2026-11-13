@@ -8,6 +8,7 @@ import { buildUnavailableExternalMarketImpact } from "./externalMarketImpact";
 import { buildUnavailableStrategyLeaderboard } from "./strategyLeaderboard";
 import { InMemoryResearchStore } from "./researchStore";
 import { buildResearchInputDiagnostics } from "./researchInputDiagnostics";
+import { buildStockCorrelationEvidence } from "./stockCorrelationEvidence";
 
 const builders = vi.hoisted(() => ({ core: vi.fn(), news: vi.fn(), external: vi.fn(), leaderboard: vi.fn() }));
 vi.mock("./marketRegimeResearch", async (original) => ({
@@ -48,6 +49,49 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("Paper research resource ordering", () => {
+  it("adds current portfolio evidence without another core read or changing cached history time, orders or risk", async () => {
+    const request = input();
+    const evidence = buildStockCorrelationEvidence({ history: { provider: "akshare", source: "fixture",
+      fetchedAt: date.toISOString(), series: [], warning: null }, selectedSymbols: ["600010"], asOf: date, maxBars: 180 });
+    builders.core.mockImplementation(async value => ({ ...buildUnavailableMarketRegimeResearch(value, "fixture"), stockCorrelations: evidence }));
+    const orders = request.system.broker.getOrders();
+    const first = await buildCurrentPaperTradingPlan(request);
+    const later = new Date(date.getTime() + 1000);
+    const second = await buildCurrentPaperTradingPlan({ ...request, now: later });
+    expect(builders.core).toHaveBeenCalledOnce();
+    expect(first.plan.portfolioRisk).toMatchObject({ scope: "current-filled-holdings", holdingCount: 0,
+      investedRatio: 0, historyAsOf: date.toISOString() });
+    expect(second.plan.portfolioRisk?.historyAsOf).toBe(date.toISOString());
+    expect(second.plan.portfolioRisk?.valuationAsOf).toBe(second.plan.generatedAt);
+    const { portfolioRisk: _risk, ...plain } = second.plan;
+    const { portfolioRisk: _oldRisk, ...oldPlain } = first.plan;
+    expect(plain).toEqual(oldPlain);
+    expect(request.system.broker.getOrders()).toEqual(orders);
+    expect(request.system.store.getCash()).toBe(first.plan.account.cash);
+  });
+  it("recalculates current holding values while retaining one cached historical response", async () => {
+    const request = input();
+    const account = request.system.broker.getAccount();
+    const positions = ["600010", "600011"].map(symbol => ({ symbol, name: symbol, quantity: 100,
+      averagePrice: 10, currentPrice: 10, marketValue: 1000, weight: 0.99, unrealizedPnl: 0, realizedPnl: 0 }));
+    vi.spyOn(request.system.broker, "getPositions").mockReturnValueOnce(positions)
+      .mockReturnValue(positions.map(position => ({ ...position, currentPrice: 20, marketValue: 2000 })));
+    vi.spyOn(request.system.broker, "getAccount").mockReturnValueOnce({ ...account, equity: 20000, cash: 18000, marketValue: 2000 })
+      .mockReturnValue({ ...account, equity: 22000, cash: 18000, marketValue: 4000 });
+    const correlations = buildStockCorrelationEvidence({ history: { provider: "akshare", source: "fixture",
+      fetchedAt: date.toISOString(), series: [], warning: null }, selectedSymbols: ["600010", "600011"], asOf: date, maxBars: 180 });
+    builders.core.mockImplementation(async value => ({ ...buildUnavailableMarketRegimeResearch(value, "fixture"), stockCorrelations: correlations }));
+    const cash = request.system.store.getCash();
+    const first = await buildCurrentPaperTradingPlan(request);
+    const second = await buildCurrentPaperTradingPlan({ ...request, now: new Date(date.getTime() + 1000) });
+    expect(builders.core).toHaveBeenCalledOnce();
+    expect(first.plan.portfolioRisk?.investedRatio).toBe(0.1);
+    expect(second.plan.portfolioRisk?.investedRatio).toBeCloseTo(4000 / 22000, 12);
+    expect(second.plan.portfolioRisk?.holdings.map(row => row.stockWeight)).toEqual([0.5, 0.5]);
+    expect(second.plan.portfolioRisk?.historyAsOf).toBe(date.toISOString());
+    expect(request.system.broker.getOrders()).toEqual([]);
+    expect(request.system.store.getCash()).toBe(cash);
+  });
   it("retains the original identity evidence cutoff when a later plan shares the core cache", async () => {
     const request = input();
     const coverage = { scope: "regime-stock-history" as const, asOf: date.toISOString(),

@@ -15,6 +15,7 @@ import { PAPER_EXECUTION_STRATEGY_CHOICES } from "../../shared/trading";
 import type { PipelineStage } from "../types";
 import { ResearchQueryState } from "./ResearchQueryState";
 import { PaperCandidatePoolPanel } from "./PaperCandidatePoolPanel";
+import { PaperPortfolioRiskPanel } from "./PaperPortfolioRiskPanel";
 import { PaperHistoryArchivePanel } from "./PaperHistoryArchivePanel";
 import {
   adaptivePostureLabel,
@@ -735,6 +736,7 @@ export default function LearningPipeline() {
               )}
             </div>
           )}
+          {paperPlan && <PaperPortfolioRiskPanel risk={paperPlan.portfolioRisk} />}
           {paperPlan?.strategyProfile && (
             <div className="learning-plan-summary">
               <strong>{paperPlan.strategyProfile.label}档位</strong>
