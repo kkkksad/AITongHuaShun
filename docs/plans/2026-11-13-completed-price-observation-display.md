@@ -33,11 +33,12 @@
 
 ## Task 3：逐模块发布
 
-- [ ] 捕获新鲜完整经济/风险与三容器基线；独立提交、成功推送、HEAD=upstream/干净树后使用现有helper发布。
-- [ ] 核验实际上传文件哈希/SHA、三健康、可信双域HTTPS/匿名401、完整经济/风险、上一f7a7b8b源码/三镜像/私有导出/覆盖拒绝；API/桥接未改须严格保持容器镜像，网页使用新镜像。
-- [ ] 一次文档回执并核对三个已验容器保持，不递归回执；写handoff接续E/I/H。
+- [x] 捕获新鲜完整经济/风险与三容器基线；独立提交、成功推送、HEAD=upstream/干净树后使用现有helper发布。
+- [x] 核验实际上传文件哈希/SHA、三健康、可信双域HTTPS/匿名401、完整经济/风险、上一f7a7b8b源码/三镜像/私有导出/覆盖拒绝；API/桥接未改须严格保持容器镜像，网页使用新镜像。
+- [x] 形成唯一文档回执，回执发布与三个已验容器保持的最终结果仅写runtime/2026-11-13-price-observation-receipt-summary.json及handoff；不递归回执，随后接续E/I/H。
 
 ## 流水
 
 - UTC17:32复核后登记。用户再次允许下载；既有Playwright、Jupyter及Context7已有实际验收，未重复安装。当前会话原生Context7工具仍未暴露；配置与实际匿名读取不能当作已热加载。
 - UTC17:46前本地验收通过：新增49项（46组件/3面板交互）、完整67文件509前端、server/app TypeScript及Vite；18组隔离Chrome和48组真实服务端结构兼容通过。没有服务端/Python/归档源码变化，原3213/308/41及实际API镜像验证继承。经济及风险基线新鲜保存release-before.json，尚待推送发布。
+- UTC17:47直接推送低速失败，临时可信SSH SOCKS远端DNS与正常TLS推送恢复；58e64ca6026f220314f35c47159c131cd9b8dcb7推送/部署均exit0。UTC17:50全部验收：889实际归档文件/哈希、三健康、双域六次可信HTTPS/匿名401、完整经济/风险保持、上一f7a7b8b源码/三镜像及私有导出拒绝覆盖通过，API/桥接容器镜像严格保持。实际网页新产物MarketRegimePanel-CIdiN_fd.js内四标签存在且公网可信HTTPS字节与容器完全一致，SHA5d68a359bd64a64a93421f914a55d3fee451951f2f7a87df9025f6106249c338。源码验收证据runtime/2026-11-13-price-observation-release-summary.json和-production-web.json；本次只做一次文档回执，最终结果不再递归提交。
