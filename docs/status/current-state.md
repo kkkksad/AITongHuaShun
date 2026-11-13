@@ -1,5 +1,7 @@
 # 当前状态
 
+通知等待账本边界[0130](../decisions/0130-notification-wait-ledger-consistency.md)本地完成、待独立发布：预检后通知期间的外部订单/资金变化使执行器watch-only，保留外部成功操作。原0129捕获比较抽为共享函数；两Store旧版14失败/4控制、163相关、201文件3438后端及server/app TS/Vite通过；24组完整旧/新服务输出和经济输入保持、外部读取0。日期/时段早退、正常报价/审计/风险观察及自己的两笔成交控制保持；无策略/收益结论变化，见[计划](../plans/2026-11-13-executor-notification-ledger-consistency.md)。前端509/桥接308/归档41无改继承。
+
 Paper计划账本等待边界[0129](../decisions/0129-paper-plan-ledger-wait-consistency.md)源码e84b5b8已推送部署并验收：研究前后资金/订单变化使旧计划409，执行器watch-only，正常使用冻结订单。真实两Store旧版24失败/2控制、111相关、本地及实际运行API不可变镜像禁网200文件3420后端、server/app TS/Vite通过；24组完整旧/新结果及经济输入保持、外部读取0。911实际归档文件、全部发布保护、动态完整经济/风险及上一703dcdd材料通过，桥接容器/镜像及网页镜像保持，详见[计划](../plans/2026-11-13-paper-plan-ledger-consistency.md)。覆盖实际10000笔之外的旧挂单，不修改外部成功操作或策略默认；前端509/桥接308/归档41无改继承，未称收益或生产延迟改善。
 
 入场纪律阻塞策略来源[0128](../decisions/0128-blocked-entry-strategy-provenance.md)源码4b64e9f已推送部署并验收：仅复制已选candidate.strategyKey到原blocked记录，后续跳过审计保留来源，旧来源未知不回填。有效旧版反例7失败/24控制，相关69、本地及实际运行API不可变镜像禁网199文件3393后端、server/app TS/Vite通过；1152组完整计划仅288条新增来源，其余完整输出保持。908实际归档文件、全部发布保护、动态完整经济/风险及上一6ea904e材料通过，桥接容器/镜像和网页镜像保持；唯一文档回执见[计划](../plans/2026-11-13-blocked-entry-strategy-provenance.md)。blocked不计入成交使用数；前端509/桥接308/归档41无改继承。本项改善复盘归因，不改策略默认，没有收益改善结论。

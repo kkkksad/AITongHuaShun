@@ -43,7 +43,7 @@ import {
 } from "./intradayExecutionPolicy";
 import { getPaperStrategyProfilePolicy } from "./paperStrategyProfile";
 import { getOrderFillTime } from "./orderFillTime";
-import { assertPaperExecutionRevision, PaperExecutionContextChangedError } from "./paperExecutionContext";
+import { assertPaperExecutionRevision, assertPaperLedgerContext, capturePaperLedgerContext, PaperExecutionContextChangedError } from "./paperExecutionContext";
 import { PaperExecutionTimer } from "./paperExecutionTiming";
 import type { PaperExecutionTiming } from "../../shared/paperExecutionTiming";
 import { derivePaperSkipBlockerStage, selectPaperSkipEvidence, type PaperSkipBlockerStage } from "./paperSkipEvidence";
@@ -1125,8 +1125,11 @@ export class PaperAutoExecutor {
           }),
         },
       };
+      const notificationLedgerContext = this.options.planNotifier
+        ? capturePaperLedgerContext(this.options.system.store) : null;
       if (this.options.planNotifier) await timing.measure("notificationMs", () => this.options.planNotifier!.notify(plan, notificationContext));
       assertExecutionContext();
+      if (notificationLedgerContext) assertPaperLedgerContext(this.options.system.store, notificationLedgerContext);
 
       let executionTimeStopped = false;
       if (this.options.enabled) timing.measureSync("executionMs", () => {

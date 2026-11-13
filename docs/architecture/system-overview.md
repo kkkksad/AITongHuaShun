@@ -1,5 +1,7 @@
 # 系统架构
 
+Paper执行器在原notify await前按需捕获共享PaperLedgerContext，返回先复核原账户控制再比较账本；变化watch-only并保留外部已成功操作，无通知时不增加捕获。共享函数同时供0129计划使用，保留日期/时段早退和自己的整批成交；不覆盖全部同步回调并发，见[0130](../decisions/0130-notification-wait-ledger-consistency.md)。
+
 Paper计划在首次研究await前冻结最近10000笔订单、全部pending订单平面副本及总/可用现金；返回（含降级）后先复核原控制修订，再精确比较账本，变化抛原409冲突并由执行器watch-only处理，正常计划使用冻结orders。只保护本次研究等待，不承诺后续通知或跨进程事务，见[0129](../decisions/0129-paper-plan-ledger-wait-consistency.md)。
 
 离线下一开盘共享资金研究在完成收盘回调后复制并校验整批本股market意图：buy/sell、显式数量有限非负、显式权重0至1且至少一种定量。坏批次不进入pending，最终沿原failures使研究失败；零值、quantity=0权重回退、整手和合法风险拒单保持。线上计划和普通BacktestEngine容错政策不变，见[0127](../decisions/0127-native-next-open-research-intent-contract.md)。
