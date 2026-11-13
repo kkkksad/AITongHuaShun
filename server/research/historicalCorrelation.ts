@@ -31,9 +31,12 @@ export function buildHistoricalCorrelations(input: HistoricalSeries[], asOf: Dat
   const histories = checked.series.map(item => {
     const validDates = new Set(item.bars.map(bar => bar.date));
     // Preserve known rejected dates so removal cannot manufacture a longer return sample.
+    // Dates outside the retained envelope cannot fall inside any retained interval.
+    const firstDate = item.bars[0]?.date, lastDate = item.bars.at(-1)?.date;
     const rejectedDates = [...new Set(input.find(source => source && source.symbol === item.symbol)!.bars
       .filter(bar => bar && typeof bar.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(bar.date) && !validDates.has(bar.date))
-      .map(bar => bar.date))];
+      .map(bar => bar.date))].filter(date => firstDate !== undefined && lastDate !== undefined &&
+        firstDate < date && date < lastDate);
     const intervals = new Map<string, ReturnInterval>();
     let excludedIntervals = 0;
     for (let index = 1; index < item.bars.length; index++) {

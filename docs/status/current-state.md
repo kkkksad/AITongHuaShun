@@ -2,6 +2,8 @@
 
 **核对日期：** 2026-11-13（北京时间；新一轮截止11月14日08:00）
 
+相关性窗口比较[0121](../decisions/0121-correlation-rejected-dates-inside-retained-window.md)本地完成：只裁剪不可能位于保留相邻区间内部的拒绝日期，窗口内坏行屏障保持。原47目标旧/新均通过、96纯函数及32完整报告/输入保持，完整3213后端与TS/Vite通过；固定12股/180预算CPU中位20.00→16.06ms，完整同步分析48.58→45.53ms，不是生产P95或页面提速比例，待[子计划](../plans/2026-11-13-correlation-retained-window-performance.md)发布验收。此前离线退出修复一次回执097ec8a已UTC17:13推送部署，882文件及全部保护/已测三容器严格保持，不再递归回执。
+
 离线退出研究观察边界[0120](../decisions/0120-exit-research-observations-before-callbacks.md)源码5022aff已推送部署：非native包装器现先校验完成观察再回调，避免丢弃意图后仍污染原策略状态。22新增旧版20失败/2控制，目标100、完整194文件3213后端及TS/Vite、实际生产API镜像禁网3213项通过；两次216组逐字节一致、6024笔独立重建，全部经济/交易/诊断与旧报告保持。882实际上传文件、三健康/可信双域HTTPS/匿名401、动态完整经济/风险摘要、上一80a73a4源码/三镜像及导出保护通过，原桥接保持。不改变线上默认，不归因为历史亏损；本次只做一次文档回执，见[子计划](../plans/2026-11-13-exit-research-observation-gate.md)。
 
 新增[本地工具验收](../research/2026-11-13-research-tools-and-integration-review.md)：官方Jupyter技能12文件对固定源一致、独立环境实际执行两代码格/216组；Context7文档MCP已注册、实际匿名完成initialize/list/resolve/query，未声明当前会话原生热加载或OAuth授权。没有新增生产依赖、资金流/论坛接口或收益结论。

@@ -1,5 +1,7 @@
 # 系统架构
 
+historicalCorrelation仍从原始拒绝日期阻断跨坏行收益，仅去掉不可能落入保留日期开区间的日期，减少逐区间重复比较；完整输出、警告及时间边界保持，无新缓存/请求/交易条件，见[0121](../decisions/0121-correlation-rejected-dates-inside-retained-window.md)。
+
 原市场研究从原始响应生成可选stockCorrelations（≤12身份/66对），复用historicalCorrelation的完成日线及拒绝日期边界。Paper计划服务在原计划之后使用已读账户/持仓投影portfolioRisk，分开估值时点与缓存historyAsOf；页面复用同一响应，不增加请求或策略输入。当前只诊断已成交持仓，行业/相关性硬风控未接入，见[0119](../decisions/0119-filled-portfolio-common-risk-evidence.md)。
 
 A股日线输出volume统一为股，桥接仅将实际eastmoney-stock-history原生手转换，腾讯固定SDK已经输出股，其余市场不套用A股换算。缓存保存转换后序列、不改供应商frame；旧冻结数据必须继续携带与原SHA绑定的单位声明，见[0117](../decisions/0117-a-share-daily-volume-in-shares.md)。
