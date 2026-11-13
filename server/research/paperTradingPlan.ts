@@ -235,6 +235,7 @@ function candidateQuantity(
     Math.min(maxSingleOrderNotional, Math.max(0, cash - minimumFee)) / price,
     lotSize,
   );
+  if (!Number.isSafeInteger(quantity)) return 0;
   const fitsBudget = (shares: number) => {
     const notional = shares * price;
     const commission = estimatedCommission(notional, commissionRate, minimumCommission);
@@ -248,7 +249,7 @@ function candidateQuantity(
   };
   // Division can lose an exact-fit lot to binary noise. The adjacent lot still
   // must satisfy the strict principal cap and the broker's cash comparison.
-  if (fitsBudget(quantity + lotSize)) quantity += lotSize;
+  if (Number.isSafeInteger(quantity + lotSize) && fitsBudget(quantity + lotSize)) quantity += lotSize;
   if (quantity >= lotSize && fitsBudget(quantity)) return quantity;
   // Static buy debit and weighted exposure are monotone in whole lots. Keep
   // large research accounts bounded instead of decrementing every rejected lot.
