@@ -2426,6 +2426,67 @@ class TestResearchDataNormalization:
         assert series.bars[0].close == 10.8
 
 
+class TestDailyVolumeContract:
+    @staticmethod
+    def frame(volume=100):
+        return pd.DataFrame([{"日期": "2026-11-06", "开盘": 10.0, "最高": 12.0,
+            "最低": 9.0, "收盘": 11.0, "成交量": volume, "成交额": 110000.0}])
+
+    @staticmethod
+    def normalize(frame, source="eastmoney-stock-history"):
+        return normalize_history_dataframe(frame, "600036", "test", source, "qfq", 180)
+
+    def test_daily_volume_contract_matches_same_trade_across_actual_providers(self):
+        east = self.normalize(self.frame(100))
+        tx = self.normalize(self.frame(10000), "tencent-stock-history")
+        assert east.bars[0].volume == tx.bars[0].volume == 10000
+        assert east.bars[0].model_dump() == tx.bars[0].model_dump()
+        assert east.source == "eastmoney-stock-history" and tx.source == "tencent-stock-history"
+        assert east.adjustment == tx.adjustment == "qfq"
+
+    @pytest.mark.parametrize("lots,shares", [(0, 0), (1, 100), (100, 10000), (0.5, 50), (1e16, 1e18)])
+    def test_daily_volume_contract_converts_only_eastmoney_lots(self, lots, shares):
+        bar = self.normalize(self.frame(lots)).bars[0]
+        assert bar.volume == shares
+        assert (bar.date, bar.open, bar.high, bar.low, bar.close, bar.amount) == (
+            "2026-11-06", 10, 12, 9, 11, 110000)
+
+    @pytest.mark.parametrize("source", ["tencent-stock-history", "eastmoney-hk-history",
+        "eastmoney-sector-history", "sina-futures-history", "unknown-test-source"])
+    def test_daily_volume_contract_does_not_rescale_other_sources(self, source):
+        assert self.normalize(self.frame(10000), source).bars[0].volume == 10000
+
+    def test_daily_volume_contract_does_not_mutate_or_repeatedly_scale_provider_frame(self):
+        frame = self.frame(100)
+        before = frame.copy(deep=True)
+        first, second = self.normalize(frame), self.normalize(frame)
+        assert first.bars[0].volume == second.bars[0].volume == 10000
+        pd.testing.assert_frame_equal(frame, before)
+
+    def test_daily_volume_contract_keeps_valid_neighbor_when_scaling_overflows(self):
+        frame = pd.concat([self.frame(1e308), self.frame(100)], ignore_index=True)
+        frame.loc[1, "日期"] = "2026-11-09"
+        bars = self.normalize(frame).bars
+        assert len(bars) == 1
+        assert bars[0].date == "2026-11-09" and bars[0].volume == 10000
+
+    def test_daily_volume_contract_reuses_normalized_http_cache_without_double_scaling(self):
+        with patch("main.fetch_stock_history_dataframe", return_value=(self.frame(), "eastmoney-stock-history")) as fetch:
+            first = client.get("/api/market/stock-history?symbols=600036&days=180")
+            second = client.get("/api/market/stock-history?symbols=600036&days=180")
+        assert first.status_code == second.status_code == 200
+        assert first.json()["series"][0]["bars"][0]["volume"] == 10000
+        assert second.json()["series"][0]["bars"][0]["volume"] == 10000
+        assert fetch.call_count == 1
+
+    def test_daily_volume_contract_all_overflowed_rows_are_explicitly_unavailable(self):
+        with patch("main.fetch_stock_history_dataframe", return_value=(self.frame(1e308), "eastmoney-stock-history")):
+            response = client.get("/api/market/stock-history?symbols=600036&days=180")
+        assert response.status_code == 200
+        assert response.json()["series"] == []
+        assert "无有效日线" in response.json()["warning"]
+
+
 class TestMarketQuoteModel:
     def test_model_serialization(self):
         quote = MarketQuote(

@@ -1,5 +1,7 @@
 # 本地开发
 
+A股日线volume在桥接归一化边界统一为股：实际东财日线手×100，固定SDK已归一化的腾讯股保持；原frame/价格/金额/日期与缓存复用保持，转换溢出逐行排除，见[0117](../decisions/0117-a-share-daily-volume-in-shares.md)。旧冻结文件仍按其SHA绑定的显式单位声明解释，新生产捕获为shares，不按来源名重复乘100。
+
 股票/指数缓存核心price/previousClose/changePercent非有限时逐行跳过，可选数值非有限为None，避免非法数字进入报价响应；腾讯指定报价复用原parser，见[0114](../decisions/0114-finite-stock-index-quote-fields.md)。30新增涵盖严格JSONResponse和真实HTTP部分返回，本地272/1固定SDK跳过、Ubuntu273通过。价格/金额fixture先显式float才能向pandas列注入inf；旧版隔离测试在相同有效夹具下30项失败。没有新抓取、价格门槛或权限变化。
 
 QuoteCache/IndexCache逐行数值解析同时隔离ValueError/TypeError/OverflowError；单行无限量不可阻断合法邻股更新，坏行原报价时间不重写，全坏仍沿原失败冷却，见[0113](../decisions/0113-quote-row-numeric-overflow-isolation.md)。新增24项（旧版16失败/8控制），本地242/1固定SDK跳过、Ubuntu同版243通过；无新增来源抓取、并发或交易权限。

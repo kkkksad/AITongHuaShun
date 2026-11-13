@@ -2388,13 +2388,21 @@ def normalize_history_dataframe(
         if not date or min(open_price, high, low, close) <= 0:
             continue
 
+        volume = max(0, parse_float(first_existing(row, ("成交量", "volume", "amount"), 0)))
+        if source == "eastmoney-stock-history":
+            # The pinned EastMoney SDK returns lots; Tencent already returns
+            # shares. Normalize before caching without mutating provider rows.
+            volume *= 100
+            if not math.isfinite(volume):
+                continue
+
         bars.append(HistoricalBar(
             date=date,
             open=open_price,
             high=high,
             low=low,
             close=close,
-            volume=max(0, parse_float(first_existing(row, ("成交量", "volume", "amount"), 0))),
+            volume=volume,
             amount=parse_optional_float(first_existing(row, ("成交额", "amount"), None)),
             changePercent=parse_optional_float(first_existing(row, ("涨跌幅",), None)),
             turnover=parse_optional_float(first_existing(row, ("换手率",), None)),

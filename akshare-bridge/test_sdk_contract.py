@@ -47,6 +47,8 @@ with patch("requests.request", side_effect=transport):
     assert source == "eastmoney-stock-history"
     series = main.normalize_history_dataframe(frame, "600036", "test", source, "qfq", 180)
     assert len(series.bars) == 1 and series.bars[0].close == 11
+    assert frame.iloc[0]["成交量"] == 100
+    assert series.bars[0].volume == 10000 and series.bars[0].amount == 110000
     assert series.adjustment == "qfq"
     with patch("main.ak.stock_zh_a_hist", side_effect=RuntimeError("offline")):
         # The metadata helper performs an unrelated request; isolate only it.
@@ -55,6 +57,8 @@ with patch("requests.request", side_effect=transport):
     assert source == "tencent-stock-history"
     series = main.normalize_history_dataframe(frame, "600036", "test", source, "qfq", 180)
     assert len(series.bars) == 1 and series.bars[0].close == 11
+    assert frame.iloc[0]["volume"] == 10000
+    assert series.bars[0].volume == 10000
     assert series.adjustment == "qfq"
 assert len(seen) == 2
 empty_primary = True
@@ -63,6 +67,8 @@ with patch("requests.request", side_effect=transport):
         frame, source = main.fetch_stock_history_dataframe("600036", "20260101", "20261109")
 assert source == "tencent-stock-history"
 assert len(frame) == 1
+series = main.normalize_history_dataframe(frame, "600036", "test", source, "qfq", 180)
+assert series.bars[0].volume == 10000
 assert len(seen) == 4
 assert "eastmoney.com" in seen[2][0] and "qq.com" in seen[3][0]
 print("real SDK contracts and network timeouts verified")
