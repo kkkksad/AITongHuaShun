@@ -24,7 +24,7 @@
 - [x] 最小实现：原volume提取结果保持；仅 `source == "eastmoney-stock-history"` 时乘100并用math.isfinite过滤换算溢出，之后赋给HistoricalBar。Tencent已经是股、其他市场原值、输入DataFrame和缓存路径不变。
 - [x] 跑本地Python全套；将本地待提交源码及全部桥接测试仅挂入临时禁网Linux测试容器，以生产同版SDK验证。另跑完整后端及TS/Vite，前端无改继承452项。
 - [x] 更新文档：新生产A股日线volume均为股；旧冻结文件SHA绑定原生手声明继续有效，新增冻结输入必须显式声明股，禁止按source名字盲目再乘100。旧研究结果不重标/重写。
-- [ ] 独立提交推送exit0、部署，核对完整发布保护和动态经济/风险摘要。生产桥接镜像禁网跑全套，API/网页运行内容无改应核对复用。一次文档回执后再接下一模块。
+- [x] 独立提交推送exit0、部署，核对完整发布保护和动态经济/风险摘要。生产桥接镜像禁网跑全套，API/网页运行内容无改应核对复用。一次文档回执后再接下一模块。
 
 ## 验收边界
 
@@ -34,3 +34,5 @@
 
 - UTC14:45起核对总计划与接续状态。A/B已完成，开始C的第一个可复现来源单位模块。
 - 15新增旧版9失败/6正常控制；固定SDK Linux选择性旧版另含真实传输，共10失败/6控制。最小修复后本地307通过/1非固定SDK跳过、Linux308全通过、完整191文件3137后端与TS/Vite通过。日志runtime/2026-11-13-daily-volume-{before,original-linux,python,linux,server,build}.log。准备推送部署，不提前称上线。
+- UTC14:58核验：bfc1d1b8d041ca40007ab6f3bfeedd960733b515已推送exit0、部署exit0，861实际归档文件、三健康、双域六次可信HTTPS/匿名401通过；动态完整经济/风险摘要保持，已测API/网页容器和镜像保持，实际生产桥接镜像禁网308项通过。上一3bbd4bc源码/三镜像及私有导出/覆盖拒绝通过。证据runtime/2026-11-13-daily-volume-release-summary.json及相邻verification/https/retained/before/after/production-bridge文件。
+- 接下来只发布本次一次文档回执并核对已测三容器保持，随后转D行业合同与入场持续性细项；不递归新增发布回执。
