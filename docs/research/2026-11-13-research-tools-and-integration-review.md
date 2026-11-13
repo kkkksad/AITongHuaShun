@@ -14,7 +14,7 @@
 
 ## 本次新增授权与实际验收
 
-UTC18:57接续用户授权，重新读取官方plugins/skills/MCP正文并查询39项curated目录；已有四类工具及原验收记录覆盖当前浏览器、文档和离线研究用途，没有重复安装。本会话仍未暴露Context7/DevTools原生调用，先前独立stdio实际验收与原生热加载严格区分。没有专用逐股资金流/论坛技能可直接补齐合同，未将get_cash_flow误作主力流入；未新增生产依赖或付费服务。只读来源时间、SHA与结论见runtime/2026-11-13-plugin-followup.json；工具支持研究和排障，不证明策略盈利。
+UTC18:57接续用户授权，重新读取官方plugins/skills/MCP正文并查询39项curated目录；已有四类工具及原验收记录覆盖当前浏览器、文档和离线研究用途，没有重复安装。随后再验DevTools388文件、Jupyter技能12文件、LCP技能5文件与此前固定版本清单全匹配，Context7官方端点及DevTools绝对可执行路径检查通过。本会话仍未暴露Context7/DevTools原生调用，先前独立stdio实际验收与原生热加载严格区分。没有专用逐股资金流/论坛技能可直接补齐合同，未将get_cash_flow误作主力流入；未新增生产依赖或付费服务。只读来源时间、SHA与结论见runtime/2026-11-13-plugin-followup.json；工具支持研究和排障，不证明策略盈利。
 
 用户再次明确允许下载获取有用插件。复核[官方插件](https://developers.openai.com/codex/plugins)、[技能](https://developers.openai.com/codex/skills)及[MCP文档](https://developers.openai.com/codex/mcp)正文；当前会话没有插件安装工具，采用官方技能安装器及Codex MCP配置命令，区分技能包、外部工具和生产能力。
 
