@@ -1,6 +1,6 @@
 # 当前状态
 
-入场纪律阻塞策略来源[0128](../decisions/0128-blocked-entry-strategy-provenance.md)本地验证完成，待独立发布：仅复制已选candidate.strategyKey到原blocked记录，后续跳过审计保留来源，旧来源未知不回填。有效旧版反例7失败/24控制，相关69、本地199文件3393后端、server/app TS/Vite通过；1152组完整计划仅288条新增来源，其余完整输出保持。真实本地执行器确认没有订单、经济/持仓/风险变化，blocked不计入成交使用数；前端509/桥接308/归档41无改继承，发布及实际镜像验收见[计划](../plans/2026-11-13-blocked-entry-strategy-provenance.md)。本项不提高交易频率或胜率，不改策略默认。
+入场纪律阻塞策略来源[0128](../decisions/0128-blocked-entry-strategy-provenance.md)源码4b64e9f已推送部署并验收：仅复制已选candidate.strategyKey到原blocked记录，后续跳过审计保留来源，旧来源未知不回填。有效旧版反例7失败/24控制，相关69、本地及实际运行API不可变镜像禁网199文件3393后端、server/app TS/Vite通过；1152组完整计划仅288条新增来源，其余完整输出保持。908实际归档文件、全部发布保护、动态完整经济/风险及上一6ea904e材料通过，桥接容器/镜像和网页镜像保持；唯一文档回执见[计划](../plans/2026-11-13-blocked-entry-strategy-provenance.md)。blocked不计入成交使用数；前端509/桥接308/归档41无改继承。本项改善复盘归因，不改策略默认，没有收益改善结论。
 
 离线下一开盘研究完整意图合同[0127](../decisions/0127-native-next-open-research-intent-contract.md)源码32a7ad0已推送部署：在复制及校验整批后才进入pending，坏方向/定量不再静默丢弃或仅记拒单后形成正常报告。75新增旧版54失败/21控制，目标175、本地及实际运行API不可变镜像禁网198文件3388后端、server/app TS/Vite通过；42坏意图全失败，9合法完整输出保持。旧216组两次一致/6024笔独立重建，除来源元数据外完整旧报告保持。905实际上传文件、全部发布保护、动态完整经济/风险及上一a954ee2材料通过，桥接容器/镜像和网页镜像保持；唯一文档回执见[计划](../plans/2026-11-13-native-research-intent-contract.md)。保留零值/整手/quantity=0权重回退及合法风险拒绝，不改线上策略默认，没有收益改善结论。
 
