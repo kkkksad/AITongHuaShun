@@ -13,6 +13,7 @@ import {
   type StockRegime,
 } from "../lib/tradingApi";
 import { ResearchQueryState } from "./ResearchQueryState";
+import { CompletedPriceStructure } from "./CompletedPriceStructure";
 
 type RegimeView = "sectors" | "stocks";
 
@@ -224,7 +225,7 @@ export function MarketRegimePanel() {
           )}
 
           {view === "stocks" && (
-            <div className="regime-table-wrap" role="tabpanel">
+            <div className="regime-table-wrap" role="tabpanel" tabIndex={0} aria-label="个股形态表格，可横向滚动">
               {report.stockRegimes.length === 0 ? (
                 <div className="research-empty">当前没有取得候选股票历史日线。</div>
               ) : (
@@ -274,6 +275,8 @@ export function MarketRegimePanel() {
                           {stock.riskFlags[0] && stock.evidence[0] && (
                             <span className="table-subline negative">{stock.riskFlags[0]}</span>
                           )}
+                          <CompletedPriceStructure value={stock.historicalEntryStructure} symbol={stock.symbol}
+                            latestDate={stock.latestDate} barCount={stock.barCount} generatedAt={report.generatedAt} />
                         </td>
                       </tr>
                     ))}

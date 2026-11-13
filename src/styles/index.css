@@ -3556,6 +3556,22 @@ select:focus-visible {
   line-height: 1.45;
 }
 
+.completed-price-structure {
+  max-width: 24rem;
+  margin-top: 8px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.completed-price-structure summary {
+  cursor: pointer;
+}
+
+.completed-price-structure p {
+  margin: 8px 0;
+}
+
 .spin {
   animation: regime-spin 900ms linear infinite;
 }

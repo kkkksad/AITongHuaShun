@@ -1118,6 +1118,7 @@ export interface SectorOutlook {
 }
 
 export interface StockRegimeResult {
+  historicalEntryStructure?: unknown;
   rank: number;
   symbol: string;
   name: string;
