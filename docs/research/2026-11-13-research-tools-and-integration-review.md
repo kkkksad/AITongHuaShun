@@ -1,6 +1,16 @@
 # 研究工具、技能与外部技术初查
 
-日期：2026-11-13。状态：此前四项本地技能和浏览器CLI已验证；本次新增Jupyter技能及独立执行环境、Context7文档MCP配置和实际匿名读取。外部量化框架、模型及新行情MCP未接入生产。
+日期：2026-11-13。状态：此前四项本地技能和浏览器CLI已验证；本次新增Jupyter技能及独立执行环境、Context7文档MCP配置和实际匿名读取，UTC18:24前另完成Chrome DevTools MCP启动修复、实际性能追踪及LCP技能安装。外部量化框架、模型及新行情MCP未接入生产。
+
+## Chrome DevTools MCP实际连通与LCP技能
+
+用户再次授权下载获取后，复核官方插件/MCP正文和现有配置：`Chrome-DevTools-MCP`原命令为`npx -y chrome-devtools-mcp@latest`，当前npx不在PATH，不能把配置存在当可用。按[官方ChromeDevTools项目](https://github.com/ChromeDevTools/chrome-devtools-mcp)及npm元数据，下载固定1.13.0、Apache-2.0官方包；SHA512与registry完整性字段匹配，388文件逐SHA256留存。该发布包已捆绑运行依赖，无额外运行dependencies，不执行prepare/安装脚本；仅放用户工具目录，未改项目锁文件或服务器。
+
+通过Codex MCP CLI将原条目改为既有Node绝对路径加固定入口，不重复注册第二个浏览器MCP。启用headless/isolated，禁用工具使用统计、更新检查和CrUX外部查询；不附着用户浏览器、不复用用户登录。保存安装前完整配置到用户私有备份目录，核对其他配置与另外两个MCP逐字段语义保持。当前会话通过独立stdio客户端真实完成初始化、33工具发现、两次快照、只读DOM/NavigationTiming、两次网络列表、性能记录和控制台共10项检查，成功保存可解码的440166字节/16828事件trace并正常退出。测试客户端协商工作区roots，不开启不受限文件访问；先前根目录未协商和GBK打印问题已修正，最终完整执行exit0。未声称当前会话原生MCP已热加载；安装后的技能下一轮可发现，客户端何时重载原生MCP仍需实际确认。
+
+同时用官方skill-installer从ChromeDevTools固定提交`b1e35e3ab1774664dfc66a2cb813a392535fe160`安装`debug-optimize-lcp`；5文件与完整性校验后的同版本包逐字节一致，UTF-8格式校验通过。它提供LCP分段、关键资源和冷热对照步骤，不是额外行情或交易策略。来源及验收见runtime/2026-11-13-{devtools-installed-manifest,devtools-config-verification,devtools-smoke,lcp-skill-verification}.json与-devtools-public-trace.json.gz。
+
+最终匿名新浏览器初次navigation约4395ms，其中连接约2487ms；同一临时浏览器trace重新加载的LCP909ms（TTFB531ms/渲染等待378ms）、CLS0。最终快照已显示完整登录表单，网络唯一预期401为`/api/auth/session`。这是未限速匿名样本及暖加载trace，不是登录后P95、优化前后实验或生产提速结论；CrUX关闭时工具输出的“无数据”不能视为查询了真实用户指标。后续F用它复现关键路径并测冷热对照，不能把安装当性能优化完成。
 
 ## 本次新增授权与实际验收
 
@@ -11,7 +21,7 @@
 
 安装后的技能下一轮可自动发现。当前会话已用独立客户端实际执行读取和研究，避免将“已配置”当“已使用”。来源与验收位于`runtime/2026-11-13-{jupyter-install-source,jupyter-installed-manifest,notebook-environment,notebook-pip-report,context7-smoke}.json`及已执行`-tool-smoke.ipynb`；仅记录来源、版本与公开研究，没有凭据或生产账户导出。
 
-已有Playwright继续负责页面交互；既有Chrome-DevTools-MCP当前未暴露可调用工具，仍待连通验收。没有重复安装、重启用户应用、付费订阅或安装未经验证的资金/券商插件。专用资金流/论坛缺口沿H计划来源合同推进，下面的`get_cash_flow`财报工具不能替代它。
+已有Playwright继续负责页面交互；Chrome-DevTools-MCP此前未暴露原生工具，现已按上节实际连通验收，原生热加载仍未确认。没有重启用户应用、付费订阅或安装未经验证的资金/券商插件。专用资金流/论坛缺口沿H计划来源合同推进，下面的`get_cash_flow`财报工具不能替代它。
 
 ## 已落地能力
 
