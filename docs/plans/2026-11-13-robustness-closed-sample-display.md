@@ -14,7 +14,7 @@
 - [x] 旧版目标运行记录：`node node_modules/vitest/vitest.mjs run --dir src --environment jsdom src/components/StrategyRobustnessPanel.test.tsx --maxWorkers=2 --minWorkers=1`。真实失败必须是该单元格错误数字或无法区分坏分母，不是假定旧版报告真实存在。
 - [x] Modify src/components/StrategyRobustnessPanel.tsx：导入entry类型、添加局部closedMatchEvidence，按实际服务端`Math.round((wins / total) * 10_000) / 10_000`合同核对比例。缺分母/分子/比例分别提示；矛盾显示不可核对。渲染未知破折号及固定提示；没有新网络、样本重建、策略参数或后台修改。
 - [x] 目标及完整src单个Vitest、server/app TS/Vite；server3438/桥接308/归档41无改继承，不重跑。固定合法样本对照保持旧单元格输出与完整报告输入；以隔离浏览器检查有效/无样本/缺失/矛盾四状态，390/768/1440三个宽度，无外部fetch。
-- [ ] 更新0131决策、产品/状态和总计划，独立提交推送exit0且HEAD=upstream/干净树后部署。新鲜完整经济/风险、实际归档SHA/字节哈希、三健康、双域可信HTTPS/匿名401、上一251eae4源码/三镜像/私有导出与覆盖拒绝。确认后端/桥接容器及镜像保持，只更新网页。
+- [x] 更新0131决策、产品/状态和总计划，独立提交推送exit0且HEAD=upstream/干净树后部署。新鲜完整经济/风险、实际归档SHA/字节哈希、三健康、双域可信HTTPS/匿名401、上一251eae4源码/三镜像/私有导出与覆盖拒绝。确认后端/桥接容器及镜像保持，只更新网页。
 - [ ] 源码验收后仅一次文档回执，核对三个已测容器严格保持，最终写runtime/handoff不递归。
 
 ## 边界
@@ -26,3 +26,6 @@
 - UTC22:34前：代码确认真实表仅非null/total>0即展示，缺盈利数或坏分母仍可显示25%乃至NaN%；合成榜已有独立校验，真实表尚未接。先登记计划及针对性反例。
 
 - UTC22:38前本地完成：33目标/旧版22失败11控制，完整67文件537前端（68.83秒）、server/app TS与Vite通过。35组实际组件完整HTML及完整报告输入保持；四状态×三宽度12浏览器无外部fetch、无页面横溢出，手机矛盾状态截图人工核查。证据runtime/2026-11-13-robustness-closed-sample-{old-tests,new-tests,src-tests,compatibility}.json和runtime/robustness-closed-browser-2e5400e103/result.json。尚待提交发布；后端3438/桥接308/归档41只继承。
+
+- UTC22:43：源码9dd3d01393237791d7c8f9d67b90390d5f241662已push/deploy exit0，HEAD=upstream且干净。916实际归档文件、三健康、双域6项系统可信HTTPS/匿名401、完整经济/风险摘要和上一251eae4源码/三镜像/私有导出及覆盖拒绝全部通过；API/桥接容器及镜像严格保持，继承的真实生产API3438测试镜像身份再次匹配。仅web更新，稳健性新chunk实际容器字节与公网可信HTTPS逐字节/哈希一致。证据runtime/2026-11-13-robustness-closed-sample-release-summary.json和-production-web.json。当前为唯一文档回执，随后核对三已测容器严格保持，结果写runtime/handoff，不递归。
+- 网络：MinGit两次直连push exit1，另一个公开读取超时；现有系统Git使用新官方元数据中已系统TLS验证的20.200.245.247命令级解析，先公开ls-remote exit0再认证push exit0。未改全局配置、TLS信任或搬运凭据；未创建SSH隧道。首次check-only在提交前被干净树保护拒绝，未部署；提交推送后正常通过。
