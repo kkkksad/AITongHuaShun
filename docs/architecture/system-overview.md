@@ -1,5 +1,7 @@
 # 系统架构
 
+内部Paper订单side/type由shared/orderDiscriminators.ts同时供Broker和RiskEngine校验。Broker保留幂等返回优先，坏枚举在行情/费用/创建订单前只审计并抛错，不写非法订单。HTTP原Zod校验保持，合法执行流程不变，见[0126](../decisions/0126-paper-order-runtime-discriminators.md)。
+
 验证策略费用有效最小整手的内部目标覆盖参考本金和统一舍入执行本金中的较大值，再受原最终cap约束。最终数量仍复核完整现金、费用后权益及策略/费用资格；普通策略不新增计算，见[0125](../decisions/0125-validation-minimum-rounded-execution-principal.md)。
 
 Paper计划在本次调用内按候选对象复用排序和独立可负担筛选的初始定量，最终逐笔仍按重新选择的策略、剩余现金及费用后权益计算。无跨请求缓存、响应字段或交易条件变化，见[0124](../decisions/0124-paper-ranking-initial-sizing-reuse.md)。

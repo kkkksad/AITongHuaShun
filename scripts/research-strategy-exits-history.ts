@@ -112,6 +112,7 @@ async function main() {
   if (eligible.length < 2) throw Error("At least two eligible histories required");
   const result = await researchStrategyExitHistory(eligible, asOf);
   const sourcePaths = [...new Set([
+    "shared/orderDiscriminators.ts",
     "scripts/research-strategy-exits-history.ts", "scripts/verify-strategy-exit-history.cjs",
     "server/research/strategyExitResearch.ts", "server/research/nextOpenPortfolioResearch.ts",
     "server/research/strategyHistoryEvidence.ts", "server/research/strategyRobustness.ts",

@@ -16,6 +16,7 @@ import type { TradingStore } from "../contracts/TradingStore";
 import type { RiskEngine } from "../risk/riskEngine";
 import { executionCosts, hasSufficientCash, limitBuyBudget } from "./executionCosts";
 import { PaperRiskCheckpointError, PaperRiskTracker } from "../risk/paperRiskTracker";
+import { orderDiscriminatorError } from "../../shared/orderDiscriminators";
 
 interface PaperBrokerOptions {
   mode: TradingMode;
@@ -79,6 +80,13 @@ export class PaperBroker extends EventEmitter {
     const duplicate = this.store.findByClientOrderId(request.clientOrderId);
     if (duplicate) {
       return duplicate;
+    }
+
+    const invalidOrder = orderDiscriminatorError(request);
+    if (invalidOrder) {
+      // Audit the rejection without persisting an invalid order enum in the ledger.
+      this.store.appendAudit("risk", invalidOrder.code, invalidOrder.message, { stage: "broker-request-shape" });
+      throw new Error(`${invalidOrder.code}: ${invalidOrder.message}`);
     }
 
     const quote = this.market.getQuote(request.symbol);

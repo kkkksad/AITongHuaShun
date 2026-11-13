@@ -91,6 +91,7 @@ async function main() {
   if (eligible.length < 2) throw Error("At least two eligible histories required");
   const result = await researchSharedCapitalHistory(eligible, asOf);
   const sourcePaths = [...new Set([
+    "shared/orderDiscriminators.ts",
     "scripts/research-shared-capital-history.ts", "server/research/nextOpenPortfolioResearch.ts",
     "server/research/strategyHistoryEvidence.ts", "server/research/strategyRobustness.ts",
     ...execFileSync("git", ["ls-files", "server/backtest", "server/broker", "server/risk", "server/store",

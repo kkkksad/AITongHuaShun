@@ -133,6 +133,7 @@ function main() {
   if (valid.warnings.length) throw Error("Entry comparison requires clean frozen histories");
   const result = researchCompletedEntries(valid.series, asOf, volumeContract.volumeUnit);
   const sourcePaths = [...new Set(["scripts/research-completed-entry-history.ts", "scripts/verify-completed-entry-history.cjs",
+    "shared/orderDiscriminators.ts",
     "server/research/frozenEntryVolumeContract.ts",
     "scripts/research-adaptive-coverage-history.ts", "server/research/completedEntryHypothesis.ts",
     "server/research/historicalEntryStructure.ts", "server/research/marketRegimeResearch.ts", "server/research/adaptiveCandidateStrategy.ts",

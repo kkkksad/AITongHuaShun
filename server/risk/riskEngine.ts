@@ -1,3 +1,4 @@
+import { orderDiscriminatorError } from "../../shared/orderDiscriminators";
 import type {
   AccountSnapshot,
   CircuitBreakerConfig,
@@ -246,6 +247,9 @@ export class RiskEngine {
     if (account.paused) {
       return this.reject("TRADING_PAUSED", "交易已暂停");
     }
+
+    const invalidOrder = orderDiscriminatorError(request);
+    if (invalidOrder) return this.reject(invalidOrder.code, invalidOrder.message);
 
     // ── 行情检查 ──
     if (!quote) {

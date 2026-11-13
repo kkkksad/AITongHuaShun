@@ -4,6 +4,8 @@
 
 ## 默认运行模式
 
+Paper内部调用不能依赖TypeScript或HTTP入口替代运行时校验。非法买卖方向/订单类型在Broker创建订单前拒绝并审计，不写非法枚举或触碰资金/锁仓；独立RiskEngine也拒绝，合法幂等及交易行为保持，见[0126](../decisions/0126-paper-order-runtime-discriminators.md)。
+
 Paper验证策略的预算比例是最终风险额度内的目标。费用有效最小整手下限只可在该额度内应用，不能提高最终单股/单笔上限、使用不足现金、降低信号或历史门槛、改变1%往返最低手续费纪律或保证交易次数。详见[决策0020](../decisions/0020-paper-probe-fee-efficient-lot-floor.md)。
 
 该内部最小目标同时覆盖参考本金及统一舍入执行本金，始终受原最终cap限制；佣金仍由独立完整现金检查承担，不以参考金额够用代替执行资金，见[0125](../decisions/0125-validation-minimum-rounded-execution-principal.md)。
