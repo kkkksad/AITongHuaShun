@@ -20,7 +20,7 @@ function formatPrice(value: number): string {
 }
 
 function actionLabel(action: DailyCandidateAction): string {
-  if (action === "paper-buy") return "模拟买入";
+  if (action === "paper-buy") return "验证候选";
   if (action === "watch") return "观察";
   return "回避";
 }
@@ -88,9 +88,9 @@ export function DailyCandidates() {
               <small>{report.source.tradableCount} 个可交易标的</small>
             </article>
             <article>
-              <span>模拟可买</span>
+              <span>初步候选</span>
               <strong>{candidates.filter((item) => item.action === "paper-buy").length}</strong>
-              <small>只代表 paper 验证，不是实盘指令</small>
+              <small>尚需历史、资金和风控确认</small>
             </article>
             <article>
               <span>自动更新</span>
@@ -104,6 +104,11 @@ export function DailyCandidates() {
             <span>{report.guardrails[0]}</span>
           </div>
 
+          <div className="research-alert">
+            <ShieldCheck size={16} />
+            <span>候选标签不代表已生成订单。以下仓位与止盈/止损仅为扫描器研究参考；持仓实际卖出条件见账户持仓的“退出规则”。</span>
+          </div>
+
           <div className="compare-ranking-table-wrapper">
             <table className="data-table research-ranking-table">
               <thead>
@@ -113,9 +118,9 @@ export function DailyCandidates() {
                   <th>现价</th>
                   <th>涨跌幅</th>
                   <th>评分</th>
-                  <th>动作</th>
-                  <th>模拟仓位</th>
-                  <th>止盈/止损</th>
+                  <th>扫描建议</th>
+                  <th>研究仓位参考</th>
+                  <th>研究止盈/止损</th>
                   <th>原因</th>
                 </tr>
               </thead>
