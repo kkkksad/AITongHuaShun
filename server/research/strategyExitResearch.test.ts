@@ -36,7 +36,7 @@ describe("offline fixed exit lifecycle policy", () => {
     expect(result.strategy.onBar(context(0))).toEqual([buy, sell]);
   });
 
-  it("keeps real buy intentions and advances the original class on every observation", () => {
+  it("keeps real buy intentions and advances the original class on every accepted completed observation", () => {
     let calls = 0; const result = wrapper("trend", () => { calls++; return [buy, sell]; });
     expect(result.strategy.onBar(context(0))).toEqual([buy]);
     expect(result.strategy.onBar(context(1))).toEqual([buy]);
@@ -197,6 +197,53 @@ describe("offline fixed exit lifecycle policy", () => {
     if (kind === "duplicate" || kind === "reversed") bad.snapshot.marketTime = bad.snapshot.quotes[0].updatedAt = time(kind === "duplicate" ? 8 : 7);
     expect(result.strategy.onBar(bad)).toEqual([]);
     expect(result.strategy.onBar(context(10, 10, [position()]))).toEqual([{ ...sell, quantity: 300 }]);
+  });
+
+  describe.each(["common-price-stop", "family-exit"] as const)("%s observation boundary", mode => {
+    it.each(["future", "intraday", "stale-quote", "duplicate", "reversed", "missing-quote",
+      "duplicate-quote", "non-paper", "bad-price"])("does not let %s poison the next valid base signal", kind => {
+      let previous = 10, calls = 0;
+      const original = base(value => {
+        calls++;
+        const prior = previous;
+        previous = value.snapshot.quotes.find(quote => quote.symbol === symbol)?.price ?? Number.NaN;
+        return prior <= 10 ? [buy, sell] : [];
+      });
+      const result = createStrategyExitResearch(original, symbol, "trend", mode, asOf);
+      expect(result.strategy.onBar(context(1))).toEqual([buy]);
+      const invalid = context(2, 999);
+      if (kind === "future") invalid.snapshot.marketTime = invalid.snapshot.quotes[0].updatedAt = "2026-01-01T15:00:00+08:00";
+      if (kind === "intraday") invalid.snapshot.marketTime = invalid.snapshot.quotes[0].updatedAt = "2025-06-04T14:59:59+08:00";
+      if (kind === "stale-quote") invalid.snapshot.quotes[0].updatedAt = time(1);
+      if (kind === "duplicate" || kind === "reversed") invalid.snapshot.marketTime = invalid.snapshot.quotes[0].updatedAt = time(kind === "duplicate" ? 1 : 0);
+      if (kind === "missing-quote") invalid.snapshot.quotes = [];
+      if (kind === "duplicate-quote") invalid.snapshot.quotes.push({ ...invalid.snapshot.quotes[0] });
+      if (kind === "non-paper") invalid.snapshot.mode = "live";
+      if (kind === "bad-price") invalid.snapshot.quotes[0].price = Number.NaN;
+      expect(result.strategy.onBar(invalid)).toEqual([]);
+      expect(calls).toBe(1);
+      expect(result.getDiagnostics()).toMatchObject({ invalidCloseObservations: 1,
+        completedCloseObservations: 1, replacedNativeSellSignals: 1 });
+      expect(result.strategy.onBar(context(2))).toEqual([buy]);
+      expect(calls).toBe(2);
+      expect(result.getDiagnostics().replacedNativeSellSignals).toBe(2);
+    });
+
+    it("rejects an unobserved future close before invoking a failing base callback", () => {
+      const result = createStrategyExitResearch(base(() => { throw Error("future data entered base"); }),
+        symbol, "trend", mode, asOf);
+      const future = context(1);
+      future.snapshot.marketTime = future.snapshot.quotes[0].updatedAt = "2026-01-01T15:00:00+08:00";
+      expect(() => result.strategy.onBar(future)).not.toThrow();
+      expect(result.getDiagnostics()).toMatchObject({ completedCloseObservations: 0,
+        invalidCloseObservations: 1, replacedNativeSellSignals: 0 });
+    });
+
+    it("still propagates a base callback failure on a valid observation", () => {
+      const result = createStrategyExitResearch(base(() => { throw Error("valid callback failure"); }),
+        symbol, "trend", mode, asOf);
+      expect(() => result.strategy.onBar(context(0))).toThrow("valid callback failure");
+    });
   });
 
   it.each([null, [{ ...sell, side: "wrong" }], [{ ...sell, symbol: "600002" }],

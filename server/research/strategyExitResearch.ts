@@ -41,11 +41,6 @@ export function createStrategyExitResearch(base: BacktestStrategy, symbol: strin
     onStart(context) { base.onStart?.(structuredClone(context)); },
     onEnd(context) { base.onEnd?.(structuredClone(context)); },
     onBar(context: StrategyContext) {
-      // The base gets its own complete copy; callback edits cannot alter the policy's observations.
-      const raw = base.onBar(structuredClone(context));
-      validateIntent(raw, symbol);
-      diagnostics.replacedNativeSellSignals += raw.filter(signal => signal.side === "sell").length;
-      const buys = raw.filter(signal => signal.side === "buy").map(signal => ({ ...signal }));
       const quotes = context.snapshot.quotes.filter(quote => quote.symbol === symbol);
       const quote = quotes[0], close = Date.parse(context.snapshot.marketTime);
       const validTime = Number.isFinite(close) && close <= cutoff &&
@@ -56,6 +51,12 @@ export function createStrategyExitResearch(base: BacktestStrategy, symbol: strin
         diagnostics.invalidCloseObservations++;
         return [];
       }
+      // Rejected observations must not enter the base's retained state. Accepted callbacks
+      // still get a complete copy so their edits cannot alter the policy's observations.
+      const raw = base.onBar(structuredClone(context));
+      validateIntent(raw, symbol);
+      diagnostics.replacedNativeSellSignals += raw.filter(signal => signal.side === "sell").length;
+      const buys = raw.filter(signal => signal.side === "buy").map(signal => ({ ...signal }));
       const precedingClose = previousClose; previousClose = close;
       diagnostics.completedCloseObservations++;
       prices.push(quote.price); if (prices.length > 20) prices.shift();
