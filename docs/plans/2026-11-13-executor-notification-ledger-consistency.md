@@ -15,7 +15,7 @@
 - [x] Modify server/trading/paperExecutionContext.ts：导入isDeepStrictEqual和OrderRecord，增加PaperLedgerContext及capturePaperLedgerContext(store)、assertPaperLedgerContext(store, expected)；复制/比较与0129原代码完全一致，变化抛已有ledger固定理由。Modify server/research/paperTradingPlanService.ts，用共享函数替换原捕获/比较，orders引用ledgerContext.orders。
 - [x] Modify server/trading/paperAutoExecutor.ts：有通知时在notify await前捕获`const notificationLedgerContext = capturePaperLedgerContext(store)`，notify返回的既有assertExecutionContext之后增加`assertPaperLedgerContext(store, notificationLedgerContext)`。保留原控制优先、时段/日期/逐笔报价及Broker最终风控。无行情分支不提交订单，不扩大本项范围。
 - [x] 一次一个Vitest，先新通知边界/原0129/控制/HTTP/执行器相关，再完整server；server/app TS/Vite。复用0129离线24组完整旧/新服务输出/经济输入对照，以927fd0e为新基线验证抽取等价，不重复旧收益研究或称新样本外。前端509/桥接308/归档41无改继承。
-- [ ] 更新0130决策、架构/状态/总计划；独立提交、推送exit0且HEAD=upstream/干净树后部署。新鲜完整经济/风险、实际上传归档字节/SHA/哈希、三健康、双域可信HTTPS/匿名401、上一927fd0e材料及实际运行API不可变镜像禁网全后端测试。
+- [x] 更新0130决策、架构/状态/总计划；独立提交、推送exit0且HEAD=upstream/干净树后部署。新鲜完整经济/风险、实际上传归档字节/SHA/哈希、三健康、双域可信HTTPS/匿名401、上一927fd0e材料及实际运行API不可变镜像禁网全后端测试。
 - [ ] 源码验收后仅一次文档回执；严格保持三个已测容器及镜像，最终写runtime/handoff，不递归发布回执。
 
 ## 边界
@@ -27,3 +27,5 @@
 - UTC21:48：确认927fd0e/HEAD=upstream、干净树、无在途测试发布，0129验收全部完成。代码确认通知await之后只有账户控制修订检查，普通订单变化不会推进该修订；先以真实本地账本验证影响。
 - UTC21:52：两Store旧版14失败/4控制；把首项断言改为实际submittedOrders后再次确认反例确实包含旧自动买单，不以actionable标签替代成交证据，见runtime/2026-11-13-notification-ledger-old-valid.log。
 - UTC21:53至21:55：初版在研究前捕获使四项既有时段/日期早退增加订单读取，收窄为仅notify前按需捕获，原控制恢复。最终163相关、201文件3438后端（75.15秒）、server/app TS/Vite通过；24组完整旧/新服务输出及经济输入保持、外部读取0，仅作等价回归。证据runtime/2026-11-13-notification-ledger-{target-final,server,build,compatibility}.log/json。前端509/桥接308/归档41无改继承，未宣称生产等待或胜率改善。
+- UTC21:56至22:00：源码d0ccaa6推送与部署exit0，914实际上传文件逐哈希、三健康、双域六次可信HTTPS/匿名401、动态完整经济/风险及上一927fd0e源码/三镜像/私有导出/覆盖拒绝通过。实际运行API不可变镜像禁网201文件3438项通过（102.79秒），原桥接容器/镜像和网页镜像保持。证据runtime/2026-11-13-notification-ledger-release-{summary,production-server}.json/log。
+- 本提交仅一次文档回执，发布后严格核对三已测容器/镜像保持，最终结果写runtime/2026-11-13-notification-ledger-receipt-summary.json及handoff；不为勾选最后一项再递归提交。
