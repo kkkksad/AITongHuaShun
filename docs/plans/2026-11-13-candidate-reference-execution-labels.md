@@ -13,7 +13,9 @@ DailyCandidates将paper-buy扫描标签显示为“模拟买入”，摘要为�
 - [x] 在真实组件中作最小显示修改，继续使用原DTO字段。
 - [x] 既有完整src单Vitest、server/app TS/Vite；不为纯文案新增镜像实现的测试。用实际React旧/新完整HTML对照，移除明确登记的文案差异后其余输出及输入完全一致，并检查paper-buy/watch/avoid三种标签和零额外请求。
 - [x] 隔离Chrome在390/768/1440验证可见说明、参考数值、候选标签、表内横滚及分页，无外部fetch；人工看手机截图。
-- [ ] 更新0132决策/产品/状态/总计划，独立push exit0且HEAD=upstream/干净树后部署，核对实际归档、三健康、双域HTTPS/匿名401、动态完整经济/风险、上一60e9357材料；API/桥接容器及镜像严格保持，并检查实际web字节与公网一致。
+- [x] 更新0132决策/产品/状态/总计划，独立push exit0且HEAD=upstream/干净树后部署，核对实际归档、三健康、双域HTTPS/匿名401、动态完整经济/风险、上一60e9357材料；API/桥接容器及镜像严格保持，并检查实际web字节与公网一致。
 - [ ] 仅一次文档回执后核对三个已测容器严格保持，结果写runtime/handoff不递归。
 
 - UTC23:02前本地完成：完整67文件537前端及server/app TS/Vite通过；6个候选数量组的真实完整HTML/输入除登记文案和说明外保持，fetch0；Chrome三宽度×两页6组，三动作/5%和2%/分页保持、手机截图人工核查。证据runtime/2026-11-13-candidate-reference-{src-tests,compatibility}.json和runtime/candidate-reference-browser-d21e65a83b/result.json；后端3438/桥接308/归档41只继承。尚待独立提交发布。
+
+- UTC23:04：源码29fff22a2c2eb367de8617cea6dcd8127fb18cd0已push/deploy exit0，HEAD=upstream/干净。919实际归档文件、三健康、双域6项系统可信HTTPS/匿名401、动态完整经济/风险及上一60e9357源码/三镜像/私有导出和覆盖拒绝通过；API/桥接容器及镜像严格保持，继承3438实际生产测试的后端镜像身份匹配。实际DailyCandidates新chunk字节与公网可信HTTPS逐字节一致。证据runtime/2026-11-13-candidate-reference-{release-summary,production-web}.json；本提交为唯一文档回执，后核对三已测容器保持，结果仅写runtime/handoff不递归。
