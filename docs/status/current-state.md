@@ -1,6 +1,6 @@
 # 当前状态
 
-Paper内部订单方向/类型[0126](../decisions/0126-paper-order-runtime-discriminators.md)已完成本地修复：坏枚举在创建订单前审计并抛错，独立RiskEngine也拒绝。两Store旧版可产生虚假filled或以错误方向消耗当日锁仓；38新增旧版32失败/6控制，目标321、完整197文件3313后端及server/app TS/Vite通过。旧216组退出研究两次一致、6024笔独立重建，除来源元数据外完整结果保持。待独立发布与实际镜像验收，见[计划](../plans/2026-11-13-paper-order-discriminator-validation.md)。HTTP已有枚举校验，没有当前真实账户发生此问题的证据；离线native完整意图检查另行推进，不调整策略默认。
+Paper内部订单方向/类型[0126](../decisions/0126-paper-order-runtime-discriminators.md)源码7774759已推送部署：坏枚举在创建订单前审计并抛错，独立RiskEngine也拒绝。两Store旧版可产生虚假filled或以错误方向消耗当日锁仓；38新增旧版32失败/6控制，目标321、本地及实际运行API不可变镜像禁网197文件3313后端、server/app TS/Vite通过。旧216组退出研究两次一致、6024笔独立重建，除来源元数据外完整结果保持。902实际上传文件、全部发布保护、动态完整经济/风险及上一89cc7fc材料通过，桥接容器/镜像与网页镜像保持；唯一文档回执见[计划](../plans/2026-11-13-paper-order-discriminator-validation.md)。HTTP已有枚举校验，没有当前真实账户发生此问题的证据；离线native完整意图检查另行推进，不调整策略默认。
 
 验证最小整手执行本金[0125](../decisions/0125-validation-minimum-rounded-execution-principal.md)源码1c88896已推送部署：内部目标同时覆盖参考/舍入执行本金，再受原最终cap约束，避免10.05元/5bps/1250cap的最小100股被错误清零。58新增旧版16失败/42控制，136目标、本地及实际运行API镜像禁网196文件3275后端、server/app TS/Vite通过；126边界只改变原32错误阻挡、94保持，另90普通完整计划保持。898上传文件及三健康/可信HTTPS/匿名401/动态完整经济风险/上一83bc104材料通过，原桥接容器镜像和网页镜像保持，见[计划](../plans/2026-11-13-validation-minimum-execution-principal.md)。前端509/桥接308/归档41无改继承；不调整策略比例、退出或硬限额，不归因为全部历史未交易或收益改善。
 

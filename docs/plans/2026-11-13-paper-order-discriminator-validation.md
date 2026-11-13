@@ -26,7 +26,7 @@ Broker没有枚举运行时检查，RiskEngine的buy/sell专属分支均不处�
 - [x] 控制已有pending买单的现金冻结不变、幂等重复先返回已有合法订单且不重复审计、正常市价买入/T+1拒卖/翌日卖出、合法未成交限价及撤销。RiskEngine独立输入也拒绝相同枚举，合法买卖/类型沿原分支。
 - [x] 最小实现公共校验：`side !== "buy" && side !== "sell"`返回INVALID_ORDER_SIDE；其次`type !== "market" && type !== "limit"`返回INVALID_ORDER_TYPE。Broker在重复ID返回后调用，`appendAudit("risk", error.code, error.message, {stage:"broker-request-shape"})`后抛Error；不为坏请求伪造合法订单记录。RiskEngine在原暂停检查后/行情检查前调用并return reject，不改变正常拒绝优先级。
 - [x] 一次一个Vitest，明确server/node/两worker；目标Broker/risk/共享资金/研究及完整server，再server/app TS/Vite。固定旧216组退出研究重跑两次、独立重建6024笔及逐组结果与旧报告完全一致，不能算新样本外或收益改善。
-- [ ] 独立提交推送exit0、HEAD=upstream/干净树；动态完整经济/风险基线、部署、上传归档字节/SHA、三健康/双域可信HTTPS/匿名401、上一89cc7fc源码/三镜像/私有导出拒绝覆盖、实际运行API不可变镜像禁网完整server。随后唯一文档回执核对三已测容器，不递归回执。UTC23:40冻结/00:00截止保持。
+- [x] 独立提交推送exit0、HEAD=upstream/干净树；动态完整经济/风险基线、部署、上传归档字节/SHA、三健康/双域可信HTTPS/匿名401、上一89cc7fc源码/三镜像/私有导出拒绝覆盖、实际运行API不可变镜像禁网完整server。随后唯一文档回执核对三已测容器，不递归回执。UTC23:40冻结/00:00截止保持。
 
 ## 验收边界
 
@@ -37,4 +37,4 @@ Broker没有枚举运行时检查，RiskEngine的buy/sell专属分支均不处�
 - UTC19:28：38新增旧版32失败/6控制，最小共享校验后38全部通过；八文件321目标通过。JSON重载、经济与完整周期账/风险检查点保持，坏请求无账户/订单事件且只新增固定审计。
 - UTC19:33：完整197文件3313后端通过（72.53秒），server/app TS/Vite通过。旧216组退出两次逐字节一致，6024笔独立重建；除codeCommit/workingTreeDirty/sourceSha256三个来源字段外，完整旧报告逐字段相同，新共享源哈希存在且匹配。证据runtime/2026-11-13-order-discriminators-{old,target,server,build,study-verification}.log、-compatibility.json、-exits-{a,b,summary}.json。该批仍是旧控制，不作新样本外或收益改善。
 - 同时将89cc7fc的Broker/RiskEngine原源码隔离编译，两Store实证空仓假成交、已有当日300锁仓被错误方向全部卖出；不只是类型推测。初次本地工具使用esbuild同步插件接口不支持，改为异步编译后成功，未改产品迎合工具。结果runtime/2026-11-13-order-discriminators-baseline.json；生产调用0。
-- 独立推送/部署及实际新API镜像3313仍待验收；源码没有改变线上正常订单或策略参数。
+- UTC19:43至19:46：源码7774759推送及部署均exit0，HEAD=upstream/干净树后才发布；902实际上传文件/SHA、三健康、六次双域可信HTTPS及匿名401、完整动态经济和风险摘要、上一89cc7fc源码/三镜像/私有导出及拒绝覆盖通过。桥接容器/镜像与网页镜像保持，网页容器因上游刷新重建；实际运行API按不可变镜像ID、禁网/无生产账户凭据挂载完整197文件3313通过（99.96秒）。证据runtime/2026-11-13-order-discriminators-release-summary.json及-production-server.log。本提交仅一次文档回执，之后核对三已测容器严格保持，不递归回执；源码没有改变线上正常订单或策略参数。
