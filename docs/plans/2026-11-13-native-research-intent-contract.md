@@ -52,8 +52,8 @@ function copyChildSignals(raw: unknown, symbol: string): StrategySignal[] {
 
 - [x] 新用例通过，再相关nextOpen/退出研究/完整server，server/app TS及Vite。一次仅一个Vitest，明确server/node、最多两worker。
 - [x] 用新脚本只比较原9组合法完整输出，不覆盖旧基线；42组坏意图现在全部失败。原216组退出研究运行两次并比较完整结果（除来源元数据）和独立6024逐笔重建；仍是旧控制而非新样本外，不按收益选择校验。
-- [ ] 更新决策/架构/状态/流水；独立提交推送exit0且HEAD=upstream/干净树才发布。新鲜完整经济/风险摘要、实际归档字节/哈希/SHA、三健康/双域可信HTTPS/匿名401、上一a954ee2源码/三镜像及私有导出拒绝覆盖；实际运行API不可变镜像禁网完整server。
-- [ ] 唯一文档回执发布后核对三已测容器严格保持，不递归。UTC23:40停止新复杂代码与所有新发布，UTC11月14日00:00截止不变。
+- [x] 更新决策/架构/状态/流水；独立提交推送exit0且HEAD=upstream/干净树才发布。新鲜完整经济/风险摘要、实际归档字节/哈希/SHA、三健康/双域可信HTTPS/匿名401、上一a954ee2源码/三镜像及私有导出拒绝覆盖；实际运行API不可变镜像禁网完整server。
+- [x] 唯一文档回执发布后核对三已测容器严格保持，不递归。UTC23:40停止新复杂代码与所有新发布，UTC11月14日00:00截止不变。
 
 ## 边界
 
@@ -63,4 +63,4 @@ function copyChildSignals(raw: unknown, symbol: string): StrategySignal[] {
 
 - UTC19:59：75项新用例旧版54失败/21控制；最小复制校验后新75及原31下一开盘/69退出合计175通过。整个非法批次不进入pending，尾根/不可执行下一开盘也不会隐藏合同错误，合法T+1/上限拒绝及零值保持。
 - UTC20:02：完整198文件3388后端通过（71.69秒），server/app TS/Vite通过。42坏意图全失败、原9合法完整输出相同。原216组退出两次逐字节一致/6024成交独立重建；除codeCommit/workingTreeDirty/sourceSha256外，完整旧报告相同，适配器哈希匹配。证据runtime/2026-11-13-native-intent-{old,target,server,build,study}.log及-compatibility.json/-exits-{a,b,summary}.json；没有新增收益或样本外结论。
-- 0127源码及实际镜像仍待独立推送发布验收。前端509/桥接308/归档41无改继承；本模块没有Python改动，不重复运行无关Linux套件。
+- UTC20:10至20:14：源码32a7ad0推送及部署exit0，905实际上传文件、三健康、六次双域可信HTTPS/匿名401、动态完整经济和风险摘要、上一a954ee2源码/三镜像/私有导出及覆盖拒绝通过。实际运行API按不可变镜像ID禁网、无生产账户或凭据挂载完整198文件3388通过（101.09秒）；桥接容器/镜像和网页镜像保持，网页容器按发布流程刷新。证据runtime/2026-11-13-native-intent-release-{summary,production-server}.json/log。本次仅此一次文档回执，随后核对三已测容器严格保持，不递归；没有策略、资金或线上权限变化。前端509/桥接308/归档41无改继承。
