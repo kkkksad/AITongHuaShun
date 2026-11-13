@@ -62,6 +62,63 @@ describe("per-stock strategy robustness panel", () => {
     expect(cell?.textContent).toContain("—"); expect(cell?.textContent).not.toContain("0.00%");
   });
 
+  it.each([
+    ["all losses", 0, 4, 0, "0.00%"],
+    ["all wins", 4, 4, 1, "100.00%"],
+    ["rounded third", 1, 3, 0.3333, "33.33%"],
+    ["rounded two thirds", 2, 3, 0.6667, "66.67%"],
+    ["half-up rounding", 1, 32, 0.0313, "3.13%"],
+  ])("preserves valid server evidence: %s", async (_name, wins, total, rate, displayed) => {
+    const data = report([entry("600001", { winningMatches: wins, closedMatches: total, closedMatchWinRate: rate })]);
+    const before = structuredClone(data);
+    await render(data);
+    const cell = rows()[0].querySelector("[data-closed-match-rate]");
+    expect(cell?.textContent).toBe(`${displayed}盈利 ${wins} / ${total}`);
+    expect(rows()[0].querySelectorAll("td")[3].textContent).toBe("8");
+    expect(data).toEqual(before);
+    expect(fetchStrategyRobustness).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing numerator", { winningMatches: undefined }, "未提供盈利分子"],
+    ["missing denominator", { closedMatches: undefined }, "未提供闭合分母"],
+    ["missing rate", { closedMatchWinRate: undefined }, "未提供闭合胜率"],
+    ["null rate for positive samples", { closedMatchWinRate: null }, "未提供闭合胜率"],
+  ] satisfies [string, Partial<StrategyRobustnessEntry>, string][])("keeps incomplete evidence unknown: %s", async (_name, overrides, message) => {
+    await render(report([entry("600001", overrides)]));
+    expect(rows()[0].querySelector("[data-closed-match-rate]")?.textContent).toBe(`—${message}`);
+    expect(fetchStrategyRobustness).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["negative numerator", { winningMatches: -1 }],
+    ["fractional numerator", { winningMatches: 1.5 }],
+    ["unsafe numerator", { winningMatches: Number.MAX_SAFE_INTEGER + 1 }],
+    ["nonfinite numerator", { winningMatches: Infinity }],
+    ["NaN numerator", { winningMatches: NaN }],
+    ["negative denominator", { closedMatches: -4 }],
+    ["fractional denominator", { closedMatches: 4.5 }],
+    ["unsafe denominator", { closedMatches: Number.MAX_SAFE_INTEGER + 1 }],
+    ["nonfinite denominator", { closedMatches: Infinity }],
+    ["NaN denominator", { closedMatches: NaN }],
+    ["more wins than samples", { winningMatches: 5 }],
+    ["NaN rate", { closedMatchWinRate: NaN }],
+    ["infinite rate", { closedMatchWinRate: Infinity }],
+    ["negative rate", { closedMatchWinRate: -0.25 }],
+    ["rate over one", { closedMatchWinRate: 1.25 }],
+    ["mismatched rate", { closedMatchWinRate: 0.5 }],
+    ["unrounded rate outside server contract", { winningMatches: 1, closedMatches: 3, closedMatchWinRate: 1 / 3 }],
+    ["false zero sample rate", { winningMatches: 0, closedMatches: 0, closedMatchWinRate: 0 }],
+    ["zero sample with wins", { winningMatches: 1, closedMatches: 0, closedMatchWinRate: null }],
+  ] satisfies [string, Partial<StrategyRobustnessEntry>][])("rejects unverifiable cached evidence: %s", async (_name, overrides) => {
+    const data = report([entry("600001", overrides)]), before = structuredClone(data);
+    await render(data);
+    expect(rows()[0].querySelector("[data-closed-match-rate]")?.textContent).toBe("—闭合样本不可核对");
+    expect(rows()[0].querySelectorAll("td")[3].textContent).toBe("8");
+    expect(data).toEqual(before);
+    expect(fetchStrategyRobustness).not.toHaveBeenCalled();
+  });
+
   it("explains missing stock coverage and denominator in a legacy report", async () => {
     const legacy = report([entry("600001", { evaluatedSymbol: undefined, evaluatedName: undefined, closedMatches: undefined, winningMatches: undefined, closedMatchWinRate: undefined })]);
     legacy.source.testedSymbols = undefined; legacy.source.symbolWindowTests = undefined;

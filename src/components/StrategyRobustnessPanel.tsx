@@ -3,6 +3,7 @@ import { useState } from "react";
 import { AlertTriangle, Database, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   fetchStrategyRobustness,
+  type StrategyRobustnessEntry,
   type StrategyRobustnessFamily,
 } from "../lib/tradingApi";
 import { ResearchQueryState } from "./ResearchQueryState";
@@ -29,6 +30,19 @@ function evidenceTone(score: number): "strong" | "medium" | "weak" {
   if (score >= 75) return "strong";
   if (score >= 50) return "medium";
   return "weak";
+}
+
+function closedMatchEvidence(entry: StrategyRobustnessEntry): { rate: number | null; detail: string } {
+  const { closedMatches: total, winningMatches: wins, closedMatchWinRate: rate } = entry;
+  if (total == null) return { rate: null, detail: "未提供闭合分母" };
+  if (wins == null) return { rate: null, detail: "未提供盈利分子" };
+  const invalid = { rate: null, detail: "闭合样本不可核对" };
+  if (!Number.isSafeInteger(total) || !Number.isSafeInteger(wins) || total < 0 || wins < 0 || wins > total) return invalid;
+  if (total === 0) return wins === 0 && rate === null ? { rate: null, detail: "无闭合样本" } : invalid;
+  if (rate == null) return { rate: null, detail: "未提供闭合胜率" };
+  // The real-history service rounds pooled wins / closed matches to four decimals.
+  if (!Number.isFinite(rate) || rate < 0 || rate > 1 || rate !== Math.round((wins / total) * 10_000) / 10_000) return invalid;
+  return { rate, detail: `盈利 ${wins} / ${total}` };
 }
 
 export function StrategyRobustnessPanel() {
@@ -147,7 +161,9 @@ export function StrategyRobustnessPanel() {
                   </tr>
                 </thead>
                 <tbody>
-                  {entries.map((entry) => (
+                  {entries.map((entry) => {
+                    const closed = closedMatchEvidence(entry);
+                    return (
                     <tr key={`${entry.evaluatedSymbol || "legacy"}:${entry.strategyKey}`}>
                       <td><span className={`rank-badge rank-${entry.rank}`}>{entry.rank}</span></td>
                       <td className="symbol-cell">
@@ -183,16 +199,16 @@ export function StrategyRobustnessPanel() {
                       <td>{formatPercent(-entry.averageMaxDrawdown)}</td>
                       <td className="negative">{formatPercent(-entry.worstMaxDrawdown)}</td>
                       <td data-closed-match-rate>
-                        {entry.closedMatchWinRate != null && entry.closedMatches != null && entry.closedMatches > 0
-                          ? <>{(entry.closedMatchWinRate * 100).toFixed(2)}%<small className="robustness-closed-samples">盈利 {entry.winningMatches} / {entry.closedMatches}</small></>
-                          : <>—<small className="robustness-closed-samples">{entry.closedMatches === 0 ? "无闭合样本" : "未提供闭合分母"}</small></>}
+                        {closed.rate === null ? "—" : `${(closed.rate * 100).toFixed(2)}%`}
+                        <small className="robustness-closed-samples">{closed.detail}</small>
                       </td>
                       <td className={entry.averageSharpeRatio >= 0 ? "positive" : "negative"}>
                         {entry.averageSharpeRatio.toFixed(2)}
                       </td>
                       <td>{entry.averageProfitFactor === null ? "—" : entry.averageProfitFactor.toFixed(2)}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
