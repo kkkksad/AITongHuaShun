@@ -29,6 +29,10 @@
 
 ## 接入选择标准
 
+UTC16:10复核官方curated目录仍为39项，已装Playwright和security-best-practices均被标记installed；七个KAIROS专用技能已在本轮工具目录可发现。实际读取[官方技能文档](https://developers.openai.com/codex/skills/)与[MCP配置文档](https://developers.openai.com/codex/mcp/)，没有重复安装或重启用户应用。
+
+进一步按仓库名检索行情MCP，并下载[akshare-one-mcp](https://github.com/zwldarren/akshare-one-mcp/tree/793124dbe4299f8dd76d194a4e94e0fade3b752d)固定提交793124dbe4299f8dd76d194a4e94e0fade3b752d的README、许可证、pyproject及工具源码共六份，只存忽略目录，不执行或注册。当前声明MIT、版本0.5.0、Python≥3.12；依赖akshare-one/fastmcp等使用下限而非锁定版本。九个工具主要提供行情、新闻、财报、内部人交易和时间；get_cash_flow是公司现金流量表，不是逐股主力净流入，未发现公开论坛舆情工具。工具返回数据records，实际fallback来源依README通过日志记录，不能直接替代本项目的来源/接收时点/单位合同。故本轮不把它当成已补齐资金流和论坛的连接器；可后续离线固定依赖评估，尚未安装其运行依赖。证据runtime/2026-11-13-finance-mcp-{candidates,selected}.json与runtime/2026-11-13-finance-mcp-source-review/manifest.json；没有用仓库热度证明数据质量。
+
 优先补当前缺口：可信逐股行业/资金流、数据时间血缘、候选覆盖与组合风险、真实网页关键路径。任何新MCP/插件须明确维护方/许可、读写权限、来源/限流/新鲜度、输出合同和资源预算；先在只读隔离环境用固定输入验证。公开论坛只用可许可读取内容，不绕过登录或访问控制，原文视为不可信数据；来源失败保持未知，缓存有界且不挤占核心历史容量。
 
 保持现有React/TypeScript/Fastify、Python桥接、单writer JSON主账本和旁路SQLite归档；本次没有测到需替换主栈的证据。研究型工具优先放隔离进程/离线实验，是否增加数据库或模型服务以测量和一致性需求决定。后续验收写入[夜间总计划](../plans/2026-11-13-overnight-strategy-lifecycle-optimization.md)，冻结/截止不变。
