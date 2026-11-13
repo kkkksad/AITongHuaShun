@@ -1,5 +1,7 @@
 # 系统架构
 
+Paper计划在本次调用内按候选对象复用排序和独立可负担筛选的初始定量，最终逐笔仍按重新选择的策略、剩余现金及费用后权益计算。无跨请求缓存、响应字段或交易条件变化，见[0124](../decisions/0124-paper-ranking-initial-sizing-reuse.md)。
+
 完成日线结构由既有服务端historicalEntryStructure生成，前端以可选unknown字段在CompletedPriceStructure内核验身份、时间和各项内部一致性后展示两个独立观察。保留原asOf，复用MarketRegimePanel既有查询与缓存，不新增数据源、评分或订单门槛，见[0122](../decisions/0122-completed-price-structure-observations.md)。
 
 historicalCorrelation仍从原始拒绝日期阻断跨坏行收益，仅去掉不可能落入保留日期开区间的日期，减少逐区间重复比较；完整输出、警告及时间边界保持，无新缓存/请求/交易条件，见[0121](../decisions/0121-correlation-rejected-dates-inside-retained-window.md)。

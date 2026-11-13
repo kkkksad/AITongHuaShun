@@ -902,6 +902,20 @@ export function buildPaperTradingPlan(input: {
     };
   };
 
+  // Only initial, unchanged ranking budgets are reused within this plan.
+  // Final orders still use the current remaining cash/equity and chosen strategy.
+  const initialQuantities = new Map<object, number>();
+  const initialQuantity = (candidate: Parameters<typeof candidatePlanQuantity>[0]) => {
+    const cached = initialQuantities.get(candidate);
+    if (cached !== undefined) return cached;
+    const quantity = candidatePlanQuantity(
+      candidate, plannedCashBudget, maxSingleOrderNotional, input.lotSize,
+      input.commissionRate, input.minimumCommission, buyProjection,
+    );
+    initialQuantities.set(candidate, quantity);
+    return quantity;
+  };
+
   const rankedCandidatePool = uniqueBySymbol([
     ...input.candidates.candidates
       .filter((candidate) => candidate.action === "paper-buy" || candidate.action === "watch")
@@ -935,24 +949,8 @@ export function buildPaperTradingPlan(input: {
       }),
   ])
     .sort((a, b) => {
-      const aQuantity = candidatePlanQuantity(
-        a,
-        plannedCashBudget,
-        maxSingleOrderNotional,
-        input.lotSize,
-        input.commissionRate,
-        input.minimumCommission,
-        buyProjection,
-      );
-      const bQuantity = candidatePlanQuantity(
-        b,
-        plannedCashBudget,
-        maxSingleOrderNotional,
-        input.lotSize,
-        input.commissionRate,
-        input.minimumCommission,
-        buyProjection,
-      );
+      const aQuantity = initialQuantity(a);
+      const bQuantity = initialQuantity(b);
       const aAffordable = aQuantity >= input.lotSize ? 1 : 0;
       const bAffordable = bQuantity >= input.lotSize ? 1 : 0;
       if (bAffordable !== aAffordable) return bAffordable - aAffordable;
@@ -987,15 +985,7 @@ export function buildPaperTradingPlan(input: {
   const candidatePool = rankedCandidatePool.slice(0, 12);
   const candidatePoolSize = candidatePool.length;
   const affordableCandidates = candidatePool.filter((candidate) => {
-    const quantity = candidatePlanQuantity(
-      candidate,
-      plannedCashBudget,
-      maxSingleOrderNotional,
-      input.lotSize,
-      input.commissionRate,
-      input.minimumCommission,
-      buyProjection,
-    );
+    const quantity = initialQuantity(candidate);
     return quantity >= input.lotSize;
   });
   const affordableCandidateCount = affordableCandidates.length;
