@@ -2,7 +2,9 @@
 
 **核对日期：** 2026-11-13（北京时间；新一轮截止11月14日08:00）
 
-离线退出研究观察边界[0120](../decisions/0120-exit-research-observations-before-callbacks.md)本地完成：非native包装器现先校验完成观察再回调，避免丢弃意图后仍污染原策略状态。22新增旧版20失败/2控制，目标100、完整194文件3213后端及TS/Vite通过；两次216组逐字节一致、6024笔独立重建，全部经济/交易/诊断与旧报告保持。不改变线上默认，不归因为历史亏损，生产发布待[子计划](../plans/2026-11-13-exit-research-observation-gate.md)验收。
+离线退出研究观察边界[0120](../decisions/0120-exit-research-observations-before-callbacks.md)源码5022aff已推送部署：非native包装器现先校验完成观察再回调，避免丢弃意图后仍污染原策略状态。22新增旧版20失败/2控制，目标100、完整194文件3213后端及TS/Vite、实际生产API镜像禁网3213项通过；两次216组逐字节一致、6024笔独立重建，全部经济/交易/诊断与旧报告保持。882实际上传文件、三健康/可信双域HTTPS/匿名401、动态完整经济/风险摘要、上一80a73a4源码/三镜像及导出保护通过，原桥接保持。不改变线上默认，不归因为历史亏损；本次只做一次文档回执，见[子计划](../plans/2026-11-13-exit-research-observation-gate.md)。
+
+新增[本地工具验收](../research/2026-11-13-research-tools-and-integration-review.md)：官方Jupyter技能12文件对固定源一致、独立环境实际执行两代码格/216组；Context7文档MCP已注册、实际匿名完成initialize/list/resolve/query，未声明当前会话原生热加载或OAuth授权。没有新增生产依赖、资金流/论坛接口或收益结论。
 
 新增[逐股资金流来源合同](../research/2026-11-13-stock-fund-flow-source-contract-review.md)：实际桥接镜像AkShare1.20.34、禁网七次原始传输检查，响应错股身份被SDK丢失、inf/NaT被接纳及空/坏响应错误均复现。官方文档百分数明确、金额单位尚未明确，真实响应身份/源时间与使用边界仍待验收；未新增资金流/论坛数据接口或交易规则。接入门槛见[子计划](../plans/2026-11-13-stock-fund-flow-evidence-integration.md)。持仓风险文档回执1a1831d已UTC16:28推送部署核验878文件/全部保护及三已测容器保持；一次回执已完成，不再递归发布回执。
 

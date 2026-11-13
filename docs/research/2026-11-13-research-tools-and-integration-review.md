@@ -1,6 +1,17 @@
 # 研究工具、技能与外部技术初查
 
-日期：2026-11-13。状态：四项本地技能已落地，浏览器CLI已实际打开公开登录页；外部量化框架、模型及新行情MCP未接入生产。
+日期：2026-11-13。状态：此前四项本地技能和浏览器CLI已验证；本次新增Jupyter技能及独立执行环境、Context7文档MCP配置和实际匿名读取。外部量化框架、模型及新行情MCP未接入生产。
+
+## 本次新增授权与实际验收
+
+用户再次明确允许下载获取有用插件。复核[官方插件](https://developers.openai.com/codex/plugins)、[技能](https://developers.openai.com/codex/skills)及[MCP文档](https://developers.openai.com/codex/mcp)正文；当前会话没有插件安装工具，采用官方技能安装器及Codex MCP配置命令，区分技能包、外部工具和生产能力。
+
+- **Jupyter研究技能**：官方`openai/skills`固定提交`77963424cd7687fd52e5fcfdd3f08d826ab9b1ab`，`skills/.curated/jupyter-notebook`；安装后12个文件与固定源逐字节一致，格式校验通过。独立用户工具环境安装固定`nbformat 5.11.1`、`nbclient 0.11.0`、`ipykernel 7.4.0`，顶层许可证BSD-3-Clause，36个完整依赖版本及下载哈希留存；未修改项目或服务器依赖。官方模板生成实验笔记后，使用已有冻结结果执行全部两段代码，验证216组完整结果保持和两次输出字节一致。没有新增收益结论；Windows运行有兼容/本地内核提示但无执行错误，内核随执行结束退出，不启动公开Notebook服务。
+- **Context7文档MCP**：维护方Upstash，所读开源许可MIT；按其官方地址`https://mcp.context7.com/mcp`注册为用户级`context7`，不下载或执行第三方MCP本地包。实际无凭据完成initialize、两个工具列表、Fastify库匹配和6686字符超时文档读取，服务返回版本4.7.0；只发送公开技术问题，文档本身须回到具体版本源核实。CLI添加配置后自动发起OAuth，已中止该可选登录；后续匿名读取通过，不称完成账户授权。注册成功不等于当前会话已热加载原生工具，下一轮/客户端重新加载后再核验；此前两个MCP条目仍存在。未保存完整安装前配置，仅语义摘要，故不宣称全部配置逐字段不变。
+
+安装后的技能下一轮可自动发现。当前会话已用独立客户端实际执行读取和研究，避免将“已配置”当“已使用”。来源与验收位于`runtime/2026-11-13-{jupyter-install-source,jupyter-installed-manifest,notebook-environment,notebook-pip-report,context7-smoke}.json`及已执行`-tool-smoke.ipynb`；仅记录来源、版本与公开研究，没有凭据或生产账户导出。
+
+已有Playwright继续负责页面交互；既有Chrome-DevTools-MCP当前未暴露可调用工具，仍待连通验收。没有重复安装、重启用户应用、付费订阅或安装未经验证的资金/券商插件。专用资金流/论坛缺口沿H计划来源合同推进，下面的`get_cash_flow`财报工具不能替代它。
 
 ## 已落地能力
 

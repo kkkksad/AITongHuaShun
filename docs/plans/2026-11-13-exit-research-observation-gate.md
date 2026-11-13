@@ -62,13 +62,13 @@ const buys = raw.filter(signal => signal.side === "buy").map(signal => ({ ...sig
 - [x] 顺序运行两次：`node node_modules/tsx/dist/cli.mjs scripts/research-strategy-exits-history.ts runtime/bank-portfolio-history-attempt1.json runtime/2026-11-13-exit-boundary-a.json`及不同b.json输出；用scripts/verify-strategy-exit-history.cjs沿原204组控制独立验证逐笔资金、费用、FIFO、库存、次开价、回撤和native保持。
 - [x] 将新216组逐组完整结果（去掉源码身份元信息）与原216组比较，报告任何变化，不以收益较高选实现；若固定有效输入均未触发坏观察，应保持全部经济和诊断。
 - [x] 完整server单Vitest及TS/Vite；前端/Python/归档无改沿用已验证460/308/41，不无故重复。
-- [ ] 实际生产API镜像上线后禁网完整server验证，无账户/凭据挂载。
+- [x] 实际生产API镜像上线后禁网完整server验证，无账户/凭据挂载。
 
 ## Task 4：文档、提交及发布
 
 - [x] 新增docs/decisions/0120-exit-research-observations-before-callbacks.md，更新研究局限/状态/总计划，明确这是离线工具时间边界修复，不是历史亏损根因或线上策略默认改善。
-- [ ] 保存新鲜动态完整经济/风险与三容器基线，独立提交推送退出0、HEAD=upstream且干净后发布。
-- [ ] 核对实际归档字节/SHA、三健康、双域可信HTTPS/匿名401、动态完整经济及完整风险检查点、上一80a73a4源码/三镜像/私有导出与覆盖拒绝；桥接保持。一个文档回执后接续，不递归回执。
+- [x] 保存新鲜动态完整经济/风险与三容器基线，独立提交推送退出0、HEAD=upstream且干净后发布。
+- [x] 核对实际归档字节/SHA、三健康、双域可信HTTPS/匿名401、动态完整经济及完整风险检查点、上一80a73a4源码/三镜像/私有导出与覆盖拒绝；桥接保持。一个文档回执后接续，不递归回执。
 
 ## 流水
 
@@ -76,3 +76,6 @@ const buys = raw.filter(signal => signal.side === "buy").map(signal => ({ ...sig
 - 现有216组历史明确坏完成观察为0，本项不能预先声称改变这些历史经济结果；核心风险是当前包装器先回调再检查时间，需用状态污染反例验证。
 
 - UTC16:45本地完整194文件3213后端、目标100、TS/Vite通过。新增22项旧版20失败/2控制；同一216组新输出SHA85718c6a两次一致，6024逐笔独立重建、最低现金0、72native保持；全部216完整交易/经济/诊断与旧报告保持。不是新OOS或线上默认改善。
+
+- UTC16:55至16:58：5022affdd88cd9bf35de7b964c74e63f6958d5eb推送/部署退出0，882实际上传文件逐哈希、三健康、六次系统可信HTTPS/匿名401、动态完整经济和风险摘要保持、上一80a73a4源码/三镜像/私有导出/覆盖拒绝通过，桥接身份保持。实际新API镜像禁网、无生产账户凭据挂载194文件3213项通过（101.81秒）。证据runtime/2026-11-13-exit-boundary-{summary,https,retained,before,after}.json及-production-server.log。
+- 本次一次文档回执包含用户新授权工具的真实安装与验证记录；回执发布后仅核对三已测容器/镜像保持，不递归回执，也不重跑未变的完整应用测试。
