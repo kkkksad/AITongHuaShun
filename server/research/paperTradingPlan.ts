@@ -1288,6 +1288,7 @@ export function buildPaperTradingPlan(input: {
         name: candidate.name,
         action: "blocked",
         strategy: "隔夜持续性与费用纪律",
+        strategyKey: candidate.strategyKey,
         quantity: 0,
         price: candidate.price,
         estimatedNotional: 0,

@@ -228,7 +228,7 @@ Paper异步研究/通知绑定Store进程内执行控制修订；成功的暂停
 - `auto` 执行策略继续由 `AdaptiveStrategyRouter` 决定新增仓位资格和缩放；17 个固定 Paper 策略按自身 setup 生成候选，不使用市场路由的 `allowNewPositions` 或 `newPositionScale`。手动模式仍必须通过策略档位、真实历史、流动性、追高、费用、现金、仓位、整手、T+1、熔断、阶段预算、每日上限、幂等和 PaperBroker 风控；`capital-preservation` 继续禁止新增仓位。
 - 每日复盘从自动执行审计中优先选择最近的有效盘中决策，盘后启动产生的 `not-run` 不能覆盖同日 `open` 交易时段形成的计划质量和跳过原因。没有盘中证据且没有订单时必须返回运行覆盖缺口；行情快照日期与复盘日不一致时，不得使用旧宽度、指数或累计账户结果替代当日证据。
 - `paperTradingPlan`复用Broker的滑点/成交价/佣金舍入，按费用后权益检查单股权重并逐笔累计买单损耗；保留价格>=1的保守手数上限与严格本金cap，用有界二分找整手。参考报价与可选`estimatedExecution`分开，摘要使用预计实际本金/费用/扣款，Executor/Broker仍按实际执行成本复核，见[0042](../decisions/0042-paper-plan-post-cost-sizing.md)。
-- `paperTradingPlanService` 在发起真实历史研究前同步生成有界候选，将当前持仓、强势回踩候选和优质股候选按优先级去重后放入最多 12 只历史股票池；`paperTradingPlan` 只允许通过历史持续性、往返佣金和同日回补检查的候选形成新增仓位。
+- `paperTradingPlanService` 在发起真实历史研究前同步生成有界候选，将当前持仓、强势回踩候选和优质股候选按优先级去重后放入最多 12 只历史股票池；`paperTradingPlan` 只允许通过历史持续性、往返佣金和同日回补检查的候选形成新增仓位。已选中策略后被这些入场纪律拒绝时保留真实strategyKey供跳过审计归因；旧来源缺失不回填，blocked不计入已成交策略使用数，见[0128](../decisions/0128-blocked-entry-strategy-provenance.md)。
 - `RiskEngine` 只依赖共享领域数据，不产生网络或存储副作用。
 - `InMemoryTradingStore` 是默认实现，`JsonFileTradingStore` 只用于本地单进程恢复；两者都实现账户重置和策略档位持久化，但都不是未来数据库模型的替代品。
 - Store读取不缓存账户或持仓快照。空持仓直接返回空数组；非空持仓每次读取注入时钟，仅在精确毫秒相同时复用交易日格式化字符串，时间前进或回拨均重新计算，行情与账户值始终重新估值。

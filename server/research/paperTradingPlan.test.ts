@@ -473,6 +473,7 @@ describe("buildPaperTradingPlan entry discipline", () => {
     expect(plan.operations.some(operation => operation.action === "paper-buy-plan")).toBe(false);
     const rejected = plan.operations.find(operation => operation.ruleChecks.some(rule => rule.startsWith("entry-persistence: blocked")));
     expect(rejected?.reason).toContain("形态置信度至少0.55（当前0.54）");
+    expect(rejected?.strategyKey).toBe("snapshot-candidate");
   });
 
   it.each(["kairosQualifiedProbe", "kairosValidationBasket"] as const)(
@@ -614,6 +615,7 @@ describe("buildPaperTradingPlan entry discipline", () => {
       expect.objectContaining({
         symbol: "600010",
         action: "blocked",
+        strategyKey: "snapshot-candidate",
         reason: expect.stringContaining("往返最低手续费"),
         ruleChecks: expect.arrayContaining([
           expect.stringContaining("round-trip-fee-ratio: blocked"),
@@ -704,36 +706,43 @@ describe("buildPaperTradingPlan entry discipline", () => {
     ]));
   });
 
-  it("does not buy back a symbol sold by auto execution on the same day", () => {
-    const soldToday: OrderRecord = {
-      id: "sold-today",
-      symbol: "600010",
-      name: "包钢股份",
-      side: "sell",
-      type: "market",
-      quantity: 100,
-      status: "filled",
-      requestedPrice: 10,
-      filledPrice: 10,
-      filledQuantity: 100,
-      notional: 1_000,
-      commission: 5,
-      clientOrderId: "kairos-auto-paper:2026-07-21:600010:paper-sell-plan:100",
-      createdAt: "2026-07-21T01:40:00.000Z",
-      updatedAt: "2026-07-21T01:40:00.000Z",
-    };
-    const plan = buildEntryDisciplinePlan({
-      stockRegime: "healthy-trend",
-      orders: [soldToday],
-    });
-
-    expect(plan.operations.some((operation) => operation.action === "paper-buy-plan")).toBe(false);
-    expect(plan.operations).toEqual(expect.arrayContaining([
-      expect.objectContaining({
+  it.each(["snapshot-candidate", "kairosQualifiedProbe", "kairosValidationBasket"] as const)(
+    "does not buy back a symbol sold on the same day and retains its selected %s source", (strategyKey) => {
+      const soldToday: OrderRecord = {
+        id: "sold-today",
         symbol: "600010",
-        action: "blocked",
-        ruleChecks: expect.arrayContaining(["same-day-reentry: blocked"]),
-      }),
-    ]));
-  });
+        name: "包钢股份",
+        side: "sell",
+        type: "market",
+        quantity: 100,
+        status: "filled",
+        requestedPrice: 10,
+        filledPrice: 10,
+        filledQuantity: 100,
+        notional: 1_000,
+        commission: 5,
+        clientOrderId: "kairos-auto-paper:2026-07-21:600010:paper-sell-plan:100",
+        createdAt: "2026-07-21T01:40:00.000Z",
+        updatedAt: "2026-07-21T01:40:00.000Z",
+      };
+      const plan = buildEntryDisciplinePlan({
+        stockRegime: "healthy-trend",
+        orders: [soldToday],
+        ...(strategyKey === "snapshot-candidate" ? {} : {
+          adaptiveRouting: validationRouting(strategyKey), activityTargetActive: true,
+          activityMode: strategyKey === "kairosQualifiedProbe" ? "qualified-probe" as const : "validation-probe" as const,
+        }),
+      });
+
+      expect(plan.operations.some((operation) => operation.action === "paper-buy-plan")).toBe(false);
+      expect(plan.operations).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          symbol: "600010",
+          action: "blocked",
+          strategyKey,
+          ruleChecks: expect.arrayContaining(["same-day-reentry: blocked"]),
+        }),
+      ]));
+    },
+  );
 });

@@ -16,6 +16,8 @@ UTC19:38独立客户端复测正常退出，10项初始化/工具发现/匿名�
 
 ## 本次新增授权与实际验收
 
+UTC20:56接续用户再次授权，复核官方plugins/MCP正文及固定安装清单，DevTools388、Jupyter12、LCP5文件全部匹配；Context7仍指向维护方官方端点，DevTools已注册。已有工具覆盖当前浏览器排障、技术文档和离线研究用途，本次没有重复安装或修改生产依赖。当前原生工具目录仍未暴露这两个MCP；先前独立客户端真实验收与热加载分开，逐股资金流/论坛合同仍未补齐。证据runtime/2026-11-13-plugin-current.json。
+
 UTC20:07至20:10为解决反复Git传输超时，从Git for Windows官方GitHub Release取得固定MinGit2.56.1（GPLv2及随附依赖许可）。39849768字节与官方API公布SHA256一致，安全解包375文件并逐文件记录哈希，无安装脚本；仅用户工具目录独立使用，不改全局PATH/Git配置或项目、服务器依赖。用该二进制及系统可信schannel先成功匿名读取openai/skills，再通过既有本地凭据管理器推送本聊天已授权32a7ad0，exit0且upstream匹配；未导出或搬运凭据。尝试OpenSSL得到不支持错误，没有降低TLS验证。本次实际成功不证明此前超时的根因。来源与验收见runtime/2026-11-13-portable-git-{source,installed,verification}.json；它是开发工具，不是量化插件或新数据源。
 
 UTC18:57接续用户授权，重新读取官方plugins/skills/MCP正文并查询39项curated目录；已有四类工具及原验收记录覆盖当前浏览器、文档和离线研究用途，没有重复安装。随后再验DevTools388文件、Jupyter技能12文件、LCP技能5文件与此前固定版本清单全匹配，Context7官方端点及DevTools绝对可执行路径检查通过。本会话仍未暴露Context7/DevTools原生调用，先前独立stdio实际验收与原生热加载严格区分。没有专用逐股资金流/论坛技能可直接补齐合同，未将get_cash_flow误作主力流入；未新增生产依赖或付费服务。只读来源时间、SHA与结论见runtime/2026-11-13-plugin-followup.json；工具支持研究和排障，不证明策略盈利。
