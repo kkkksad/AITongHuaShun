@@ -468,6 +468,13 @@ function validationRouting(
 }
 
 describe("buildPaperTradingPlan entry discipline", () => {
+  it("keeps the existing confidence rejection but explains its failed numeric subcheck", () => {
+    const plan = buildEntryDisciplinePlan({ stockRegime: "healthy-trend", confidence: 0.54 });
+    expect(plan.operations.some(operation => operation.action === "paper-buy-plan")).toBe(false);
+    const rejected = plan.operations.find(operation => operation.ruleChecks.some(rule => rule.startsWith("entry-persistence: blocked")));
+    expect(rejected?.reason).toContain("形态置信度至少0.55（当前0.54）");
+  });
+
   it.each(["kairosQualifiedProbe", "kairosValidationBasket"] as const)(
     "uses a fee-efficient lot within the final cap for %s instead of shrinking it twice",
     (strategyKey) => {

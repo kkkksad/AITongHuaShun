@@ -1,3 +1,4 @@
+import { assessEntryPersistence } from "./paperEntryPersistence";
 import { getPaperExecutionStrategyOption } from "../../shared/trading";
 import { PAPER_POSITION_EXIT_POLICY } from "../../shared/paperPositionExitPolicy";
 import type {
@@ -372,75 +373,6 @@ function validationBudgetRuleCheck(candidate: {
   return `validation-budget: target ${(validationBudgetRatio(candidate) * 100).toFixed(0)}% of capped order; fee-efficient minimum lot within final cap`;
 }
 
-function assessEntryPersistence(input: {
-  required: boolean;
-  stockRegime: StockRegimeResult | undefined;
-  strategyKey?: string | null;
-}): { allowed: boolean; explanation: string; ruleCheck: string } {
-  if (!input.required) {
-    return {
-      allowed: true,
-      explanation: "当前模式不要求外部历史形态准入。",
-      ruleCheck: "entry-persistence: not-required",
-    };
-  }
-  const stock = input.stockRegime;
-  if (!stock) {
-    return {
-      allowed: false,
-      explanation: "候选未进入真实历史日线观察池，缺少隔夜持续性确认。",
-      ruleCheck: "entry-persistence: blocked (history-not-covered)",
-    };
-  }
-  if (stock.regime === "healthy-trend" && stock.confidence >= 0.55) {
-    return {
-      allowed: true,
-      explanation: `真实历史形态为健康趋势，置信度 ${(stock.confidence * 100).toFixed(0)}%。`,
-      ruleCheck: `entry-persistence: pass (healthy-trend ${stock.confidence.toFixed(2)})`,
-    };
-  }
-  const washoutValidated =
-    stock.regime === "washout-candidate" &&
-    stock.confidence >= 0.65 &&
-    stock.validation.samples >= 20 &&
-    stock.validation.hitRate5d !== null &&
-    stock.validation.hitRate5d >= 0.55;
-  if (washoutValidated) {
-    return {
-      allowed: true,
-      explanation: `真实历史形态为已验证洗盘候选，置信度 ${(stock.confidence * 100).toFixed(0)}%，5 日历史命中率 ${(stock.validation.hitRate5d! * 100).toFixed(0)}%。`,
-      ruleCheck: `entry-persistence: pass (validated-washout ${stock.confidence.toFixed(2)})`,
-    };
-  }
-  const rangeStructureValidated =
-    (
-      input.strategyKey === "rsi" ||
-      input.strategyKey === "bollingerBands" ||
-      input.strategyKey === "kairosRangeRotation" ||
-      input.strategyKey === "kairosQualifiedProbe" ||
-      input.strategyKey === "kairosValidationBasket"
-    ) &&
-    stock.regime === "unclear" &&
-    stock.barCount >= 120 &&
-    stock.confidence >= 0.55 &&
-    stock.features.return20d >= -0.06 &&
-    stock.features.return20d <= 0.08 &&
-    stock.features.distanceFromMa20 >= -0.1 &&
-    stock.features.distanceFromMa20 <= 0.03 &&
-    stock.features.ma20Slope5d >= -0.01;
-  if (rangeStructureValidated) {
-    return {
-      allowed: true,
-      explanation: `真实历史样本 ${stock.barCount} 根，区间偏离和均线斜率保持受控。`,
-      ruleCheck: `entry-persistence: pass (range-structure ${stock.confidence.toFixed(2)})`,
-    };
-  }
-  return {
-    allowed: false,
-    explanation: `真实历史形态 ${stock.regime} 未通过隔夜持续性准入，停止新建仓位。`,
-    ruleCheck: `entry-persistence: blocked (${stock.regime} ${stock.confidence.toFixed(2)})`,
-  };
-}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
