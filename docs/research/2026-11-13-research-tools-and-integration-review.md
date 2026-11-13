@@ -16,6 +16,8 @@ UTC19:38独立客户端复测正常退出，10项初始化/工具发现/匿名�
 
 ## 本次新增授权与实际验收
 
+UTC21:28接续用户授权，再次实际读取官方plugins/MCP正文并用官方skill-installer查询39项curated清单；Playwright、Jupyter、LCP及KAIROS专项技能已经存在，Chrome DevTools与Context7配置仍存在。本轮原生工具目录仍未暴露二者，没有新增下载、重复注册或生产依赖变更。既有实际客户端验收不等于本会话热加载；当前用途已覆盖，优先用工具完成可复现交易缺陷和页面测量，逐股资金流/论坛合同继续保持未实现。
+
 UTC20:56接续用户再次授权，复核官方plugins/MCP正文及固定安装清单，DevTools388、Jupyter12、LCP5文件全部匹配；Context7仍指向维护方官方端点，DevTools已注册。已有工具覆盖当前浏览器排障、技术文档和离线研究用途，本次没有重复安装或修改生产依赖。当前原生工具目录仍未暴露这两个MCP；先前独立客户端真实验收与热加载分开，逐股资金流/论坛合同仍未补齐。证据runtime/2026-11-13-plugin-current.json。
 
 UTC20:07至20:10为解决反复Git传输超时，从Git for Windows官方GitHub Release取得固定MinGit2.56.1（GPLv2及随附依赖许可）。39849768字节与官方API公布SHA256一致，安全解包375文件并逐文件记录哈希，无安装脚本；仅用户工具目录独立使用，不改全局PATH/Git配置或项目、服务器依赖。用该二进制及系统可信schannel先成功匿名读取openai/skills，再通过既有本地凭据管理器推送本聊天已授权32a7ad0，exit0且upstream匹配；未导出或搬运凭据。尝试OpenSSL得到不支持错误，没有降低TLS验证。本次实际成功不证明此前超时的根因。来源与验收见runtime/2026-11-13-portable-git-{source,installed,verification}.json；它是开发工具，不是量化插件或新数据源。

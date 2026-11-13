@@ -20,6 +20,8 @@ SDK归一化结果为item/value，不提供可靠的分类生效日期和标准�
 
 ## 后续实施约束
 
+UTC21:17改查[上交所官方列表](https://www.sse.com.cn/assortment/stock/list/share/)及其实际使用的commonQuery：三份同响应分别确认601398、601288、601166，CSRC_CODE=J、CSRC_CODE_DESC=金融业。源身份和请求身份相符，记录请求/接收时间及原文SHA；这是当前CSRC门类，不是银行细分，也没有分类生效日期。不能与旧东财“银行Ⅱ”标签混作一个分类体系或回填历史。深交所页面随后200，但000001对应ShowReport接口500，继续未知。证据runtime/2026-11-13-official-industry-source/{results-current-query,manifest,szse-attempts}.json；仍未接入生产分类或行业硬限额。
+
 UTC20:09再次独立有界读取四个持仓同响应f57/f58/f127，全部HTTP502，接收时间均保留、分类生效时间为null，生产API调用和核心历史队列使用均为0；证据runtime/2026-11-13-industry-source-second-recheck/{registration,result}.json。当前源覆盖和稳定性仍不足，不从股票名称或旧单股标签补齐四股分类，也不能据此启用行业硬限额。
 
 1. 独立、有界、缓存的只读元数据通道，不占满历史串行执行器或为每轮12股重复抓取；验证部分失败和错误股票身份隔离。

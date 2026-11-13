@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { ServerConfig } from "../config";
 import type { TradingSystem } from "../system";
 import type { AuditEvent, PositionSnapshot } from "../../shared/trading";
@@ -35,7 +36,7 @@ import type { StrategyLeaderboardReport } from "./strategyLeaderboard";
 import type { InMemoryResearchStore } from "./researchStore";
 import { ResearchResultCache } from "./researchResultCache";
 import { withResearchDeadline } from "./researchDeadline";
-import { assertPaperExecutionRevision } from "../trading/paperExecutionContext";
+import { assertPaperExecutionRevision, PaperExecutionContextChangedError } from "../trading/paperExecutionContext";
 import { executionCosts, hasSufficientCash } from "../broker/executionCosts";
 import { BackgroundResearchCache } from "./backgroundResearchCache";
 import type { BackgroundResearchFallback } from "./backgroundResearchCache";
@@ -453,6 +454,12 @@ export async function buildCurrentPaperTradingPlan(input: {
   const snapshot = input.system.market.getSnapshot();
   const account = input.system.broker.getAccount(snapshot);
   const positions = input.system.broker.getPositions(snapshot);
+  const orders = input.system.store.listOrders(10_000);
+  // Older pending orders may fall outside the bounded recent-order history.
+  // getPendingOrders returns mutable records, so retain independent copies.
+  const pendingOrders = input.system.store.getPendingOrders().map(order => ({ ...order }));
+  const totalCash = input.system.store.getCash();
+  const availableCash = input.system.store.getAvailableCash();
   const strategyProfile = input.system.store.getStrategyProfile();
   const executionStrategy = input.system.store.getExecutionStrategy();
   const candidates = buildDailyCandidates(
@@ -497,6 +504,12 @@ export async function buildCurrentPaperTradingPlan(input: {
     criticalHistoryStockLimit,
   });
   assertPaperExecutionRevision(input.system.store, executionRevision);
+  if (input.system.store.getCash() !== totalCash ||
+      input.system.store.getAvailableCash() !== availableCash ||
+      !isDeepStrictEqual(orders, input.system.store.listOrders(10_000)) ||
+      !isDeepStrictEqual(pendingOrders, input.system.store.getPendingOrders())) {
+    throw new PaperExecutionContextChangedError("ledger");
+  }
   const {
     leaderboard,
     marketRegimeResearch,
@@ -531,7 +544,7 @@ export async function buildCurrentPaperTradingPlan(input: {
     provider: input.system.marketDataProvider,
     account,
     positions,
-    orders: input.system.store.listOrders(10_000),
+    orders,
     leaderboard,
     candidates,
     qualityStocks,
